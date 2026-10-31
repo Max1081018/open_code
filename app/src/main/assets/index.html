@@ -1,0 +1,64 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+<title>App</title>
+<style>
+  html, body {
+    margin: 0;
+    height: 100%;
+    background: #1e1e2e;
+    color: #cdd6f4;
+    font-family: system-ui, sans-serif;
+    overflow: hidden;
+    touch-action: none;
+  }
+  canvas { display: block; width: 100%; height: 100%; }
+</style>
+</head>
+<body>
+<canvas id="c"></canvas>
+<script>
+  const canvas = document.getElementById('c');
+  const ctx = canvas.getContext('2d');
+  let w, h, dpr;
+  let x, y, vx, vy, r;
+
+  function resize() {
+    dpr = window.devicePixelRatio || 1;
+    w = window.innerWidth;
+    h = window.innerHeight;
+    canvas.width = w * dpr;
+    canvas.height = h * dpr;
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    r = Math.max(18, Math.min(w, h) * 0.06);
+    if (x === undefined) { x = w / 2; y = h / 2; vx = 3; vy = 2.4; }
+  }
+
+  function step() {
+    x += vx; y += vy;
+    if (x - r < 0 || x + r > w) { vx *= -1; x = Math.max(r, Math.min(w - r, x)); }
+    if (y - r < 0 || y + r > h) { vy *= -1; y = Math.max(r, Math.min(h - r, y)); }
+
+    ctx.fillStyle = '#1e1e2e';
+    ctx.fillRect(0, 0, w, h);
+    ctx.beginPath();
+    ctx.arc(x, y, r, 0, Math.PI * 2);
+    ctx.fillStyle = '#89b4fa';
+    ctx.fill();
+
+    ctx.fillStyle = '#cdd6f4';
+    ctx.font = '16px system-ui, sans-serif';
+    ctx.textAlign = 'center';
+    ctx.fillText('Ready to build', w / 2, h - 32);
+
+    requestAnimationFrame(step);
+  }
+
+  window.addEventListener('resize', resize);
+  resize();
+  step();
+</script>
+</body>
+</html>
