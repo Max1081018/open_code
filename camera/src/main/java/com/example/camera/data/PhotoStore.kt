@@ -24,7 +24,7 @@ import kotlin.math.min
 class PhotoStore private constructor(context: Context) {
 
     private val dir: File = File(context.filesDir, "photos").apply { if (!exists()) mkdirs() }
-    private val thumbs = LruCache<String, Bitmap>(72)
+    private val thumbs = LruCache<String, Bitmap>(48)
 
     companion object {
         @Volatile

@@ -24,7 +24,7 @@ import java.io.File
 enum class Screen { Camera, Gallery, Editor }
 
 private const val PREVIEW_MAX = 1440
-private const val EXPORT_MAX = 4096
+private const val EXPORT_MAX = 3000
 
 class CameraViewModel(app: Application) : AndroidViewModel(app) {
 
@@ -176,7 +176,6 @@ class CameraViewModel(app: Application) : AndroidViewModel(app) {
                     }
                     result[id] = rendered.asImageBitmap()
                 }
-                small.recycle()
                 result
             }
             filterThumbs = thumbs
