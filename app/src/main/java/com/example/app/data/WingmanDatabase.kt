@@ -9,7 +9,7 @@ import androidx.room.RoomDatabase
     entities = [Person::class, ChatMessage::class, PersonalityProfile::class],
     version = 1,
     exportSchema = false,
-    converters = [Converters::class]
+    typeConverters = [Converters::class]
 )
 abstract class WingmanDatabase : RoomDatabase() {
 
