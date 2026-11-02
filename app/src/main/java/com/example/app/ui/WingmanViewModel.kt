@@ -84,7 +84,18 @@ class WingmanViewModel(app: Application) : AndroidViewModel(app) {
             if (person.id == 0L) {
                 personDao.insert(person.copy(createdAt = now, updatedAt = now))
             } else {
-                personDao.update(person.copy(updatedAt = now))
+                val saved = person.copy(updatedAt = now)
+                personDao.update(saved)
+                // Keep an existing profile in sync with the details that feed it.
+                val existing = personalityProfileDao.allForPerson(person.id).firstOrNull()
+                if (existing != null) {
+                    val refreshed = WingmanBrain.profileFor(
+                        person = saved,
+                        history = chatMessageDao.allForPerson(person.id),
+                        profileId = existing.id
+                    ).copy(createdAt = existing.createdAt)
+                    personalityProfileDao.update(refreshed)
+                }
             }
         }
     }

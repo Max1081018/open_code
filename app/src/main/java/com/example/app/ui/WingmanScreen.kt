@@ -13,6 +13,7 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.consumeWindowInsets
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -129,6 +130,7 @@ private fun PeopleScreen(
     fun openNew() {
         editing = null
         newAvatarColor = vm.nextAvatarColor()
+        vm.query.value = ""
         showEditor = true
     }
 
@@ -372,7 +374,7 @@ private fun EmptyPeopleState(
         verticalArrangement = Arrangement.Center
     ) {
         Text(
-            text = if (hasFriends) "No matches" else "🪽",
+            text = if (hasFriends) "No matches" else "👋",
             style = MaterialTheme.typography.displayMedium
         )
         Spacer(modifier = Modifier.height(12.dp))
@@ -449,6 +451,7 @@ private fun ChatScreen(
             modifier = Modifier
                 .fillMaxSize()
                 .padding(padding)
+                .consumeWindowInsets(padding)
                 .imePadding()
         ) {
             if (!person.consentStatus.allowsContact) {

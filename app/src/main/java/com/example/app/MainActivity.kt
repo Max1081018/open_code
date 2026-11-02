@@ -5,7 +5,9 @@ import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.viewModels
 import androidx.compose.foundation.isSystemInDarkTheme
+import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.getValue
+import androidx.core.view.WindowCompat
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.example.app.ui.AppTheme
 import com.example.app.ui.ThemeMode
@@ -27,6 +29,17 @@ class MainActivity : ComponentActivity() {
                 ThemeMode.LIGHT -> false
                 ThemeMode.DARK -> true
             }
+
+            SideEffect {
+                val background = if (darkTheme) 0xFF0B1020 else 0xFFF6F7FB
+                window.statusBarColor = background.toInt()
+                window.navigationBarColor = background.toInt()
+                WindowCompat.getInsetsController(window, window.decorView).apply {
+                    isAppearanceLightStatusBars = !darkTheme
+                    isAppearanceLightNavigationBars = !darkTheme
+                }
+            }
+
             AppTheme(darkTheme = darkTheme) {
                 WingmanScreen(
                     vm = vm,

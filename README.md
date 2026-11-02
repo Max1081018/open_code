@@ -22,7 +22,7 @@ https://github.com/Max1081018/open_code/releases/latest
 Or build a release tag and use its asset:
 
 ```
-https://github.com/Max1081018/open_code/releases/download/v1.2/app-debug.apk
+https://github.com/Max1081018/open_code/releases/download/v1.3/app-debug.apk
 ```
 
 ## Build
@@ -30,8 +30,8 @@ https://github.com/Max1081018/open_code/releases/download/v1.2/app-debug.apk
 CI builds and tests on every push to `main` (`.github/workflows/build-apk.yml`). Pushing a `v*` tag attaches the APK to a GitHub release.
 
 ```sh
-git tag v1.2
-git push origin v1.2
+git tag v1.3
+git push origin v1.3
 ```
 
 Locally, with a JDK 17 and Android SDK installed:
