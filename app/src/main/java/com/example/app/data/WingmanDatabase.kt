@@ -4,13 +4,14 @@ import android.content.Context
 import androidx.room.Database
 import androidx.room.Room
 import androidx.room.RoomDatabase
+import androidx.room.TypeConverters
 
 @Database(
     entities = [Person::class, ChatMessage::class, PersonalityProfile::class],
     version = 1,
-    exportSchema = false,
-    typeConverters = [Converters::class]
+    exportSchema = false
 )
+@TypeConverters(Converters::class)
 abstract class WingmanDatabase : RoomDatabase() {
 
     abstract fun personDao(): PersonDao
