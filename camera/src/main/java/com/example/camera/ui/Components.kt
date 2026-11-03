@@ -76,7 +76,7 @@ fun GlassSurface(
 @Composable
 fun HaloLogo(size: Dp, glow: Float = 1f, modifier: Modifier = Modifier) {
     Canvas(modifier = modifier.size(size)) {
-        val r = size.minDimension.toPx() / 2f
+        val r = this.size.minDimension / 2f
         val ring = r * 0.72f
         drawCircle(
             brush = Brush.radialGradient(
@@ -177,7 +177,13 @@ fun GradientButton(
             .height(height)
             .scale(scale)
             .clip(RoundedCornerShape(height / 2f))
-            .background(if (enabled) gradient else Color.White.copy(alpha = 0.10f))
+            .background(
+                if (enabled) {
+                    gradient
+                } else {
+                    Brush.linearGradient(listOf(Color.White.copy(alpha = 0.10f)))
+                }
+            )
             .clickable(
                 interactionSource = interaction,
                 indication = null,

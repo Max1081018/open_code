@@ -240,7 +240,7 @@ class CameraSession(context: Context) {
                 exposureIndex = 0
             }
 
-            hasFlash = info?.hasFlashUnit == true
+            hasFlash = info?.hasFlashUnit() == true
             isTorchOn = false
             isRecording = false
         } catch (t: Throwable) {
@@ -369,7 +369,10 @@ class CameraSession(context: Context) {
         val metadata = ImageCapture.Metadata().apply {
             isReversedHorizontal = lensFacing == CameraSelector.LENS_FACING_FRONT && mirrorSelfie
         }
-        val options = ImageCapture.OutputFileOptions.Builder(file, metadata).build()
+        val options = ImageCapture.OutputFileOptions
+            .Builder(file)
+            .setMetadata(metadata)
+            .build()
         capture.takePicture(
             options,
             mainExecutor,

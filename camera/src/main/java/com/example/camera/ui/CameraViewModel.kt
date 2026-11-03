@@ -307,7 +307,7 @@ class CameraViewModel(app: Application) : AndroidViewModel(app) {
                     }
                     result[id] = rendered.asImageBitmap()
                 }
-                if (small !== result[FilterId.ORIGINAL]) small.recycle()
+                // `small` doubles as the ORIGINAL thumbnail, so it must stay alive.
                 result
             }
             filterThumbs = thumbs

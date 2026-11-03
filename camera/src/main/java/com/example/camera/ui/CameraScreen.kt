@@ -813,7 +813,7 @@ private fun ExposureControl(
                 // Track groove
                 Box(
                     modifier = Modifier
-                        .align(Alignment.CenterHorizontally)
+                        .align(Alignment.Center)
                         .width(4.dp)
                         .fillMaxHeight()
                         .clip(RoundedCornerShape(2.dp))
@@ -823,17 +823,17 @@ private fun ExposureControl(
                 val frac = ((value - range.start) / span).coerceIn(0f, 1f)
                 Box(
                     modifier = Modifier
-                        .align(Alignment.CenterHorizontally)
-                        .offset(y = with(LocalDensity.current) { trackHeight.times(frac) - 11.dp })
+                        .align(Alignment.TopCenter)
+                        .offset(y = with(LocalDensity.current) { trackHeight * (1f - frac) - 11.dp })
                         .size(22.dp)
                         .clip(CircleShape)
                         .background(Amber, CircleShape)
                 )
-                // Center marker (neutral)
+                // Center marker (neutral EV)
                 Box(
                     modifier = Modifier
-                        .align(Alignment.CenterHorizontally)
-                        .offset(y = with(LocalDensity.current) { trackHeight.div(2f) - 1.dp })
+                        .align(Alignment.TopCenter)
+                        .offset(y = with(LocalDensity.current) { trackHeight / 2f - 0.5.dp })
                         .width(14.dp)
                         .height(1.dp)
                         .background(Color.White.copy(alpha = 0.35f))

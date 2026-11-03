@@ -2,7 +2,7 @@ package com.example.camera.data
 
 import android.graphics.Bitmap
 import com.google.mlkit.vision.common.InputImage
-import com.google.mlkit.vision.label.ImageLabelerOptions
+import com.google.mlkit.vision.label.defaults.ImageLabelerOptions
 import com.google.mlkit.vision.label.ImageLabeling
 import com.google.mlkit.vision.segmentation.Segmentation
 import com.google.mlkit.vision.segmentation.SegmentationMask

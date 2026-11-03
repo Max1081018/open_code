@@ -121,8 +121,11 @@ class PhotoStore private constructor(context: Context) {
         val key = file.absolutePath + "@" + size
         thumbs.get(key)?.let { return it }
 
-        val decoded = if (isVideo(file)) videoFrame(file) else decode(file, size * 2)
-            ?: return null
+        val decoded = if (isVideo(file)) {
+            videoFrame(file)
+        } else {
+            decode(file, size * 2)
+        } ?: return null
         val side = min(decoded.width, decoded.height)
         val left = (decoded.width - side) / 2
         val top = (decoded.height - side) / 2
