@@ -1,0 +1,184 @@
+<?xml version="1.0" encoding="utf-8"?>
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:aapt="http://schemas.android.com/aapt"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+
+    <!-- Outer halo glow -->
+    <path
+        android:pathData="M54,54m-29,0a29,29 0 1,0 58,0a29,29 0 1,0 -58,0"
+        android:strokeWidth="7"
+        android:strokeAlpha="0.10">
+        <aapt:attr name="android:strokeColor">
+            <gradient
+                android:startX="27"
+                android:startY="27"
+                android:endX="81"
+                android:endY="81"
+                android:type="linear">
+                <item
+                    android:color="#FFC857"
+                    android:offset="0" />
+                <item
+                    android:color="#FF9F1C"
+                    android:offset="0.55" />
+                <item
+                    android:color="#5EEAD4"
+                    android:offset="1" />
+            </gradient>
+        </aapt:attr>
+    </path>
+
+    <!-- Halo ring -->
+    <path
+        android:pathData="M54,54m-25,0a25,25 0 1,0 50,0a25,25 0 1,0 -50,0"
+        android:strokeWidth="2.6">
+        <aapt:attr name="android:strokeColor">
+            <gradient
+                android:startX="29"
+                android:startY="29"
+                android:endX="79"
+                android:endY="79"
+                android:type="linear">
+                <item
+                    android:color="#FFE7A6"
+                    android:offset="0" />
+                <item
+                    android:color="#FFC857"
+                    android:offset="0.45" />
+                <item
+                    android:color="#FF9F1C"
+                    android:offset="0.82" />
+                <item
+                    android:color="#5EEAD4"
+                    android:offset="1" />
+            </gradient>
+        </aapt:attr>
+    </path>
+
+    <!-- Lens barrel -->
+    <path
+        android:pathData="M54,54m-16,0a16,16 0 1,0 32,0a16,16 0 1,0 -32,0"
+        android:strokeWidth="1.4"
+        android:strokeAlpha="0.9">
+        <aapt:attr name="android:strokeColor">
+            <gradient
+                android:startX="38"
+                android:startY="38"
+                android:endX="70"
+                android:endY="70"
+                android:type="linear">
+                <item
+                    android:color="#FFC857"
+                    android:offset="0" />
+                <item
+                    android:color="#8A6A2A"
+                    android:offset="1" />
+            </gradient>
+        </aapt:attr>
+    </path>
+
+    <!-- Dark lens interior -->
+    <path
+        android:pathData="M54,54m-13.5,0a13.5,13.5 0 1,0 27,0a13.5,13.5 0 1,0 -27,0">
+        <aapt:attr name="android:fillColor">
+            <gradient
+                android:centerX="49"
+                android:centerY="48"
+                android:gradientRadius="20"
+                android:type="radial">
+                <item
+                    android:color="#20202A"
+                    android:offset="0" />
+                <item
+                    android:color="#08080B"
+                    android:offset="1" />
+            </gradient>
+        </aapt:attr>
+    </path>
+
+    <!-- Aperture blades -->
+    <group
+        android:pivotX="54"
+        android:pivotY="54"
+        android:rotation="0">
+        <path
+            android:fillColor="#FFC857"
+            android:fillAlpha="0.92"
+            android:pathData="M54,54 L54,41 L66.5,47.5 L60.5,58 Z" />
+    </group>
+    <group
+        android:pivotX="54"
+        android:pivotY="54"
+        android:rotation="60">
+        <path
+            android:fillColor="#FFB347"
+            android:fillAlpha="0.88"
+            android:pathData="M54,54 L54,41 L66.5,47.5 L60.5,58 Z" />
+    </group>
+    <group
+        android:pivotX="54"
+        android:pivotY="54"
+        android:rotation="120">
+        <path
+            android:fillColor="#FF9F1C"
+            android:fillAlpha="0.82"
+            android:pathData="M54,54 L54,41 L66.5,47.5 L60.5,58 Z" />
+    </group>
+    <group
+        android:pivotX="54"
+        android:pivotY="54"
+        android:rotation="180">
+        <path
+            android:fillColor="#FFC857"
+            android:fillAlpha="0.92"
+            android:pathData="M54,54 L54,41 L66.5,47.5 L60.5,58 Z" />
+    </group>
+    <group
+        android:pivotX="54"
+        android:pivotY="54"
+        android:rotation="240">
+        <path
+            android:fillColor="#FFB347"
+            android:fillAlpha="0.88"
+            android:pathData="M54,54 L54,41 L66.5,47.5 L60.5,58 Z" />
+    </group>
+    <group
+        android:pivotX="54"
+        android:pivotY="54"
+        android:rotation="300">
+        <path
+            android:fillColor="#FF9F1C"
+            android:fillAlpha="0.82"
+            android:pathData="M54,54 L54,41 L66.5,47.5 L60.5,58 Z" />
+    </group>
+
+    <!-- Aperture opening -->
+    <path
+        android:pathData="M54,54m-5.2,0a5.2,5.2 0 1,0 10.4,0a5.2,5.2 0 1,0 -10.4,0"
+        android:fillColor="#060608" />
+    <path
+        android:pathData="M54,54m-4.1,0a4.1,4.1 0 1,0 8.2,0a4.1,4.1 0 1,0 -8.2,0"
+        android:fillColor="#0E1016" />
+
+    <!-- Specular highlight -->
+    <path
+        android:pathData="M50.2,47.2a5.2,5.2 0 0,1 5.6,-1.1a4.2,4.2 0 0,0 -5.2,4.4a3.4,3.4 0 0,1 -0.4,-3.3z"
+        android:fillColor="#FFFFFF"
+        android:fillAlpha="0.55" />
+
+    <!-- Teal rim light -->
+    <path
+        android:pathData="M69.5,41.5a24,24 0 0,1 3.2,15.5"
+        android:strokeWidth="2.2"
+        android:strokeLineCap="round"
+        android:strokeColor="#5EEAD4"
+        android:strokeAlpha="0.85" />
+
+    <!-- Sparkle -->
+    <path
+        android:pathData="M79,29 L80.3,33.2 L84.5,34.5 L80.3,35.8 L79,40 L77.7,35.8 L73.5,34.5 L77.7,33.2 Z"
+        android:fillColor="#FFF4D6" />
+</vector>

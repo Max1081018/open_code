@@ -98,3 +98,34 @@ Milestone 2 backlog: 4K video (`camera-video`), ML Kit / TFLite subject
 segmentation, crop/rotate, before/after compare, and MediaStore export so
 photos appear in the system gallery.
 
+
+## Milestone 2 — "Halo Camera 2.0" (what shipped, 2026-11-03)
+
+The whole `:camera` module was rewritten. applicationId unchanged so it
+updates in place; versionCode 20, versionName 2.0.0, label **Halo Camera**.
+
+- **Video** — CameraX `camera-video` 1.4.2 Recorder: SD/FHD/4K selector,
+  30/60 fps target on the preview stream, audio when the mic permission is
+  granted, live red-pill timer while recording, in-app Media3/ExoPlayer
+  playback with export.
+- **Real portrait bokeh** — ML Kit `segmentation-selfie` (bundled model) in
+  `data/SceneAnalyzer.kt` produces a confidence mask; `ImagePipeline.render`
+  blurs the backdrop around it and falls back to radial blur when no subject
+  is found.
+- **Scene understanding** — ML Kit `image-labeling` (bundled) feeds the
+  classifier in `AutoEnhance.classify` (food, document, night, portrait,
+  landscape, golden hour, backlit).
+- **AI vision pass** — a multi-pass detail/micro-contrast/colour lift behind
+  a toggle, plus detail boost (edge-aware unsharp), night boost, smart HDR
+  and beautify in `data/ImagePipeline.kt`.
+- **20 looks** with rendered filter thumbnails and intensity slider; editor
+  tabs Looks / Light / Color / Detail / AI / Crop; rotate + flip + aspect
+  crop; RGB histogram overlay; hold-to-compare; full-res save with an OOM
+  fallback; MediaStore export to the system gallery.
+- **Capture modes** Photo / Portrait / Night / Pro with a manual EV slider,
+  flash, torch, timer, grid, zoom presets, haptics.
+- **Design** — Sora + Inter variable fonts, dark "halo" palette, adaptive
+  vector icon, glass surfaces, no debug branding; APK artefact renamed to
+  `HaloCamera.apk`.
+- Permissions stay `CAMERA` + `RECORD_AUDIO` (+ legacy storage maxSdk 28);
+  no INTERNET permission; everything computes on device.

@@ -3,4 +3,10 @@
     <files-path
         name="photos"
         path="photos/" />
+    <files-path
+        name="videos"
+        path="videos/" />
+    <files-path
+        name="exports"
+        path="exports/" />
 </paths>

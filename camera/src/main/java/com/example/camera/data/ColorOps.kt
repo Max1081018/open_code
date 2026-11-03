@@ -47,6 +47,20 @@ object ColorOps {
         return knee + (1f - knee) * t * t
     }
 
+    /** Smooth 0..1 ramp between two edges. */
+    fun smoothstep(edge0: Float, edge1: Float, x: Float): Float {
+        if (edge0 == edge1) return if (x < edge0) 0f else 1f
+        val t = clamp01((x - edge0) / (edge1 - edge0))
+        return t * t * (3f - 2f * t)
+    }
+
+    /** S-curve around mid grey, useful for a gentle filmic contrast. */
+    fun sCurve(v: Float, amount: Float): Float {
+        val c = clamp01(v)
+        val k = amount.coerceIn(0f, 1f)
+        return lerp(c, c * c * (3f - 2f * c), k)
+    }
+
     fun to255(v: Float): Int = (clamp01(v) * 255f + 0.5f).toInt()
 
     fun pack(r: Float, g: Float, b: Float): Int =

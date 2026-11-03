@@ -1,12 +1,12 @@
 # Open Code apps
 
-Two small, offline-first Android apps in one Gradle project. Both are native
-Kotlin with Jetpack Compose. No accounts, no analytics, no network permission.
+Two offline-first Android apps in one Gradle project. Both are native Kotlin
+with Jetpack Compose. No accounts, no analytics, no network permission.
 
 | App | Module | What it is |
 | --- | --- | --- |
 | **Wingman** | `:app` | A private notebook for keeping Discord friendships organised. |
-| **Halo** | `:camera` | A native camera with on-device AI enhance, editing and filters. |
+| **Halo Camera** | `:camera` | A native camera app with on-device AI, video recording and a full editor. |
 
 ---
 
@@ -26,48 +26,63 @@ Kotlin, Jetpack Compose and Room. No account, no network, no data leaves the pho
 
 ---
 
-## Halo (the camera)
+## Halo Camera
 
-A real camera app built on CameraX, with a deterministic on-device enhancement
-pipeline. Aimed at the Redmi Note 9 Pro (Android 12) and tuned to look like a
-flagship camera rather than a web wrapper.
+A real camera app: CameraX capture, video recording with audio, a 5-pass
+computational-photography pipeline, ML Kit scene understanding and subject
+segmentation — all on device. Aimed at the Redmi Note 9 Pro (Android 12) and
+designed to look and feel like a flagship camera.
 
 ### Capture
 
-- CameraX image capture at maximum quality, auto focus + tap to focus
-- Front / back lens switch
-- Flash off / on / auto
-- 3 s and 10 s self-timer with a big countdown
-- Rule-of-thirds grid
-- Pinch to zoom with a zoom readout
-- Shutter flash animation
+- CameraX 1.4.2 image capture at sensor quality, tap to focus, pinch to zoom
+- **Video recording** — HD/FHD/4K selector, a 60 fps option on Preview, live
+  recording pill with elapsed time, audio when the mic permission is granted
+- Front / back lens switch, flash off / on / auto, torch
+- 3 s and 10 s self-timer, rule-of-thirds grid, manual exposure (EV) control
+- Capture modes: Photo, Portrait, Night and Pro
+- Sora + Inter type, dark halo design language, haptic feedback
 
-### Edit (all on device, after capture)
+### AI (all on device, always offline)
 
-- **Filters** — Original, Lark, Juno, Noir, Sunset, Dream, Vivid (starter set)
-- **Adjust** — exposure, contrast, saturation, warmth, sharpen
-- **AI** — Auto Enhance, Night, HDR, Retouch (edge-aware skin smoothing), Portrait (radial edge blur)
-- Live preview, then a full-resolution save to the private library
-- Share to any app through a `FileProvider` URI
-- Delete, reset, and a library grid with an `AI` badge on edited copies
+- **Auto AI** — ML Kit image labelling + histogram stats classify the scene
+  (night, low light, portrait, landscape, food, document, backlit, golden hour)
+  and apply a matching recipe immediately after capture
+- **AI vision pass** — a multi-pass detail/contrast/colour lift in
+  `data/ImagePipeline.kt`
+- **Night boost** — gamma shadow lifting + temporal-ish denoise
+- **Smart HDR** — highlight shoulder + shadow lift to rescue skies
+- **Detail boost** — edge-aware unsharp masking that survives zooming
+- **Portrait bokeh** — ML Kit *selfie segmentation* produces a real subject
+  mask (bundled model, no download); the backdrop is blurred around it, with a
+  graceful radial fallback when no subject is found
+- **Beautify** — edge-aware skin smoothing that keeps texture
 
-The AI passes are plain Kotlin pixel maths (`data/ImagePipeline.kt`): box-blur
-based local contrast, gamma shadow lift, unsharp masking and an edge-aware
-smoothing mask. Auto Enhance reads the photo histogram and picks exposure,
-contrast, saturation and warmth (`data/AutoEnhance.kt`). The maths in
-`ColorOps` and `AutoEnhance` is covered by JVM unit tests.
+### Editor
+
+- Tabbed panel: Looks / Light / Color / Detail / AI / Crop
+- **20 looks** with live-filter thumbnails and an intensity slider
+- Exposure, contrast, highlights, shadows, fade, saturation, warmth, tint,
+  clarity, sharpen, denoise, grain, vignette
+- Rotating 90°, horizontal flip, aspect-ratio crop (full / 1:1 / 4:5 / 3:2 / 16:9)
+- RGB histogram overlay, hold-to-compare original
+- Full-resolution render on save (with an OOM fallback path)
+
+### Library
+
+- Photo + video grid with video duration badges
+- Long-press multi-select, batch export to the system gallery, delete
+- In-app video player (Media3 / ExoPlayer) with controls and export
+
+The enhancement pipeline is plain Kotlin pixel maths (`data/ImagePipeline.kt`);
+`AutoEnhance`, `ColorOps` and image statistics are covered by JVM unit tests.
 
 ### Privacy
 
-Photos live in app-private storage (`files/photos/`). Nothing is uploaded, and
-the app declares only the `CAMERA` permission — no storage, no internet.
-
-### Not in this build yet
-
-- Video (4K) recording
-- ML subject segmentation for a true portrait bokeh (Portrait is currently an
-  honest radial blur, labelled as such)
-- Cloud AI (by design, never)
+Photos live in app-private storage (`files/photos/`), videos in
+(`files/videos/`). ML Kit models are bundled. Nothing is uploaded; the app
+declares only `CAMERA`, `RECORD_AUDIO` and legacy-storage `WRITE_EXTERNAL_STORAGE`
+(maxSdk 28) — no internet permission.
 
 See `docs/superpowers/specs/2026-11-02-ai-camera-design.md` for the design.
 

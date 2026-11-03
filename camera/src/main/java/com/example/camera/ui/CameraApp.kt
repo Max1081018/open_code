@@ -2,18 +2,24 @@ package com.example.camera.ui
 
 import android.widget.Toast
 import androidx.activity.compose.BackHandler
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.size
-import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.foundation.layout.padding
+import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
+import kotlinx.coroutines.delay
 
 @Composable
 fun CameraApp(vm: CameraViewModel) {
@@ -22,7 +28,7 @@ fun CameraApp(vm: CameraViewModel) {
     val toast = vm.toast
     LaunchedEffect(toast) {
         if (toast != null) {
-            Toast.makeText(context, toast, Toast.LENGTH_SHORT).show()
+            delay(2300)
             vm.clearToast()
         }
     }
@@ -36,29 +42,46 @@ fun CameraApp(vm: CameraViewModel) {
     }
 
     BackHandler(enabled = vm.screen != Screen.Camera) {
-        if (vm.screen == Screen.Editor) vm.closeEditor() else vm.openCamera()
+        when (vm.screen) {
+            Screen.Editor -> vm.closeEditor()
+            Screen.Player -> vm.closePlayer()
+            Screen.Gallery -> vm.openCamera()
+            Screen.Camera -> Unit
+        }
     }
 
-    Box(modifier = Modifier.fillMaxSize().background(Ink)) {
+    Box(
+        modifier = Modifier
+            .fillMaxSize()
+            .background(Ink)
+    ) {
         when (vm.screen) {
             Screen.Camera -> CameraScreen(vm)
             Screen.Gallery -> GalleryScreen(vm)
             Screen.Editor -> EditorScreen(vm)
+            Screen.Player -> PlayerScreen(vm)
         }
 
         if (vm.busy) {
             Box(
                 modifier = Modifier
                     .fillMaxSize()
-                    .background(Color.Black.copy(alpha = 0.35f)),
+                    .background(Color.Black.copy(alpha = 0.45f)),
                 contentAlignment = Alignment.Center
             ) {
-                CircularProgressIndicator(
-                    color = Amber,
-                    strokeWidth = 2.dp,
-                    modifier = Modifier.size(30.dp)
-                )
+                BusyOverlay(vm.busyLabel)
             }
+        }
+
+        AnimatedVisibility(
+            visible = vm.toast != null,
+            enter = fadeIn(),
+            exit = fadeOut(),
+            modifier = Modifier
+                .align(Alignment.BottomCenter)
+                .padding(bottom = 96.dp)
+        ) {
+            HaloSnackbar(message = vm.toast ?: "")
         }
     }
 }
