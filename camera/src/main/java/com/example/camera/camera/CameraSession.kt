@@ -112,19 +112,19 @@ class CameraSession(context: Context) {
     var isTorchOn by mutableStateOf(false)
         private set
 
-    var mode by mutableStateOf(CaptureMode.PHOTO)
+    var requestedMode by mutableStateOf(CaptureMode.PHOTO)
         private set
 
-    var videoQuality by mutableStateOf(VideoQuality.FHD)
+    var requestedVideoQuality by mutableStateOf(VideoQuality.FHD)
         private set
 
-    var photoAspect by mutableStateOf(PhotoAspect.RATIO_4_3)
+    var requestedPhotoAspect by mutableStateOf(PhotoAspect.RATIO_4_3)
         private set
 
-    var frameRate by mutableStateOf(30)
+    var requestedFrameRate by mutableStateOf(30)
         private set
 
-    var mirrorSelfie by mutableStateOf(true)
+    var requestedMirrorSelfie by mutableStateOf(true)
         private set
 
     private var targetZoom = 1f
@@ -160,9 +160,9 @@ class CameraSession(context: Context) {
         provider = cameraProvider
 
         val previewBuilder = Preview.Builder().apply {
-            if (frameRate > 0) {
+            if (requestedFrameRate > 0) {
                 try {
-                    setTargetFrameRate(Range(frameRate, frameRate))
+                    setTargetFrameRate(Range(requestedFrameRate, requestedFrameRate))
                 } catch (t: Throwable) {
                     // Some devices refuse an exact rate; CameraX keeps auto.
                 }
@@ -179,9 +179,9 @@ class CameraSession(context: Context) {
         imageCapture = null
         videoCapture = null
 
-        if (mode == CaptureMode.VIDEO) {
+        if (requestedMode == CaptureMode.VIDEO) {
             val qualitySelector = QualitySelector.fromOrderedList(
-                listOf(videoQuality.quality),
+                listOf(requestedVideoQuality.quality),
                 androidx.camera.video.FallbackStrategy.higherQualityOrLowerThan(Quality.SD)
             )
             val recorder = Recorder.Builder()
@@ -193,7 +193,7 @@ class CameraSession(context: Context) {
             useCases.add(capture)
             videoCapture = capture
         } else {
-            val aspect = when (photoAspect) {
+            val aspect = when (requestedPhotoAspect) {
                 PhotoAspect.RATIO_4_3 -> AspectRatioStrategy.RATIO_4_3_FALLBACK_AUTO_STRATEGY
                 PhotoAspect.RATIO_16_9 -> AspectRatioStrategy.RATIO_16_9_FALLBACK_AUTO_STRATEGY
             }
@@ -255,9 +255,9 @@ class CameraSession(context: Context) {
     }
 
     fun setMode(next: CaptureMode) {
-        if (next == mode) return
+        if (next == requestedMode) return
         if (isRecording) stopRecording()
-        mode = next
+        requestedMode = next
         if (next == CaptureMode.VIDEO && flashMode != ImageCapture.FLASH_MODE_OFF) {
             flashMode = ImageCapture.FLASH_MODE_OFF
         }
@@ -265,25 +265,25 @@ class CameraSession(context: Context) {
     }
 
     fun setVideoQuality(next: VideoQuality) {
-        if (next == videoQuality) return
-        videoQuality = next
+        if (next == requestedVideoQuality) return
+        requestedVideoQuality = next
         refresh()
     }
 
     fun setPhotoAspect(next: PhotoAspect) {
-        if (next == photoAspect) return
-        photoAspect = next
+        if (next == requestedPhotoAspect) return
+        requestedPhotoAspect = next
         refresh()
     }
 
     fun setFrameRate(next: Int) {
-        if (next == frameRate) return
-        frameRate = next
+        if (next == requestedFrameRate) return
+        requestedFrameRate = next
         refresh()
     }
 
     fun setMirrorSelfie(value: Boolean) {
-        mirrorSelfie = value
+        requestedMirrorSelfie = value
     }
 
     fun toggleLens() {
@@ -299,7 +299,7 @@ class CameraSession(context: Context) {
 
     /** Off -> On -> Auto -> Off. Returns the new mode. */
     fun cycleFlash(): Int {
-        if (lensFacing == CameraSelector.LENS_FACING_FRONT || mode == CaptureMode.VIDEO) {
+        if (lensFacing == CameraSelector.LENS_FACING_FRONT || requestedMode == CaptureMode.VIDEO) {
             flashMode = ImageCapture.FLASH_MODE_OFF
             imageCapture?.flashMode = flashMode
             return flashMode
@@ -361,13 +361,13 @@ class CameraSession(context: Context) {
 
     fun capture(file: File, onDone: (Boolean, String?) -> Unit) {
         val capture = imageCapture
-        if (capture == null || !ready || mode == CaptureMode.VIDEO) {
+        if (capture == null || !ready || requestedMode == CaptureMode.VIDEO) {
             onDone(false, "Camera is still warming up")
             return
         }
         capture.targetRotation = view?.display?.rotation ?: Surface.ROTATION_0
         val metadata = ImageCapture.Metadata().apply {
-            isReversedHorizontal = lensFacing == CameraSelector.LENS_FACING_FRONT && mirrorSelfie
+            isReversedHorizontal = lensFacing == CameraSelector.LENS_FACING_FRONT && requestedMirrorSelfie
         }
         val options = ImageCapture.OutputFileOptions
             .Builder(file)
