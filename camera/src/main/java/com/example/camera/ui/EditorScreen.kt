@@ -254,7 +254,7 @@ private fun EditorPanel(vm: CameraViewModel, tab: EditTab, onTab: (EditTab) -> U
                             EditTab.Looks -> Icons.Rounded.Palette
                             EditTab.Light -> Icons.Rounded.Brightness6
                             EditTab.Color -> Icons.Rounded.Tune
-                            EditTab.Detail -> Icons.Rounded.AutofixHigh
+                            EditTab.Detail -> Icons.Rounded.AutoFixHigh
                             EditTab.Ai -> Icons.Rounded.Visibility
                             EditTab.Crop -> Icons.Rounded.CropRotate
                         },
@@ -457,7 +457,7 @@ private fun AiPanel(vm: CameraViewModel) {
             title = "Detail boost",
             subtitle = "Edge-aware sharpening for ultra crisp crops",
             on = p.detail,
-            icon = Icons.Rounded.AutofixHigh,
+            icon = Icons.Rounded.AutoFixHigh,
             onClick = { vm.update { it.copy(detail = !it.detail) } },
             modifier = Modifier.fillMaxWidth()
         )
@@ -466,7 +466,7 @@ private fun AiPanel(vm: CameraViewModel) {
             title = "Portrait bokeh",
             subtitle = "Blur the backdrop around the subject",
             on = p.portrait,
-            icon = Icons.Rounded.PersonBlur,
+            icon = Icons.Rounded.BlurOn,
             onClick = { vm.update { it.copy(portrait = !it.portrait) } },
             modifier = Modifier.fillMaxWidth()
         )
@@ -484,7 +484,7 @@ private fun AiPanel(vm: CameraViewModel) {
             title = "Beautify",
             subtitle = "Gentle skin smoothing that keeps texture",
             on = p.beauty,
-            icon = Icons.Rounded.FaceRetouchNatural,
+            icon = Icons.Rounded.Face,
             onClick = { vm.update { it.copy(beauty = !it.beauty) } },
             modifier = Modifier.fillMaxWidth()
         )
