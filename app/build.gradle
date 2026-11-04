@@ -4,22 +4,41 @@ plugins {
     id 'com.google.devtools.ksp'
 }
 
+// CI supplies a pinned keystore so every build is signed with the same key and
+// installs over the previous one. Without the env var (a local run) Gradle falls
+// back to its own debug signing.
+def ciKeystore = System.getenv("WINGMAN_KEYSTORE")
+
 android {
     namespace 'com.example.app'
     compileSdk 34
+
+    signingConfigs {
+        if (ciKeystore != null) {
+            pinned {
+                storeFile file(ciKeystore)
+                storePassword System.getenv("WINGMAN_KEYSTORE_PASS") ?: "wingman"
+                keyAlias System.getenv("WINGMAN_KEY_ALIAS") ?: "wingman"
+                keyPassword System.getenv("WINGMAN_KEYSTORE_PASS") ?: "wingman"
+            }
+        }
+    }
 
     defaultConfig {
         applicationId "com.example.app"
         minSdk 24
         targetSdk 34
-        versionCode 6
-        versionName "1.5"
+        versionCode 7
+        versionName "1.6"
     }
 
     buildTypes {
+        debug {
+            if (ciKeystore != null) signingConfig signingConfigs.pinned
+        }
         release {
             minifyEnabled false
-            signingConfig signingConfigs.debug
+            signingConfig ciKeystore != null ? signingConfigs.pinned : signingConfigs.debug
         }
     }
 

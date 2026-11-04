@@ -9,6 +9,12 @@ on:
 jobs:
   build:
     runs-on: ubuntu-latest
+    env:
+      # Gradle reads this to sign both apps with one pinned key. See :app and
+      # :camera build.gradle, signingConfigs.pinned.
+      WINGMAN_KEYSTORE: ${{ github.workspace }}/.signing/wingman.jks
+      WINGMAN_KEYSTORE_PASS: wingman
+      WINGMAN_KEY_ALIAS: wingman
     steps:
       - uses: actions/checkout@v4
 
@@ -23,32 +29,56 @@ jobs:
         with:
           gradle-version: 8.7
 
-      # Every CI run used to generate a fresh debug keystore, so each build was
-      # signed with a different key and installing over an older build failed
-      # with "App not installed". Pin one keystore and reuse it forever.
-      - name: Restore debug keystore
+      # Each run used to sign with a freshly generated debug key, so every APK
+      # had a different signature and installing over an older build failed with
+      # "App not installed". Pin one keystore and reuse it forever.
+      - name: Restore signing keystore
         id: keystore
         uses: actions/cache@v4
         with:
-          path: ~/.android/debug.keystore
-          key: wingman-debug-keystore-v1
+          path: .signing
+          key: wingman-signing-keystore-v2
 
-      - name: Create debug keystore if missing
+      - name: Create signing keystore if missing
         if: steps.keystore.outputs.cache-hit != 'true'
         run: |
-          mkdir -p "$HOME/.android"
+          mkdir -p .signing
           keytool -genkeypair -v \
-            -keystore "$HOME/.android/debug.keystore" \
-            -storepass android -keypass android \
-            -alias androiddebugkey \
+            -keystore "$WINGMAN_KEYSTORE" \
+            -storetype PKCS12 \
+            -storepass "$WINGMAN_KEYSTORE_PASS" -keypass "$WINGMAN_KEYSTORE_PASS" \
+            -alias "$WINGMAN_KEY_ALIAS" \
             -keyalg RSA -keysize 2048 -validity 10000 \
-            -dname "CN=Android Debug,O=Android,C=US"
+            -dname "CN=Wingman, O=Open Code, C=US"
+
+      - name: Show signing certificate
+        run: |
+          keytool -list -v -keystore "$WINGMAN_KEYSTORE" \
+            -storepass "$WINGMAN_KEYSTORE_PASS" -alias "$WINGMAN_KEY_ALIAS" \
+            | grep -i "SHA256:" | head -1
 
       - name: Unit tests
         run: gradle testDebugUnitTest --no-daemon
 
       - name: Build debug APKs
         run: gradle assembleDebug --no-daemon
+
+      - name: Verify APK is signed with the pinned keystore
+        run: |
+          SDK="${ANDROID_HOME:-${ANDROID_SDK_ROOT:-/usr/local/lib/android/sdk}}"
+          APKSIGNER="$(ls -d "$SDK"/build-tools/* | sort -V | tail -1)/apksigner"
+          APK_SHA=$("$APKSIGNER" verify --print-certs app/build/outputs/apk/debug/app-debug.apk \
+            | grep -i "SHA-256 digest" | head -1 | awk '{print $NF}')
+          KEY_SHA=$(keytool -list -v -keystore "$WINGMAN_KEYSTORE" \
+            -storepass "$WINGMAN_KEYSTORE_PASS" -alias "$WINGMAN_KEY_ALIAS" \
+            | grep -i "SHA256:" | head -1 | sed 's/.*SHA256: //')
+          echo "APK signer : $APK_SHA"
+          echo "Keystore   : $KEY_SHA"
+          if [ "$APK_SHA" != "$KEY_SHA" ]; then
+            echo "::error::APK is not signed with the pinned keystore"
+            exit 1
+          fi
+          echo "::notice::APK signed with the pinned keystore $APK_SHA"
 
       - name: Stage APKs
         run: |

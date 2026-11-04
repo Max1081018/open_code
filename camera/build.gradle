@@ -3,9 +3,23 @@ plugins {
     id 'org.jetbrains.kotlin.android'
 }
 
+// Same pinned CI keystore as :app, so camera builds also install over each other.
+def ciKeystore = System.getenv("WINGMAN_KEYSTORE")
+
 android {
     namespace 'com.example.camera'
     compileSdk 34
+
+    signingConfigs {
+        if (ciKeystore != null) {
+            pinned {
+                storeFile file(ciKeystore)
+                storePassword System.getenv("WINGMAN_KEYSTORE_PASS") ?: "wingman"
+                keyAlias System.getenv("WINGMAN_KEY_ALIAS") ?: "wingman"
+                keyPassword System.getenv("WINGMAN_KEYSTORE_PASS") ?: "wingman"
+            }
+        }
+    }
 
     defaultConfig {
         applicationId "com.example.camera"
@@ -16,9 +30,12 @@ android {
     }
 
     buildTypes {
+        debug {
+            if (ciKeystore != null) signingConfig signingConfigs.pinned
+        }
         release {
             minifyEnabled false
-            signingConfig signingConfigs.debug
+            signingConfig ciKeystore != null ? signingConfigs.pinned : signingConfigs.debug
         }
     }
 

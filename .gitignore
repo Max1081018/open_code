@@ -5,3 +5,4 @@ local.properties
 .idea/
 captures/
 .DS_Store
+.signing/
