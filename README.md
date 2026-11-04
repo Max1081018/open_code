@@ -148,7 +148,10 @@ https://github.com/Max1081018/open_code/releases/download/v2.4.0/Wingman.apk
 https://github.com/Max1081018/open_code/releases/download/v2.4.0/HaloCamera.apk
 ```
 
-Debug builds are signed with the debug keystore, so they install directly.
+Debug builds are signed with a pinned debug keystore (restored from the Actions
+cache), so one build installs over the previous one. Builds from before v2.4.1
+used a throwaway key per CI run, so if you have an older Wingman installed,
+uninstall it once and then install the new one.
 
 ## Build
 

@@ -23,6 +23,27 @@ jobs:
         with:
           gradle-version: 8.7
 
+      # Every CI run used to generate a fresh debug keystore, so each build was
+      # signed with a different key and installing over an older build failed
+      # with "App not installed". Pin one keystore and reuse it forever.
+      - name: Restore debug keystore
+        id: keystore
+        uses: actions/cache@v4
+        with:
+          path: ~/.android/debug.keystore
+          key: wingman-debug-keystore-v1
+
+      - name: Create debug keystore if missing
+        if: steps.keystore.outputs.cache-hit != 'true'
+        run: |
+          mkdir -p "$HOME/.android"
+          keytool -genkeypair -v \
+            -keystore "$HOME/.android/debug.keystore" \
+            -storepass android -keypass android \
+            -alias androiddebugkey \
+            -keyalg RSA -keysize 2048 -validity 10000 \
+            -dname "CN=Android Debug,O=Android,C=US"
+
       - name: Unit tests
         run: gradle testDebugUnitTest --no-daemon
 
