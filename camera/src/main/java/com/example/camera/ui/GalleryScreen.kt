@@ -28,6 +28,7 @@ import androidx.compose.material.icons.rounded.ArrowBack
 import androidx.compose.material.icons.rounded.Delete
 import androidx.compose.material.icons.rounded.IosShare
 import androidx.compose.material.icons.rounded.SelectAll
+import androidx.compose.material.icons.rounded.Share
 import androidx.compose.material.icons.rounded.Videocam
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
@@ -42,6 +43,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
@@ -56,6 +58,7 @@ import java.util.Locale
 @Composable
 fun GalleryScreen(vm: CameraViewModel) {
     val files = vm.gallery
+    val context = LocalContext.current
     var selection by remember { mutableStateOf<Set<File>>(emptySet()) }
     var selectMode by remember { mutableStateOf(false) }
 
@@ -230,6 +233,15 @@ fun GalleryScreen(vm: CameraViewModel) {
                         selection = emptySet()
                     },
                     modifier = Modifier.weight(1f)
+                )
+                HaloIconButton(
+                    icon = Icons.Rounded.Share,
+                    contentDescription = "Share selected",
+                    onClick = {
+                        shareFiles(context, selection.toList())
+                        selectMode = false
+                        selection = emptySet()
+                    }
                 )
                 HaloIconButton(
                     icon = Icons.Rounded.Delete,

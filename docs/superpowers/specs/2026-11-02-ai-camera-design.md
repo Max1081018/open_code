@@ -102,7 +102,7 @@ photos appear in the system gallery.
 ## Milestone 2 — "Halo Camera 2.0" (what shipped, 2026-11-03)
 
 The whole `:camera` module was rewritten. applicationId unchanged so it
-updates in place; versionCode 22, versionName 2.0.2, label **Halo Camera**.
+updates in place; versionCode 23, versionName 2.0.3, label **Halo Camera**.
 
 - **Video** — CameraX `camera-video` 1.4.2 Recorder: SD/FHD/4K selector,
   30/60 fps target on the preview stream, audio when the mic permission is

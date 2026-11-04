@@ -46,3 +46,36 @@ fun sharePhoto(context: Context, file: File) {
         // No share target, or the provider was stripped. Nothing useful to do.
     }
 }
+
+/** Shares a mixed selection of photos and videos in one chooser. */
+fun shareFiles(context: Context, files: List<File>) {
+    if (files.isEmpty()) return
+    try {
+        val uris = ArrayList<android.net.Uri>(files.size)
+        files.forEach { file ->
+            uris.add(
+                FileProvider.getUriForFile(
+                    context,
+                    context.packageName + ".fileprovider",
+                    file
+                )
+            )
+        }
+        val allVideo = files.all { PhotoStore.isVideo(it) }
+        val allPhoto = files.none { PhotoStore.isVideo(it) }
+        val send = Intent(Intent.ACTION_SEND_MULTIPLE).apply {
+            type = when {
+                allVideo -> "video/mp4"
+                allPhoto -> "image/jpeg"
+                else -> "*/*"
+            }
+            putParcelableArrayListExtra(Intent.EXTRA_STREAM, uris)
+            addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+        }
+        val chooser = Intent.createChooser(send, "Share ${files.size} items")
+        chooser.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+        context.startActivity(chooser)
+    } catch (t: Throwable) {
+        // No share target available.
+    }
+}

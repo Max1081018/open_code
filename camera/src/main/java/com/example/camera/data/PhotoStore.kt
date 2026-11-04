@@ -98,7 +98,7 @@ class PhotoStore private constructor(context: Context) {
                 ExifInterface(file.absolutePath).apply {
                     setAttribute(ExifInterface.TAG_MAKE, "Halo")
                     setAttribute(ExifInterface.TAG_MODEL, "Halo Camera")
-                    setAttribute(ExifInterface.TAG_SOFTWARE, "Halo Camera 2.0.2")
+                    setAttribute(ExifInterface.TAG_SOFTWARE, "Halo Camera 2.0.3")
                     setAttribute(
                         ExifInterface.TAG_DATETIME,
                         SimpleDateFormat("yyyy:MM:dd HH:mm:ss", Locale.US).format(Date())
