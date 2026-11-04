@@ -67,11 +67,14 @@ jobs:
         run: |
           SDK="${ANDROID_HOME:-${ANDROID_SDK_ROOT:-/usr/local/lib/android/sdk}}"
           APKSIGNER="$(ls -d "$SDK"/build-tools/* | sort -V | tail -1)/apksigner"
-          APK_SHA=$(echo "$("$APKSIGNER" verify --print-certs app/build/outputs/apk/debug/app-debug.apk \
-            | grep -i "sha-256" | head -1)" | tr -d '[:space:]:' | tr 'A-F' 'a-f')
-          KEY_SHA=$(echo "$(keytool -list -v -keystore "$WINGMAN_KEYSTORE" \
+          APK_SHA=$("$APKSIGNER" verify --print-certs \
+            app/build/outputs/apk/debug/app-debug.apk \
+            | grep -oiE '[a-f0-9]{40}' | head -1)
+          KEY_SHA=$(keytool -list -v -keystore "$WINGMAN_KEYSTORE" \
             -storepass "$WINGMAN_KEYSTORE_PASS" -alias "$WINGMAN_KEY_ALIAS" \
-            | grep -i 'sha256' | head -1)" | tr -d '[:space:]:' | tr 'A-F' 'a-f')
+            | grep -oiE '[a-f0-9]{40}' | head -1)
+          APK_SHA=$(echo "$APK_SHA" | tr 'A-F' 'a-f')
+          KEY_SHA=$(echo "$KEY_SHA" | tr 'A-F' 'a-f')
           echo "APK signer : $APK_SHA"
           echo "Keystore   : $KEY_SHA"
           if [ "$APK_SHA" != "$KEY_SHA" ]; then
