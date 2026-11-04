@@ -112,6 +112,9 @@ class CameraSession(context: Context) {
     var isPaused by mutableStateOf(false)
         private set
 
+    var isMuted by mutableStateOf(false)
+        private set
+
     var hasFlash by mutableStateOf(false)
         private set
 
@@ -305,6 +308,7 @@ class CameraSession(context: Context) {
             isTorchOn = false
             isRecording = false
             isPaused = false
+            isMuted = false
         } catch (t: Throwable) {
             ready = false
             camera = null
@@ -336,18 +340,23 @@ class CameraSession(context: Context) {
 
     fun setVideoQuality(next: VideoQuality) {
         if (next == requestedVideoQuality) return
+        // Rebinding tears down the recorder, which finalises the clip with an
+        // error and deletes it. Never reconfigure mid-recording.
+        if (isRecording) return
         requestedVideoQuality = next
         refresh()
     }
 
     fun setPhotoAspect(next: PhotoAspect) {
         if (next == requestedPhotoAspect) return
+        if (isRecording) return
         requestedPhotoAspect = next
         refresh()
     }
 
     fun setFrameRate(next: Int) {
         if (next == requestedFrameRate) return
+        if (isRecording) return
         requestedFrameRate = next
         refresh()
     }
@@ -369,7 +378,10 @@ class CameraSession(context: Context) {
 
     /** Off -> On -> Auto -> Off. Returns the new mode. */
     fun cycleFlash(): Int {
-        if (lensFacing == CameraSelector.LENS_FACING_FRONT || requestedMode == CaptureMode.VIDEO) {
+        if (!hasFlash ||
+            lensFacing == CameraSelector.LENS_FACING_FRONT ||
+            requestedMode == CaptureMode.VIDEO
+        ) {
             flashMode = ImageCapture.FLASH_MODE_OFF
             imageCapture?.flashMode = flashMode
             return flashMode
@@ -485,6 +497,7 @@ class CameraSession(context: Context) {
         val output = FileOutputOptions.Builder(file).build()
         val pending = capture.output.prepareRecording(appContext, output)
         val prepared = if (withAudio && permission) pending.withAudioEnabled() else pending
+        isMuted = false
         try {
             recording = prepared.start(
                 mainExecutor,
@@ -504,6 +517,7 @@ class CameraSession(context: Context) {
                             is VideoRecordEvent.Finalize -> {
                                 isRecording = false
                                 isPaused = false
+                                isMuted = false
                                 recording = null
                                 if (event.hasError()) {
                                     file.delete()
@@ -530,6 +544,7 @@ class CameraSession(context: Context) {
         val current = recording ?: return
         recording = null
         isPaused = false
+        isMuted = false
         try {
             current.stop()
         } catch (t: Throwable) {
@@ -557,6 +572,24 @@ class CameraSession(context: Context) {
         }
     }
 
+    /**
+     * Silences or unmutes the clip that is currently being written. The audio
+     * track stays in the file; muting just drops the samples, so the video and
+     * the rest of the recording are untouched.
+     */
+    fun toggleMute(): Boolean {
+        val current = recording ?: return isMuted
+        val next = !isMuted
+        return try {
+            current.mute(next)
+            isMuted = next
+            next
+        } catch (t: Throwable) {
+            // Encoder without audio support; leave the flag alone.
+            isMuted
+        }
+    }
+
     fun release() {
         try {
             recording?.stop()
@@ -573,8 +606,11 @@ class CameraSession(context: Context) {
         camera = null
         imageCapture = null
         videoCapture = null
+        view = null
+        owner = null
         ready = false
         isRecording = false
         isPaused = false
+        isMuted = false
     }
 }

@@ -53,6 +53,8 @@ import androidx.compose.material.icons.rounded.FlashAuto
 import androidx.compose.material.icons.rounded.FlashOff
 import androidx.compose.material.icons.rounded.FlashOn
 import androidx.compose.material.icons.rounded.GridOn
+import androidx.compose.material.icons.rounded.Mic
+import androidx.compose.material.icons.rounded.MicOff
 import androidx.compose.material.icons.rounded.Nightlight
 import androidx.compose.material.icons.rounded.PhotoCamera
 import androidx.compose.material.icons.rounded.PhotoLibrary
@@ -75,6 +77,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.scale
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
@@ -94,6 +97,8 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.core.content.ContextCompat
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
 import com.example.camera.camera.CaptureMode
 import com.example.camera.camera.CameraSession
 import com.example.camera.camera.PhotoAspect
@@ -112,6 +117,7 @@ fun CameraScreen(vm: CameraViewModel) {
 
     var granted by remember { mutableStateOf(hasCameraPermission(context)) }
     var asked by remember { mutableStateOf(false) }
+    var audioGranted by remember { mutableStateOf(hasAudioPermission(context)) }
     val launcher = rememberLauncherForActivityResult(
         ActivityResultContracts.RequestPermission()
     ) { ok ->
@@ -121,7 +127,20 @@ fun CameraScreen(vm: CameraViewModel) {
 
     val audioLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.RequestPermission()
-    ) { }
+    ) { ok -> audioGranted = ok }
+
+    // Coming back from the system settings page must re-check, otherwise the
+    // permission screen stays up even though the user just granted access.
+    DisposableEffect(lifecycleOwner) {
+        val observer = LifecycleEventObserver { _, event ->
+            if (event == Lifecycle.Event.ON_RESUME) {
+                granted = hasCameraPermission(context)
+                audioGranted = hasAudioPermission(context)
+            }
+        }
+        lifecycleOwner.lifecycle.addObserver(observer)
+        onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
+    }
 
     LaunchedEffect(Unit) {
         if (!granted) launcher.launch(Manifest.permission.CAMERA)
@@ -155,6 +174,9 @@ fun CameraScreen(vm: CameraViewModel) {
     }
     var frameRate by remember { mutableStateOf(settings.frameRate) }
     var hapticsOn by remember { mutableStateOf(settings.haptics) }
+    // SharedPreferences reads are not snapshot state, so keep a local copy.
+    var autoAi by remember { mutableStateOf(settings.autoAi) }
+    var mirrorSelfie by remember { mutableStateOf(settings.mirrorSelfie) }
 
     val previewView = remember {
         PreviewView(context).apply {
@@ -170,7 +192,7 @@ fun CameraScreen(vm: CameraViewModel) {
         session.setVideoQuality(videoQuality)
         session.setPhotoAspect(photoAspect)
         session.setFrameRate(frameRate)
-        session.setMirrorSelfie(settings.mirrorSelfie)
+        session.setMirrorSelfie(mirrorSelfie)
         session.bind(previewView, lifecycleOwner)
     }
 
@@ -192,6 +214,11 @@ fun CameraScreen(vm: CameraViewModel) {
     LaunchedEffect(frameRate) {
         session.setFrameRate(frameRate)
         settings.frameRate = frameRate
+    }
+
+    // The settings sheet changes use-case config, which cannot happen mid-clip.
+    LaunchedEffect(session.isRecording) {
+        if (session.isRecording) showSettings = false
     }
 
     DisposableEffect(Unit) {
@@ -281,9 +308,11 @@ fun CameraScreen(vm: CameraViewModel) {
                     buzz()
                     val file = vm.newVideoFile()
                     recordStart = SystemClock.elapsedRealtime()
+                    val withAudio = hasAudioPermission(context)
+                    if (!withAudio) vm.showToast("Recording without sound · mic is off")
                     session.startRecording(
                         file = file,
-                        withAudio = hasAudioPermission(context)
+                        withAudio = withAudio
                     ) { ok, message ->
                         if (ok) {
                             vm.onVideoSaved(file)
@@ -354,7 +383,7 @@ fun CameraScreen(vm: CameraViewModel) {
             videoQuality = videoQuality,
             photoAspect = photoAspect,
             frameRate = frameRate,
-            autoAi = settings.autoAi,
+            autoAi = autoAi,
             onFlash = { session.cycleFlash() },
             onTimer = {
                 timer = when (timer) {
@@ -371,9 +400,10 @@ fun CameraScreen(vm: CameraViewModel) {
                 buzz()
             },
             onAutoAi = {
-                settings.autoAi = !settings.autoAi
+                autoAi = !autoAi
+                settings.autoAi = autoAi
             },
-            onSettings = { showSettings = true }
+            onSettings = { if (!session.isRecording) showSettings = true }
         )
 
         if (countdown > 0) {
@@ -477,6 +507,7 @@ fun CameraScreen(vm: CameraViewModel) {
 
             ModeCarousel(
                 mode = mode,
+                enabled = !session.isRecording,
                 onSelected = { next ->
                     mode = next
                     buzz()
@@ -493,6 +524,7 @@ fun CameraScreen(vm: CameraViewModel) {
             ) {
                 GalleryButton(
                     file = vm.gallery.firstOrNull(),
+                    enabled = !session.isRecording,
                     onClick = {
                         buzz()
                         vm.openGallery()
@@ -508,6 +540,27 @@ fun CameraScreen(vm: CameraViewModel) {
                 )
 
                 if (session.isRecording) {
+                    if (audioGranted) {
+                        RingButton(
+                            active = session.isMuted,
+                            size = 46.dp,
+                            onClick = {
+                                buzz()
+                                session.toggleMute()
+                            }
+                        ) {
+                            Icon(
+                                imageVector = if (session.isMuted) {
+                                    Icons.Rounded.MicOff
+                                } else {
+                                    Icons.Rounded.Mic
+                                },
+                                contentDescription = if (session.isMuted) "Unmute" else "Mute",
+                                tint = if (session.isMuted) Ink else Color.White,
+                                modifier = Modifier.size(20.dp)
+                            )
+                        }
+                    }
                     RingButton(active = session.isPaused, size = 50.dp, onClick = {
                         buzz()
                         if (session.isPaused) session.resumeRecording() else session.pauseRecording()
@@ -554,19 +607,26 @@ fun CameraScreen(vm: CameraViewModel) {
             Box(modifier = Modifier.fillMaxSize().background(Color.Black.copy(alpha = 0.55f))) {
                 SettingsSheet(
                     session = session,
-                    settings = settings,
                     grid = grid,
                     timer = timer,
                     hapticsOn = hapticsOn,
                     frameRate = frameRate,
                     photoAspect = photoAspect,
                     videoQuality = videoQuality,
+                    autoAi = autoAi,
+                    mirrorSelfie = mirrorSelfie,
                     onGrid = { grid = it; settings.grid = it },
                     onTimer = { timer = it; settings.timerSeconds = it },
                     onHaptics = { hapticsOn = it; settings.haptics = it },
                     onFrameRate = { frameRate = it },
                     onPhotoAspect = { photoAspect = it },
                     onVideoQuality = { videoQuality = it },
+                    onAutoAi = { autoAi = it; settings.autoAi = it },
+                    onMirrorSelfie = {
+                        mirrorSelfie = it
+                        settings.mirrorSelfie = it
+                        session.setMirrorSelfie(it)
+                    },
                     onClose = { showSettings = false },
                     modifier = Modifier.align(Alignment.BottomCenter)
                 )
@@ -605,8 +665,10 @@ private fun CameraTopBar(
             verticalAlignment = Alignment.CenterVertically
         ) {
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                val flashAvailable = session.hasFlash && mode != CaptureMode.VIDEO
                 RingButton(
                     active = session.flashMode != ImageCapture.FLASH_MODE_OFF,
+                    enabled = flashAvailable,
                     onClick = onFlash
                 ) {
                     Icon(
@@ -616,12 +678,12 @@ private fun CameraTopBar(
                             else -> Icons.Rounded.FlashOff
                         },
                         contentDescription = "Flash",
-                        tint = if (session.flashMode == ImageCapture.FLASH_MODE_OFF) {
-                            Color.White
-                        } else if (session.flashMode == ImageCapture.FLASH_MODE_AUTO) {
-                            Color.White.copy(alpha = 0.65f)
-                        } else {
-                            Ink
+                        tint = when {
+                            !flashAvailable -> Muted.copy(alpha = 0.45f)
+                            session.flashMode == ImageCapture.FLASH_MODE_OFF -> Color.White
+                            session.flashMode == ImageCapture.FLASH_MODE_AUTO ->
+                                Color.White.copy(alpha = 0.65f)
+                            else -> Ink
                         },
                         modifier = Modifier.size(18.dp)
                     )
@@ -748,6 +810,7 @@ private fun ZoomSelector(
 @Composable
 private fun ModeCarousel(
     mode: CaptureMode,
+    enabled: Boolean = true,
     onSelected: (CaptureMode) -> Unit,
     modifier: Modifier = Modifier
 ) {
@@ -763,7 +826,8 @@ private fun ModeCarousel(
             Column(
                 modifier = Modifier
                     .clip(RoundedCornerShape(14.dp))
-                    .clickable { onSelected(entry) }
+                    .clickable(enabled = enabled) { onSelected(entry) }
+                    .alpha(if (enabled) 1f else 0.4f)
                     .padding(horizontal = 10.dp, vertical = 4.dp),
                 horizontalAlignment = Alignment.CenterHorizontally
             ) {
@@ -965,19 +1029,30 @@ private fun RingButton(
     active: Boolean,
     onClick: () -> Unit,
     size: Dp = 42.dp,
+    enabled: Boolean = true,
     content: @Composable () -> Unit
 ) {
     Box(
         modifier = Modifier
             .size(size)
             .clip(CircleShape)
-            .background(if (active) Amber else Color.Black.copy(alpha = 0.4f))
+            .background(
+                if (active) {
+                    Amber
+                } else {
+                    Color.Black.copy(alpha = if (enabled) 0.4f else 0.18f)
+                }
+            )
             .border(
                 1.dp,
-                if (active) Color.Transparent else Color.White.copy(alpha = 0.16f),
+                if (active || !enabled) {
+                    Color.Transparent
+                } else {
+                    Color.White.copy(alpha = 0.16f)
+                },
                 CircleShape
             )
-            .clickable(onClick = onClick),
+            .clickable(enabled = enabled, onClick = onClick),
         contentAlignment = Alignment.Center
     ) {
         content()
@@ -1041,7 +1116,7 @@ private fun ShutterButton(
 }
 
 @Composable
-private fun GalleryButton(file: File?, onClick: () -> Unit) {
+private fun GalleryButton(file: File?, enabled: Boolean = true, onClick: () -> Unit) {
     val context = LocalContext.current
     val store = remember(context) { PhotoStore.get(context.applicationContext) }
     val thumb = rememberThumbnail(store, file, 200)
@@ -1052,7 +1127,8 @@ private fun GalleryButton(file: File?, onClick: () -> Unit) {
             .clip(RoundedCornerShape(14.dp))
             .background(PanelHigh)
             .border(1.dp, Color.White.copy(alpha = 0.16f), RoundedCornerShape(14.dp))
-            .clickable(onClick = onClick),
+            .clickable(enabled = enabled, onClick = onClick)
+            .alpha(if (enabled) 1f else 0.4f),
         contentAlignment = Alignment.Center
     ) {
         if (thumb != null) {
@@ -1078,19 +1154,22 @@ private fun GalleryButton(file: File?, onClick: () -> Unit) {
 @Composable
 private fun SettingsSheet(
     session: CameraSession,
-    settings: com.example.camera.data.SettingsStore,
     grid: Boolean,
     timer: Int,
     hapticsOn: Boolean,
     frameRate: Int,
     photoAspect: PhotoAspect,
     videoQuality: VideoQuality,
+    autoAi: Boolean,
+    mirrorSelfie: Boolean,
     onGrid: (Boolean) -> Unit,
     onTimer: (Int) -> Unit,
     onHaptics: (Boolean) -> Unit,
     onFrameRate: (Int) -> Unit,
     onPhotoAspect: (PhotoAspect) -> Unit,
     onVideoQuality: (VideoQuality) -> Unit,
+    onAutoAi: (Boolean) -> Unit,
+    onMirrorSelfie: (Boolean) -> Unit,
     onClose: () -> Unit,
     modifier: Modifier = Modifier
 ) {
@@ -1181,18 +1260,15 @@ private fun SettingsSheet(
             SettingRow(
                 title = "Auto AI after capture",
                 subtitle = "Read the scene and enhance straight away",
-                checked = settings.autoAi,
-                onCheckedChange = { settings.autoAi = it }
+                checked = autoAi,
+                onCheckedChange = onAutoAi
             )
             Spacer(modifier = Modifier.height(6.dp))
             SettingRow(
                 title = "Mirror selfies",
                 subtitle = "Save front camera shots as you see them",
-                checked = settings.mirrorSelfie,
-                onCheckedChange = {
-                    settings.mirrorSelfie = it
-                    session.setMirrorSelfie(it)
-                }
+                checked = mirrorSelfie,
+                onCheckedChange = onMirrorSelfie
             )
 
             Spacer(modifier = Modifier.height(14.dp))

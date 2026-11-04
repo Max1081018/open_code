@@ -16,6 +16,7 @@ import android.provider.MediaStore
 import android.util.LruCache
 import androidx.core.content.ContextCompat
 import androidx.exifinterface.media.ExifInterface
+import com.example.camera.BuildConfig
 import java.io.File
 import java.io.FileOutputStream
 import java.text.SimpleDateFormat
@@ -58,6 +59,14 @@ class PhotoStore private constructor(context: Context) {
             file.extension.equals("mp4", true) ||
                 file.extension.equals("mkv", true) ||
                 file.extension.equals("mov", true)
+
+        /** Pre-Android 10 needs WRITE_EXTERNAL_STORAGE before a MediaStore copy. */
+        fun needsLegacyStoragePermission(context: Context): Boolean =
+            Build.VERSION.SDK_INT < Build.VERSION_CODES.Q &&
+                ContextCompat.checkSelfPermission(
+                    context,
+                    Manifest.permission.WRITE_EXTERNAL_STORAGE
+                ) != PackageManager.PERMISSION_GRANTED
     }
 
     fun newCaptureFile(): File = File(root, "IMG_${stamp()}.jpg")
@@ -98,7 +107,7 @@ class PhotoStore private constructor(context: Context) {
                 ExifInterface(file.absolutePath).apply {
                     setAttribute(ExifInterface.TAG_MAKE, "Halo")
                     setAttribute(ExifInterface.TAG_MODEL, "Halo Camera")
-                    setAttribute(ExifInterface.TAG_SOFTWARE, "Halo Camera 2.0.3")
+                    setAttribute(ExifInterface.TAG_SOFTWARE, "Halo Camera ${BuildConfig.VERSION_NAME}")
                     setAttribute(
                         ExifInterface.TAG_DATETIME,
                         SimpleDateFormat("yyyy:MM:dd HH:mm:ss", Locale.US).format(Date())
@@ -112,7 +121,7 @@ class PhotoStore private constructor(context: Context) {
             } catch (t: Throwable) {
                 // EXIF is a nicety; never fail a save over it.
             }
-            thumbs.remove(file.absolutePath)
+            evictThumbs(file)
             file.length() > 0
         } catch (t: Throwable) {
             file.delete()
@@ -121,9 +130,20 @@ class PhotoStore private constructor(context: Context) {
     }
 
     fun delete(file: File): Boolean {
-        thumbs.remove(file.absolutePath)
+        evictThumbs(file)
         durations.remove(file.absolutePath)
         return file.delete()
+    }
+
+    /**
+     * Thumbnails are keyed by <path>@<size>, so a plain remove(path) never
+     * matched. Evict every cached size for the file when it changes or goes away.
+     */
+    private fun evictThumbs(file: File) {
+        val prefix = file.absolutePath + "@"
+        thumbs.snapshot().keys
+            .filter { it.startsWith(prefix) }
+            .forEach { thumbs.remove(it) }
     }
 
     fun decode(file: File, maxDim: Int): Bitmap? {

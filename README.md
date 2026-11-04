@@ -38,8 +38,8 @@ designed to look and feel like a flagship camera.
 - CameraX 1.4.2 image capture at sensor quality (maximize-quality mode, JPEG q100),
   tap to focus, double-tap to flip lenses, pinch to zoom with 0.5x–max presets
 - **Video recording** — HD/FHD/4K selector with 12/22/45 Mbps bitrates, 24/30/60 fps,
-  pause & resume mid-clip, live recording pill with elapsed time, audio when the
-  mic permission is granted
+  pause & resume mid-clip, live mute toggle, live recording pill with elapsed
+  time, audio when the mic permission is granted
 - Front / back lens switch, flash off / on / auto, torch (gated on real flash units)
 - 3 s and 10 s self-timer, rule-of-thirds grid, manual exposure (EV) control
 - Capture modes: Photo, Portrait, Night and Pro
@@ -75,7 +75,8 @@ designed to look and feel like a flagship camera.
 ### Library
 
 - Photo + video grid with video duration badges
-- Long-press multi-select, batch export to the system gallery, delete
+- Long-press multi-select, select-all, batch export to the system gallery,
+  batch share (mixed photos and videos in one chooser), delete
 - In-app video player (Media3 / ExoPlayer) with controls and export
 
 The enhancement pipeline is plain Kotlin pixel maths (`data/ImagePipeline.kt`);

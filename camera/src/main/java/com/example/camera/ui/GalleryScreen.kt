@@ -25,6 +25,7 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.ArrowBack
+import androidx.compose.material.icons.rounded.BrokenImage
 import androidx.compose.material.icons.rounded.Delete
 import androidx.compose.material.icons.rounded.IosShare
 import androidx.compose.material.icons.rounded.SelectAll
@@ -161,6 +162,21 @@ fun GalleryScreen(vm: CameraViewModel) {
                                 contentScale = ContentScale.Crop,
                                 modifier = Modifier.fillMaxSize()
                             )
+                        } else {
+                            // Placeholder while decoding, or when a thumbnail
+                            // cannot be produced (corrupt / still-writing file).
+                            Icon(
+                                imageVector = if (isVideo) {
+                                    Icons.Rounded.Videocam
+                                } else {
+                                    Icons.Rounded.BrokenImage
+                                },
+                                contentDescription = null,
+                                tint = Muted.copy(alpha = 0.6f),
+                                modifier = Modifier
+                                    .align(Alignment.Center)
+                                    .size(28.dp)
+                            )
                         }
                         if (isVideo && durationMs > 0) {
                             Box(
@@ -251,9 +267,10 @@ fun GalleryScreen(vm: CameraViewModel) {
                     size = 52.dp,
                     iconSize = 22.dp,
                     onClick = {
-                        selection.forEach { vm.delete(it) }
+                        val doomed = selection.toList()
                         selection = emptySet()
                         selectMode = false
+                        vm.deleteAll(doomed)
                     }
                 )
             }

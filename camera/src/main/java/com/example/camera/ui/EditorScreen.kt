@@ -15,6 +15,7 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
@@ -399,6 +400,10 @@ private fun AiPanel(vm: CameraViewModel) {
     val p = vm.params
     Column(
         modifier = Modifier
+            // Bound the scroll viewport, otherwise a scrollable Column inside an
+            // unconstrained parent takes its full content height and pushes the
+            // tab rail off the bottom of the screen.
+            .heightIn(max = 300.dp)
             .padding(horizontal = 12.dp)
             .verticalScroll(rememberScrollState())
     ) {

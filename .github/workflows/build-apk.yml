@@ -32,7 +32,9 @@ jobs:
       - name: Stage APKs
         run: |
           mkdir -p out
-          cp app/build/outputs/apk/debug/app-debug.apk out/app-debug.apk
+          # Gradle output names are ambiguous (both modules emit app-debug.apk),
+          # so stage them under their real product names.
+          cp app/build/outputs/apk/debug/app-debug.apk out/Wingman.apk
           cp camera/build/outputs/apk/debug/camera-debug.apk out/HaloCamera.apk
 
       - name: Upload APKs
@@ -58,5 +60,5 @@ jobs:
         uses: softprops/action-gh-release@v2
         with:
           files: |
-            app-debug.apk
+            Wingman.apk
             HaloCamera.apk

@@ -79,6 +79,13 @@ class CameraViewModel(app: Application) : AndroidViewModel(app) {
     var shareRequest by mutableStateOf<File?>(null)
         private set
 
+    /**
+     * Files waiting on the pre-Android-10 WRITE_EXTERNAL_STORAGE grant. The UI
+     * shows the system dialog and calls [onStoragePermissionResult] with the answer.
+     */
+    var pendingExport by mutableStateOf<List<File>?>(null)
+        private set
+
     var scene by mutableStateOf<Scene?>(null)
         private set
 
@@ -170,6 +177,10 @@ class CameraViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     fun closeEditor() {
+        renderJob?.cancel()
+        maskJob?.cancel()
+        enhanceJob?.cancel()
+        maskLoading = false
         screen = backTo
     }
 
@@ -213,27 +224,7 @@ class CameraViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     fun resetEdits() {
-        params = params.copy(
-            exposure = 0f,
-            contrast = 0f,
-            saturation = 0f,
-            warmth = 0f,
-            tint = 0f,
-            highlights = 0f,
-            shadows = 0f,
-            clarity = 0f,
-            sharpen = 0f,
-            denoise = 0f,
-            grain = 0f,
-            vignette = 0f,
-            fade = 0f,
-            night = false,
-            hdr = false,
-            beauty = false,
-            portrait = false,
-            aiVision = false,
-            detail = false
-        )
+        params = EditParams()
         scheduleRender()
         toast = "Edits reset"
     }
@@ -370,10 +361,16 @@ class CameraViewModel(app: Application) : AndroidViewModel(app) {
         if (busy) return
         val sourceFile = editingFile ?: return
         val current = params
-        val currentMask = mask
         viewModelScope.launch {
             beginBusy("Rendering full resolution")
             val saved = try {
+                // Portrait renders need the subject mask. If segmentation is
+                // still running, wait for it instead of baking in the fallback.
+                if (current.portrait && mask == null) {
+                    val pending = maskJob
+                    if (pending != null && pending.isActive) pending.join()
+                }
+                val currentMask = if (current.portrait) mask else null
                 withContext(Dispatchers.IO) {
                     renderFull(sourceFile, current, currentMask)
                 }
@@ -386,16 +383,15 @@ class CameraViewModel(app: Application) : AndroidViewModel(app) {
             }
             refreshGallery()
             if (export) {
-                val ok = withContext(Dispatchers.IO) {
-                    store.exportToSystemGallery(getApplication(), saved)
-                }
-                toast = if (ok) "Saved to phone gallery" else "Could not save to gallery"
+                requestExport(listOf(saved))
             }
             if (share) {
                 shareRequest = saved
             } else if (!export) {
                 toast = "Saved to library"
-                screen = Screen.Gallery
+                // The user may have backed out while the render ran; don't yank
+                // them into the library from another screen.
+                if (screen == Screen.Editor) screen = Screen.Gallery
             }
         }
     }
@@ -439,16 +435,47 @@ class CameraViewModel(app: Application) : AndroidViewModel(app) {
 
     fun export(file: File) {
         if (busy) return
+        requestExport(listOf(file))
+    }
+
+    /** Asks for the legacy storage grant first on Android 9 and older. */
+    private fun requestExport(files: List<File>) {
+        if (files.isEmpty()) return
+        if (PhotoStore.needsLegacyStoragePermission(getApplication())) {
+            pendingExport = files
+            return
+        }
+        runExport(files)
+    }
+
+    private fun runExport(files: List<File>) {
         viewModelScope.launch {
-            beginBusy("Saving to gallery")
-            val ok = try {
+            beginBusy(if (files.size == 1) "Saving to gallery" else "Saving ${files.size} items")
+            var ok = 0
+            try {
                 withContext(Dispatchers.IO) {
-                    store.exportToSystemGallery(getApplication(), file)
+                    files.forEach { if (store.exportToSystemGallery(getApplication(), it)) ok++ }
                 }
             } finally {
                 endBusy()
             }
-            toast = if (ok) "Saved to phone gallery" else "Could not save to gallery"
+            toast = when {
+                files.size == 1 ->
+                    if (ok == 1) "Saved to phone gallery" else "Could not save to gallery"
+                else -> "Saved $ok of ${files.size} to gallery"
+            }
+        }
+    }
+
+    /** Called by the UI after the WRITE_EXTERNAL_STORAGE dialog closes. */
+    fun onStoragePermissionResult(granted: Boolean) {
+        val files = pendingExport
+        pendingExport = null
+        if (files.isNullOrEmpty()) return
+        if (granted) {
+            runExport(files)
+        } else {
+            toast = "Storage permission is needed to save to the gallery"
         }
     }
 
@@ -488,20 +515,31 @@ class CameraViewModel(app: Application) : AndroidViewModel(app) {
         }
     }
 
-    fun exportAll(files: List<File>) {
-        if (files.isEmpty() || busy) return
+    /** One delete pass for a whole selection, so the library refreshes once. */
+    fun deleteAll(files: List<File>) {
+        if (files.isEmpty()) return
         viewModelScope.launch {
-            beginBusy("Saving ${files.size} items")
+            beginBusy("Deleting ${files.size} items")
             var ok = 0
             try {
                 withContext(Dispatchers.IO) {
-                    files.forEach { if (store.exportToSystemGallery(getApplication(), it)) ok++ }
+                    files.forEach { if (store.delete(it)) ok++ }
                 }
             } finally {
                 endBusy()
             }
-            toast = "Saved $ok of ${files.size} to gallery"
+            refreshGallery()
+            toast = if (ok == files.size) {
+                "Deleted ${files.size}"
+            } else {
+                "Deleted $ok of ${files.size}"
+            }
         }
+    }
+
+    fun exportAll(files: List<File>) {
+        if (files.isEmpty() || busy) return
+        requestExport(files)
     }
 
     // ---------------------------------------------------------------- misc

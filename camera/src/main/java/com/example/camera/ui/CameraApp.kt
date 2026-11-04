@@ -1,7 +1,10 @@
 package com.example.camera.ui
 
+import android.Manifest
 import android.widget.Toast
 import androidx.activity.compose.BackHandler
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
@@ -39,6 +42,18 @@ fun CameraApp(vm: CameraViewModel) {
         if (share != null) {
             sharePhoto(context, share)
             vm.clearShare()
+        }
+    }
+
+    // Pre-Android 10 needs a runtime grant before a MediaStore copy. The
+    // ViewModel parks the files in pendingExport and waits for the answer.
+    val storageLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.RequestPermission()
+    ) { granted -> vm.onStoragePermissionResult(granted) }
+    val pendingExport = vm.pendingExport
+    LaunchedEffect(pendingExport) {
+        if (pendingExport != null) {
+            storageLauncher.launch(Manifest.permission.WRITE_EXTERNAL_STORAGE)
         }
     }
 

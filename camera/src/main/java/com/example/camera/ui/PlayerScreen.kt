@@ -32,6 +32,8 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.media3.common.MediaItem
+import androidx.media3.common.PlaybackException
+import androidx.media3.common.Player
 import androidx.media3.common.util.UnstableApi
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.ui.PlayerView
@@ -45,18 +47,31 @@ fun PlayerScreen(vm: CameraViewModel) {
 
     val player = remember(file) {
         if (file != null) {
-            ExoPlayer.Builder(context).build().apply {
-                setMediaItem(MediaItem.fromUri(android.net.Uri.fromFile(file)))
-                prepare()
-                playWhenReady = true
-            }
+            ExoPlayer.Builder(context).build()
         } else {
             null
         }
     }
 
     DisposableEffect(player) {
-        onDispose { player?.release() }
+        // Attach the listener before prepare() so a decode failure is reported
+        // instead of leaving a silent black frame.
+        val listener = player?.let { exo ->
+            val l = object : Player.Listener {
+                override fun onPlayerError(error: PlaybackException) {
+                    vm.showToast("This video could not be played")
+                }
+            }
+            exo.addListener(l)
+            file?.let { exo.setMediaItem(MediaItem.fromUri(android.net.Uri.fromFile(it))) }
+            exo.prepare()
+            exo.playWhenReady = true
+            l
+        }
+        onDispose {
+            if (listener != null && player != null) player.removeListener(listener)
+            player?.release()
+        }
     }
 
     Column(
