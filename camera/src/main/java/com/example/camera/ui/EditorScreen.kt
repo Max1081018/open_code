@@ -5,7 +5,6 @@ import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -37,6 +36,7 @@ import androidx.compose.material.icons.rounded.CropRotate
 import androidx.compose.material.icons.rounded.Face
 import androidx.compose.material.icons.rounded.Flip
 import androidx.compose.material.icons.rounded.HdrOn
+import androidx.compose.material.icons.rounded.Nightlight
 import androidx.compose.material.icons.rounded.NightsStay
 import androidx.compose.material.icons.rounded.Palette
 import androidx.compose.material.icons.rounded.BlurOn
@@ -60,7 +60,6 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.asAndroidBitmap
-import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -93,9 +92,10 @@ private val FILTERS = FilterId.values()
 @Composable
 fun EditorScreen(vm: CameraViewModel) {
     var tab by remember { mutableStateOf(EditTab.Looks) }
-    var showOriginal by remember { mutableStateOf(false) }
+    var compare by remember { mutableStateOf(0f) }
     val params = vm.params
-    val image = if (showOriginal) vm.originalPreview else vm.preview
+    val edited = vm.preview
+    val original = vm.originalPreview
 
     Column(
         modifier = Modifier
@@ -173,52 +173,39 @@ fun EditorScreen(vm: CameraViewModel) {
                 .padding(horizontal = 10.dp, vertical = 4.dp),
             contentAlignment = Alignment.Center
         ) {
-            if (image != null) {
-                Image(
-                    bitmap = image,
-                    contentDescription = "Edit preview",
-                    contentScale = ContentScale.Fit,
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .pointerInput(Unit) {
-                            detectTapGestures(
-                                onPress = {
-                                    showOriginal = true
-                                    tryAwaitRelease()
-                                    showOriginal = false
-                                }
-                            )
-                        }
-                )
+            if (edited != null) {
+                Canvas(modifier = Modifier.fillMaxSize()) {
+                    // Full-resolution edited render.
+                    drawImage(edited, topLeft = Offset.Zero, size = size)
+                    // Before / After wipe: drag the slider to reveal the original
+                    // from the left. compare = 0 → all edited, 1 → all original.
+                    if (compare > 0f && original != null) {
+                        val split = (size.width * compare).coerceIn(0f, size.width)
+                        save()
+                        clipRect(0f, 0f, split, size.height)
+                        drawImage(original, topLeft = Offset.Zero, size = size)
+                        restore()
+                        // Wipe line.
+                        drawLine(
+                            color = Amber,
+                            start = Offset(split, 0f),
+                            end = Offset(split, size.height),
+                            strokeWidth = 2.dp.toPx(),
+                            cap = StrokeCap.Round
+                        )
+                    }
+                }
             } else {
                 CircularProgressIndicator(color = Amber, strokeWidth = 2.dp)
             }
 
-            if (showOriginal) {
-                Box(
-                    modifier = Modifier
-                        .align(Alignment.TopCenter)
-                        .clip(RoundedCornerShape(50))
-                        .background(Color.Black.copy(alpha = 0.6f))
-                        .padding(horizontal = 12.dp, vertical = 5.dp)
-                ) {
-                    Text(
-                        text = "ORIGINAL",
-                        color = Mist,
-                        fontFamily = DisplayFont,
-                        fontSize = 10.sp,
-                        fontWeight = FontWeight.SemiBold
-                    )
-                }
-            } else {
-                EditHistogram(
-                    image = vm.preview,
-                    modifier = Modifier
-                        .align(Alignment.TopEnd)
-                        .padding(10.dp)
-                        .size(width = 84.dp, height = 48.dp)
-                )
-            }
+            EditHistogram(
+                image = vm.preview,
+                modifier = Modifier
+                    .align(Alignment.TopEnd)
+                    .padding(10.dp)
+                    .size(width = 84.dp, height = 48.dp)
+            )
         }
 
         // ------------------------------------------------------------ panel
@@ -436,6 +423,15 @@ private fun AiPanel(vm: CameraViewModel) {
             onClick = { vm.autoEnhance() },
             modifier = Modifier.fillMaxWidth()
         )
+        Spacer(modifier = Modifier.height(6.dp))
+        HaloSlider(
+            label = "Before / After",
+            value = compare,
+            range = 0f..1f,
+            valueLabel = if (compare < 0.01f) "Edited" else if (compare > 0.99f) "Original" else "${(compare * 100).toInt()}%",
+            onChange = { compare = it },
+            modifier = Modifier.padding(horizontal = 14.dp, vertical = 2.dp)
+        )
         Spacer(modifier = Modifier.height(8.dp))
         ToggleCard(
             title = "AI vision",
@@ -499,6 +495,24 @@ private fun AiPanel(vm: CameraViewModel) {
             onClick = { vm.update { it.copy(beauty = !it.beauty) } },
             modifier = Modifier.fillMaxWidth()
         )
+        Spacer(modifier = Modifier.height(6.dp))
+        ToggleCard(
+            title = "AI relight",
+            subtitle = "Lift the subject and dim the background (portrait mask)",
+            on = p.relight,
+            icon = Icons.Rounded.Nightlight,
+            onClick = { vm.update { it.copy(relight = !it.relight) } },
+            modifier = Modifier.fillMaxWidth()
+        )
+        if (p.relight) {
+            Spacer(modifier = Modifier.height(2.dp))
+            HaloSlider(
+                label = "Relight strength",
+                value = p.relightStrength,
+                range = 0f..1f,
+                onChange = { v -> vm.update { it.copy(relightStrength = v) } }
+            )
+        }
         Spacer(modifier = Modifier.height(10.dp))
     }
 }

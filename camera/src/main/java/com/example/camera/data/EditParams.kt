@@ -28,7 +28,11 @@ enum class FilterId(val label: String) {
     EMBER("Ember"),
     IRIS("Iris"),
     GLACIER("Glacier"),
-    PEACH("Peach")
+    PEACH("Peach"),
+    CYBER("Cyber"),
+    VIOLET("Violet"),
+    AMBER("Amber"),
+    SLATE("Slate")
 }
 
 /**
@@ -254,6 +258,46 @@ object Looks {
             lift = 0.05f,
             highlights = 0.03f
         )
+        FilterId.CYBER -> Look(
+            brightness = -0.02f,
+            contrast = 0.30f,
+            saturation = 0.10f,
+            warmth = -0.30f,
+            tint = 0.30f,
+            tintR = -0.020f,
+            tintB = 0.030f,
+            clarity = 0.20f,
+            vignette = 0.25f
+        )
+        FilterId.VIOLET -> Look(
+            brightness = 0.04f,
+            contrast = 0.06f,
+            saturation = 0.18f,
+            warmth = -0.12f,
+            tint = 0.22f,
+            lift = 0.05f,
+            gamma = 0.98f,
+            grain = 0.10f
+        )
+        FilterId.AMBER -> Look(
+            brightness = 0.05f,
+            contrast = 0.12f,
+            saturation = 0.20f,
+            warmth = 0.32f,
+            tintR = 0.020f,
+            tintG = 0.008f,
+            highlights = 0.08f
+        )
+        FilterId.SLATE -> Look(
+            brightness = -0.01f,
+            contrast = 0.22f,
+            saturation = -0.30f,
+            warmth = -0.15f,
+            tintB = 0.015f,
+            gamma = 1.03f,
+            clarity = 0.18f,
+            vignette = 0.20f
+        )
     }
 }
 
@@ -284,6 +328,8 @@ data class EditParams(
     val portraitStrength: Float = 0.7f,
     val aiVision: Boolean = false,
     val detail: Boolean = false,
+    val relight: Boolean = false,
+    val relightStrength: Float = 0.6f,
     val rotation: Int = 0,
     val flipH: Boolean = false,
     val cropAspect: Float? = null
@@ -309,6 +355,7 @@ data class EditParams(
             !portrait &&
             !aiVision &&
             !detail &&
+            !relight &&
             rotation == 0 &&
             !flipH &&
             cropAspect == null
@@ -334,6 +381,7 @@ data class EditParams(
         beauty = false,
         portrait = false,
         aiVision = false,
-        detail = false
+        detail = false,
+        relight = false
     )
 }

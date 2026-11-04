@@ -68,7 +68,8 @@ designed to look and feel like a flagship camera.
   clarity, sharpen, denoise, grain, vignette
 - Rotating 90°, horizontal flip, aspect-ratio crop (full / 1:1 / 4:5 / 3:2 / 16:9)
   — the crop respects rotation, so a 3:2 pick stays 3:2 after a 90° turn
-- RGB histogram overlay, hold-to-compare original
+- RGB histogram overlay, before/after wipe slider, hold-to-compare original
+- AI relight — lift the subject and dim the background using the portrait mask
 - Full-resolution render on save with JPEG q100, EXIF camera/date stamps and an
   OOM fallback path
 

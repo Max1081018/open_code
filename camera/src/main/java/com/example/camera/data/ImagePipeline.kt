@@ -45,6 +45,7 @@ object ImagePipeline {
             if (params.sharpen > 0.001f) sharpenPass(px, w, h, params.sharpen)
             if (params.beauty) beautyPass(px, w, h)
             if (params.portrait) portraitPass(px, w, h, params.portraitStrength, mask, maskW, maskH)
+            if (params.relight) relightPass(px, w, h, params.relightStrength, mask, maskW, maskH)
             if (params.grain > 0.001f) grainPass(px, w, h, params.grain)
             if (params.vignette > 0.001f) vignettePass(px, w, h, params.vignette)
         }
@@ -589,6 +590,47 @@ object ImagePipeline {
                         ColorOps.lerp(blue(c).toFloat(), blue(b).toFloat(), m)
                     )
                 }
+                i++
+            }
+        }
+    }
+
+    /**
+     * AI Relight. Brightens the subject (per the ML Kit confidence mask) and gently
+     * darkens the background, so a portrait reads like it was lit with a soft key
+     * light instead of flat on-camera flash. Degrades to a subtle global lift when
+     * no mask is available.
+     */
+    private fun relightPass(
+        px: IntArray,
+        w: Int,
+        h: Int,
+        strength: Float,
+        mask: FloatArray?,
+        maskW: Int,
+        maskH: Int
+    ) {
+        val subjectLift = 0.18f * strength
+        val backgroundDarken = 0.12f * strength
+        val hasMask = mask != null && maskW > 1 && maskH > 1
+        var i = 0
+        for (y in 0 until h) {
+            for (x in 0 until w) {
+                val c = px[i]
+                var r = red(c) / 255f
+                var g = green(c) / 255f
+                var b = blue(c) / 255f
+                val conf = if (hasMask) sampleMask(mask, maskW, maskH, x, y, w, h) else 0.5f
+                // Lift the subject toward white; dim the background toward black.
+                val lift = conf * subjectLift
+                val dark = (1f - conf) * backgroundDarken
+                r = ColorOps.lerp(r, 1f, lift)
+                g = ColorOps.lerp(g, 1f, lift)
+                b = ColorOps.lerp(b, 1f, lift)
+                r = ColorOps.lerp(r, 0f, dark)
+                g = ColorOps.lerp(g, 0f, dark)
+                b = ColorOps.lerp(b, 0f, dark)
+                px[i] = ColorOps.pack(r, g, b)
                 i++
             }
         }

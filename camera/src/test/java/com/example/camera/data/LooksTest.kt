@@ -10,6 +10,7 @@ class LooksTest {
 
     @Test
     fun everyFilterHasALook() {
+        assertEquals(28, FilterId.values().size)
         for (id in FilterId.values()) {
             assertNotNull(Looks.of(id))
         }
@@ -58,7 +59,8 @@ class LooksTest {
             night = true,
             hdr = true,
             beauty = true,
-            portrait = true
+            portrait = true,
+            relight = true
         )
         val reset = edited.resetAdjustments()
         assertEquals(FilterId.JUNO, reset.filter)
@@ -68,5 +70,6 @@ class LooksTest {
         assertFalse(reset.hdr)
         assertFalse(reset.beauty)
         assertFalse(reset.portrait)
+        assertFalse(reset.relight)
     }
 }
