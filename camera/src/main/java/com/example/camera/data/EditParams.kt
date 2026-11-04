@@ -24,7 +24,11 @@ enum class FilterId(val label: String) {
     FILM("Film"),
     POP("Pop"),
     SOFT("Soft"),
-    CHROME("Chrome")
+    CHROME("Chrome"),
+    EMBER("Ember"),
+    IRIS("Iris"),
+    GLACIER("Glacier"),
+    PEACH("Peach")
 }
 
 /**
@@ -213,6 +217,42 @@ object Looks {
             tintB = 0.018f,
             clarity = 0.24f,
             highlights = 0.10f
+        )
+        FilterId.EMBER -> Look(
+            brightness = 0.02f,
+            contrast = 0.18f,
+            saturation = 0.35f,
+            warmth = 0.30f,
+            tintR = 0.015f,
+            tintB = -0.012f,
+            highlights = 0.06f
+        )
+        FilterId.IRIS -> Look(
+            brightness = 0.05f,
+            contrast = -0.06f,
+            saturation = 0.22f,
+            warmth = -0.08f,
+            lift = 0.06f,
+            clarity = 0.08f
+        )
+        FilterId.GLACIER -> Look(
+            brightness = 0.03f,
+            contrast = 0.10f,
+            saturation = 0.14f,
+            warmth = -0.20f,
+            tintB = 0.02f,
+            shadows = 0.06f
+        )
+        FilterId.PEACH -> Look(
+            brightness = 0.06f,
+            contrast = -0.04f,
+            saturation = 0.18f,
+            warmth = 0.16f,
+            tint = 0.10f,
+            tintR = 0.015f,
+            tintG = 0.008f,
+            lift = 0.05f,
+            highlights = 0.03f
         )
     }
 }

@@ -134,33 +134,41 @@ object AutoEnhance {
             else -> ((0.42f - stats.averageDeviation) * 1.1f).coerceIn(-0.10f, 0.35f)
         }
         val saturation = when {
-            portrait -> 0.04f
-            food -> 0.24f
-            landscape -> 0.18f
-            dark -> 0.12f
+            portrait -> 0.06f
+            food -> 0.30f
+            landscape -> 0.22f
+            scene == Scene.SUNSET -> 0.22f
+            scene == Scene.NIGHT -> 0.14f
+            dark -> 0.14f
             else -> if (stats.averageDeviation < 0.24f) 0.16f else 0.08f
         }
-        val warmth = (-stats.warmth * 0.8f).coerceIn(-0.18f, 0.18f)
+        val warmth = when (scene) {
+            Scene.SUNSET -> 0.22f
+            Scene.FOOD -> 0.10f
+            else -> (-stats.warmth * 0.8f).coerceIn(-0.18f, 0.18f)
+        }
         val shadows = when {
-            scene == Scene.NIGHT -> 0.32f
-            scene == Scene.BACKLIT -> 0.24f
-            dark -> 0.18f
+            scene == Scene.NIGHT -> 0.36f
+            scene == Scene.BACKLIT -> 0.28f
+            dark -> 0.20f
             else -> (stats.shadowClip * 0.9f).coerceIn(0f, 0.18f)
         }
         val highlights = when {
-            scene == Scene.BACKLIT -> -0.22f
+            scene == Scene.BACKLIT -> -0.24f
+            scene == Scene.SUNSET -> -0.10f
             stats.highlightClip > 0.06f -> -0.16f
             else -> 0f
         }
         val clarity = when {
-            landscape -> 0.26f
-            food -> 0.20f
-            portrait -> 0.08f
+            scene == Scene.NIGHT -> 0.18f
+            landscape -> 0.30f
+            food -> 0.24f
+            scene == Scene.PORTRAIT -> 0.10f
             else -> 0.15f
         }
         val denoise = when {
-            scene == Scene.NIGHT -> 0.52f
-            scene == Scene.LOW_LIGHT -> 0.36f
+            scene == Scene.NIGHT -> 0.60f
+            scene == Scene.LOW_LIGHT -> 0.44f
             else -> 0.08f
         }
 

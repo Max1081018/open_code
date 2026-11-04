@@ -63,4 +63,26 @@ class AutoEnhanceTest {
             assertTrue(p.warmth in -1f..1f)
         }
     }
+
+    @Test
+    fun suggest_foodBoostsSaturation() {
+        val stats = ImageStats(meanLuma = 0.5f, averageDeviation = 0.2f, saturation = 0.6f)
+        val scene = AutoEnhance.classify(stats, emptyList())
+        val params = AutoEnhance.suggest(stats, scene)
+        assertEquals(Scene.FOOD, scene)
+        assertTrue("food should lift saturation", params.saturation > 0.24f)
+    }
+
+    @Test
+    fun suggest_sunsetBoostsWarmth() {
+        val params = AutoEnhance.suggest(ImageStats(0.5f, 0.3f, -0.25f), Scene.SUNSET)
+        assertTrue("golden hour should push warmth", params.warmth > 0.1f)
+    }
+
+    @Test
+    fun suggest_nightBoostsDenoiseAndLiftShadows() {
+        val params = AutoEnhance.suggest(ImageStats(0.08f, 0.1f, 0.05f), Scene.NIGHT)
+        assertTrue("night should switch the boost on", params.night)
+        assertTrue("night should denoise harder", params.denoise > 0.4f)
+    }
 }

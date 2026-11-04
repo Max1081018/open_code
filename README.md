@@ -63,7 +63,7 @@ designed to look and feel like a flagship camera.
 ### Editor
 
 - Tabbed panel: Looks / Light / Color / Detail / AI / Crop
-- **20 looks** with live-filter thumbnails and an intensity slider
+- **24 looks** with live-filter thumbnails and an intensity slider
 - Exposure, contrast, highlights, shadows, fade, saturation, warmth, tint,
   clarity, sharpen, denoise, grain, vignette
 - Rotating 90°, horizontal flip, aspect-ratio crop (full / 1:1 / 4:5 / 3:2 / 16:9)

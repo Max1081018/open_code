@@ -2,6 +2,7 @@ package com.example.camera.ui
 
 import android.content.Context
 import android.content.Intent
+import android.net.Uri
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.produceState
@@ -51,16 +52,13 @@ fun sharePhoto(context: Context, file: File) {
 fun shareFiles(context: Context, files: List<File>) {
     if (files.isEmpty()) return
     try {
-        val uris = ArrayList<android.net.Uri>(files.size)
-        files.forEach { file ->
-            uris.add(
-                FileProvider.getUriForFile(
-                    context,
-                    context.packageName + ".fileprovider",
-                    file
-                )
+        val uris = files.map { file ->
+            FileProvider.getUriForFile(
+                context,
+                context.packageName + ".fileprovider",
+                file
             )
-        }
+        }.toTypedArray()
         val allVideo = files.all { PhotoStore.isVideo(it) }
         val allPhoto = files.none { PhotoStore.isVideo(it) }
         val send = Intent(Intent.ACTION_SEND_MULTIPLE).apply {
@@ -69,7 +67,8 @@ fun shareFiles(context: Context, files: List<File>) {
                 allPhoto -> "image/jpeg"
                 else -> "*/*"
             }
-            putParcelableArrayListExtra(Intent.EXTRA_STREAM, uris)
+            // ACTION_SEND_MULTIPLE reads EXTRA_STREAMS, not EXTRA_STREAM.
+            putParcelableArray<Uri>(Intent.EXTRA_STREAMS, uris)
             addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
         }
         val chooser = Intent.createChooser(send, "Share ${files.size} items")
