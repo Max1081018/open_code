@@ -66,7 +66,7 @@ class AutoEnhanceTest {
 
     @Test
     fun suggest_foodBoostsSaturation() {
-        val stats = ImageStats(meanLuma = 0.5f, averageDeviation = 0.2f, saturation = 0.6f)
+        val stats = ImageStats(meanLuma = 0.5f, averageDeviation = 0.2f, warmth = 0f, saturation = 0.6f)
         val scene = AutoEnhance.classify(stats, emptyList())
         val params = AutoEnhance.suggest(stats, scene)
         assertEquals(Scene.FOOD, scene)
