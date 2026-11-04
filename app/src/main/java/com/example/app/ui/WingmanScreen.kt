@@ -74,9 +74,11 @@ import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.example.app.data.ChatMessage
+import com.example.app.data.CoachLine
 import com.example.app.data.ConsentStatus
 import com.example.app.data.Person
 import com.example.app.data.PersonalityProfile
+import com.example.app.data.ReplyCoach
 import com.example.app.data.WingmanBrain
 import kotlinx.coroutines.launch
 import java.text.SimpleDateFormat
@@ -408,6 +410,7 @@ private fun ChatScreen(
 ) {
     val messages by vm.messages.collectAsStateWithLifecycle()
     val profile = vm.profile.collectAsStateWithLifecycle().value
+    val showCoach by vm.showCoach.collectAsStateWithLifecycle()
 
     var text by remember(person.id) { mutableStateOf("") }
     var sender by remember(person.id) { mutableStateOf(ChatMessage.MessageSender.USER) }
@@ -442,6 +445,7 @@ private fun ChatScreen(
                     }
                 },
                 actions = {
+                    TextButton(onClick = { vm.openCoach() }) { Text("Coach") }
                     TextButton(onClick = onCycleTheme) { Text(themeMode.label) }
                 }
             )
@@ -545,6 +549,21 @@ private fun ChatScreen(
                 }
             }
         }
+    }
+
+    if (showCoach) {
+        CoachDialog(
+            vm = vm,
+            person = person,
+            initialTranscript = ReplyCoach.formatTranscript(
+                messages.takeLast(10).map { CoachLine(it.isFromMe, it.text) }
+            ),
+            onDismiss = { vm.closeCoach() },
+            onUseReply = { reply ->
+                text = reply
+                sender = ChatMessage.MessageSender.USER
+            }
+        )
     }
 }
 

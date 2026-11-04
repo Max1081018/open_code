@@ -1,19 +1,23 @@
 # Open Code apps
 
-Two offline-first Android apps in one Gradle project. Both are native Kotlin
-with Jetpack Compose. No accounts, no analytics, no network permission.
+Two native Kotlin apps with Jetpack Compose in one Gradle project. No accounts,
+no analytics, no tracking. **Wingman** stays entirely on the device except for the
+one screen you deliberately send to a model you configured; **Halo Camera** never
+touches the network at all.
 
 | App | Module | What it is |
 | --- | --- | --- |
-| **Wingman** | `:app` | A private notebook for keeping Discord friendships organised. |
+| **Wingman** | `:app` | A private notebook for keeping Discord friendships organised, plus an optional reply coach. |
 | **Halo Camera** | `:camera` | A native camera app with on-device AI, video recording and a full editor. |
 
 ---
 
 ## Wingman
 
-An offline-first wingman for keeping your Discord friendships organised. Native
-Kotlin, Jetpack Compose and Room. No account, no network, no data leaves the phone.
+A wingman for keeping your Discord friendships organised. Native Kotlin, Jetpack
+Compose and Room. No account, no analytics. The notebook is offline; the optional
+reply coach talks to a model provider **you** configure, and only when you press
+the button.
 
 ### What it does
 
@@ -21,8 +25,43 @@ Kotlin, Jetpack Compose and Room. No account, no network, no data leaves the pho
 - **Consent tracking** — Not started / Agreed / Active / Paused, shown on every card and inside each chat
 - **Two-sided chat log** — record what you said *and* what they said, per friend
 - **Wingman profile** — a summary, vibe, interests, confidence score and suggested opener generated on-device from the notes and chat history you saved
+- **Reply coach** — paste or edit the last few messages, and get an honest read of where the conversation is, the signals behind it, and three replies in your own voice with the reasoning for each
 - **Search, edit, undo delete** — including full restore of a friend's chat history and profile
 - **Themes** — Auto / Light / Dark, remembered across launches
+
+### The reply coach
+
+Press **Coach** inside any chat. The transcript is pre-filled from the messages
+you logged and is fully editable. Lines beginning `Me:` are yours; everything
+else counts as theirs.
+
+You get back:
+
+- **Where this is at** — what they actually seem to want from the conversation, including when the honest answer is "she's being polite"
+- **Signals** — the specific things in the chat that led to that read
+- **Three options** — `curious`, `playful` and `direct`, each with a one-line reason, each tappable into your message box
+- **Worth knowing** — a warning when the right move is to not send anything
+
+The coach will not write compliments about appearance, pet names, invented shared
+history, stacked questions, or paragraphs when they wrote one line. If the chat is
+one-sided it says so instead of manufacturing cleverness.
+
+It works with any OpenAI-compatible `/chat/completions` endpoint (OpenAI,
+OpenRouter, Groq, your own server), so you bring your own key and model.
+
+### What the coach sends, exactly
+
+Only three things leave the phone, and only when you press **Read the room**:
+
+1. the transcript in the box,
+2. your "how you text" note,
+3. their communication-style note from their profile.
+
+Names, Discord handles and your private notes about them are **not** in the
+request. The API key is stored with `EncryptedSharedPreferences` (Android
+keystore) and is not written to Room or to logs. There is no other network call
+in the app.
+
 
 ---
 
@@ -105,8 +144,8 @@ https://github.com/Max1081018/open_code/releases/latest
 Direct links for a given tag:
 
 ```
-https://github.com/Max1081018/open_code/releases/download/v1.4/app-debug.apk
-https://github.com/Max1081018/open_code/releases/download/v1.4/halo-debug.apk
+https://github.com/Max1081018/open_code/releases/download/v2.4.0/Wingman.apk
+https://github.com/Max1081018/open_code/releases/download/v2.4.0/HaloCamera.apk
 ```
 
 Debug builds are signed with the debug keystore, so they install directly.
@@ -118,8 +157,8 @@ CI builds and tests both modules on every push to `main`
 GitHub release.
 
 ```sh
-git tag v1.4
-git push origin v1.4
+git tag v2.4.0
+git push origin v2.4.0
 ```
 
 Locally, with a JDK 17 and Android SDK installed:
@@ -134,5 +173,6 @@ gradle assembleDebug
 - Kotlin 1.9.24, AGP 8.5.2, Gradle 8.7, JDK 17
 - Jetpack Compose (BOM 2024.06.00), Material 3
 - Room 2.6.1 with KSP (`:app`)
+- androidx.security-crypto 1.1.0 for keystore-backed key storage (`:app`)
 - CameraX 1.3.4 with ExifInterface (`:camera`)
 - minSdk 24, targetSdk 34

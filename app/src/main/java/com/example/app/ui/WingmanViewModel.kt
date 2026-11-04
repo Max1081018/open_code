@@ -5,10 +5,19 @@ import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import androidx.room.withTransaction
 import com.example.app.data.ChatMessage
+import com.example.app.data.CoachConfig
+import com.example.app.data.CoachException
+import com.example.app.data.CoachLine
+import com.example.app.data.CoachReply
+import com.example.app.data.CoachSettings
+import com.example.app.data.OpenAiReplyEngine
 import com.example.app.data.Person
 import com.example.app.data.PersonalityProfile
+import com.example.app.data.ReplyEngine
 import com.example.app.data.WingmanBrain
 import com.example.app.data.WingmanDatabase
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
@@ -20,12 +29,31 @@ import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 
+/** What the reply coach is currently doing. */
+sealed interface CoachUiState {
+    data object Idle : CoachUiState
+    data object Loading : CoachUiState
+    data class Ready(val reply: CoachReply) : CoachUiState
+    data class Failed(val message: String) : CoachUiState
+}
+
 class WingmanViewModel(app: Application) : AndroidViewModel(app) {
 
     private val database = WingmanDatabase.get(app)
     private val personDao = database.personDao()
     private val chatMessageDao = database.chatMessageDao()
     private val personalityProfileDao = database.personalityProfileDao()
+
+    private val coachSettings by lazy { CoachSettings(getApplication<Application>()) }
+
+    /** Keystore work is deferred until the coach is first opened, off the startup path. */
+    val coachConfig: StateFlow<CoachConfig> by lazy { coachSettings.config }
+
+    /** False when secure storage failed and the key will not survive a restart. */
+    val coachStoragePersistent: Boolean by lazy { coachSettings.isPersistent }
+
+    /** Swappable so the coach can be tested without touching the network. */
+    internal var engineFactory: (CoachConfig) -> ReplyEngine = { OpenAiReplyEngine(it) }
 
     val people: StateFlow<List<Person>> =
         personDao.observeAll()
@@ -169,6 +197,79 @@ class WingmanViewModel(app: Application) : AndroidViewModel(app) {
                 personalityProfileDao.update(generated)
             }
         }
+    }
+
+    // ---- Reply coach -------------------------------------------------------
+
+    private val _showCoach = MutableStateFlow(false)
+    val showCoach: StateFlow<Boolean> = _showCoach.asStateFlow()
+
+    private val _coachState = MutableStateFlow<CoachUiState>(CoachUiState.Idle)
+    val coachState: StateFlow<CoachUiState> = _coachState.asStateFlow()
+
+    private var coachJob: Job? = null
+
+    fun openCoach() {
+        _coachState.value = CoachUiState.Idle
+        _showCoach.value = true
+    }
+
+    fun closeCoach() {
+        _showCoach.value = false
+    }
+
+    fun saveCoachConfig(config: CoachConfig) {
+        coachSettings.save(config)
+    }
+
+    fun clearCoachKey() {
+        coachSettings.clearKey()
+    }
+
+    /**
+     * Sends the transcript to the configured provider. Only the transcript and
+     * the two style notes travel; the name, handle and private notes stay here.
+     */
+    fun askCoach(lines: List<CoachLine>) {
+        val person = selectedPerson.value ?: return
+        val config = coachConfig.value
+        val cleaned = lines.filter { it.text.isNotBlank() }
+
+        if (!config.isReady) {
+            _coachState.value = CoachUiState.Failed("Add your API key first, then try again.")
+            return
+        }
+        if (cleaned.isEmpty()) {
+            _coachState.value = CoachUiState.Failed("Add what was said, then ask again.")
+            return
+        }
+
+        coachJob?.cancel()
+        _coachState.value = CoachUiState.Loading
+        coachJob = viewModelScope.launch {
+            try {
+                val reply = engineFactory(config).suggest(
+                    lines = cleaned,
+                    theirStyle = person.communicationStyle,
+                    myVoice = config.myVoice,
+                    paused = !person.consentStatus.allowsContact
+                )
+                _coachState.value = CoachUiState.Ready(reply)
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: CoachException) {
+                _coachState.value = CoachUiState.Failed(e.message ?: "Something went wrong.")
+            } catch (e: Exception) {
+                _coachState.value = CoachUiState.Failed(
+                    "Something went wrong: ${e.javaClass.simpleName}"
+                )
+            }
+        }
+    }
+
+    override fun onCleared() {
+        coachJob?.cancel()
+        super.onCleared()
     }
 
     private fun Person.matches(needle: String): Boolean =
