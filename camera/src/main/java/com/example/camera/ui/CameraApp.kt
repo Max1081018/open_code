@@ -66,7 +66,16 @@ fun CameraApp(vm: CameraViewModel) {
             Box(
                 modifier = Modifier
                     .fillMaxSize()
-                    .background(Color.Black.copy(alpha = 0.45f)),
+                    .background(Color.Black.copy(alpha = 0.45f))
+                    // Absorb touches so a double-tap on Save cannot start a
+                    // second render behind the scrim.
+                    .pointerInput(Unit) {
+                        awaitPointerEventScope {
+                            while (true) {
+                                awaitPointerEvent().changes.forEach { it.consume() }
+                            }
+                        }
+                    },
                 contentAlignment = Alignment.Center
             ) {
                 BusyOverlay(vm.busyLabel)

@@ -127,7 +127,7 @@ object AutoEnhance {
         val landscape = scene == Scene.LANDSCAPE
         val food = scene == Scene.FOOD
 
-        val exposure = ((0.46f - stats.meanLuma) * 1.8f).coerceIn(-0.45f, 0.55f)
+        val exposure = ((0.46f - stats.meanLuma) * 1.9f).coerceIn(-0.5f, 0.62f)
         val contrast = when {
             portrait -> ((0.40f - stats.averageDeviation) * 0.7f).coerceIn(-0.08f, 0.18f)
             landscape -> ((0.44f - stats.averageDeviation) * 1.2f).coerceIn(-0.10f, 0.30f)
@@ -153,10 +153,10 @@ object AutoEnhance {
             else -> 0f
         }
         val clarity = when {
-            landscape -> 0.22f
-            food -> 0.16f
-            portrait -> 0.06f
-            else -> 0.12f
+            landscape -> 0.26f
+            food -> 0.20f
+            portrait -> 0.08f
+            else -> 0.15f
         }
         val denoise = when {
             scene == Scene.NIGHT -> 0.52f
@@ -173,7 +173,7 @@ object AutoEnhance {
             shadows = round(shadows),
             clarity = round(clarity),
             denoise = round(denoise),
-            sharpen = 0.22f,
+            sharpen = 0.32f,
             hdr = true,
             beauty = true,
             night = scene == Scene.NIGHT,

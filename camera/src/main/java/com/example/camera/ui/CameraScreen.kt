@@ -56,6 +56,8 @@ import androidx.compose.material.icons.rounded.GridOn
 import androidx.compose.material.icons.rounded.Nightlight
 import androidx.compose.material.icons.rounded.PhotoCamera
 import androidx.compose.material.icons.rounded.PhotoLibrary
+import androidx.compose.material.icons.rounded.Pause
+import androidx.compose.material.icons.rounded.PlayArrow
 import androidx.compose.material.icons.rounded.Settings
 import androidx.compose.material.icons.rounded.Timer
 import androidx.compose.material.icons.rounded.Tune
@@ -157,19 +159,18 @@ fun CameraScreen(vm: CameraViewModel) {
     val previewView = remember {
         PreviewView(context).apply {
             scaleType = PreviewView.ScaleType.FILL_CENTER
-            implementationMode = PreviewView.ImplementationMode.COMPATIBLE
+            implementationMode = PreviewView.ImplementationMode.PERFORMANCE
         }
     }
-    val session = remember {
-        CameraSession(context).apply {
-            setVideoQuality(videoQuality)
-            setPhotoAspect(photoAspect)
-            setFrameRate(frameRate)
-            setMirrorSelfie(settings.mirrorSelfie)
-        }
-    }
+    val session = remember { CameraSession(context) }
 
     LaunchedEffect(Unit) {
+        // Session setup happens off the composition path; writing snapshot state
+        // inside remember{} is a self-recomposition trap.
+        session.setVideoQuality(videoQuality)
+        session.setPhotoAspect(photoAspect)
+        session.setFrameRate(frameRate)
+        session.setMirrorSelfie(settings.mirrorSelfie)
         session.bind(previewView, lifecycleOwner)
     }
 
@@ -203,19 +204,34 @@ fun CameraScreen(vm: CameraViewModel) {
     var zoomHint by remember { mutableStateOf<String?>(null) }
     var recordStart by remember { mutableStateOf(0L) }
     var recordSeconds by remember { mutableStateOf(0L) }
+    var accumulatedMs by remember { mutableStateOf(0L) }
     val flash = remember { Animatable(0f) }
     val shutterScale = remember { Animatable(1f) }
     val scope = rememberCoroutineScope()
 
-    LaunchedEffect(session.isRecording) {
-        if (session.isRecording) {
-            recordStart = SystemClock.elapsedRealtime()
-            while (session.isRecording) {
-                recordSeconds = (SystemClock.elapsedRealtime() - recordStart) / 1000
-                delay(250)
-            }
-        } else {
+    LaunchedEffect(session.isRecording, session.isPaused) {
+        if (!session.isRecording) {
             recordSeconds = 0
+            accumulatedMs = 0
+            recordStart = 0
+            return@LaunchedEffect
+        }
+        if (session.isPaused) {
+            // Fold the session that just ended into the accumulator and freeze.
+            if (recordStart != 0L) {
+                accumulatedMs += SystemClock.elapsedRealtime() - recordStart
+                recordStart = 0
+            }
+            return@LaunchedEffect
+        }
+        if (recordStart == 0L) recordStart = SystemClock.elapsedRealtime()
+        val base = accumulatedMs
+        val startedAt = recordStart
+        while (true) {
+            recordSeconds = (
+                base + (SystemClock.elapsedRealtime() - startedAt)
+                ) / 1000
+            delay(250)
         }
     }
 
@@ -372,22 +388,41 @@ fun CameraScreen(vm: CameraViewModel) {
         }
 
         session.error?.let { message ->
-            Text(
-                text = message,
-                color = Color.White,
-                fontSize = 13.sp,
-                textAlign = TextAlign.Center,
+            Column(
+                horizontalAlignment = Alignment.CenterHorizontally,
                 modifier = Modifier
                     .align(Alignment.Center)
                     .padding(32.dp)
                     .background(Color.Black.copy(alpha = 0.65f), RoundedCornerShape(16.dp))
                     .padding(horizontal = 18.dp, vertical = 14.dp)
-            )
+            ) {
+                Text(
+                    text = message,
+                    color = Color.White,
+                    fontSize = 13.sp,
+                    textAlign = TextAlign.Center
+                )
+                Spacer(Modifier.height(10.dp))
+                Text(
+                    text = "Try again",
+                    color = Amber,
+                    fontSize = 13.sp,
+                    fontWeight = FontWeight.SemiBold,
+                    modifier = Modifier
+                        .clip(RoundedCornerShape(10.dp))
+                        .clickable {
+                            session.clearError()
+                            session.refresh()
+                        }
+                        .padding(horizontal = 14.dp, vertical = 8.dp)
+                )
+            }
         }
 
         if (session.isRecording) {
             RecordingPill(
                 seconds = recordSeconds,
+                paused = session.isPaused,
                 modifier = Modifier.align(Alignment.TopCenter)
             )
         }
@@ -466,16 +501,34 @@ fun CameraScreen(vm: CameraViewModel) {
                     scale = shutterScale
                 )
 
-                RingButton(active = false, size = 50.dp, onClick = {
-                    buzz()
-                    session.toggleLens()
-                }) {
-                    Icon(
-                        imageVector = Icons.Rounded.Cameraswitch,
-                        contentDescription = "Flip camera",
-                        tint = Color.White,
-                        modifier = Modifier.size(22.dp)
-                    )
+                if (session.isRecording) {
+                    RingButton(active = session.isPaused, size = 50.dp, onClick = {
+                        buzz()
+                        if (session.isPaused) session.resumeRecording() else session.pauseRecording()
+                    }) {
+                        Icon(
+                            imageVector = if (session.isPaused) {
+                                Icons.Rounded.PlayArrow
+                            } else {
+                                Icons.Rounded.Pause
+                            },
+                            contentDescription = if (session.isPaused) "Resume" else "Pause",
+                            tint = Color.White,
+                            modifier = Modifier.size(26.dp)
+                        )
+                    }
+                } else {
+                    RingButton(active = false, size = 50.dp, onClick = {
+                        buzz()
+                        session.toggleLens()
+                    }) {
+                        Icon(
+                            imageVector = Icons.Rounded.Cameraswitch,
+                            contentDescription = "Flip camera",
+                            tint = Color.White,
+                            modifier = Modifier.size(22.dp)
+                        )
+                    }
                 }
             }
         }
@@ -732,7 +785,7 @@ private fun ModeCarousel(
 }
 
 @Composable
-private fun RecordingPill(seconds: Long, modifier: Modifier = Modifier) {
+private fun RecordingPill(seconds: Long, paused: Boolean, modifier: Modifier = Modifier) {
     val minutes = seconds / 60
     val remainder = seconds % 60
     Row(
@@ -749,11 +802,15 @@ private fun RecordingPill(seconds: Long, modifier: Modifier = Modifier) {
             modifier = Modifier
                 .size(8.dp)
                 .clip(CircleShape)
-                .background(Danger)
+                .background(if (paused) Amber else Danger)
         )
         Spacer(modifier = Modifier.width(8.dp))
         Text(
-            text = String.format(Locale.US, "%02d:%02d", minutes, remainder),
+            text = if (paused) {
+                "PAUSED"
+            } else {
+                String.format(Locale.US, "%02d:%02d", minutes, remainder)
+            },
             color = Color.White,
             fontSize = 13.sp,
             fontWeight = FontWeight.SemiBold

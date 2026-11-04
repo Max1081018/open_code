@@ -18,6 +18,7 @@ import com.example.camera.data.Scene
 import com.example.camera.data.SceneAnalyzer
 import com.example.camera.data.SettingsStore
 import com.example.camera.data.SubjectMask
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
@@ -33,6 +34,9 @@ private const val EXPORT_FALLBACK_MAX = 2600
 private const val THUMB_MAX = 128
 private const val MASK_MAX = 480
 private const val STATS_MAX = 360
+
+/** Cached once; FilterId.values() allocates a fresh array on every call. */
+private val FILTER_IDS = FilterId.values()
 
 class CameraViewModel(app: Application) : AndroidViewModel(app) {
 
@@ -84,10 +88,18 @@ class CameraViewModel(app: Application) : AndroidViewModel(app) {
     var maskLoading by mutableStateOf(false)
         private set
 
+    /** Set once per photo when segmentation failed, so sliders stop retrying. */
+    var maskFailed by mutableStateOf(false)
+        private set
+
     private var base: Bitmap? = null
     private var mask: SubjectMask? = null
     private var renderJob: Job? = null
     private var maskJob: Job? = null
+    private var enhanceJob: Job? = null
+    private var openJob: Job? = null
+    private var openGeneration = 0
+    private var busyCount = 0
     private var backTo = Screen.Camera
 
     init {
@@ -107,39 +119,52 @@ class CameraViewModel(app: Application) : AndroidViewModel(app) {
 
     fun openEditor(file: File, from: Screen = screen, portraitMode: Boolean = false) {
         if (PhotoStore.isVideo(file)) {
-            openPlayer(file)
+            openPlayer(file, from)
             return
         }
+        openJob?.cancel()
         backTo = from
-        viewModelScope.launch {
-            setBusy(true, "Opening photo")
-            val bitmap = withContext(Dispatchers.IO) { store.decode(file, PREVIEW_MAX) }
-            setBusy(false)
-            if (bitmap == null) {
-                toast = "Could not open that photo"
-                return@launch
-            }
-            renderJob?.cancel()
-            maskJob?.cancel()
-            base = bitmap
-            mask = null
-            maskReady = false
-            editingFile = file
-            params = EditParams(portrait = portraitMode)
-            scene = null
-            originalPreview = bitmap.asImageBitmap()
-            preview = originalPreview
-            screen = Screen.Editor
-            buildFilterThumbs(bitmap)
-            if (portraitMode) {
-                ensureMask()
-            } else if (settings.autoAi) {
-                autoEnhance()
+        openGeneration++
+        val gen = openGeneration
+        openJob = viewModelScope.launch {
+            beginBusy("Opening photo")
+            try {
+                val bitmap = withContext(Dispatchers.IO) { store.decode(file, PREVIEW_MAX) }
+                // A newer openEditor superseded this one while we decoded.
+                if (gen != openGeneration) {
+                    bitmap?.recycle()
+                    return@launch
+                }
+                if (bitmap == null) {
+                    toast = "Could not open that photo"
+                    return@launch
+                }
+                renderJob?.cancel()
+                maskJob?.cancel()
+                base = bitmap
+                mask = null
+                maskReady = false
+                maskFailed = false
+                editingFile = file
+                params = EditParams(portrait = portraitMode)
+                scene = null
+                originalPreview = bitmap.asImageBitmap()
+                preview = originalPreview
+                screen = Screen.Editor
+                buildFilterThumbs(bitmap)
+                if (portraitMode) {
+                    ensureMask()
+                } else if (settings.autoAi) {
+                    autoEnhance()
+                }
+            } finally {
+                endBusy()
             }
         }
     }
 
-    fun openPlayer(file: File) {
+    fun openPlayer(file: File, from: Screen = screen) {
+        backTo = from
         playerFile = file
         screen = Screen.Player
     }
@@ -167,7 +192,7 @@ class CameraViewModel(app: Application) : AndroidViewModel(app) {
     fun onVideoSaved(file: File) {
         refreshGallery()
         if (file.exists() && file.length() > 0) {
-            openPlayer(file)
+            openPlayer(file, from = Screen.Camera)
         } else {
             toast = "Recording failed"
         }
@@ -226,20 +251,29 @@ class CameraViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     fun autoEnhance() {
+        if (enhanceJob?.isActive == true) return
         val source = base ?: return
-        viewModelScope.launch {
-            setBusy(true, "Reading the scene")
-            val result = withContext(Dispatchers.Default) {
-                val small = ImagePipeline.render(source, EditParams(), STATS_MAX)
-                val pixels = IntArray(small.width * small.height)
-                small.getPixels(pixels, 0, small.width, 0, 0, small.width, small.height)
-                val stats = AutoEnhance.stats(pixels)
-                val labels = SceneAnalyzer.labels(small)
-                small.recycle()
-                val detected = AutoEnhance.classify(stats, labels)
-                detected to AutoEnhance.suggest(stats, detected)
+        enhanceJob = viewModelScope.launch {
+            beginBusy("Reading the scene")
+            val result = try {
+                withContext(Dispatchers.Default) {
+                    val small = ImagePipeline.render(source, EditParams(), STATS_MAX)
+                    val pixels = IntArray(small.width * small.height)
+                    small.getPixels(pixels, 0, small.width, 0, 0, small.width, small.height)
+                    val stats = AutoEnhance.stats(pixels)
+                    val labels = SceneAnalyzer.labels(small)
+                    small.recycle()
+                    val detected = AutoEnhance.classify(stats, labels)
+                    detected to AutoEnhance.suggest(stats, detected)
+                }
+            } catch (t: Throwable) {
+                if (t !is CancellationException) toast = "AI enhance failed"
+                return@launch
+            } finally {
+                endBusy()
             }
-            setBusy(false)
+            // Only apply if the photo is still the one we analysed.
+            if (base !== source) return@launch
             scene = result.first
             params = result.second
             scheduleRender()
@@ -249,27 +283,41 @@ class CameraViewModel(app: Application) : AndroidViewModel(app) {
 
     /**
      * Runs ML Kit subject segmentation on a small copy so the portrait bokeh uses a
-     * real mask instead of a radial guess.
+     * real mask instead of a radial guess. Failure is remembered per photo so
+     * slider drags never re-trigger segmentation; [force] retries explicitly.
      */
-    fun ensureMask() {
+    fun ensureMask(force: Boolean = false) {
         if (mask != null || maskLoading) return
+        if (maskFailed && !force) return
         val source = base ?: return
         maskJob?.cancel()
+        maskLoading = true
+        maskFailed = false
         maskJob = viewModelScope.launch {
-            maskLoading = true
-            val found = withContext(Dispatchers.Default) {
-                val small = ImagePipeline.render(source, EditParams(), MASK_MAX)
-                val result = SceneAnalyzer.subjectMask(small)
-                small.recycle()
-                result
+            val self = coroutineContext[Job]
+            try {
+                val found = withContext(Dispatchers.Default) {
+                    val small = ImagePipeline.render(source, EditParams(), MASK_MAX)
+                    val result = SceneAnalyzer.subjectMask(small)
+                    small.recycle()
+                    result
+                }
+                // A newer photo may have replaced this one while we ran.
+                if (base !== source) return@launch
+                mask = found
+                maskReady = found != null
+                if (found == null) {
+                    maskFailed = true
+                    toast = "No clear subject found · using edge blur"
+                }
+                scheduleRender()
+            } catch (ce: CancellationException) {
+                throw ce
+            } catch (t: Throwable) {
+                if (base === source) maskFailed = true
+            } finally {
+                if (maskJob == self) maskLoading = false
             }
-            maskLoading = false
-            mask = found
-            maskReady = found != null
-            if (found == null) {
-                toast = "No clear subject found · using edge blur"
-            }
-            scheduleRender()
         }
     }
 
@@ -295,11 +343,12 @@ class CameraViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     private fun buildFilterThumbs(source: Bitmap) {
+        val owner = editingFile
         viewModelScope.launch {
             val thumbs = withContext(Dispatchers.Default) {
                 val small = ImagePipeline.render(source, EditParams(), THUMB_MAX)
                 val result = LinkedHashMap<FilterId, ImageBitmap>()
-                for (id in FilterId.values()) {
+                for (id in FILTER_IDS) {
                     val rendered = if (id == FilterId.ORIGINAL) {
                         small
                     } else {
@@ -310,22 +359,27 @@ class CameraViewModel(app: Application) : AndroidViewModel(app) {
                 // `small` doubles as the ORIGINAL thumbnail, so it must stay alive.
                 result
             }
-            filterThumbs = thumbs
+            // Ignore a slow build that finished after another photo was opened.
+            if (editingFile == owner) filterThumbs = thumbs
         }
     }
 
     // ----------------------------------------------------------------- save
 
     fun saveEdit(share: Boolean, export: Boolean = false) {
+        if (busy) return
         val sourceFile = editingFile ?: return
         val current = params
         val currentMask = mask
         viewModelScope.launch {
-            setBusy(true, "Rendering full resolution")
-            val saved = withContext(Dispatchers.IO) {
-                renderFull(sourceFile, current, currentMask)
+            beginBusy("Rendering full resolution")
+            val saved = try {
+                withContext(Dispatchers.IO) {
+                    renderFull(sourceFile, current, currentMask)
+                }
+            } finally {
+                endBusy()
             }
-            setBusy(false)
             if (saved == null) {
                 toast = "Could not save the photo"
                 return@launch
@@ -362,7 +416,7 @@ class CameraViewModel(app: Application) : AndroidViewModel(app) {
                 currentMask?.height ?: 0
             )
             val target = store.newEditFile()
-            val ok = store.write(rendered, target, quality = 98)
+            val ok = store.write(rendered, target, quality = 100)
             rendered.recycle()
             full.recycle()
             if (ok) target else null
@@ -371,7 +425,7 @@ class CameraViewModel(app: Application) : AndroidViewModel(app) {
                 val smaller = store.decode(sourceFile, EXPORT_FALLBACK_MAX) ?: return null
                 val rendered = ImagePipeline.render(smaller, current, EXPORT_FALLBACK_MAX)
                 val target = store.newEditFile()
-                val ok = store.write(rendered, target, quality = 95)
+                val ok = store.write(rendered, target, quality = 97)
                 rendered.recycle()
                 smaller.recycle()
                 if (ok) target else null
@@ -384,12 +438,16 @@ class CameraViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     fun export(file: File) {
+        if (busy) return
         viewModelScope.launch {
-            setBusy(true, "Saving to gallery")
-            val ok = withContext(Dispatchers.IO) {
-                store.exportToSystemGallery(getApplication(), file)
+            beginBusy("Saving to gallery")
+            val ok = try {
+                withContext(Dispatchers.IO) {
+                    store.exportToSystemGallery(getApplication(), file)
+                }
+            } finally {
+                endBusy()
             }
-            setBusy(false)
             toast = if (ok) "Saved to phone gallery" else "Could not save to gallery"
         }
     }
@@ -403,9 +461,15 @@ class CameraViewModel(app: Application) : AndroidViewModel(app) {
         viewModelScope.launch {
             val ok = withContext(Dispatchers.IO) { store.delete(file) }
             if (editingFile == file) {
+                renderJob?.cancel()
+                maskJob?.cancel()
+                enhanceJob?.cancel()
                 editingFile = null
                 base = null
                 mask = null
+                maskReady = false
+                maskFailed = false
+                maskLoading = false
                 preview = null
                 originalPreview = null
                 filterThumbs = emptyMap()
@@ -425,14 +489,17 @@ class CameraViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     fun exportAll(files: List<File>) {
-        if (files.isEmpty()) return
+        if (files.isEmpty() || busy) return
         viewModelScope.launch {
-            setBusy(true, "Saving ${files.size} items")
+            beginBusy("Saving ${files.size} items")
             var ok = 0
-            withContext(Dispatchers.IO) {
-                files.forEach { if (store.exportToSystemGallery(getApplication(), it)) ok++ }
+            try {
+                withContext(Dispatchers.IO) {
+                    files.forEach { if (store.exportToSystemGallery(getApplication(), it)) ok++ }
+                }
+            } finally {
+                endBusy()
             }
-            setBusy(false)
             toast = "Saved $ok of ${files.size} to gallery"
         }
     }
@@ -451,8 +518,14 @@ class CameraViewModel(app: Application) : AndroidViewModel(app) {
         shareRequest = null
     }
 
-    private fun setBusy(value: Boolean, label: String = "Working") {
-        busy = value
-        busyLabel = label
+    private fun beginBusy(label: String = "Working") {
+        if (busyCount == 0) busyLabel = label
+        busyCount++
+        busy = true
+    }
+
+    private fun endBusy() {
+        busyCount = (busyCount - 1).coerceAtLeast(0)
+        if (busyCount == 0) busy = false
     }
 }

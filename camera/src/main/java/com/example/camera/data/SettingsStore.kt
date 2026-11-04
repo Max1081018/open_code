@@ -32,10 +32,6 @@ class SettingsStore(context: Context) {
         get() = prefs.getBoolean(KEY_HAPTICS, true)
         set(value) = prefs.edit().putBoolean(KEY_HAPTICS, value).apply()
 
-    var saveToGallery: Boolean
-        get() = prefs.getBoolean(KEY_SAVE_GALLERY, true)
-        set(value) = prefs.edit().putBoolean(KEY_SAVE_GALLERY, value).apply()
-
     var videoQuality: String
         get() = prefs.getString(KEY_VIDEO_QUALITY, "FHD") ?: "FHD"
         set(value) = prefs.edit().putString(KEY_VIDEO_QUALITY, value).apply()
@@ -58,7 +54,6 @@ class SettingsStore(context: Context) {
         private const val KEY_AUTO_AI = "auto_ai"
         private const val KEY_MIRROR = "mirror_selfie"
         private const val KEY_HAPTICS = "haptics"
-        private const val KEY_SAVE_GALLERY = "save_to_gallery"
         private const val KEY_VIDEO_QUALITY = "video_quality"
         private const val KEY_FPS = "frame_rate"
         private const val KEY_ASPECT = "photo_aspect"

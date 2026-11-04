@@ -34,6 +34,7 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -46,6 +47,8 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.camera.data.PhotoStore
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 import java.io.File
 import java.util.Locale
 
@@ -91,11 +94,17 @@ fun GalleryScreen(vm: CameraViewModel) {
             }
             HaloIconButton(
                 icon = Icons.Rounded.SelectAll,
-                contentDescription = "Toggle selection mode",
+                contentDescription = "Select all",
                 active = selectMode,
                 onClick = {
-                    selectMode = !selectMode
-                    if (!selectMode) selection = emptySet()
+                    if (!selectMode) {
+                        selectMode = true
+                        selection = files.toSet()
+                    } else if (selection.size == files.size) {
+                        selection = emptySet()
+                    } else {
+                        selection = files.toSet()
+                    }
                 }
             )
         }
@@ -119,6 +128,10 @@ fun GalleryScreen(vm: CameraViewModel) {
                     val isVideo = remember(file) { PhotoStore.isVideo(file) }
                     val thumb = rememberThumbnail(vm.store, file, 200)
                     val selected = file in selection
+                    // Duration is probed off the main thread; badge appears when ready.
+                    val durationMs by produceState(0L, file) {
+                        value = withContext(Dispatchers.IO) { vm.store.durationMs(file) }
+                    }
                     Box(
                         modifier = Modifier
                             .aspectRatio(1f)
@@ -146,7 +159,7 @@ fun GalleryScreen(vm: CameraViewModel) {
                                 modifier = Modifier.fillMaxSize()
                             )
                         }
-                        if (isVideo) {
+                        if (isVideo && durationMs > 0) {
                             Box(
                                 modifier = Modifier
                                     .padding(6.dp)
@@ -165,7 +178,7 @@ fun GalleryScreen(vm: CameraViewModel) {
                                     )
                                     Spacer(modifier = Modifier.width(4.dp))
                                     Text(
-                                        text = formatDurationMs(vm.store.durationMs(file)),
+                                        text = formatDurationMs(durationMs),
                                         color = Mist,
                                         fontSize = 9.sp
                                     )

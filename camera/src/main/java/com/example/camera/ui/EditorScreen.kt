@@ -65,6 +65,8 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.camera.data.FilterId
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 
 private enum class EditTab(val label: String) {
     Looks("Looks"),
@@ -82,6 +84,10 @@ private val CROP_ASPECTS = listOf(
     "3:2" to 1.5f,
     "16:9" to 16f / 9f
 )
+
+/** Cached once; enum .values() allocates on every call. */
+private val EDIT_TABS = EditTab.values()
+private val FILTERS = FilterId.values()
 
 @Composable
 fun EditorScreen(vm: CameraViewModel) {
@@ -223,7 +229,7 @@ fun EditorScreen(vm: CameraViewModel) {
 
 @Composable
 private fun EditorPanel(vm: CameraViewModel, tab: EditTab, onTab: (EditTab) -> Unit) {
-    val tabs = EditTab.values()
+    val tabs = EDIT_TABS
     Column(
         modifier = Modifier
             .fillMaxWidth()
@@ -295,7 +301,7 @@ private fun LooksPanel(vm: CameraViewModel) {
             contentPadding = PaddingValues(horizontal = 12.dp),
             horizontalArrangement = Arrangement.spacedBy(8.dp)
         ) {
-            items(FilterId.values().toList()) { id ->
+            items(FILTERS.toList()) { id ->
                 val selected = params.filter == id
                 Column(horizontalAlignment = Alignment.CenterHorizontally) {
                     Box(
@@ -532,7 +538,7 @@ private fun CropPanel(vm: CameraViewModel) {
         }
         Spacer(modifier = Modifier.height(8.dp))
         Text(
-            text = "Crops apply on save. The AI edits stay full resolution.",
+            text = "Crop, rotate and flip update the preview live and are baked in at full resolution on save.",
             color = Muted,
             fontSize = 11.sp
         )
@@ -556,31 +562,34 @@ private fun EditHistogram(
 ) {
     val bins by produceState(initialValue = HistogramBins(), image) {
         if (image == null) return@produceState
-        val computed = HistogramBins()
-        try {
-            val src = image.asAndroidBitmap()
-            val scale = 96f / maxOf(src.width, src.height).coerceAtLeast(1)
-            val w = (src.width * scale).toInt().coerceIn(4, 96)
-            val h = (src.height * scale).toInt().coerceIn(4, 96)
-            val scaled = if (w == src.width && h == src.height) {
-                src
-            } else {
-                android.graphics.Bitmap.createScaledBitmap(src, w, h, true)
+        val computed = withContext(Dispatchers.Default) {
+            val result = HistogramBins()
+            try {
+                val src = image.asAndroidBitmap()
+                val scale = 96f / maxOf(src.width, src.height).coerceAtLeast(1)
+                val w = (src.width * scale).toInt().coerceIn(4, 96)
+                val h = (src.height * scale).toInt().coerceIn(4, 96)
+                val scaled = if (w == src.width && h == src.height) {
+                    src
+                } else {
+                    android.graphics.Bitmap.createScaledBitmap(src, w, h, true)
+                }
+                val pixels = IntArray(scaled.width * scaled.height)
+                scaled.getPixels(pixels, 0, scaled.width, 0, 0, scaled.width, scaled.height)
+                val denom = pixels.size.coerceAtLeast(1) / 10
+                pixels.forEach { px ->
+                    result.r[(((px shr 16) and 0xFF) * 47) / 255]++
+                    result.g[(((px shr 8) and 0xFF) * 47) / 255]++
+                    result.b[((px and 0xFF) * 47) / 255]++
+                }
+                result.max = denom.coerceAtLeast(1)
+                if (scaled !== src) scaled.recycle()
+            } catch (t: Throwable) {
+                // Skip the histogram rather than blocking editing.
             }
-            val pixels = IntArray(scaled.width * scaled.height)
-            scaled.getPixels(pixels, 0, scaled.width, 0, 0, scaled.width, scaled.height)
-            val denom = pixels.size.coerceAtLeast(1) / 10
-            pixels.forEach { px ->
-                computed.r[(px shr 16) and 0xFF and 0x1F]++
-                computed.g[(px shr 8) and 0xFF and 0x1F]++
-                computed.b[px and 0xFF and 0x1F]++
-            }
-            computed.max = denom.coerceAtLeast(1)
-            if (scaled !== src) scaled.recycle()
-            value = computed
-        } catch (t: Throwable) {
-            // Skip the histogram rather than blocking editing.
+            result
         }
+        value = computed
     }
 
     Canvas(modifier = modifier) {

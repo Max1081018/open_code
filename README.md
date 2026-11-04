@@ -35,10 +35,12 @@ designed to look and feel like a flagship camera.
 
 ### Capture
 
-- CameraX 1.4.2 image capture at sensor quality, tap to focus, pinch to zoom
-- **Video recording** — HD/FHD/4K selector, a 60 fps option on Preview, live
-  recording pill with elapsed time, audio when the mic permission is granted
-- Front / back lens switch, flash off / on / auto, torch
+- CameraX 1.4.2 image capture at sensor quality (maximize-quality mode, JPEG q100),
+  tap to focus, pinch to zoom, 0.5x–max zoom presets
+- **Video recording** — HD/FHD/4K selector with 12/22/45 Mbps bitrates, 24/30/60 fps,
+  pause & resume mid-clip, live recording pill with elapsed time, audio when the
+  mic permission is granted
+- Front / back lens switch, flash off / on / auto, torch (gated on real flash units)
 - 3 s and 10 s self-timer, rule-of-thirds grid, manual exposure (EV) control
 - Capture modes: Photo, Portrait, Night and Pro
 - Sora + Inter type, dark halo design language, haptic feedback
@@ -65,8 +67,10 @@ designed to look and feel like a flagship camera.
 - Exposure, contrast, highlights, shadows, fade, saturation, warmth, tint,
   clarity, sharpen, denoise, grain, vignette
 - Rotating 90°, horizontal flip, aspect-ratio crop (full / 1:1 / 4:5 / 3:2 / 16:9)
+  — the crop respects rotation, so a 3:2 pick stays 3:2 after a 90° turn
 - RGB histogram overlay, hold-to-compare original
-- Full-resolution render on save (with an OOM fallback path)
+- Full-resolution render on save with JPEG q100, EXIF camera/date stamps and an
+  OOM fallback path
 
 ### Library
 

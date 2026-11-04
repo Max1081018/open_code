@@ -206,8 +206,9 @@ object ImagePipeline {
     // -------------------------------------------------------------- night
 
     /**
-     * Night mode: edge-aware denoise, chroma cleanup, a strong shadow lift and
-     * highlight protection. This is the "clear photo in the dark" pass.
+     * Night mode: bilateral edge-aware denoise, chroma cleanup, strong shadow
+     * lift and highlight protection, then a detail restore. This is the
+     * "clear photo in the dark" pass.
      */
     private fun nightPass(px: IntArray, w: Int, h: Int) {
         denoisePass(px, w, h, 0.72f)
@@ -251,8 +252,9 @@ object ImagePipeline {
     // ---------------------------------------------------------------- hdr
 
     /**
-     * Multi-scale local tone mapping: fine texture and broad local contrast are
-     * added back, then shadows lift and highlights roll off smoothly.
+     * Multi-scale local tone mapping in linear light: fine texture and broad
+     * local contrast are rebuilt with a ratio (anti-halo) transform, shadows
+     * lift and highlights roll off with a soft knee.
      */
     private fun hdrPass(px: IntArray, w: Int, h: Int) {
         val fine = boxBlur(px, w, h, max(1, min(w, h) / 420))
@@ -262,26 +264,26 @@ object ImagePipeline {
             val f = fine[i]
             val k = coarse[i]
             val l = lumaOf(c)
-            val lf = lumaOf(f)
-            val lk = lumaOf(k)
-            val detail = (l - lf) / (1f + abs(l - lf) * 6f)
-            val broad = (l - lk) / (1f + abs(l - lk) * 3f)
+            val cf = linOf(c)
+            val ff = linOf(f)
+            val kf = linOf(k)
+            val gateF = ColorOps.smoothstep(0.001f, 0.05f, abs(l - lumaOf(f)))
+            val gateK = ColorOps.smoothstep(0.0005f, 0.03f, abs(l - lumaOf(k)))
+            var target = cf + (cf - ff) * 0.55f * gateF
+            target += (target - kf) * 0.35f * gateK
 
-            var r = red(c) / 255f + detail * 0.55f + broad * 0.35f
-            var g = green(c) / 255f + detail * 0.55f + broad * 0.35f
-            var b = blue(c) / 255f + detail * 0.55f + broad * 0.35f
-
+            // Shadow lift and highlight knee in linear light.
             val shadow = (1f - l) * (1f - l) * 0.16f
             val highlight = l * l * 0.10f
-            r += shadow - highlight
-            g += shadow - highlight
-            b += shadow - highlight
+            target = clampUnit(target + shadow - highlight)
 
-            val ll = ColorOps.luma(
-                ColorOps.clamp01(r),
-                ColorOps.clamp01(g),
-                ColorOps.clamp01(b)
-            )
+            // Ratio keeps hue; clamp keeps strong edges free of ringing.
+            val rel = (target / max(0.002f, cf)).coerceIn(0.35f, 2.6f)
+            var r = gammaBack(clampUnit(linCh(c, 0) * rel))
+            var g = gammaBack(clampUnit(linCh(c, 1) * rel))
+            var b = gammaBack(clampUnit(linCh(c, 2) * rel))
+
+            val ll = ColorOps.luma(r, g, b)
             val sat = 1.10f
             r = ll + (r - ll) * sat
             g = ll + (g - ll) * sat
@@ -297,29 +299,25 @@ object ImagePipeline {
 
     // ------------------------------------------------------------ clarity
 
+    /**
+     * Local contrast: adds mid-frequency structure back on top of the base image
+     * in linear light with an anti-halo ratio transform.
+     */
     private fun localContrastPass(px: IntArray, w: Int, h: Int, amount: Float) {
         val radius = max(2, min(w, h) / 55)
         val blurred = boxBlur(px, w, h, radius)
-        val k = amount.coerceIn(0f, 1f) * 0.55f
+        val k = amount.coerceIn(0f, 1f) * 0.60f
         for (i in px.indices) {
             val c = px[i]
-            val b = blurred[i]
-            val detail = lumaOf(c) - lumaOf(b)
-            val soft = detail / (1f + abs(detail) * 4f)
-            val add = soft * k
-            px[i] = ColorOps.pack(
-                ColorOps.shoulder(red(c) / 255f + add, 0.85f),
-                ColorOps.shoulder(green(c) / 255f + add, 0.85f),
-                ColorOps.shoulder(blue(c) / 255f + add, 0.85f)
-            )
+            px[i] = detailAdd(c, blurred[i], k + 1f, k)
         }
     }
 
     // -------------------------------------------------------------- detail
 
     /**
-     * AI Detail: multi-scale micro-contrast. It adds texture at three radii while
-     * compressing the strongest edges so the result gains detail without halos.
+     * AI Detail: multi-scale micro-contrast in linear light. It adds texture at
+     * three radii with a soft gate so the result gains detail without halos.
      */
     private fun detailPass(px: IntArray, w: Int, h: Int) {
         val r1 = max(1, min(w, h) / 900)
@@ -330,70 +328,162 @@ object ImagePipeline {
         val b3 = boxBlur(px, w, h, r3)
         for (i in px.indices) {
             val c = px[i]
-            val d1 = (lumaOf(c) - lumaOf(b1[i])) / (1f + abs(lumaOf(c) - lumaOf(b1[i])) * 9f)
-            val d2 = (lumaOf(c) - lumaOf(b2[i])) / (1f + abs(lumaOf(c) - lumaOf(b2[i])) * 7f)
-            val d3 = (lumaOf(c) - lumaOf(b3[i])) / (1f + abs(lumaOf(c) - lumaOf(b3[i])) * 5f)
-            val add = d1 * 0.70f + d2 * 0.45f + d3 * 0.22f
-            px[i] = ColorOps.pack(
-                ColorOps.shoulder(red(c) / 255f + add, 0.85f),
-                ColorOps.shoulder(green(c) / 255f + add, 0.85f),
-                ColorOps.shoulder(blue(c) / 255f + add, 0.85f)
-            )
-        }
-    }
-
-    // ------------------------------------------------------------- sharpen
-
-    private fun sharpenPass(px: IntArray, w: Int, h: Int, amount: Float) {
-        val radius = max(1, min(w, h) / 700)
-        val blurred = boxBlur(px, w, h, radius)
-        val k = amount.coerceIn(0f, 1f) * 1.15f
-        for (i in px.indices) {
-            val c = px[i]
-            val b = blurred[i]
-            val lc = lumaOf(c)
-            val lb = lumaOf(b)
-            val edge = abs(lc - lb)
-            val gate = ColorOps.smoothstep(0.008f, 0.05f, edge)
-            val scale = k * (0.35f + 0.65f * gate)
-            px[i] = rgba(
-                red(c) + (red(c) - red(b)) * scale,
-                green(c) + (green(c) - green(b)) * scale,
-                blue(c) + (blue(c) - blue(b)) * scale
-            )
+            val a1 = detailAdd(c, b1[i], 1.05f, 1f)
+            val a2 = detailAdd(c, b2[i], 0.65f, 1f)
+            val a3 = detailAdd(c, b3[i], 0.35f, 1f)
+            // Average of the three gain-applied variants over the original.
+            val cr = (red(a1) + red(a2) + red(a3) + red(c) * 2f) / 5f
+            val cg = (green(a1) + green(a2) + green(a3) + green(c) * 2f) / 5f
+            val cb = (blue(a1) + blue(a2) + blue(a3) + blue(c) * 2f) / 5f
+            px[i] = rgba(cr, cg, cb)
         }
     }
 
     // ------------------------------------------------------------- denoise
 
     /**
-     * Edge-aware denoise: smooth flat areas, keep edges, and clean chroma noise
-     * separately from luma so night shots stay sharp.
+     * True bilateral denoise: each pixel is a luma-weighted average of its
+     * neighbourhood, so flat areas get cleaned while edges and textures keep
+     * their structure. Chroma is smoothed wider than luma, which is what keeps
+     * night shots both clean and sharp.
      */
     private fun denoisePass(px: IntArray, w: Int, h: Int, amount: Float) {
-        val radius = max(1, min(w, h) / 360)
-        val blurred = boxBlur(px, w, h, radius)
         val strength = amount.coerceIn(0f, 1f)
+        if (strength <= 0f) return
+        // Range sigma in gamma-space luma. Stronger settings accept more.
+        val sig2 = 2f * (0.045f + 0.11f * strength).let { it * it }
+        val radius = if (strength > 0.55f) 2 else 1
+        val chromaWeight = strength * 0.55f
+        val out = IntArray(px.size)
+        for (y in 0 until h) {
+            for (x in 0 until w) {
+                val i = y * w + x
+                val c = px[i]
+                val lc = lumaOf(c)
+                var wr = 0f
+                var wg = 0f
+                var wb = 0f
+                var wl = 0f
+                var cr = 0f
+                var cg = 0f
+                var cb = 0f
+                var cl = 0f
+                for (dy in -radius..radius) {
+                    val ny = (y + dy).coerceIn(0, h - 1)
+                    val row = ny * w
+                    for (dx in -radius..radius) {
+                        val nx = (x + dx).coerceIn(0, w - 1)
+                        val n = px[row + nx]
+                        val ln = lumaOf(n)
+                        val dl = ln - lc
+                        val range = 1f / (1f + (dl * dl) / sig2)
+                        // Spatial weight: 1.0 centre, 0.81 ortho, 0.5 diagonal.
+                        val spatial = when {
+                            dx == 0 && dy == 0 -> 1f
+                            dx == 0 || dy == 0 -> 0.81f
+                            else -> 0.50f
+                        }
+                        val wluma = range * spatial
+                        val wchroma = spatial
+                        val nr = red(n) / 255f
+                        val ng = green(n) / 255f
+                        val nb = blue(n) / 255f
+                        wr += nr * wluma
+                        wg += ng * wluma
+                        wb += nb * wluma
+                        wl += wluma
+                        cr += nr * wchroma
+                        cg += ng * wchroma
+                        cb += nb * wchroma
+                        cl += wchroma
+                    }
+                }
+                // Luma goes only where the neighbourhood truly matches.
+                val invW = 1f / max(1e-4f, wl)
+                var r = ColorOps.lerp(red(c) / 255f, wr * invW, strength)
+                var g = ColorOps.lerp(green(c) / 255f, wg * invW, strength)
+                var b = ColorOps.lerp(blue(c) / 255f, wb * invW, strength)
+                // Chroma cleanup is wider: it averages the whole neighbourhood.
+                val invCW = 1f / max(1e-4f, cl)
+                r = ColorOps.lerp(r, cr * invCW, chromaWeight)
+                g = ColorOps.lerp(g, cg * invCW, chromaWeight)
+                b = ColorOps.lerp(b, cb * invCW, chromaWeight)
+                out[i] = ColorOps.pack(r, g, b)
+            }
+        }
+        System.arraycopy(out, 0, px, 0, px.size)
+    }
+
+    // ------------------------------------------------------------- sharpen
+
+    /**
+     * Edge-aware unsharp masking in linear light. The gain is applied to the
+     * *ratio* rather than the difference, which suppresses halos around strong
+     * edges, and a range gate keeps noise from being amplified.
+     */
+    private fun sharpenPass(px: IntArray, w: Int, h: Int, amount: Float) {
+        val radius = max(1, min(w, h) / 700)
+        val blurred = boxBlur(px, w, h, radius)
+        val k = amount.coerceIn(0f, 1f) * 1.35f
         for (i in px.indices) {
             val c = px[i]
             val b = blurred[i]
-            val l = lumaOf(c)
-            val lb = lumaOf(b)
-            val edge = abs(l - lb)
-            val flat = 1f - ColorOps.smoothstep(0.012f, 0.085f, edge)
-            val m = strength * flat * 0.78f
-            var r = ColorOps.lerp(red(c) / 255f, red(b) / 255f, m)
-            var g = ColorOps.lerp(green(c) / 255f, green(b) / 255f, m)
-            var bl = ColorOps.lerp(blue(c) / 255f, blue(b) / 255f, m)
-
-            // Chroma-only cleanup leaves the luma detail intact.
-            val chroma = strength * 0.45f
-            r = ColorOps.lerp(r, l + (red(b) / 255f - lb), chroma)
-            g = ColorOps.lerp(g, l + (green(b) / 255f - lb), chroma)
-            bl = ColorOps.lerp(bl, l + (blue(b) / 255f - lb), chroma)
-
-            px[i] = ColorOps.pack(r, g, bl)
+            val edge = abs(lumaOf(c) - lumaOf(b))
+            val gate = ColorOps.smoothstep(0.004f, 0.030f, edge)
+            if (gate <= 0f) continue
+            val cl = linOf(c)
+            val bl = linOf(b)
+            val add = (cl - bl) * k * gate
+            val gain = (cl + add) / max(0.002f, cl)
+            val gainCl = gain.coerceIn(0.5f, 2.2f)
+            px[i] = rgba(
+                gammaBack(linCh(c, 0) * gainCl) * 255f,
+                gammaBack(linCh(c, 1) * gainCl) * 255f,
+                gammaBack(linCh(c, 2) * gainCl) * 255f
+            )
         }
+    }
+
+    private fun linOf(c: Int): Float {
+        val r = linCh(c, 0)
+        val g = linCh(c, 1)
+        val b = linCh(c, 2)
+        return ColorOps.luma(r, g, b)
+    }
+
+    private fun linCh(c: Int, channel: Int): Float {
+        val v = when (channel) {
+            0 -> red(c) / 255f
+            1 -> green(c) / 255f
+            else -> blue(c) / 255f
+        }
+        // sRGB -> linear approximation: square (true 2.2, close enough and fast).
+        return v * v
+    }
+
+    private fun gammaBack(v: Float): Float = sqrt(v.coerceIn(0f, 1f))
+
+    private fun clampUnit(v: Float): Float = v.coerceIn(0f, 1f)
+
+    /** Linear-light luma keep, per-channel ratio transform with clamped gain. */
+    private fun detailAdd(
+        c: Int,
+        base: Int,
+        k: Float,
+        softK: Float
+    ): Int {
+        val cf = linOf(c)
+        val bf = linOf(base)
+        val edge = abs(lumaOf(c) - lumaOf(base))
+        val gate = ColorOps.smoothstep(0.002f, 0.05f, edge)
+        val add = (cf - bf) * k * gate
+        val gain = (cf + add * softK) / max(0.002f, cf)
+        val gainCl = gain.coerceIn(0.4f, 2.6f)
+        return rgba(
+            gammaBack(linCh(c, 0) * gainCl) * 255f,
+            gammaBack(linCh(c, 1) * gainCl) * 255f,
+            gammaBack(linCh(c, 2) * gainCl) * 255f
+        )
     }
 
     // -------------------------------------------------------------- beauty
@@ -443,7 +533,9 @@ object ImagePipeline {
 
     /**
      * Portrait bokeh. Uses the ML Kit confidence mask when it contains a subject,
-     * otherwise falls back to an honest radial edge blur.
+     * otherwise falls back to an honest radial edge blur. The "out of focus"
+     * plate comes from a quarter-scale blur that is bilinearly sampled back up,
+     * which reads like a real f/1.4 rendering instead of a smeared overlay.
      */
     private fun portraitPass(
         px: IntArray,
@@ -455,7 +547,7 @@ object ImagePipeline {
         maskH: Int
     ) {
         val radius = max(3, min(w, h) / 42)
-        val blurred = boxBlur(px, w, h, radius)
+        val blurred = softBokeh(px, w, h, radius)
         val s = strength.coerceIn(0f, 1f)
         if (mask != null && maskW > 1 && maskH > 1 && maskCoverage(mask) > 0.015f) {
             for (y in 0 until h) {
@@ -500,6 +592,84 @@ object ImagePipeline {
                 i++
             }
         }
+    }
+
+    /**
+     * A smooth bokeh plate: blur at quarter scale (cheap, very flat) then
+     * bilinearly sample up. Blends a little of the fine-radius blur so edges do
+     * not look banded.
+     */
+    private fun softBokeh(px: IntArray, w: Int, h: Int, radius: Int): IntArray {
+        val fine = boxBlur(px, w, h, max(2, radius / 5))
+        val ds = max(2, radius / 6)
+        val dw = max(1, w / ds)
+        val dh = max(1, h / ds)
+        val small = IntArray(dw * dh)
+        for (sy in 0 until dh) {
+            for (sx in 0 until dw) {
+                val x0 = sx * ds
+                val y0 = sy * ds
+                val x1 = (x0 + ds).coerceAtMost(w)
+                val y1 = (y0 + ds).coerceAtMost(h)
+                var sr = 0
+                var sg = 0
+                var sb = 0
+                var n = 0
+                for (yy in y0 until y1) {
+                    val row = yy * w
+                    for (xx in x0 until x1) {
+                        val c = fine[row + xx]
+                        sr += red(c)
+                        sg += green(c)
+                        sb += blue(c)
+                        n++
+                    }
+                }
+                small[sy * dw + sx] = rgba(sr / n.toFloat(), sg / n.toFloat(), sb / n.toFloat())
+            }
+        }
+        val smallBlur = boxBlur(small, dw, dh, max(1, radius / 3))
+        val out = IntArray(px.size)
+        var i = 0
+        for (y in 0 until h) {
+            val fy = ((y + 0.5f) / ds).coerceIn(0.5f, dh - 0.5f)
+            val y0 = (fy - 0.5f).toInt().coerceIn(0, dh - 1)
+            val y1 = (y0 + 1).coerceIn(0, dh - 1)
+            val ty = fy - 0.5f - y0
+            for (x in 0 until w) {
+                val fx = ((x + 0.5f) / ds).coerceIn(0.5f, dw - 0.5f)
+                val x0 = (fx - 0.5f).toInt().coerceIn(0, dw - 1)
+                val x1 = (x0 + 1).coerceIn(0, dw - 1)
+                val tx = fx - 0.5f - x0
+                val a = smallBlur[y0 * dw + x0]
+                val b = smallBlur[y0 * dw + x1]
+                val c = smallBlur[y1 * dw + x0]
+                val d = smallBlur[y1 * dw + x1]
+                val tr = ColorOps.lerp(
+                    ColorOps.lerp(red(a).toFloat(), red(b).toFloat(), tx),
+                    ColorOps.lerp(red(c).toFloat(), red(d).toFloat(), tx),
+                    ty
+                )
+                val tg = ColorOps.lerp(
+                    ColorOps.lerp(green(a).toFloat(), green(b).toFloat(), tx),
+                    ColorOps.lerp(green(c).toFloat(), green(d).toFloat(), tx),
+                    ty
+                )
+                val tb = ColorOps.lerp(
+                    ColorOps.lerp(blue(a).toFloat(), blue(b).toFloat(), tx),
+                    ColorOps.lerp(blue(c).toFloat(), blue(d).toFloat(), tx),
+                    ty
+                )
+                // Keep 20% of the fine blur so edges stay continuous.
+                out[i] = rgba(
+                    ColorOps.lerp(tr, red(fine[i]).toFloat(), 0.2f),
+                    ColorOps.lerp(tg, green(fine[i]).toFloat(), 0.2f),
+                    ColorOps.lerp(tb, blue(fine[i]).toFloat(), 0.2f)
+                )
+                i++
+            }
+        }
+        return out
     }
 
     private fun maskCoverage(mask: FloatArray): Float {
@@ -587,8 +757,16 @@ object ImagePipeline {
 
     private fun transform(src: Bitmap, params: EditParams): Bitmap {
         var current = src
-        val aspect = params.cropAspect
-        if (aspect != null && aspect > 0.01f) {
+        val rotation = ((params.rotation % 360) + 360) % 360
+        val rawAspect = params.cropAspect
+        // The crop is taken in the source frame, before rotation. Swapping the
+        // ratio for 90/270 keeps the aspect the user picked in the UI.
+        val aspect = if (rawAspect != null && rawAspect > 0.01f) {
+            if (rotation % 180 != 0) 1f / rawAspect else rawAspect
+        } else {
+            null
+        }
+        if (aspect != null) {
             val cw = current.width
             val ch = current.height
             val currentAspect = cw.toFloat() / ch.toFloat()
@@ -612,7 +790,6 @@ object ImagePipeline {
             }
         }
 
-        val rotation = ((params.rotation % 360) + 360) % 360
         if (rotation == 0 && !params.flipH) return current
 
         val matrix = Matrix()

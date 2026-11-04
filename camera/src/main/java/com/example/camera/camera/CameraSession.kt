@@ -6,6 +6,8 @@ import android.content.pm.PackageManager
 import android.hardware.camera2.CaptureRequest
 import android.util.Range
 import android.view.Surface
+import androidx.camera.camera2.interop.Camera2Interop
+import androidx.camera.camera2.interop.ExperimentalCamera2Interop
 import androidx.camera.core.AspectRatio
 import androidx.camera.core.Camera
 import androidx.camera.core.CameraSelector
@@ -31,6 +33,7 @@ import androidx.camera.video.VideoRecordEvent
 import androidx.camera.view.PreviewView
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.LifecycleOwner
+import com.google.common.util.concurrent.ListenableFuture
 import java.io.File
 import java.util.concurrent.TimeUnit
 
@@ -106,6 +109,9 @@ class CameraSession(context: Context) {
     var isRecording by mutableStateOf(false)
         private set
 
+    var isPaused by mutableStateOf(false)
+        private set
+
     var hasFlash by mutableStateOf(false)
         private set
 
@@ -129,28 +135,56 @@ class CameraSession(context: Context) {
 
     private var targetZoom = 1f
     private var binding = false
+    private var initFuture: ListenableFuture<ProcessCameraProvider>? = null
 
     fun bind(previewView: PreviewView, lifecycleOwner: LifecycleOwner) {
         view = previewView
         owner = lifecycleOwner
-        val future = ProcessCameraProvider.getInstance(appContext)
-        future.addListener({ start() }, mainExecutor)
+        ensureInitialized()
     }
 
     /** Rebinds the use cases after a mode, quality, aspect or lens change. */
     fun refresh() {
-        if (view != null && owner != null) start()
+        if (view == null || owner == null) return
+        ensureInitialized()
     }
 
-    @OptIn(ExperimentalUseCaseApi::class)
+    /** Clears a previous bind failure so the retry overlay can rebind cleanly. */
+    fun clearError() {
+        error = null
+        ready = false
+    }
+
+    /**
+     * Init runs exactly once and never blocks the UI thread: [start] only ever
+     * reads an already-completed future, and the listener drives the very first
+     * bind once the provider is ready.
+     */
+    private fun ensureInitialized() {
+        val existing = initFuture
+        if (existing != null) {
+            if (existing.isDone) start()
+            return
+        }
+        val future = ProcessCameraProvider.getInstance(appContext)
+        initFuture = future
+        future.addListener({
+            if (initFuture === future) start()
+        }, mainExecutor)
+    }
+
+    @OptIn(ExperimentalUseCaseApi::class, ExperimentalCamera2Interop::class)
     private fun start() {
         val previewView = view ?: return
         val lifecycleOwner = owner ?: return
+        val initDone = initFuture
+        if (initDone == null || !initDone.isDone) return // listener will re-enter
         if (binding) return
         binding = true
 
         val cameraProvider = try {
-            ProcessCameraProvider.getInstance(appContext).get()
+            // Never blocks: start() is only reached when the future is done.
+            initDone.get()
         } catch (t: Throwable) {
             binding = false
             ready = false
@@ -160,11 +194,16 @@ class CameraSession(context: Context) {
         provider = cameraProvider
 
         val previewBuilder = Preview.Builder().apply {
-            if (requestedFrameRate > 0) {
+            if (requestedMode == CaptureMode.VIDEO && requestedFrameRate > 0) {
+                // Pin the preview to the chosen rate so the viewfinder matches
+                // what gets recorded. Photo mode keeps AE free for low light.
                 try {
-                    setTargetFrameRate(Range(requestedFrameRate, requestedFrameRate))
+                    Camera2Interop.Extender(this).setCaptureRequestOption(
+                        CaptureRequest.CONTROL_AE_TARGET_FPS_RANGE,
+                        Range(requestedFrameRate, requestedFrameRate)
+                    )
                 } catch (t: Throwable) {
-                    // Some devices refuse an exact rate; CameraX keeps auto.
+                    // Device rejected the interop path; CameraX keeps auto rate.
                 }
             }
         }
@@ -187,8 +226,28 @@ class CameraSession(context: Context) {
             val recorder = Recorder.Builder()
                 .setQualitySelector(qualitySelector)
                 .setExecutor(mainExecutor)
+                .setTargetVideoEncodingBitRate(
+                    when (requestedVideoQuality) {
+                        VideoQuality.UHD -> 45_000_000
+                        VideoQuality.FHD -> 22_000_000
+                        VideoQuality.HD -> 12_000_000
+                    }
+                )
                 .build()
-            val capture = VideoCapture.withOutput(recorder)
+            val captureBuilder = VideoCapture.Builder(recorder)
+            if (requestedFrameRate > 0) {
+                // The recorder's own use case must carry the fps option; an
+                // option set on Preview only affects the viewfinder stream.
+                try {
+                    Camera2Interop.Extender(captureBuilder).setCaptureRequestOption(
+                        CaptureRequest.CONTROL_AE_TARGET_FPS_RANGE,
+                        Range(requestedFrameRate, requestedFrameRate)
+                    )
+                } catch (t: Throwable) {
+                    // Encoder rejected the rate; CameraX falls back to auto.
+                }
+            }
+            val capture = captureBuilder.build()
             capture.targetRotation = rotation
             useCases.add(capture)
             videoCapture = capture
@@ -243,6 +302,7 @@ class CameraSession(context: Context) {
             hasFlash = info?.hasFlashUnit() == true
             isTorchOn = false
             isRecording = false
+            isPaused = false
         } catch (t: Throwable) {
             ready = false
             camera = null
@@ -315,9 +375,19 @@ class CameraSession(context: Context) {
 
     fun toggleTorch() {
         val cam = camera ?: return
+        if (!cam.cameraInfo.hasFlashUnit()) {
+            isTorchOn = false
+            return
+        }
         val next = !isTorchOn
-        cam.cameraControl.enableTorch(next)
-        isTorchOn = next
+        try {
+            cam.cameraControl.enableTorch(next).addListener(
+                { isTorchOn = next },
+                mainExecutor
+            )
+        } catch (t: Throwable) {
+            isTorchOn = false
+        }
     }
 
     fun zoomTo(ratio: Float): Float {
@@ -413,9 +483,17 @@ class CameraSession(context: Context) {
                         when (event) {
                             is VideoRecordEvent.Start -> {
                                 isRecording = true
+                                isPaused = false
+                            }
+                            is VideoRecordEvent.Pause -> {
+                                isPaused = true
+                            }
+                            is VideoRecordEvent.Resume -> {
+                                isPaused = false
                             }
                             is VideoRecordEvent.Finalize -> {
                                 isRecording = false
+                                isPaused = false
                                 recording = null
                                 if (event.hasError()) {
                                     file.delete()
@@ -441,10 +519,31 @@ class CameraSession(context: Context) {
     fun stopRecording() {
         val current = recording ?: return
         recording = null
+        isPaused = false
         try {
             current.stop()
         } catch (t: Throwable) {
             isRecording = false
+        }
+    }
+
+    /** Pauses the current clip; the file stays open so the take can continue. */
+    fun pauseRecording() {
+        val current = recording ?: return
+        try {
+            current.pause()
+        } catch (t: Throwable) {
+            // Some encoders cannot pause; keep recording untouched.
+        }
+    }
+
+    /** Resumes a paused clip. */
+    fun resumeRecording() {
+        val current = recording ?: return
+        try {
+            current.resume()
+        } catch (t: Throwable) {
+            // Already recording or unsupported.
         }
     }
 
@@ -466,5 +565,6 @@ class CameraSession(context: Context) {
         videoCapture = null
         ready = false
         isRecording = false
+        isPaused = false
     }
 }
