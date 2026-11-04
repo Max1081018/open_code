@@ -36,7 +36,7 @@ designed to look and feel like a flagship camera.
 ### Capture
 
 - CameraX 1.4.2 image capture at sensor quality (maximize-quality mode, JPEG q100),
-  tap to focus, pinch to zoom, 0.5x–max zoom presets
+  tap to focus, double-tap to flip lenses, pinch to zoom with 0.5x–max presets
 - **Video recording** — HD/FHD/4K selector with 12/22/45 Mbps bitrates, 24/30/60 fps,
   pause & resume mid-clip, live recording pill with elapsed time, audio when the
   mic permission is granted

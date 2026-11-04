@@ -136,6 +136,8 @@ class CameraSession(context: Context) {
     private var targetZoom = 1f
     private var binding = false
     private var initFuture: ListenableFuture<ProcessCameraProvider>? = null
+    /** Cleared after one failed bind so we retry with CameraX's own fps choice. */
+    private var interopFps = true
 
     fun bind(previewView: PreviewView, lifecycleOwner: LifecycleOwner) {
         view = previewView
@@ -194,7 +196,7 @@ class CameraSession(context: Context) {
         provider = cameraProvider
 
         val previewBuilder = Preview.Builder().apply {
-            if (requestedMode == CaptureMode.VIDEO && requestedFrameRate > 0) {
+            if (interopFps && requestedMode == CaptureMode.VIDEO && requestedFrameRate > 0) {
                 // Pin the preview to the chosen rate so the viewfinder matches
                 // what gets recorded. Photo mode keeps AE free for low light.
                 try {
@@ -235,7 +237,7 @@ class CameraSession(context: Context) {
                 )
                 .build()
             val captureBuilder = VideoCapture.Builder(recorder)
-            if (requestedFrameRate > 0) {
+            if (interopFps && requestedFrameRate > 0) {
                 // The recorder's own use case must carry the fps option; an
                 // option set on Preview only affects the viewfinder stream.
                 try {
@@ -308,7 +310,15 @@ class CameraSession(context: Context) {
             camera = null
             imageCapture = null
             videoCapture = null
-            error = t.message ?: "Could not start the camera"
+            if (interopFps && requestedMode == CaptureMode.VIDEO && requestedFrameRate > 0) {
+                // The device refused the exact fps range. Retry once with the
+                // default CameraX rate instead of leaving a dead camera.
+                interopFps = false
+                error = null
+                mainExecutor.execute { start() }
+            } else {
+                error = t.message ?: "Could not start the camera"
+            }
         } finally {
             binding = false
         }

@@ -325,10 +325,16 @@ fun CameraScreen(vm: CameraViewModel) {
                     }
                 }
                 .pointerInput(Unit) {
-                    detectTapGestures { offset ->
-                        session.focus(offset.x, offset.y)
-                        focusAt = offset
-                    }
+                    detectTapGestures(
+                        onTap = { offset ->
+                            session.focus(offset.x, offset.y)
+                            focusAt = offset
+                        },
+                        onDoubleTap = {
+                            // Common camera gesture: double-tap the viewfinder flips.
+                            if (!session.isRecording) session.toggleLens()
+                        }
+                    )
                 }
         )
 
