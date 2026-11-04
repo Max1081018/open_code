@@ -612,7 +612,6 @@ object ImagePipeline {
     ) {
         val subjectLift = 0.18f * strength
         val backgroundDarken = 0.12f * strength
-        val hasMask = mask != null && maskW > 1 && maskH > 1
         var i = 0
         for (y in 0 until h) {
             for (x in 0 until w) {
@@ -620,7 +619,13 @@ object ImagePipeline {
                 var r = red(c) / 255f
                 var g = green(c) / 255f
                 var b = blue(c) / 255f
-                val conf = if (hasMask) sampleMask(mask, maskW, maskH, x, y, w, h) else 0.5f
+                // Subject confidence from the ML Kit mask; falls back to a neutral
+                // 0.5 (gentle global lift) when no mask is available.
+                val conf = if (mask != null && maskW > 1 && maskH > 1) {
+                    sampleMask(mask, maskW, maskH, x, y, w, h)
+                } else {
+                    0.5f
+                }
                 // Lift the subject toward white; dim the background toward black.
                 val lift = conf * subjectLift
                 val dark = (1f - conf) * backgroundDarken
