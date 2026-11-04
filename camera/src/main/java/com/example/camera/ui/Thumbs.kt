@@ -70,7 +70,7 @@ fun shareFiles(context: Context, files: List<File>) {
                 allPhoto -> "image/jpeg"
                 else -> "*/*"
             }
-            putParcelableArrayListExtra(Intent.EXTRA_STREAMS, uris)
+            putParcelableArrayListExtra(Intent.EXTRA_STREAM, uris)
             addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
         }
         val chooser = Intent.createChooser(send, "Share ${files.size} items")
