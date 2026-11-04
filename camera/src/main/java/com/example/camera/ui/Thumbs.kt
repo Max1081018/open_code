@@ -68,7 +68,7 @@ fun shareFiles(context: Context, files: List<File>) {
                 else -> "*/*"
             }
             // ACTION_SEND_MULTIPLE reads EXTRA_STREAMS, not EXTRA_STREAM.
-            send.putExtra(Intent.EXTRA_STREAMS, uris)
+            putExtra(Intent.EXTRA_STREAMS, uris)
             addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
         }
         val chooser = Intent.createChooser(send, "Share ${files.size} items")
