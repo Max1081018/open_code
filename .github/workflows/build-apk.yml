@@ -67,14 +67,18 @@ jobs:
         run: |
           SDK="${ANDROID_HOME:-${ANDROID_SDK_ROOT:-/usr/local/lib/android/sdk}}"
           APKSIGNER="$(ls -d "$SDK"/build-tools/* | sort -V | tail -1)/apksigner"
+          # Cert SHA-256 fingerprints are 64 hex chars and keytool/apksigner may
+          # print them colon-separated, so strip anything that is not hex first.
           APK_SHA=$("$APKSIGNER" verify --print-certs \
             app/build/outputs/apk/debug/app-debug.apk \
-            | grep -oiE '[a-f0-9]{40}' | head -1)
+            | tr -d ':' \
+            | tr 'A-F' 'a-f' \
+            | grep -oiE '[0-9a-f]{64}' | head -1)
           KEY_SHA=$(keytool -list -v -keystore "$WINGMAN_KEYSTORE" \
             -storepass "$WINGMAN_KEYSTORE_PASS" -alias "$WINGMAN_KEY_ALIAS" \
-            | grep -oiE '[a-f0-9]{40}' | head -1)
-          APK_SHA=$(echo "$APK_SHA" | tr 'A-F' 'a-f')
-          KEY_SHA=$(echo "$KEY_SHA" | tr 'A-F' 'a-f')
+            | tr -d ':' \
+            | tr 'A-F' 'a-f' \
+            | grep -oiE '[0-9a-f]{64}' | head -1)
           echo "APK signer : $APK_SHA"
           echo "Keystore   : $KEY_SHA"
           if [ "$APK_SHA" != "$KEY_SHA" ]; then

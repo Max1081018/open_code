@@ -24,6 +24,8 @@ the button.
 - **Friend notebook** — name, Discord handle, vibe, interests, communication style and private notes
 - **Consent tracking** — Not started / Agreed / Active / Paused, shown on every card and inside each chat
 - **Two-sided chat log** — record what you said *and* what they said, per friend
+- **Screen-aware scan** — arm a scan from Wingman, switch to Discord (or any chat app), and Wingman reads the visible messages via an AccessibilityService. Capture is automatic, one-shot, and only while armed. A manual paste fallback is always available.
+- **AI personality profile** — the captured chat is analysed (with the person's name) into a saved profile: summary, vibe, interests, communication style, green/red flags, confidence, and three suggested replies (curious / playful / direct). Select a saved person, scan again, and the profile is updated.
 - **Wingman profile** — a summary, vibe, interests, confidence score and suggested opener generated on-device from the notes and chat history you saved
 - **Reply coach** — paste or edit the last few messages, and get an honest read of where the conversation is, the signals behind it, and three replies in your own voice with the reasoning for each
 - **Search, edit, undo delete** — including full restore of a friend's chat history and profile
@@ -45,6 +47,13 @@ You get back:
 The coach will not write compliments about appearance, pet names, invented shared
 history, stacked questions, or paragraphs when they wrote one line. If the chat is
 one-sided it says so instead of manufacturing cleverness.
+
+It works with Pollinations free AI out of the box (no key needed, shared queue so
+the first reply can take up to about a minute). You can also add a free key for
+Gemini, Groq, OpenRouter or any OpenAI-compatible endpoint. Model fallbacks are
+tried automatically so a renamed model never becomes a permanent 404. If the free
+provider is busy or offline, Wingman falls back to an on-device read and tells you
+honestly that it did not come from a model.
 
 It works with any OpenAI-compatible `/chat/completions` endpoint (OpenAI,
 OpenRouter, Groq, your own server), so you bring your own key and model.

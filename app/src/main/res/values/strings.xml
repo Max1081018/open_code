@@ -1,4 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="app_name">Wingman</string>
+    <string name="accessibility_label">Wingman chat reader</string>
+    <string name="accessibility_description">Reads the chat on screen only while you have started a scan in Wingman, so it can analyse the other person and suggest a reply. Nothing is captured at any other time.</string>
 </resources>

@@ -10,10 +10,17 @@ import com.example.app.data.CoachException
 import com.example.app.data.CoachLine
 import com.example.app.data.CoachReply
 import com.example.app.data.CoachSettings
-import com.example.app.data.OpenAiReplyEngine
+import com.example.app.data.LocalWingman
 import com.example.app.data.Person
 import com.example.app.data.PersonalityProfile
-import com.example.app.data.ReplyEngine
+import com.example.app.data.RemoteAi
+import com.example.app.data.ReplyCoach
+import com.example.app.data.ResilientWingman
+import com.example.app.data.ScanNotifier
+import com.example.app.data.ScanSnapshot
+import com.example.app.data.ScanStore
+import com.example.app.data.ScreenAnalysis
+import com.example.app.data.WingmanAi
 import com.example.app.data.WingmanBrain
 import com.example.app.data.WingmanDatabase
 import kotlinx.coroutines.CancellationException
@@ -28,6 +35,9 @@ import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
+import java.text.SimpleDateFormat
+import java.util.Date
+import java.util.Locale
 
 /** What the reply coach is currently doing. */
 sealed interface CoachUiState {
@@ -36,6 +46,29 @@ sealed interface CoachUiState {
     data class Ready(val reply: CoachReply) : CoachUiState
     data class Failed(val message: String) : CoachUiState
 }
+
+enum class ScanStage { ARMING, REVIEW, RESULT }
+
+/** Everything the scan dialog needs, kept in the ViewModel so rotation is safe. */
+data class ScanSession(
+    val visible: Boolean = false,
+    val stage: ScanStage = ScanStage.ARMING,
+    val targetPerson: Person? = null,
+    val snapshot: ScanSnapshot? = null,
+    val transcript: String = "",
+    val name: String = "",
+    val analysis: ScreenAnalysis? = null,
+    val busy: Boolean = false,
+    val error: String? = null,
+    val serviceConnected: Boolean = false
+)
+
+/** Result of pressing "Test" in AI settings. */
+data class AiTestState(
+    val running: Boolean = false,
+    val ok: Boolean = false,
+    val message: String = ""
+)
 
 class WingmanViewModel(app: Application) : AndroidViewModel(app) {
 
@@ -52,11 +85,15 @@ class WingmanViewModel(app: Application) : AndroidViewModel(app) {
     /** False when secure storage failed and the key will not survive a restart. */
     val coachStoragePersistent: Boolean by lazy { coachSettings.isPersistent }
 
-    /** Swappable so the coach can be tested without touching the network. */
-    internal var engineFactory: (CoachConfig) -> ReplyEngine = { OpenAiReplyEngine(it) }
+    /** Swappable so the AI layer can be tested without touching the network. */
+    internal var aiFactory: (CoachConfig) -> WingmanAi = { ResilientWingman(RemoteAi(it)) }
 
     val people: StateFlow<List<Person>> =
         personDao.observeAll()
+            .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
+
+    val profiles: StateFlow<List<PersonalityProfile>> =
+        personalityProfileDao.observeAll()
             .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
 
     val query = MutableStateFlow("")
@@ -95,10 +132,50 @@ class WingmanViewModel(app: Application) : AndroidViewModel(app) {
         }
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), null)
 
+    private val _notice = MutableStateFlow<String?>(null)
+    val notice: StateFlow<String?> = _notice.asStateFlow()
+
     private var lastDeleted: DeletedPerson? = null
+
+    private val _scan = MutableStateFlow(ScanSession(serviceConnected = ScanStore.connected.value))
+    val scan: StateFlow<ScanSession> = _scan.asStateFlow()
+
+    private var scanJob: Job? = null
+
+    init {
+        viewModelScope.launch {
+            ScanStore.snapshot.collect { snapshot ->
+                if (snapshot == null) return@collect
+                val current = _scan.value
+                if (!current.visible || current.stage != ScanStage.ARMING) return@collect
+                _scan.value = current.copy(
+                    stage = ScanStage.REVIEW,
+                    snapshot = snapshot,
+                    transcript = snapshot.transcript,
+                    name = current.targetPerson?.displayName
+                        ?.takeIf { it.isNotBlank() }
+                        ?: snapshot.nameGuess,
+                    error = null,
+                    busy = false
+                )
+                ScanNotifier.cancel(getApplication())
+            }
+        }
+        viewModelScope.launch {
+            ScanStore.connected.collect { connected ->
+                if (_scan.value.serviceConnected != connected) {
+                    _scan.value = _scan.value.copy(serviceConnected = connected)
+                }
+            }
+        }
+    }
 
     fun selectPerson(id: Long?) {
         _selectedPersonId.value = id
+    }
+
+    fun consumeNotice() {
+        _notice.value = null
     }
 
     fun nextAvatarColor(): Long {
@@ -114,14 +191,20 @@ class WingmanViewModel(app: Application) : AndroidViewModel(app) {
             } else {
                 val saved = person.copy(updatedAt = now)
                 personDao.update(saved)
-                // Keep an existing profile in sync with the details that feed it.
+                // Keep an existing notes profile in sync with the details that feed it.
                 val existing = personalityProfileDao.allForPerson(person.id).firstOrNull()
-                if (existing != null) {
+                if (existing != null && existing.lastTranscript.isBlank()) {
                     val refreshed = WingmanBrain.profileFor(
                         person = saved,
                         history = chatMessageDao.allForPerson(person.id),
                         profileId = existing.id
-                    ).copy(createdAt = existing.createdAt)
+                    ).copy(
+                        createdAt = existing.createdAt,
+                        greenFlags = existing.greenFlags,
+                        redFlags = existing.redFlags,
+                        signals = existing.signals,
+                        scanCount = existing.scanCount
+                    )
                     personalityProfileDao.update(refreshed)
                 }
             }
@@ -187,15 +270,214 @@ class WingmanViewModel(app: Application) : AndroidViewModel(app) {
                 person = person,
                 history = history,
                 profileId = existing?.id ?: 0L
-            ).let { generated ->
-                // Keep the original creation time so "updated" means updated.
-                if (existing == null) generated else generated.copy(createdAt = existing.createdAt)
+            ).let { profile ->
+                if (existing == null) {
+                    profile
+                } else {
+                    profile.copy(
+                        createdAt = existing.createdAt,
+                        lastTranscript = existing.lastTranscript,
+                        scanCount = existing.scanCount,
+                        greenFlags = existing.greenFlags,
+                        redFlags = existing.redFlags,
+                        signals = existing.signals
+                    )
+                }
             }
             if (existing == null) {
                 personalityProfileDao.insert(generated)
             } else {
                 personalityProfileDao.update(generated)
             }
+            _notice.value = "Profile rebuilt from your notes"
+        }
+    }
+
+    // ---- Screen scan -------------------------------------------------------
+
+    fun openScan(person: Person?) {
+        scanJob?.cancel()
+        ScanStore.clearSnapshot()
+        ScanStore.arm()
+        ScanNotifier.armed(getApplication())
+        _scan.value = ScanSession(
+            visible = true,
+            stage = ScanStage.ARMING,
+            targetPerson = person,
+            name = person?.displayName.orEmpty(),
+            serviceConnected = ScanStore.connected.value
+        )
+    }
+
+    fun closeScan() {
+        scanJob?.cancel()
+        ScanStore.disarm()
+        ScanNotifier.cancel(getApplication())
+        _scan.value = ScanSession(serviceConnected = ScanStore.connected.value)
+    }
+
+    /** Switch to the editable review step without a capture. */
+    fun reviewManually(text: String) {
+        ScanStore.disarm()
+        ScanNotifier.cancel(getApplication())
+        _scan.value = _scan.value.copy(
+            visible = true,
+            stage = ScanStage.REVIEW,
+            transcript = text,
+            snapshot = null,
+            analysis = null,
+            error = null,
+            busy = false
+        )
+    }
+
+    /** Use the last capture again, for example after accidentally closing review. */
+    fun reviewCapturedSnapshot() {
+        val snapshot = ScanStore.snapshot.value ?: return
+        _scan.value = _scan.value.copy(
+            visible = true,
+            stage = ScanStage.REVIEW,
+            snapshot = snapshot,
+            transcript = snapshot.transcript,
+            name = _scan.value.name.ifBlank { snapshot.nameGuess },
+            error = null
+        )
+    }
+
+    fun updateTranscript(text: String) {
+        _scan.value = _scan.value.copy(transcript = text, error = null)
+    }
+
+    fun updateScanName(name: String) {
+        _scan.value = _scan.value.copy(name = name, error = null)
+    }
+
+    fun analyzeScan() {
+        val session = _scan.value
+        val lines = ReplyCoach.parseTranscript(session.transcript)
+            .filter { it.text.isNotBlank() }
+        if (lines.isEmpty()) {
+            _scan.value = session.copy(error = "There is no chat text to analyse yet.")
+            return
+        }
+        if (lines.size == 1 && lines.single().text.length < 8) {
+            _scan.value = session.copy(error = "That is only one short line. Capture a bit more of the chat.")
+            return
+        }
+
+        scanJob?.cancel()
+        _scan.value = session.copy(busy = true, error = null, stage = ScanStage.REVIEW)
+        val config = coachConfig.value
+        scanJob = viewModelScope.launch {
+            try {
+                val analysis = if (config.isReady) {
+                    aiFactory(config).analyze(
+                        appLabel = session.snapshot?.appLabel.orEmpty().ifBlank { "chat" },
+                        personName = session.name.trim().ifBlank { null },
+                        transcript = lines,
+                        theirStyle = session.targetPerson?.communicationStyle.orEmpty(),
+                        myVoice = config.myVoice
+                    )
+                } else {
+                    LocalWingman.analyze(
+                        personName = session.name,
+                        transcript = lines,
+                        theirStyle = session.targetPerson?.communicationStyle.orEmpty()
+                    ).copy(notice = "No AI key for that provider, so this read is on-device.")
+                }
+                _scan.value = _scan.value.copy(
+                    stage = ScanStage.RESULT,
+                    analysis = analysis,
+                    busy = false,
+                    error = null
+                )
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                _scan.value = _scan.value.copy(
+                    busy = false,
+                    error = e.message ?: "The analysis failed. Try again."
+                )
+            }
+        }
+    }
+
+    fun saveScanResult() {
+        val session = _scan.value
+        val analysis = session.analysis ?: return
+        val draft = analysis.person
+        val name = session.name.trim().ifBlank { draft.name.trim() }
+        if (name.isBlank() && session.targetPerson == null) {
+            _scan.value = session.copy(error = "Add their name before saving the profile.")
+            return
+        }
+
+        viewModelScope.launch {
+            val now = System.currentTimeMillis()
+            val existing = session.targetPerson
+            val personId: Long
+            if (existing == null) {
+                personId = personDao.insert(
+                    Person(
+                        displayName = name,
+                        discordHandle = "",
+                        avatarColor = nextAvatarColor(),
+                        interests = draft.interests,
+                        vibe = draft.vibe,
+                        communicationStyle = draft.communicationStyle,
+                        lastScanAt = now,
+                        createdAt = now,
+                        updatedAt = now
+                    )
+                )
+            } else {
+                personDao.update(
+                    existing.copy(
+                        displayName = name.ifBlank { existing.displayName },
+                        interests = draft.interests.ifBlank { existing.interests },
+                        vibe = draft.vibe.ifBlank { existing.vibe },
+                        communicationStyle = draft.communicationStyle.ifBlank { existing.communicationStyle },
+                        lastScanAt = now,
+                        updatedAt = now
+                    )
+                )
+                personId = existing.id
+            }
+
+            val previous = personalityProfileDao.allForPerson(personId).firstOrNull()
+            val profile = PersonalityProfile(
+                id = previous?.id ?: 0L,
+                personId = personId,
+                summary = draft.summary.ifBlank {
+                    previous?.summary ?: "Profile built from a captured chat."
+                },
+                vibe = draft.vibe.ifBlank { previous?.vibe.orEmpty() },
+                interests = draft.interests.ifBlank { previous?.interests.orEmpty() },
+                communicationStyle = draft.communicationStyle.ifBlank {
+                    previous?.communicationStyle.orEmpty()
+                },
+                confidence = draft.confidence,
+                suggestedOpener = draft.opener.ifBlank { previous?.suggestedOpener.orEmpty() },
+                greenFlags = draft.greenFlags,
+                redFlags = draft.redFlags,
+                signals = analysis.coach.signals,
+                source = analysis.source.label,
+                lastTranscript = session.transcript.take(6_000),
+                scanCount = (previous?.scanCount ?: 0) + 1,
+                createdAt = previous?.createdAt ?: now,
+                updatedAt = now
+            )
+
+            if (previous == null) {
+                personalityProfileDao.insert(profile)
+            } else {
+                personalityProfileDao.update(profile)
+            }
+
+            _selectedPersonId.value = personId
+            val savedName = name.ifBlank { existing?.displayName.orEmpty() }.ifBlank { "their" }
+            _notice.value = "Saved $savedName's profile"
+            closeScan()
         }
     }
 
@@ -215,11 +497,13 @@ class WingmanViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     fun closeCoach() {
+        coachJob?.cancel()
         _showCoach.value = false
     }
 
     fun saveCoachConfig(config: CoachConfig) {
         coachSettings.save(config)
+        _aiTest.value = AiTestState()
     }
 
     fun clearCoachKey() {
@@ -228,17 +512,13 @@ class WingmanViewModel(app: Application) : AndroidViewModel(app) {
 
     /**
      * Sends the transcript to the configured provider. Only the transcript and
-     * the two style notes travel; the name, handle and private notes stay here.
+     * the style notes travel; the name, handle and private notes stay here.
      */
     fun askCoach(lines: List<CoachLine>) {
         val person = selectedPerson.value ?: return
         val config = coachConfig.value
         val cleaned = lines.filter { it.text.isNotBlank() }
 
-        if (!config.isReady) {
-            _coachState.value = CoachUiState.Failed("Add your API key first, then try again.")
-            return
-        }
         if (cleaned.isEmpty()) {
             _coachState.value = CoachUiState.Failed("Add what was said, then ask again.")
             return
@@ -248,12 +528,18 @@ class WingmanViewModel(app: Application) : AndroidViewModel(app) {
         _coachState.value = CoachUiState.Loading
         coachJob = viewModelScope.launch {
             try {
-                val reply = engineFactory(config).suggest(
-                    lines = cleaned,
-                    theirStyle = person.communicationStyle,
-                    myVoice = config.myVoice,
-                    paused = !person.consentStatus.allowsContact
-                )
+                val reply = if (config.isReady) {
+                    aiFactory(config).suggest(
+                        lines = cleaned,
+                        theirStyle = person.communicationStyle,
+                        myVoice = config.myVoice,
+                        paused = !person.consentStatus.allowsContact
+                    )
+                } else {
+                    LocalWingman.suggest(cleaned).copy(
+                        notice = "No AI key for that provider, so this read is on-device."
+                    )
+                }
                 _coachState.value = CoachUiState.Ready(reply)
             } catch (e: CancellationException) {
                 throw e
@@ -267,8 +553,41 @@ class WingmanViewModel(app: Application) : AndroidViewModel(app) {
         }
     }
 
+    // ---- AI settings -------------------------------------------------------
+
+    private val _aiTest = MutableStateFlow(AiTestState())
+    val aiTest: StateFlow<AiTestState> = _aiTest.asStateFlow()
+
+    fun testAi(config: CoachConfig) {
+        if (!config.isReady) {
+            _aiTest.value = AiTestState(
+                message = if (config.provider.requiresKey) {
+                    "Add a free ${config.provider.shortLabel} key first."
+                } else {
+                    "Check the base URL and model."
+                }
+            )
+            return
+        }
+        _aiTest.value = AiTestState(running = true)
+        viewModelScope.launch {
+            try {
+                val model = RemoteAi(config).test()
+                _aiTest.value = AiTestState(
+                    ok = true,
+                    message = "Working. ${config.provider.shortLabel} answered as $model."
+                )
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                _aiTest.value = AiTestState(message = e.message ?: "The test failed.")
+            }
+        }
+    }
+
     override fun onCleared() {
         coachJob?.cancel()
+        scanJob?.cancel()
         super.onCleared()
     }
 
@@ -281,4 +600,12 @@ class WingmanViewModel(app: Application) : AndroidViewModel(app) {
         val messages: List<ChatMessage>,
         val profiles: List<PersonalityProfile>
     )
+
+    companion object {
+        fun formatScanTime(value: Long): String {
+            if (value <= 0L) return "never"
+            val format = SimpleDateFormat("d MMM, HH:mm", Locale.getDefault())
+            return format.format(Date(value))
+        }
+    }
 }

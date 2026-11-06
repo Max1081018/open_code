@@ -189,13 +189,50 @@ class ReplyCoachTest {
     // ---- config -------------------------------------------------------------
 
     @Test
-    fun `config is only ready with a key, url and model`() {
-        val empty = CoachConfig()
-        assertTrue(!empty.isReady)
+    fun `free provider is ready without a key`() {
+        val free = CoachConfig()
+        assertTrue(free.isReady)
+        assertEquals(AiProvider.FREE, free.provider)
+    }
 
-        assertTrue(empty.copy(apiKey = "sk-test").isReady)
-        assertTrue(!empty.copy(apiKey = "sk-test", model = " ").isReady)
-        assertTrue(!empty.copy(apiKey = "sk-test", baseUrl = "").isReady)
+    @Test
+    fun `keyed providers are not ready until a key is added`() {
+        assertTrue(!CoachConfig(provider = AiProvider.GEMINI).isReady)
+        assertTrue(!CoachConfig(provider = AiProvider.GROQ).isReady)
+        assertTrue(!CoachConfig(provider = AiProvider.OPENROUTER).isReady)
+    }
+
+    @Test
+    fun `custom endpoint can be ready with key and model`() {
+        val custom = CoachConfig(
+            provider = AiProvider.CUSTOM,
+            apiKey = "sk-test",
+            baseUrl = "https://api.openai.com/v1",
+            model = "gpt-4o-mini"
+        )
+        assertTrue(custom.isReady)
+    }
+
+    @Test
+    fun `empty base url or model keeps the config not ready`() {
+        val broken = CoachConfig().copy(baseUrl = "", model = " ")
+        assertTrue(!broken.isReady)
+    }
+
+    @Test
+    fun `endpoint appends the chat completions path`() {
+        assertEquals(
+            "https://text.pollinations.ai/openai",
+            CoachConfig.endpointFor(AiProvider.FREE.baseUrl, AiProvider.FREE)
+        )
+        assertEquals(
+            "https://api.groq.com/openai/v1/chat/completions",
+            CoachConfig.endpointFor("https://api.groq.com/openai/v1", AiProvider.GROQ)
+        )
+        assertEquals(
+            "https://api.openai.com/v1/chat/completions",
+            CoachConfig.endpointFor("https://api.openai.com/v1/", AiProvider.CUSTOM)
+        )
     }
 
     @Test

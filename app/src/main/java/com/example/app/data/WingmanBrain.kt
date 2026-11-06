@@ -33,6 +33,7 @@ object WingmanBrain {
             communicationStyle = style.ifBlank { "Unknown" },
             confidence = confidence(person, history),
             suggestedOpener = opener(name, interests, style, history.size),
+            source = "Notes (on-device)",
             createdAt = now,
             updatedAt = now
         )

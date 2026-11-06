@@ -30,12 +30,13 @@ class CoachSettings(context: Context) {
     fun save(updated: CoachConfig) {
         val cleaned = updated.copy(
             apiKey = updated.apiKey.trim(),
-            baseUrl = updated.baseUrl.trim().trimEnd('/').ifBlank { CoachConfig.DEFAULT_BASE_URL },
-            model = updated.model.trim().ifBlank { CoachConfig.DEFAULT_MODEL },
+            baseUrl = updated.baseUrl.trim().trimEnd('/').ifBlank { updated.provider.baseUrl },
+            model = updated.model.trim().ifBlank { updated.provider.model },
             myVoice = updated.myVoice.trim()
         )
         _config.value = cleaned
         prefs?.edit()
+            ?.putString(KEY_PROVIDER, cleaned.provider.name)
             ?.putString(KEY_API, cleaned.apiKey)
             ?.putString(KEY_BASE_URL, cleaned.baseUrl)
             ?.putString(KEY_MODEL, cleaned.model)
@@ -48,19 +49,30 @@ class CoachSettings(context: Context) {
         _config.value = _config.value.copy(apiKey = "")
     }
 
-    private fun read(from: SharedPreferences): CoachConfig = CoachConfig(
-        apiKey = from.getString(KEY_API, "").orEmpty(),
-        baseUrl = from.getString(KEY_BASE_URL, CoachConfig.DEFAULT_BASE_URL)
-            .orEmpty()
-            .ifBlank { CoachConfig.DEFAULT_BASE_URL },
-        model = from.getString(KEY_MODEL, CoachConfig.DEFAULT_MODEL)
-            .orEmpty()
-            .ifBlank { CoachConfig.DEFAULT_MODEL },
-        myVoice = from.getString(KEY_VOICE, "").orEmpty()
-    )
+    private fun read(from: SharedPreferences): CoachConfig {
+        val savedProvider = from.getString(KEY_PROVIDER, null)
+        val savedBaseUrl = from.getString(KEY_BASE_URL, "").orEmpty()
+        val savedModel = from.getString(KEY_MODEL, "").orEmpty()
+
+        val provider = when {
+            savedProvider != null -> AiProvider.fromName(savedProvider)
+            savedBaseUrl.isBlank() -> AiProvider.FREE
+            savedBaseUrl.trimEnd('/') == AiProvider.FREE.baseUrl.trimEnd('/') -> AiProvider.FREE
+            else -> AiProvider.CUSTOM
+        }
+
+        return CoachConfig(
+            provider = provider,
+            apiKey = from.getString(KEY_API, "").orEmpty(),
+            baseUrl = savedBaseUrl.ifBlank { provider.baseUrl },
+            model = savedModel.ifBlank { provider.model },
+            myVoice = from.getString(KEY_VOICE, "").orEmpty()
+        )
+    }
 
     private companion object {
         const val FILE = "wingman_coach_secure"
+        const val KEY_PROVIDER = "provider"
         const val KEY_API = "api_key"
         const val KEY_BASE_URL = "base_url"
         const val KEY_MODEL = "model"

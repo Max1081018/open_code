@@ -2,6 +2,9 @@
 
 package com.example.app.ui
 
+import android.content.ClipData
+import android.content.ClipboardManager
+import android.content.Context
 import android.widget.Toast
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
@@ -47,8 +50,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.input.PasswordVisualTransformation
-import androidx.compose.ui.text.input.VisualTransformation
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
@@ -187,9 +189,9 @@ fun CoachDialog(
                                 onDismiss()
                             },
                             onCopy = { text ->
-                                val clipboard = context.getSystemService(android.content.ClipboardManager::class.java)
+                                val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as? ClipboardManager
                                 clipboard?.setPrimaryClip(
-                                    android.content.ClipData.newPlainText("reply", text)
+                                    ClipData.newPlainText("reply", text)
                                 )
                                 Toast.makeText(context, "Copied", Toast.LENGTH_SHORT).show()
                             }
@@ -228,19 +230,9 @@ fun CoachDialog(
     }
 
     if (showSettings) {
-        CoachSettingsDialog(
-            config = config,
-            personStyle = person.communicationStyle,
-            persistent = vm.coachStoragePersistent,
-            onDismiss = { showSettings = false },
-            onSave = { updated ->
-                vm.saveCoachConfig(updated)
-                showSettings = false
-            },
-            onClearKey = {
-                vm.clearCoachKey()
-                showSettings = false
-            }
+        AiSettingsDialog(
+            vm = vm,
+            onDismiss = { showSettings = false }
         )
     }
 }
@@ -263,9 +255,9 @@ private fun SetupPrompt(onOpenSettings: () -> Unit) {
                 color = MaterialTheme.colorScheme.onPrimaryContainer
             )
             Text(
-                text = "The coach needs your own API key. It goes in encrypted storage on this " +
-                    "phone, is used only when you press the button, and nothing about your " +
-                    "friends is uploaded unless you ask for a reply.",
+                text = "The coach needs a working model. The free one needs no key and works out of " +
+                    "the box; it runs on a shared queue so the first reply can take a while. Add a " +
+                    "free Gemini or Groq key for a faster read.",
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onPrimaryContainer
             )
@@ -406,145 +398,6 @@ private fun SuggestionCard(
                     Text("Use")
                 }
                 OutlinedButton(onClick = onCopy) { Text("Copy") }
-            }
-        }
-    }
-}
-
-@Composable
-private fun CoachSettingsDialog(
-    config: CoachConfig,
-    personStyle: String,
-    persistent: Boolean,
-    onDismiss: () -> Unit,
-    onSave: (CoachConfig) -> Unit,
-    onClearKey: () -> Unit
-) {
-    var apiKey by remember { mutableStateOf(config.apiKey) }
-    var baseUrl by remember { mutableStateOf(config.baseUrl) }
-    var model by remember { mutableStateOf(config.model) }
-    var myVoice by remember { mutableStateOf(config.myVoice) }
-    var revealKey by remember { mutableStateOf(false) }
-
-    Dialog(onDismissRequest = onDismiss, properties = DialogProperties(usePlatformDefaultWidth = false)) {
-        Surface(
-            modifier = Modifier
-                .fillMaxWidth()
-                .fillMaxHeight(0.92f)
-                .padding(12.dp)
-                .imePadding(),
-            shape = RoundedCornerShape(24.dp),
-            tonalElevation = 6.dp
-        ) {
-            Column(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .verticalScroll(rememberScrollState())
-                    .padding(20.dp),
-                verticalArrangement = Arrangement.spacedBy(14.dp)
-            ) {
-                Text(
-                    text = "Coach settings",
-                    style = MaterialTheme.typography.headlineSmall,
-                    fontWeight = FontWeight.SemiBold
-                )
-
-                OutlinedTextField(
-                    value = apiKey,
-                    onValueChange = { apiKey = it },
-                    label = { Text("API key") },
-                    singleLine = true,
-                    modifier = Modifier.fillMaxWidth(),
-                    visualTransformation = if (revealKey) {
-                        VisualTransformation.None
-                    } else {
-                        PasswordVisualTransformation()
-                    },
-                    trailingIcon = {
-                        TextButton(onClick = { revealKey = !revealKey }) {
-                            Text(if (revealKey) "Hide" else "Show")
-                        }
-                    },
-                    supportingText = {
-                        Text("Stored encrypted on this phone. Never leaves it except in the request itself.")
-                    }
-                )
-
-                if (!persistent) {
-                    Text(
-                        text = "Secure storage is unavailable on this device, so the key is kept " +
-                            "only until you close the app.",
-                        style = MaterialTheme.typography.labelSmall,
-                        color = MaterialTheme.colorScheme.error
-                    )
-                }
-
-                OutlinedTextField(
-                    value = baseUrl,
-                    onValueChange = { baseUrl = it },
-                    label = { Text("Base URL") },
-                    singleLine = true,
-                    modifier = Modifier.fillMaxWidth(),
-                    supportingText = {
-                        Text("Must be https. Any OpenAI-compatible endpoint works.")
-                    }
-                )
-
-                OutlinedTextField(
-                    value = model,
-                    onValueChange = { model = it },
-                    label = { Text("Model") },
-                    singleLine = true,
-                    modifier = Modifier.fillMaxWidth(),
-                    supportingText = {
-                        Text("For example ${CoachConfig.DEFAULT_MODEL} or another chat model.")
-                    }
-                )
-
-                OutlinedTextField(
-                    value = myVoice,
-                    onValueChange = { myVoice = it },
-                    label = { Text("How you text") },
-                    minLines = 2,
-                    maxLines = 4,
-                    modifier = Modifier.fillMaxWidth(),
-                    supportingText = {
-                        Text("Lowercase, short, no emoji, a bit dry — whatever you actually sound like.")
-                    }
-                )
-
-                if (personStyle.isNotBlank()) {
-                    Text(
-                        text = "Their style comes from their profile: \"$personStyle\"",
-                        style = MaterialTheme.typography.labelSmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
-                }
-
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.End,
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    if (config.apiKey.isNotBlank()) {
-                        TextButton(onClick = onClearKey) { Text("Remove key") }
-                        Spacer(modifier = Modifier.width(4.dp))
-                    }
-                    TextButton(onClick = onDismiss) { Text("Cancel") }
-                    Spacer(modifier = Modifier.width(4.dp))
-                    Button(
-                        onClick = {
-                            onSave(
-                                config.copy(
-                                    apiKey = apiKey,
-                                    baseUrl = baseUrl,
-                                    model = model,
-                                    myVoice = myVoice
-                                )
-                            )
-                        }
-                    ) { Text("Save") }
-                }
             }
         }
     }

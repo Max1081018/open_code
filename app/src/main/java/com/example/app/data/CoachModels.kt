@@ -6,6 +6,7 @@ import org.json.JSONObject
 
 /** One line of the chat as it will be handed to the coach. */
 data class CoachLine(val fromMe: Boolean, val text: String)
+
 /** One suggested reply, with the reasoning behind it. */
 data class CoachSuggestion(
     val text: String,
@@ -13,30 +14,122 @@ data class CoachSuggestion(
     val style: String
 )
 
+/** Where a result came from, so the UI never pretends offline output is AI output. */
+enum class ReplySource(val label: String) {
+    ONLINE("AI"),
+    OFFLINE("On-device")
+}
+
 /** Everything the coach returns for one request. */
 data class CoachReply(
     val read: String,
     val signals: List<String>,
     val suggestions: List<CoachSuggestion>,
-    val caution: String = ""
+    val caution: String = "",
+    val source: ReplySource = ReplySource.ONLINE,
+    val notice: String = ""
 )
 
 /** A failure we can show the user verbatim. */
 class CoachException(message: String, cause: Throwable? = null) : Exception(message, cause)
 
+/** The free tier is busy. [retryAfterSeconds] is the provider's own number. */
+class RateLimitException(
+    val retryAfterSeconds: Long,
+    message: String
+) : CoachException(message)
+
 /**
- * Where the coach sends its request. Any OpenAI-compatible endpoint works, so the
- * user can point this at OpenAI, OpenRouter, Groq or their own server.
+ * A free, no-signup provider that speaks the OpenAI chat-completions protocol.
+ * Every provider below uses the same request shape, which keeps [RemoteAi] small.
+ */
+enum class AiProvider(
+    val label: String,
+    val shortLabel: String,
+    val baseUrl: String,
+    val model: String,
+    val requiresKey: Boolean,
+    val hint: String,
+    val keyUrl: String,
+    val fallbackModels: List<String>
+) {
+    FREE(
+        label = "Free AI (no key)",
+        shortLabel = "Free",
+        baseUrl = "https://text.pollinations.ai/openai",
+        model = "openai",
+        requiresKey = false,
+        hint = "Works out of the box. It is a shared free queue, so it allows about one request every 30 seconds. For instant replies, add a free Gemini or Groq key.",
+        keyUrl = "https://enter.pollinations.ai",
+        fallbackModels = listOf("openai", "openai-fast", "gpt-oss-20b")
+    ),
+    GEMINI(
+        label = "Gemini (free key)",
+        shortLabel = "Gemini",
+        baseUrl = "https://generativelanguage.googleapis.com/v1beta/openai",
+        model = "gemini-flash-latest",
+        requiresKey = true,
+        hint = "Free key from Google AI Studio. Fast, generous free tier, no card.",
+        keyUrl = "https://aistudio.google.com/app/apikey",
+        fallbackModels = listOf("gemini-flash-latest", "gemini-2.5-flash", "gemini-2.0-flash")
+    ),
+    GROQ(
+        label = "Groq (free key)",
+        shortLabel = "Groq",
+        baseUrl = "https://api.groq.com/openai/v1",
+        model = "llama-3.3-70b-versatile",
+        requiresKey = true,
+        hint = "Free key from Groq. The fastest option here.",
+        keyUrl = "https://console.groq.com/keys",
+        fallbackModels = listOf("llama-3.3-70b-versatile", "llama-3.1-8b-instant", "openai/gpt-oss-20b")
+    ),
+    OPENROUTER(
+        label = "OpenRouter (free key)",
+        shortLabel = "OpenRouter",
+        baseUrl = "https://openrouter.ai/api/v1",
+        model = "meta-llama/llama-3.3-70b-instruct:free",
+        requiresKey = true,
+        hint = "Free key from OpenRouter. Free model names change, so the app tries several.",
+        keyUrl = "https://openrouter.ai/keys",
+        fallbackModels = listOf(
+            "meta-llama/llama-3.3-70b-instruct:free",
+            "qwen/qwen-2.5-72b-instruct:free",
+            "google/gemma-2-9b-it:free"
+        )
+    ),
+    CUSTOM(
+        label = "Custom endpoint",
+        shortLabel = "Custom",
+        baseUrl = "https://api.openai.com/v1",
+        model = "gpt-4o-mini",
+        requiresKey = true,
+        hint = "Any OpenAI-compatible /chat/completions endpoint.",
+        keyUrl = "",
+        fallbackModels = emptyList()
+    );
+
+    companion object {
+        fun fromName(name: String?): AiProvider =
+            values().firstOrNull { it.name == name } ?: FREE
+    }
+}
+
+/**
+ * Where the coach sends its request. The default needs no key, so a fresh
+ * install can produce a reply immediately.
  */
 data class CoachConfig(
+    val provider: AiProvider = AiProvider.FREE,
     val apiKey: String = "",
-    val baseUrl: String = DEFAULT_BASE_URL,
-    val model: String = DEFAULT_MODEL,
+    val baseUrl: String = AiProvider.FREE.baseUrl,
+    val model: String = AiProvider.FREE.model,
     /** How the user texts, in their own words. Sent with every request. */
     val myVoice: String = ""
 ) {
     val isReady: Boolean
-        get() = apiKey.isNotBlank() && baseUrl.isNotBlank() && model.isNotBlank()
+        get() = baseUrl.isNotBlank() &&
+            model.isNotBlank() &&
+            (!provider.requiresKey || apiKey.isNotBlank())
 
     /** What to show in the UI: "••••4f2a", never the whole key. */
     val maskedKey: String
@@ -45,9 +138,45 @@ data class CoachConfig(
             else -> "••••" + apiKey.takeLast(4)
         }
 
+    /** Models to try, in order, so a renamed model does not become a 404 dead end. */
+    val modelCandidates: List<String>
+        get() = (listOf(model.trim()) + provider.fallbackModels)
+            .filter { it.isNotBlank() }
+            .distinct()
+
+    val endpoint: String
+        get() = endpointFor(baseUrl, provider)
+
     companion object {
-        const val DEFAULT_BASE_URL = "https://api.openai.com/v1"
-        const val DEFAULT_MODEL = "gpt-4o-mini"
+        const val DEFAULT_BASE_URL = "https://text.pollinations.ai/openai"
+        const val DEFAULT_MODEL = "openai"
+
+        fun forProvider(provider: AiProvider, apiKey: String = ""): CoachConfig =
+            CoachConfig(
+                provider = provider,
+                apiKey = apiKey,
+                baseUrl = provider.baseUrl,
+                model = provider.model
+            )
+
+        /**
+         * Free mode lives at /openai on Pollinations. Everything else is a
+         * standard /chat/completions base URL. A user who pastes the full
+         * endpoint is left alone.
+         */
+        fun endpointFor(rawBaseUrl: String, provider: AiProvider): String {
+            val base = rawBaseUrl.trim().trimEnd('/')
+            if (base.isEmpty()) throw CoachException("The base URL is empty. Check AI settings.")
+            if (!base.startsWith("https://")) {
+                throw CoachException("The base URL must start with https://")
+            }
+            return when {
+                base.endsWith("/chat/completions") -> base
+                provider == AiProvider.FREE && base.endsWith("/openai") -> base
+                provider == AiProvider.FREE -> "$base/openai"
+                else -> "$base/chat/completions"
+            }
+        }
     }
 }
 
@@ -55,7 +184,7 @@ data class CoachConfig(
  * The prompt and the parser for the reply coach.
  *
  * This file is deliberately free of Android imports so it can be unit tested on
- * the JVM. It knows nothing about HTTP; see [OpenAiReplyEngine] for that.
+ * the JVM. It knows nothing about HTTP; see [RemoteAi] for that.
  */
 object ReplyCoach {
 
@@ -71,7 +200,7 @@ You are a conversation coach. The user finds online chats hard to keep going and
 
 You receive the last part of a chat, oldest first. Lines beginning "ME:" are his. Lines beginning "THEM:" are theirs. You may also receive notes on how each of them writes.
 
-Return four things.
+Think silently. Return one JSON object and nothing else.
 
 1. "read": two to four sentences on what is actually happening. Their interest, energy and tone. Whether they are warm, polite, busy, or fading. What they seem to want from this conversation. If they are not interested, say it plainly instead of being encouraging.
 
@@ -96,7 +225,7 @@ Hard rules.
 - If the chat is one-sided or dead, do not manufacture cleverness. Say so in "read" and "caution".
 - Never mention coaching, this app, or that he is being advised.
 
-Reply with JSON only, no prose and no code fence, exactly this shape:
+Return JSON only, no prose and no code fence, exactly this shape:
 {"read": "...", "signals": ["...", "..."], "replies": [{"style": "curious", "text": "...", "why": "..."}, {"style": "playful", "text": "...", "why": "..."}, {"style": "direct", "text": "...", "why": "..."}], "caution": "..."}
 """.trim()
 
@@ -117,6 +246,8 @@ Reply with JSON only, no prose and no code fence, exactly this shape:
                     lower.startsWith("them:") -> CoachLine(false, line.drop(5).trim())
                     lower.startsWith("her:") -> CoachLine(false, line.drop(4).trim())
                     lower.startsWith("she:") -> CoachLine(false, line.drop(4).trim())
+                    lower.startsWith("he:") -> CoachLine(false, line.drop(3).trim())
+                    lower.startsWith("him:") -> CoachLine(false, line.drop(4).trim())
                     else -> CoachLine(false, line)
                 }
             }
@@ -187,7 +318,11 @@ Reply with JSON only, no prose and no code fence, exactly this shape:
         } catch (e: JSONException) {
             throw CoachException("The coach replied in a format the app could not read.", e)
         }
+        return parse(root)
+    }
 
+    /** Parses an already-decoded object. Shared with the screen-analysis parser. */
+    fun parse(root: JSONObject): CoachReply {
         val read = root.optString("read").trim()
         val signals = root.optJSONArray("signals").stringList()
         val rawReplies = root.optJSONArray("replies") ?: root.optJSONArray("suggestions")
@@ -216,7 +351,8 @@ Reply with JSON only, no prose and no code fence, exactly this shape:
         )
     }
 
-    private fun extractJsonObject(raw: String): String? {
+    /** Exposed so [AnalysisParser] can decode one provider response once. */
+    fun extractJsonObject(raw: String): String? {
         val start = raw.indexOf('{')
         val end = raw.lastIndexOf('}')
         if (start < 0 || end <= start) return null

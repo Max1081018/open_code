@@ -1,5 +1,6 @@
 package com.example.app.data
 
+import androidx.room.ColumnInfo
 import androidx.room.Entity
 import androidx.room.PrimaryKey
 
@@ -14,6 +15,7 @@ data class Person(
     val communicationStyle: String = "",
     val notes: String = "",
     val consentStatus: ConsentStatus = ConsentStatus.NOT_STARTED,
+    @ColumnInfo(defaultValue = "0") val lastScanAt: Long = 0L,
     val createdAt: Long = System.currentTimeMillis(),
     val updatedAt: Long = System.currentTimeMillis()
 ) {

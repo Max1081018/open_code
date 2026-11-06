@@ -1,5 +1,6 @@
 package com.example.app.data
 
+import androidx.room.ColumnInfo
 import androidx.room.Entity
 import androidx.room.ForeignKey
 import androidx.room.Index
@@ -26,6 +27,12 @@ data class PersonalityProfile(
     val communicationStyle: String,
     val confidence: Float,
     val suggestedOpener: String,
+    @ColumnInfo(defaultValue = "''") val greenFlags: List<String> = emptyList(),
+    @ColumnInfo(defaultValue = "''") val redFlags: List<String> = emptyList(),
+    @ColumnInfo(defaultValue = "''") val signals: List<String> = emptyList(),
+    @ColumnInfo(defaultValue = "''") val source: String = "",
+    @ColumnInfo(defaultValue = "''") val lastTranscript: String = "",
+    @ColumnInfo(defaultValue = "0") val scanCount: Int = 0,
     val createdAt: Long = System.currentTimeMillis(),
     val updatedAt: Long = System.currentTimeMillis()
 )
