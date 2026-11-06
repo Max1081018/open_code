@@ -47,6 +47,20 @@ class MainActivity : ComponentActivity() {
             }
         }
 
+        // Auto-start the floating bubble so the screen-watch icon is always
+        // available on top of Discord/DMs without the user doing anything.
+        if (FloatingScanService.isOverlayEnabled(this)) {
+            val intent = Intent(this, FloatingScanService::class.java).apply {
+                action = "ACTION_SHOW_BUBBLE"
+            }
+            startService(intent)
+        } else {
+            overlayPermission.launch(Intent(
+                android.provider.Settings.ACTION_MANAGE_OVERLAY_PERMISSION,
+                android.net.Uri.parse("package:$packageName")
+            ))
+        }
+
         // If launched from the floating bubble, arm a scan immediately.
         val floatingScan = intent.getBooleanExtra("FLOATING_SCAN", false)
 

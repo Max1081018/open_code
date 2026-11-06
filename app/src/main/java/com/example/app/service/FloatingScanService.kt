@@ -11,19 +11,17 @@ import android.view.MotionEvent
 import android.view.View
 import android.view.WindowManager
 import android.widget.ImageView
-import androidx.core.content.ContextCompat
+import android.widget.TextView
 import com.example.app.R
 import com.example.app.data.ScanStore
-import com.example.app.ui.WingmanViewModel
 
 /**
  * A persistent floating bubble that lives on top of every app (including Discord
- * DMs). Tapping it arms a Wingman scan so the user can read the chat they are
- * currently looking at without leaving the app.
+ * DMs). Tapping it toggles screen watching on/off. When watching, Wingman reads
+ * the visible chat and suggests one reply. Tapping again stops watching.
  *
- * Requires SYSTEM_ALERT_WINDOW, which the user grants in Settings › Special app
- * access › Display over other apps. Wingman asks for it the first time the
- * floating bubble is enabled.
+ * Requires SYSTEM_ALERT_WINDOW, granted in Settings › Special app access ›
+ * Display over other apps. The app requests this automatically on launch.
  */
 class FloatingScanService : Service() {
 
@@ -34,10 +32,9 @@ class FloatingScanService : Service() {
     override fun onBind(intent: Intent?): IBinder? = null
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
-        if (intent?.action == "ACTION_SHOW_BUBBLE") {
-            showBubble()
-        } else if (intent?.action == "ACTION_HIDE_BUBBLE") {
-            hideBubble()
+        when (intent?.action) {
+            "ACTION_SHOW_BUBBLE" -> showBubble()
+            "ACTION_HIDE_BUBBLE" -> hideBubble()
         }
         return START_NOT_STICKY
     }
@@ -53,12 +50,27 @@ class FloatingScanService : Service() {
 
         bubbleView = LayoutInflater.from(this).inflate(R.layout.floating_bubble, null)
         val icon: ImageView = bubbleView.findViewById(R.id.floating_bubble_icon)
+        val stateText: TextView = bubbleView.findViewById(R.id.floating_bubble_state)
 
-        // Draggable bubble.
+        updateBubbleVisuals(icon, stateText, watching = false)
+
         var initialX = 0f
         var initialY = 0f
         var initialTouchX = 0f
         var initialTouchY = 0f
+
+        val toggleWatcher = {
+            val currentlyArmed = ScanStore.armed.value
+            if (currentlyArmed) {
+                ScanStore.disarm()
+                updateBubbleVisuals(icon, stateText, watching = false)
+            } else {
+                ScanStore.arm()
+                updateBubbleVisuals(icon, stateText, watching = true)
+            }
+        }
+
+        // Draggable bubble.
         bubbleView.setOnTouchListener { _, event ->
             when (event.actionMasked) {
                 MotionEvent.ACTION_DOWN -> {
@@ -75,11 +87,10 @@ class FloatingScanService : Service() {
                     true
                 }
                 MotionEvent.ACTION_UP -> {
-                    // Short tap = arm a scan. Long drag = reposition.
                     val dx = Math.abs(event.rawX - initialTouchX)
                     val dy = Math.abs(event.rawY - initialTouchY)
                     if (dx < 12f && dy < 12f) {
-                        armScanFromBubble()
+                        toggleWatcher()
                     }
                     true
                 }
@@ -87,8 +98,8 @@ class FloatingScanService : Service() {
             }
         }
 
-        // Icon tap also arms a scan.
-        icon.setOnClickListener { armScanFromBubble() }
+        icon.setOnClickListener { toggleWatcher() }
+        stateText.setOnClickListener { toggleWatcher() }
 
         bubbleParams = WindowManager.LayoutParams(
             WindowManager.LayoutParams.WRAP_CONTENT,
@@ -117,14 +128,19 @@ class FloatingScanService : Service() {
         }
     }
 
-    /** Tells the UI layer to arm a scan, then brings Wingman to the front. */
-    private fun armScanFromBubble() {
-        ScanStore.arm()
-        val intent = Intent(this, com.example.app.MainActivity::class.java).apply {
-            flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP
-            putExtra("FLOATING_SCAN", true)
+    /** Updates the bubble colour/state text based on whether screen watching is active. */
+    private fun updateBubbleVisuals(icon: ImageView, stateText: TextView, watching: Boolean) {
+        if (watching) {
+            bubbleView.setBackgroundResource(R.drawable.floating_bubble_watching)
+            stateText.text = "WATCHING"
+            stateText.setTextColor(0xFFFFFFFF.toInt())
+            icon.setColorFilter(0xFFFFFFFF.toInt())
+        } else {
+            bubbleView.setBackgroundResource(R.drawable.floating_bubble_idle)
+            stateText.text = "SCAN"
+            stateText.setTextColor(0xFFFFFFFF.toInt())
+            icon.setColorFilter(0xFFFFFFFF.toInt())
         }
-        startActivity(intent)
     }
 
     companion object {

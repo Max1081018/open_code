@@ -34,8 +34,9 @@ data class ScanSnapshot(
  *
  * We cluster nodes by vertical proximity, treat the topmost short line of each
  * cluster as the sender name, and classify left-vs-right by horizontal centre.
- * Anything that cannot be confidently classified is still passed through so the
- * user can fix it in the editable review step.
+ *
+ * Bot/system messages are filtered out so only the person you're texting and
+ * your own messages reach the AI.
  */
 object ScreenTranscript {
 
@@ -54,6 +55,14 @@ object ScreenTranscript {
     private val PREFIX_CHROME = listOf(
         "message @", "message #", "type a message", "search for", "today at ",
         "yesterday at ", "new messages", "you are now", "this is the beginning"
+    )
+
+    /** Sender names that look like bots/system accounts — their messages are dropped. */
+    private val BOT_NAME_HINTS = setOf(
+        "clyde", "discord", "system", "bot", "webhook", "notification",
+        "automod", "groovy", "rhythm", "dyno", "mee6", "carl-bot", "probot",
+        "github", "travis", "circleci", "jenkins", "gitlab", "jira", "trello",
+        "admin", "moderator", "mod", "announcement"
     )
 
     /** Vertical gap (px) within which two text nodes belong to the same message cluster. */
@@ -91,15 +100,18 @@ object ScreenTranscript {
         // Cluster nodes into message groups by vertical proximity.
         val clusters = clusterNodes(cleaned, screenWidth)
 
+        // Detect bot/sender names so we can drop bot clusters entirely.
+        val botNames = detectBotNames(clusters, appLabel)
+
         val lines = clusters.flatMap { cluster ->
-            cluster.toCoachLines(screenWidth)
+            cluster.toCoachLines(screenWidth, botNames)
         }.filter { it.text.isNotEmpty() }
 
         return ScanSnapshot(
             packageName = packageName,
             appLabel = appLabel,
             lines = lines,
-            nameGuess = guessName(cleaned, height, appLabel)
+            nameGuess = guessName(cleaned, height, appLabel, botNames)
         )
     }
 
@@ -124,13 +136,48 @@ object ScreenTranscript {
     }
 
     /**
+     * Detects sender names that look like bots or system accounts.
+     * Returns the set of bot name prefixes to filter out.
+     */
+    private fun detectBotNames(clusters: List<List<CapturedText>>, appLabel: String): Set<String> {
+        val senderNames = clusters.flatMap { cluster ->
+            cluster.sortedBy { it.top }.firstOrNull { node ->
+                val height = node.bottom - node.top
+                node.text.length <= NAME_MAX_CHARS &&
+                    height <= NAME_MAX_HEIGHT_PX &&
+                    !TIME.matches(node.text) &&
+                    !SYSTEM_DATE.matches(node.text)
+            }?.text?.trim()
+        }.filter { it.isNotEmpty() }
+
+        return senderNames.asSequence()
+            .map { it.lowercase() }
+            .filter { name ->
+                // Known bot name hints.
+                BOT_NAME_HINTS.any { hint -> name.contains(hint) } ||
+                // Automated patterns: "Bot", "Bot #1234", "something-bot", etc.
+                name.contains("bot") ||
+                // Webhook/system patterns.
+                name.contains("webhook") ||
+                name.contains("system") ||
+                // Very short generic names that are likely bots.
+                name.length <= 3 ||
+                // Names that look like auto-generated IDs.
+                name.all { it.isDigit() || it == '-' || it == '_' }
+            }
+            .toSet()
+    }
+
+    /**
      * Converts a cluster of text nodes into CoachLine(s).
      *
      * The topmost short line in the cluster is treated as the sender name. The
      * remaining lines form the message body. Left-vs-right classification uses
      * the horizontal centre of the message body.
+     *
+     * If the sender name matches a known bot, the whole cluster is dropped.
      */
-    private fun List<CapturedText>.toCoachLines(screenWidth: Int): List<CoachLine> {
+    private fun List<CapturedText>.toCoachLines(screenWidth: Int, botNames: Set<String>): List<CoachLine> {
         if (isEmpty()) return emptyList()
 
         val sorted = sortedBy { it.top }.toMutableList()
@@ -153,6 +200,11 @@ object ScreenTranscript {
 
         val nameNode = if (nameIndex >= 0) sorted.removeAt(nameIndex) else null
         val bodyNodes = sorted
+
+        // Drop bot clusters entirely.
+        if (nameNode != null && botNames.contains(nameNode.text.trim().lowercase())) {
+            return emptyList()
+        }
 
         // Classify left vs right by the centre of the message body.
         val fromMe = bodyNodes.classifySide(screenWidth)
@@ -187,9 +239,14 @@ object ScreenTranscript {
 
     /**
      * Guesses the conversation partner's name from the header/title area of the
-     * screen, or from sender names found in message clusters.
+     * screen, or from sender names found in message clusters. Bot names are excluded.
      */
-    private fun guessName(nodes: List<CapturedText>, height: Int, appLabel: String): String {
+    private fun guessName(
+        nodes: List<CapturedText>,
+        height: Int,
+        appLabel: String,
+        botNames: Set<String>
+    ): String {
         val headerBottom = if (height > 0) height * 0.20f else 320f
 
         // First try the app header area (Discord shows the partner name there).
@@ -204,12 +261,13 @@ object ScreenTranscript {
                     !lower.startsWith("@") &&
                     !TIME.matches(candidate) &&
                     !SYSTEM_DATE.matches(candidate) &&
-                    candidate.none { it == '\n' }
+                    candidate.none { it == '\n' } &&
+                    !botNames.contains(lower)
             }
 
         if (headerCandidate != null) return headerCandidate
 
-        // Otherwise, try the most common sender name in message clusters.
+        // Otherwise, try the most common sender name in message clusters (excluding bots).
         val nameCounts = nodes.asSequence()
             .map { it.text.trim() }
             .filter { candidate ->
@@ -221,7 +279,8 @@ object ScreenTranscript {
                     !SYSTEM_DATE.matches(candidate) &&
                     candidate.none { it == '\n' } &&
                     !candidate.contains('?') &&
-                    !candidate.contains('!')
+                    !candidate.contains('!') &&
+                    !botNames.contains(lower)
             }
             .groupingBy { it }
             .eachCount()
