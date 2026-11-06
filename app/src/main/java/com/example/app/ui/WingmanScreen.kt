@@ -247,7 +247,7 @@ fun WingmanScreen(
                     text = "Your people",
                     style = MaterialTheme.typography.labelLarge,
                     fontWeight = FontWeight.SemiBold,
-                    modifier = Modifier.padding(horizontal = 16.dp, top = 8.dp)
+                    modifier = Modifier.padding(start = 16.dp, end = 16.dp, top = 8.dp)
                 )
                 LazyColumn(
                     modifier = Modifier.fillMaxWidth().weight(1f).padding(horizontal = 16.dp),
