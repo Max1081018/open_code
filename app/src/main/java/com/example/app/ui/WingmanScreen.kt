@@ -97,12 +97,9 @@ fun WingmanScreen(
     val snackbarHostState = remember { SnackbarHostState() }
     var showAiSettings by remember { mutableStateOf(false) }
 
-    // Auto-start floating bubble when app launches.
+    // Auto-start a scan when launched from the floating bubble (user is in Discord DMs).
     LaunchedEffect(autoStartScan) {
         if (autoStartScan && !scan.visible) {
-            val context = LocalContext.current
-            val activity = context as? MainActivity
-            activity?.startFloatingBubble()
             vm.openScan(null)
         }
     }
