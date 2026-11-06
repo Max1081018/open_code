@@ -75,7 +75,7 @@ import com.example.app.data.Person
 import com.example.app.data.PersonalityProfile
 import com.example.app.data.ReplyCoach
 import com.example.app.service.FloatingScanService
-import com.example.app.ui.WingmanViewModel.ScanSession
+import com.example.app.ui.ScanSession
 import kotlinx.coroutines.launch
 
 private val HeroGradient = listOf(
