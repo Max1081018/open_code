@@ -402,7 +402,7 @@ private fun ScanStatusCard(
                         contentColor = MaterialTheme.colorScheme.onErrorContainer
                     )
                 ) {
-                    Icon(Icons.Filled.Stop, contentDescription = null, modifier = Modifier.size(18.dp))
+                    Icon(Icons.Filled.Close, contentDescription = null, modifier = Modifier.size(18.dp))
                     Spacer(modifier = Modifier.width(8.dp))
                     Text("Stop watching", fontWeight = FontWeight.SemiBold)
                 }
