@@ -148,7 +148,7 @@ object ScreenTranscript {
                     !TIME.matches(node.text) &&
                     !SYSTEM_DATE.matches(node.text)
             }?.text?.trim()
-        }.filter { it.isNotEmpty() }
+        }.filterNotNull().filter { it.isNotEmpty() }
 
         return senderNames.asSequence()
             .map { it.lowercase() }
@@ -163,7 +163,7 @@ object ScreenTranscript {
                 // Very short generic names that are likely bots.
                 name.length <= 3 ||
                 // Names that look like auto-generated IDs.
-                name.all { it.isDigit() || it == '-' || it == '_' }
+                name.all { c -> c.isDigit() || c == '-' || c == '_' }
             }
             .toSet()
     }
