@@ -74,6 +74,7 @@ import com.example.app.data.CoachSuggestion
 import com.example.app.data.Person
 import com.example.app.data.PersonalityProfile
 import com.example.app.data.ReplyCoach
+import com.example.app.data.ScanSession
 import com.example.app.service.FloatingScanService
 import kotlinx.coroutines.launch
 

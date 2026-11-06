@@ -140,32 +140,28 @@ object ScreenTranscript {
      * Returns the set of bot name prefixes to filter out.
      */
     private fun detectBotNames(clusters: List<List<CapturedText>>, appLabel: String): Set<String> {
-        val senderNames = clusters.flatMap { cluster ->
-            cluster.sortedBy { it.top }.firstOrNull { node ->
+        val botNames = mutableSetOf<String>()
+        for (cluster in clusters) {
+            val sorted = cluster.sortedBy { it.top }
+            val first = sorted.firstOrNull { node ->
                 val height = node.bottom - node.top
                 node.text.length <= NAME_MAX_CHARS &&
                     height <= NAME_MAX_HEIGHT_PX &&
                     !TIME.matches(node.text) &&
                     !SYSTEM_DATE.matches(node.text)
             }?.text?.trim()
-        }.filterNotNull().filter { it.isNotEmpty() }
-
-        return senderNames.asSequence()
-            .map { it.lowercase() }
-            .filter { name ->
-                // Known bot name hints.
-                BOT_NAME_HINTS.any { hint -> name.contains(hint) } ||
-                // Automated patterns: "Bot", "Bot #1234", "something-bot", etc.
+            if (first.isNullOrBlank()) continue
+            val name = first.lowercase()
+            if (BOT_NAME_HINTS.any { hint -> name.contains(hint) } ||
                 name.contains("bot") ||
-                // Webhook/system patterns.
                 name.contains("webhook") ||
                 name.contains("system") ||
-                // Very short generic names that are likely bots.
                 name.length <= 3 ||
-                // Names that look like auto-generated IDs.
-                name.all { c -> c.isDigit() || c == '-' || c == '_' }
+                name.all { c -> c.isDigit() || c == '-' || c == '_' }) {
+                botNames.add(name)
             }
-            .toSet()
+        }
+        return botNames
     }
 
     /**
