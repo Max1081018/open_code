@@ -39,7 +39,6 @@ import androidx.compose.material.icons.filled.ArrowBack
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Edit
-import androidx.compose.material.icons.filled.OpenInNew
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Search
@@ -222,20 +221,18 @@ private fun PeopleScreen(
                         Icon(Icons.Filled.Settings, contentDescription = "AI settings")
                     }
                     val context = LocalContext.current
-                    val activity = context as? MainActivity
-                    val overlayEnabled = activity != null && FloatingScanService.isOverlayEnabled(context)
+                    val overlayEnabled = FloatingScanService.isOverlayEnabled(context)
                     IconButton(
                         onClick = {
                             if (overlayEnabled) {
-                                activity?.stopFloatingBubble()
+                                (context as? MainActivity)?.stopFloatingBubble()
                             } else {
                                 FloatingScanService.requestOverlayPermission(context)
                             }
-                        },
-                        contentDescription = if (overlayEnabled) "Hide floating scan bubble" else "Show floating scan bubble"
+                        }
                     ) {
                         Icon(
-                            imageVector = if (overlayEnabled) Icons.Filled.Close else Icons.Filled.OpenInNew,
+                            imageVector = if (overlayEnabled) Icons.Filled.Close else Icons.Filled.Add,
                             contentDescription = null
                         )
                     }

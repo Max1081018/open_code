@@ -62,8 +62,8 @@ class FloatingScanService : Service() {
         bubbleView.setOnTouchListener { _, event ->
             when (event.actionMasked) {
                 MotionEvent.ACTION_DOWN -> {
-                    initialX = bubbleParams!!.x
-                    initialY = bubbleParams!!.y
+                    initialX = bubbleParams!!.x.toFloat()
+                    initialY = bubbleParams!!.y.toFloat()
                     initialTouchX = event.rawX
                     initialTouchY = event.rawY
                     true

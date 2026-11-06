@@ -111,15 +111,16 @@ object ScreenTranscript {
         val clusters = mutableListOf<MutableList<CapturedText>>()
         var current: MutableList<CapturedText>? = null
 
-        nodes.forEach { node ->
+        for (node in nodes) {
             if (current == null || node.top - current!!.last().bottom > CLUSTER_GAP_PX) {
-                current = mutableListOf()
+                current = mutableListOf(node)
                 clusters.add(current)
+            } else {
+                current!!.add(node)
             }
-            current!!.add(node)
         }
 
-        return clusters
+        return clusters.map { it.toList() }
     }
 
     /**
@@ -132,7 +133,7 @@ object ScreenTranscript {
     private fun List<CapturedText>.toCoachLines(screenWidth: Int): List<CoachLine> {
         if (isEmpty()) return emptyList()
 
-        val sorted = sortedBy { it.top }
+        val sorted = sortedBy { it.top }.toMutableList()
 
         // Find the sender name: the first line that is short and sits above the rest.
         var nameIndex = -1
@@ -222,7 +223,8 @@ object ScreenTranscript {
                     !candidate.contains('?') &&
                     !candidate.contains('!')
             }
-            .counting()
+            .groupingBy { it }
+            .eachCount()
 
         return nameCounts.maxByOrNull { it.value }?.key.orEmpty()
     }
