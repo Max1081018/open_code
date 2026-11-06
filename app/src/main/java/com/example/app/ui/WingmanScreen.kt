@@ -74,8 +74,8 @@ import com.example.app.data.CoachSuggestion
 import com.example.app.data.Person
 import com.example.app.data.PersonalityProfile
 import com.example.app.data.ReplyCoach
-import com.example.app.data.ScanSession
 import com.example.app.service.FloatingScanService
+import com.example.app.ui.WingmanViewModel.ScanSession
 import kotlinx.coroutines.launch
 
 private val HeroGradient = listOf(
@@ -284,7 +284,7 @@ fun WingmanScreen(
 /** Shows scan progress, the single best AI reply, and stop/save actions. */
 @Composable
 private fun ScanStatusCard(
-    session: com.example.app.data.ScanSession,
+    session: ScanSession,
     onCopy: (String) -> Unit,
     onSave: () -> Unit,
     onStop: () -> Unit
