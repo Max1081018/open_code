@@ -13,7 +13,7 @@ class ScanAnalysisTest {
     fun `parser reads the combined screen analysis shape`() {
         val raw = """
             {"person":{"name":"Riley","summary":"Riley is playful and private.","vibe":"dry","interests":"tennis","communicationStyle":"short messages","confidence":0.6,"opener":"hey, still thinking about tennis","greenFlags":["asks questions"],"redFlags":[]},
-             "read":"Riley is warm but low energy.","signals":["kept it short"],"replies":[{"style":"curious","text":"how did the match go?","why":"keeps thread"}],"caution":""}
+             "read":"Riley is warm but low energy.","signals":["kept it short"],"replies":[{"style":"curious","text":"how did the match go?","why":"keeps thread"},{"style":"playful","text":"tennis elbow already?","why":"gentle tease"},{"style":"direct","text":"want to hit courts this weekend?","why":"plain ask"}],"caution":""}
         """.trimIndent()
 
         val analysis = AnalysisParser.parse(raw)
@@ -25,7 +25,7 @@ class ScanAnalysisTest {
         assertEquals(listOf("asks questions"), analysis.person.greenFlags)
         assertTrue(analysis.coach.read.isNotBlank())
         assertEquals(3, analysis.coach.suggestions.size)
-        assertEquals("how did the match go?", analysis.coach.suggestions.single().text)
+        assertEquals("how did the match go?", analysis.coach.suggestions[0].text)
         assertEquals(ReplySource.ONLINE, analysis.source)
     }
 
