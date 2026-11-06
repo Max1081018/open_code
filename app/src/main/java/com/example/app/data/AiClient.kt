@@ -86,7 +86,7 @@ class RemoteAi(private val config: CoachConfig) : WingmanAi {
 
     private data class AiText(val content: String, val model: String)
 
-    private fun post(system: String, user: String, maxTokens: Int): AiText {
+    private suspend fun post(system: String, user: String, maxTokens: Int): AiText {
         if (!config.isReady) {
             throw CoachException(
                 if (config.provider.requiresKey) {

@@ -31,7 +31,7 @@ data class CoachReply(
 )
 
 /** A failure we can show the user verbatim. */
-class CoachException(message: String, cause: Throwable? = null) : Exception(message, cause)
+open class CoachException(message: String, cause: Throwable? = null) : Exception(message, cause)
 
 /** The free tier is busy. [retryAfterSeconds] is the provider's own number. */
 class RateLimitException(
