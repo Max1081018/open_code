@@ -25,6 +25,8 @@ data class PersonalityProfile(
     val vibe: String,
     val interests: String,
     val communicationStyle: String,
+    val attachmentStyle: String = "unclear",
+    val emotionalNeeds: String = "",
     val confidence: Float,
     val suggestedOpener: String,
     @ColumnInfo(defaultValue = "''") val greenFlags: List<String> = emptyList(),

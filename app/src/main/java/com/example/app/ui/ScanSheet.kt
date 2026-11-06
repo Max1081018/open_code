@@ -628,6 +628,29 @@ private fun PersonaBlock(draft: PersonaDraft) {
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
             }
+            if (draft.attachmentStyle.isNotBlank() && draft.attachmentStyle != "unclear") {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text(
+                        text = "Attachment style",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                    Spacer(modifier = Modifier.width(6.dp))
+                    Text(
+                        text = draft.attachmentStyle,
+                        style = MaterialTheme.typography.bodySmall,
+                        fontWeight = FontWeight.SemiBold,
+                        color = MaterialTheme.colorScheme.primary
+                    )
+                }
+            }
+            if (draft.emotionalNeeds.isNotBlank()) {
+                Text(
+                    text = "Needs: ${draft.emotionalNeeds}",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
             if (draft.opener.isNotBlank()) {
                 Surface(
                     color = MaterialTheme.colorScheme.primaryContainer,

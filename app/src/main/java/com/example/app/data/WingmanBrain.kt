@@ -31,12 +31,39 @@ object WingmanBrain {
             vibe = vibe.ifBlank { "Still figuring it out" },
             interests = interests.ifBlank { "Nothing noted yet" },
             communicationStyle = style.ifBlank { "Unknown" },
+            attachmentStyle = attachmentStyleFrom(person, history),
+            emotionalNeeds = emotionalNeedsFrom(person, history),
             confidence = confidence(person, history),
             suggestedOpener = opener(name, interests, style, history.size),
             source = "Notes (on-device)",
             createdAt = now,
             updatedAt = now
         )
+    }
+
+    private fun attachmentStyleFrom(person: Person, history: List<ChatMessage>): String {
+        val notes = person.notes.lowercase()
+        val style = person.communicationStyle.lowercase()
+        val combined = "$notes $style ${history.joinToString(" ") { it.text }.lowercase()}"
+        return when {
+            combined.contains("clingy") || combined.contains("needy") || combined.contains("reassurance") || combined.contains("worry") -> "anxious"
+            combined.contains("space") || combined.contains("independent") || combined.contains("distant") || combined.contains("alone") -> "avoidant"
+            combined.contains("open") || combined.contains("warm") || combined.contains("secure") || combined.contains("comfortable") -> "secure"
+            else -> "unclear"
+        }
+    }
+
+    private fun emotionalNeedsFrom(person: Person, history: List<ChatMessage>): String {
+        val notes = person.notes.lowercase()
+        val style = person.communicationStyle.lowercase()
+        val combined = "$notes $style".lowercase()
+        return when {
+            combined.contains("validation") || combined.contains("hear me") || combined.contains("understand") -> "validation and understanding"
+            combined.contains("space") || combined.contains("time alone") -> "space and independence"
+            combined.contains("reassurance") || combined.contains("affection") -> "reassurance and closeness"
+            combined.contains("excitement") || combined.contains("fun") -> "excitement and shared fun"
+            else -> "connection and being understood"
+        }
     }
 
     fun confidence(person: Person, history: List<ChatMessage>): Float {

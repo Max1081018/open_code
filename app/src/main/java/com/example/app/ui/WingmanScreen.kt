@@ -39,6 +39,7 @@ import androidx.compose.material.icons.filled.ArrowBack
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Edit
+import androidx.compose.material.icons.filled.OpenInNew
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Search
@@ -93,7 +94,9 @@ import com.example.app.data.ConsentStatus
 import com.example.app.data.Person
 import com.example.app.data.PersonalityProfile
 import com.example.app.data.ReplyCoach
+import com.example.app.service.FloatingScanService
 import com.example.app.data.WingmanBrain
+import com.example.app.MainActivity
 import kotlinx.coroutines.launch
 import java.text.SimpleDateFormat
 import java.util.Date
@@ -109,13 +112,21 @@ private val HeroGradient = listOf(
 fun WingmanScreen(
     vm: WingmanViewModel,
     themeMode: ThemeMode,
-    onCycleTheme: () -> Unit
+    onCycleTheme: () -> Unit,
+    autoStartScan: Boolean = false
 ) {
     val selectedPerson = vm.selectedPerson.collectAsStateWithLifecycle().value
     val scan by vm.scan.collectAsStateWithLifecycle()
     val notice by vm.notice.collectAsStateWithLifecycle()
     val snackbarHostState = remember { SnackbarHostState() }
     var showAiSettings by remember { mutableStateOf(false) }
+
+    // Auto-start a scan when launched from the floating bubble (user is in Discord DMs).
+    LaunchedEffect(autoStartScan) {
+        if (autoStartScan && !scan.visible) {
+            vm.openScan(null)
+        }
+    }
 
     LaunchedEffect(notice) {
         val message = notice ?: return@LaunchedEffect
@@ -209,6 +220,24 @@ private fun PeopleScreen(
                 actions = {
                     IconButton(onClick = onOpenAiSettings) {
                         Icon(Icons.Filled.Settings, contentDescription = "AI settings")
+                    }
+                    val context = LocalContext.current
+                    val activity = context as? MainActivity
+                    val overlayEnabled = activity != null && FloatingScanService.isOverlayEnabled(context)
+                    IconButton(
+                        onClick = {
+                            if (overlayEnabled) {
+                                activity?.stopFloatingBubble()
+                            } else {
+                                FloatingScanService.requestOverlayPermission(context)
+                            }
+                        },
+                        contentDescription = if (overlayEnabled) "Hide floating scan bubble" else "Show floating scan bubble"
+                    ) {
+                        Icon(
+                            imageVector = if (overlayEnabled) Icons.Filled.Close else Icons.Filled.OpenInNew,
+                            contentDescription = null
+                        )
                     }
                     TextButton(onClick = onCycleTheme) { Text(themeMode.label) }
                 }
@@ -900,6 +929,30 @@ private fun ProfileCard(
             )
 
             ChipRow(items = splitItems(profile.vibe) + splitItems(profile.interests))
+
+            if (profile.attachmentStyle.isNotBlank() && profile.attachmentStyle != "unclear") {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text(
+                        text = "Attachment style",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                    Spacer(modifier = Modifier.width(6.dp))
+                    Text(
+                        text = profile.attachmentStyle,
+                        style = MaterialTheme.typography.bodySmall,
+                        fontWeight = FontWeight.SemiBold,
+                        color = MaterialTheme.colorScheme.primary
+                    )
+                }
+            }
+            if (profile.emotionalNeeds.isNotBlank()) {
+                Text(
+                    text = "Needs: ${profile.emotionalNeeds}",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
 
             if (profile.greenFlags.isNotEmpty() || profile.redFlags.isNotEmpty()) {
                 Box(

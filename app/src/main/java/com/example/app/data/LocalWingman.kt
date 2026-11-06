@@ -85,6 +85,25 @@ object LocalWingman {
             last?.let { add(if (it.fromMe) "your message is still the last one" else "they spoke last") }
         }
 
+        // Psychological read: attachment style and emotional needs from text behavior.
+        val attachmentStyle = when {
+            theirs.isEmpty() -> "unclear"
+            questions >= 2 && averageLength >= 12 -> "secure"
+            questions >= 1 && averageLength <= 8 -> "anxious"
+            questions == 0 && averageLength <= 6 -> "avoidant"
+            questions == 0 && averageLength > 12 -> "avoidant"
+            else -> "secure"
+        }
+
+        val emotionalNeeds = when {
+            theirs.isEmpty() -> "connection - there is no chat to read yet"
+            averageLength <= 4 && questions == 0 -> "reassurance - they are giving very little back"
+            questions > 0 && mine.size <= theirs.size -> "engagement - they are asking questions, they want to talk"
+            mine.size > theirs.size * 2 && mine.size >= 3 -> "space - you are carrying the conversation, give them room"
+            theirs.isNotEmpty() && questions == 0 -> "validation - they are responding but not initiating"
+            else -> "connection - the chat is two-way and warm"
+        }
+
         val greenFlags = buildList {
             if (questions > 0) add("asks you questions back")
             if (averageLength >= 14) add("writes more than a few words")
@@ -163,6 +182,8 @@ object LocalWingman {
                 vibe = style,
                 interests = topics.joinToString(", "),
                 communicationStyle = style,
+                attachmentStyle = attachmentStyle,
+                emotionalNeeds = emotionalNeeds,
                 confidence = confidence,
                 opener = opener,
                 greenFlags = greenFlags,

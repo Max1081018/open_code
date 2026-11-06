@@ -10,7 +10,7 @@ import androidx.sqlite.db.SupportSQLiteDatabase
 
 @Database(
     entities = [Person::class, ChatMessage::class, PersonalityProfile::class],
-    version = 2,
+    version = 3,
     exportSchema = false
 )
 @TypeConverters(Converters::class)
@@ -53,6 +53,20 @@ abstract class WingmanDatabase : RoomDatabase() {
             }
         }
 
+        /**
+         * Adds psychological profile fields (attachment style, emotional needs).
+         */
+        val MIGRATION_2_3 = object : Migration(2, 3) {
+            override fun migrate(database: SupportSQLiteDatabase) {
+                database.execSQL(
+                    "ALTER TABLE personality_profiles ADD COLUMN attachmentStyle TEXT NOT NULL DEFAULT 'unclear'"
+                )
+                database.execSQL(
+                    "ALTER TABLE personality_profiles ADD COLUMN emotionalNeeds TEXT NOT NULL DEFAULT ''"
+                )
+            }
+        }
+
         @Volatile
         private var instance: WingmanDatabase? = null
 
@@ -63,7 +77,7 @@ abstract class WingmanDatabase : RoomDatabase() {
                     WingmanDatabase::class.java,
                     "wingman.db"
                 )
-                    .addMigrations(MIGRATION_1_2)
+                    .addMigrations(MIGRATION_1_2, MIGRATION_2_3)
                     .build()
                     .also { instance = it }
             }

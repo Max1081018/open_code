@@ -280,7 +280,9 @@ class WingmanViewModel(app: Application) : AndroidViewModel(app) {
                         scanCount = existing.scanCount,
                         greenFlags = existing.greenFlags,
                         redFlags = existing.redFlags,
-                        signals = existing.signals
+                        signals = existing.signals,
+                        attachmentStyle = existing.attachmentStyle,
+                        emotionalNeeds = existing.emotionalNeeds
                     )
                 }
             }
@@ -456,6 +458,8 @@ class WingmanViewModel(app: Application) : AndroidViewModel(app) {
                 communicationStyle = draft.communicationStyle.ifBlank {
                     previous?.communicationStyle.orEmpty()
                 },
+                attachmentStyle = draft.attachmentStyle.ifBlank { previous?.attachmentStyle.orEmpty() },
+                emotionalNeeds = draft.emotionalNeeds.ifBlank { previous?.emotionalNeeds.orEmpty() },
                 confidence = draft.confidence,
                 suggestedOpener = draft.opener.ifBlank { previous?.suggestedOpener.orEmpty() },
                 greenFlags = draft.greenFlags,

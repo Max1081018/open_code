@@ -5,6 +5,8 @@
          the user presses the button. The notebook itself never touches the network. -->
     <uses-permission android:name="android.permission.INTERNET" />
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+    <!-- Lets the floating bubble draw on top of Discord and other chat apps. -->
+    <uses-permission android:name="android.permission.SYSTEM_ALERT_WINDOW" />
 
     <!-- Lets "Open Discord" find the app on Android 11+. -->
     <queries>
@@ -27,6 +29,10 @@
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
         </activity>
+
+        <service
+            android:name=".service.FloatingScanService"
+            android:exported="false" />
 
         <service
             android:name=".service.WingmanAccessibilityService"
