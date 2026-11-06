@@ -96,6 +96,7 @@ fun WingmanScreen(
     val notice by vm.notice.collectAsStateWithLifecycle()
     val snackbarHostState = remember { SnackbarHostState() }
     var showAiSettings by remember { mutableStateOf(false) }
+    val context = LocalContext.current
 
     // Auto-start a scan when launched from the floating bubble (user is in Discord DMs).
     LaunchedEffect(autoStartScan) {
@@ -177,7 +178,6 @@ fun WingmanScreen(
                         }
                         Button(
                             onClick = {
-                                val context = LocalContext.current
                                 val activity = context as? MainActivity
                                 activity?.startFloatingBubble()
                                 vm.openScan(null)
@@ -221,7 +221,6 @@ fun WingmanScreen(
                 ScanStatusCard(
                     session = scan,
                     onCopy = { text ->
-                        val context = LocalContext.current
                         val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as? ClipboardManager
                         clipboard?.setPrimaryClip(ClipData.newPlainText("Wingman reply", text))
                         Toast.makeText(context, "Copied. Paste it in the chat.", Toast.LENGTH_SHORT).show()
@@ -229,7 +228,6 @@ fun WingmanScreen(
                     onSave = { vm.saveScanResult() },
                     onStop = {
                         vm.closeScan()
-                        val context = LocalContext.current
                         val activity = context as? MainActivity
                         activity?.stopFloatingBubble()
                     }
