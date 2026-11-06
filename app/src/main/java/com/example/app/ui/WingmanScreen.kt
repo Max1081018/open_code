@@ -255,12 +255,7 @@ fun WingmanScreen(
                             person = person,
                             profile = profile,
                             onScan = { vm.openScan(person) },
-                            onStop = {
-                                vm.closeScan()
-                                val context = LocalContext.current
-                                val activity = context as? MainActivity
-                                activity?.stopFloatingBubble()
-                            }
+                            context = context
                         )
                     }
                 }
@@ -428,9 +423,8 @@ private fun PersonRow(
     person: Person,
     profile: PersonalityProfile?,
     onScan: () -> Unit,
-    onStop: () -> Unit
+    context: android.content.Context
 ) {
-    val context = LocalContext.current
     Card(
         modifier = Modifier.fillMaxWidth(),
         shape = RoundedCornerShape(16.dp),
@@ -474,6 +468,21 @@ private fun PersonRow(
                 Icon(Icons.Filled.PlayArrow, contentDescription = null, modifier = Modifier.size(16.dp))
                 Spacer(modifier = Modifier.width(6.dp))
                 Text("Scan")
+            }
+            Button(
+                onClick = {
+                    val activity = context as? MainActivity
+                    activity?.stopFloatingBubble()
+                },
+                shape = RoundedCornerShape(12.dp),
+                colors = ButtonDefaults.buttonColors(
+                    containerColor = MaterialTheme.colorScheme.errorContainer,
+                    contentColor = MaterialTheme.colorScheme.onErrorContainer
+                )
+            ) {
+                Icon(Icons.Filled.Close, contentDescription = null, modifier = Modifier.size(16.dp))
+                Spacer(modifier = Modifier.width(6.dp))
+                Text("Stop")
             }
         }
     }
