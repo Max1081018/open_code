@@ -1,0 +1,67 @@
+name: Build Lazy Lake APK
+
+# Exports the Godot game in fishing/ to an installable Android APK and uploads it
+# as a run artifact. Trigger it from the Actions tab (Run workflow), or it runs
+# automatically when the game changes.
+on:
+  workflow_dispatch:
+  push:
+    branches: ["main", "claude/**"]
+    paths:
+      - "fishing/**"
+      - ".github/workflows/fishing-apk.yml"
+
+env:
+  GODOT_VERSION: "4.3"
+  PROJECT_PATH: fishing
+  EXPORT_NAME: LazyLake
+
+jobs:
+  export-android:
+    runs-on: ubuntu-latest
+    # This image ships Godot 4.3, the export templates, and the Android SDK/JDK.
+    container:
+      image: barichello/godot-ci:4.3
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install export templates
+        run: |
+          mkdir -p ~/.local/share/godot/export_templates
+          mkdir -p ~/.config/godot
+          mv /root/.local/share/godot/export_templates/${GODOT_VERSION}.stable \
+             ~/.local/share/godot/export_templates/${GODOT_VERSION}.stable
+
+      - name: Debug keystore + editor settings
+        run: |
+          keytool -keyalg RSA -genkeypair -alias androiddebugkey \
+            -keypass android -keystore "$PWD/debug.keystore" -storepass android \
+            -dname "CN=Android Debug,O=Android,C=US" -validity 9999 -deststoretype pkcs12
+          # Point Godot's Android exporter at the SDK and the debug keystore.
+          SDK="${ANDROID_HOME:-${ANDROID_SDK_ROOT:-/root/android-sdk}}"
+          cat > ~/.config/godot/editor_settings-4.tres <<EOF
+          [gd_resource type="EditorSettings" format=3]
+
+          [resource]
+          export/android/android_sdk_path = "$SDK"
+          export/android/debug_keystore = "$PWD/debug.keystore"
+          export/android/debug_keystore_user = "androiddebugkey"
+          export/android/debug_keystore_pass = "android"
+          EOF
+          echo "Using Android SDK at: $SDK"
+
+      - name: Export APK
+        run: |
+          mkdir -p build/android
+          cd "$PROJECT_PATH"
+          # Import once so resources (icon, shaders) are ready, then export.
+          godot --headless --import || true
+          godot --headless --verbose --export-debug "Android" "../build/android/${EXPORT_NAME}.apk"
+
+      - name: Upload APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: LazyLake-Android
+          path: build/android/*.apk
+          if-no-files-found: error
