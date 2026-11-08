@@ -38,18 +38,21 @@ jobs:
           keytool -keyalg RSA -genkeypair -alias androiddebugkey \
             -keypass android -keystore "$PWD/debug.keystore" -storepass android \
             -dname "CN=Android Debug,O=Android,C=US" -validity 9999 -deststoretype pkcs12
-          # Point Godot's Android exporter at the SDK and the debug keystore.
+          # Point Godot's Android exporter at the SDK, the JDK, and the keystore.
           SDK="${ANDROID_HOME:-${ANDROID_SDK_ROOT:-/root/android-sdk}}"
+          JHOME="${JAVA_HOME:-$(dirname "$(dirname "$(readlink -f "$(command -v javac || command -v java)")")")}"
+          echo "Android SDK: $SDK"
+          echo "Java SDK:    $JHOME"
           cat > ~/.config/godot/editor_settings-4.tres <<EOF
           [gd_resource type="EditorSettings" format=3]
 
           [resource]
           export/android/android_sdk_path = "$SDK"
+          export/android/java_sdk_path = "$JHOME"
           export/android/debug_keystore = "$PWD/debug.keystore"
           export/android/debug_keystore_user = "androiddebugkey"
           export/android/debug_keystore_pass = "android"
           EOF
-          echo "Using Android SDK at: $SDK"
 
       - name: Export APK
         run: |
