@@ -1,0 +1,5 @@
+# Godot editor cache and local build output
+.godot/
+build/
+android/
+export_presets_local.cfg

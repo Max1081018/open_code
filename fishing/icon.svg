@@ -1,0 +1,18 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="128" height="128" viewBox="0 0 128 128">
+  <defs>
+    <linearGradient id="water" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#5fc9e8"/>
+      <stop offset="1" stop-color="#1b6fa8"/>
+    </linearGradient>
+  </defs>
+  <rect width="128" height="128" rx="24" fill="url(#water)"/>
+  <path d="M8 92 q30 -12 60 0 t52 0 v36 h-112 z" fill="#2b86c5" opacity="0.5"/>
+  <!-- goofy fish -->
+  <g transform="translate(64 60)">
+    <ellipse cx="0" cy="0" rx="34" ry="22" fill="#ff8a3d"/>
+    <polygon points="30,0 56,-18 56,18" fill="#ff6d2e"/>
+    <circle cx="-14" cy="-4" r="8" fill="#fff"/>
+    <circle cx="-12" cy="-3" r="4" fill="#222"/>
+    <path d="M-28 8 q10 8 20 0" stroke="#b8431a" stroke-width="3" fill="none" stroke-linecap="round"/>
+  </g>
+</svg>
