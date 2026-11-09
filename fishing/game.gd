@@ -15,10 +15,23 @@ extends Node3D
 
 const Hud := preload("res://hud.gd")
 const MenuUI := preload("res://menu_ui.gd")
+const PlayerScene := preload("res://player.gd")
+const TouchControls := preload("res://touch_controls.gd")
 
 # App screen: "menu" (title over the live lake), "playing", or "paused".
 var app_state := "menu"
 var menu_ui
+
+# Within "playing": "explore" (walking around) or "fishing" (at the rod).
+var play_mode := "explore"
+var player: CharacterBody3D
+var touch: CanvasLayer
+var cam_yaw := 0.0
+var cam_pitch := -0.12
+var near_fishing_spot := false
+const PLAYER_SPAWN := Vector3(0, 1.2, 11.0)       # on the jetty
+const FISHING_SPOT := Vector3(0, 0.72, 4.6)     # where you stand to cast
+const EYE_HEIGHT := 1.62   # first-person camera height above the player's feet
 
 # Shared wave parameters — MUST match water.gdshader (WAVES) so the bobber sits
 # on the surface. Each is direction.xy, wavelength, amplitude.
@@ -204,13 +217,23 @@ func _ready() -> void:
 	menu_ui.first_help_done.connect(_on_first_help_done)
 	menu_ui.set_coins(coins)
 
+	player = PlayerScene.new()
+	player.position = PLAYER_SPAWN
+	add_child(player)
+
+	touch = TouchControls.new()
+	add_child(touch)
+	touch.interact_pressed.connect(_on_interact)
+	touch.visible = false
+
 	_enter_idle()
 	_apply_settings()
 	# Players always start at the menu; autotest can jump to a screen to shoot it.
 	if autotest:
 		seen_help = true  # don't let the first-time card block play tests
 		match start_screen:
-			"play": _start_play()
+			"play": _start_play(); _enter_fishing()
+			"explore": _start_play()
 			"settings": _go_main_menu(); menu_ui.open_settings_for_test()
 			"pause": _start_play(); _pause()
 			"help": _go_main_menu(); menu_ui.open_help_for_test()
@@ -371,7 +394,8 @@ func _island_y(center: Vector3, radius: float, vheight: float, x: float, z: floa
 
 
 ## A smooth island: a sand dome with a grass cap, leaving a beach ring.
-func _make_island(center: Vector3, radius: float, height: float, grassy := true) -> void:
+func _make_island(center: Vector3, radius: float, height: float, grassy := true,
+		walkable := false) -> void:
 	var sand := MeshInstance3D.new()
 	var sm := SphereMesh.new()
 	sm.radius = radius
@@ -383,6 +407,8 @@ func _make_island(center: Vector3, radius: float, height: float, grassy := true)
 	sand.scale = Vector3(1, (height * 0.85) / radius, 1)
 	sand.position = center
 	add_child(sand)
+	if walkable:
+		sand.create_trimesh_collision()
 
 	if grassy:
 		var grass := MeshInstance3D.new()
@@ -396,6 +422,8 @@ func _make_island(center: Vector3, radius: float, height: float, grassy := true)
 		grass.scale = Vector3(1, height / (radius * 0.80), 1)
 		grass.position = center + Vector3(0, 0.05, 0)
 		add_child(grass)
+		if walkable:
+			grass.create_trimesh_collision()
 
 
 const HOME := Vector3(0, 0, 28)
@@ -404,7 +432,7 @@ const HOME_H := 3.6
 
 
 func _build_island() -> void:
-	_make_island(HOME, HOME_R, HOME_H)
+	_make_island(HOME, HOME_R, HOME_H, true, true)
 
 	# Wooden jetty out over the water (tile depth ~2.5).
 	for i in 5:
@@ -418,6 +446,17 @@ func _build_island() -> void:
 
 	# A little fishing boat moored alongside.
 	_spawn("boat", Vector3(3.6, -0.35, 10.0), -PI / 2.0 + 0.12, 0.9)
+
+	# Walkable surface for the jetty: one flat box rather than trimeshing every
+	# plank, so the player glides along it.
+	var dock_body := StaticBody3D.new()
+	var dock_col := CollisionShape3D.new()
+	var dock_box := BoxShape3D.new()
+	dock_box.size = Vector3(2.3, 0.4, 13.6)
+	dock_col.shape = dock_box
+	dock_body.add_child(dock_col)
+	dock_body.position = Vector3(0, DECK_Y - 0.2, 8.6)
+	add_child(dock_body)
 
 
 func _build_scenery() -> void:
@@ -485,7 +524,7 @@ func _build_scenery() -> void:
 
 func _build_player_view() -> void:
 	camera = Camera3D.new()
-	camera.fov = 62
+	camera.fov = 68
 	camera.position = EYE
 	camera.rotation_degrees = Vector3(-10, 0, 0)  # look slightly down at the water
 	add_child(camera)
@@ -634,6 +673,14 @@ func _process(delta: float) -> void:
 		_update_line()
 		return
 
+	if play_mode == "explore":
+		_update_explore(delta)
+		return
+
+	if hud.consume_leave():
+		_leave_fishing()
+		return
+
 	var action: bool = hud.action_down() or sim_action
 	var tap: bool = hud.consume_tap() or sim_tap
 	sim_tap = false
@@ -693,6 +740,67 @@ func _process(delta: float) -> void:
 var _camera_sway := true
 var _menu_cam_t := 0.0
 
+## Walking around: drive the character, swing the third-person camera, and
+## offer the fishing prompt when we reach the end of the jetty.
+func _update_explore(delta: float) -> void:
+	var look: Vector2 = touch.consume_look()
+	cam_yaw -= look.x
+	cam_pitch = clampf(cam_pitch - look.y, -0.95, 0.40)
+
+	player.move_input = touch.move
+	player.cam_yaw = cam_yaw
+
+	# Fell in the lake? Put them back on the jetty.
+	if player.position.y < -3.0:
+		player.velocity = Vector3.ZERO
+		player.position = PLAYER_SPAWN
+
+	camera.global_position = player.global_position + Vector3(0, EYE_HEIGHT, 0)
+	camera.rotation = Vector3(cam_pitch, cam_yaw, 0.0)
+
+	near_fishing_spot = player.global_position.distance_to(FISHING_SPOT) < 3.0
+	touch.prompt = "FISH" if near_fishing_spot else ""
+
+
+func _on_interact() -> void:
+	if app_state != "playing":
+		return
+	if play_mode == "explore" and near_fishing_spot:
+		_enter_fishing()
+
+
+func _enter_fishing() -> void:
+	play_mode = "fishing"
+	player.frozen = true
+	player.visible = false
+	touch.visible = false
+	touch.prompt = ""
+	camera.position = EYE
+	camera.rotation_degrees = Vector3(-10, 0, 0)
+	cam_pitch_target = -10.0
+	rod.visible = true
+	hud.enabled = true
+	hud.set_hud_visible(true)
+	_enter_idle()
+
+
+func _leave_fishing() -> void:
+	play_mode = "explore"
+	_enter_idle()
+	player.frozen = false
+	player.visible = false   # first person
+	player.velocity = Vector3.ZERO
+	player.position = FISHING_SPOT + Vector3(0, 0.5, 1.6)
+	rod.visible = false
+	paddle.visible = false
+	bobber.visible = false
+	line.visible = false
+	hud.enabled = false
+	hud.set_hud_visible(false)
+	touch.visible = true
+	cam_yaw = PI  # look back down the jetty
+
+
 ## Buoys ride the same waves the water shader draws.
 func _update_floaters() -> void:
 	for f in floaters:
@@ -712,13 +820,19 @@ func _menu_camera(delta: float) -> void:
 
 func _start_play() -> void:
 	app_state = "playing"
+	play_mode = "explore"
 	_enter_idle()
-	camera.position = EYE
-	camera.rotation_degrees = Vector3(-10, 0, 0)
-	cam_pitch_target = -10.0
-	rod.visible = true
-	hud.enabled = true
-	hud.set_hud_visible(true)
+	rod.visible = false
+	paddle.visible = false
+	player.visible = false   # first person
+	player.frozen = false
+	player.velocity = Vector3.ZERO
+	player.position = PLAYER_SPAWN
+	cam_yaw = 0.0
+	cam_pitch = -0.12
+	hud.enabled = false
+	hud.set_hud_visible(false)
+	touch.visible = true
 	menu_ui.show_play()
 	# First-ever play: show the modal how-to-play card.
 	if not seen_help:
@@ -738,19 +852,33 @@ func _pause() -> void:
 	app_state = "paused"
 	hud.enabled = false
 	hud.set_hud_visible(false)
+	if touch:
+		touch.visible = false
+	if player:
+		player.frozen = true
 	menu_ui.show_pause()
 
 
 func _resume() -> void:
 	app_state = "playing"
-	hud.enabled = true
-	hud.set_hud_visible(true)
+	if play_mode == "fishing":
+		hud.enabled = true
+		hud.set_hud_visible(true)
+	else:
+		touch.visible = true
+		player.frozen = false
 	menu_ui.show_play()
 
 
 func _go_main_menu() -> void:
 	app_state = "menu"
+	play_mode = "explore"
 	_enter_idle()
+	if touch:
+		touch.visible = false
+	if player:
+		player.frozen = true
+		player.visible = false
 	rod.visible = false
 	bobber.visible = false
 	line.visible = false
@@ -1137,6 +1265,25 @@ func _autotest(_delta: float) -> void:
 	sim_action = false
 
 	# For non-gameplay screens, just let them settle and screenshot.
+	# Explore: walk the character forward for a while, then shoot.
+	if start_screen == "explore":
+		if frame == 10:
+			cam_yaw = PI          # turn around to face the island
+		if frame < 30:
+			touch.move = Vector2.ZERO
+		elif frame < 480:
+			touch.move = Vector2(0, -1)   # walk forward (now toward the island)
+		else:
+			touch.move = Vector2.ZERO
+		if frame >= 500:
+			if autotest_shot != "":
+				get_viewport().get_texture().get_image().save_png(autotest_shot)
+			print("AUTOTEST(explore) pos=%s on_floor=%s prompt='%s' anim=%s" % [
+				player.position.snapped(Vector3.ONE * 0.01), player.is_on_floor(),
+				touch.prompt, player._cur])
+			get_tree().quit()
+		return
+
 	if start_screen in ["menu", "settings", "pause", "shop", "help"]:
 		if frame > 40:
 			if autotest_shot != "":

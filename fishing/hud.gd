@@ -19,6 +19,9 @@ const BTN_RADIUS := 110.0
 
 var _action_index := -1
 var _tapped := false
+var _leave_pressed := false
+var _leave_center := Vector2.ZERO
+const LEAVE_RADIUS := 66.0
 
 var enabled := true        # gameplay input only when playing
 var left_handed := false   # mirror the action button to the left
@@ -40,6 +43,8 @@ func _recalc() -> void:
 	# Keep a thumb-sized margin from the bottom corner; honour left-handed mode.
 	var x := 170.0 if left_handed else s.x - 170.0
 	_btn_center = Vector2(x, s.y - 170)
+	# Opposite corner from the action button.
+	_leave_center = Vector2(s.x - 150.0 if left_handed else 150.0, s.y - 150)
 
 
 func recalc_layout() -> void:
@@ -59,6 +64,9 @@ func _input(event: InputEvent) -> void:
 		return
 	if event is InputEventScreenTouch:
 		if event.pressed:
+			if show_leave() and event.position.distance_to(_leave_center) <= LEAVE_RADIUS:
+				_leave_pressed = true
+				return
 			_tapped = true
 			if event.position.distance_to(_btn_center) <= BTN_RADIUS and _action_index == -1:
 				_action_index = event.index
@@ -70,6 +78,17 @@ func _input(event: InputEvent) -> void:
 
 func action_down() -> bool:
 	return _action_index != -1
+
+
+## Only offer "leave" when nothing is on the line.
+func show_leave() -> bool:
+	return mode == M_IDLE or mode == M_CHARGING
+
+
+func consume_leave() -> bool:
+	var l := _leave_pressed
+	_leave_pressed = false
+	return l
 
 
 func consume_tap() -> bool:
@@ -123,6 +142,14 @@ class Painter extends Control:
 			_meter(Vector2(bx, 96), bw, 1.0 - hud.distance, Color(0.4, 0.85, 1.0), "REELED IN")
 			var tcol := Color(0.4, 0.9, 0.4).lerp(Color(1.0, 0.25, 0.2), hud.tension)
 			_meter(Vector2(bx, 150), bw, hud.tension, tcol, "LINE TENSION")
+
+		# Leave button (walk away from the rod).
+		if hud.show_leave():
+			draw_circle(hud._leave_center, hud.LEAVE_RADIUS, Color(0.1, 0.12, 0.2, 0.55))
+			draw_arc(hud._leave_center, hud.LEAVE_RADIUS, 0, TAU, 40, Color(1, 1, 1, 0.6), 3.0)
+			var lv := "LEAVE"
+			var lvw := font.get_string_size(lv, HORIZONTAL_ALIGNMENT_LEFT, -1, 24).x
+			_text(font, hud._leave_center + Vector2(-lvw * 0.5, 8), lv, 24, Color(1, 1, 1, 0.9))
 
 		# Action button.
 		var label: String = hud.button_label()
