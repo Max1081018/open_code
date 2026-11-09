@@ -10,8 +10,8 @@ extends CharacterBody3D
 ## yaw) each frame; the character moves relative to the camera.
 
 const PLAYER_HEIGHT := 1.75
-const WALK_SPEED := 2.6
-const RUN_SPEED := 5.4
+const WALK_SPEED := 2.9
+const RUN_SPEED := 6.2
 const ACCEL := 14.0
 const GRAVITY := 22.0
 const TURN_RATE := 12.0
@@ -27,17 +27,19 @@ var _model_yaw_offset := 0.0
 var _skel: Skeleton3D
 var first_person := false
 var show_body := true
+var sprint := false              # set by the RUN button
 
 
 ## In first person we still draw the body (so you can look down and see your
-## legs), but the head is shrunk away so the camera isn't inside it.
+## legs), but everything from the chest up is shrunk away so the camera isn't
+## inside your shoulders. Looking down shows hips and legs, like most FPS games.
 func set_first_person(on: bool) -> void:
 	first_person = on
 	if model:
 		model.visible = show_body
 	if _skel == null:
 		return
-	var idx := _skel.find_bone("head")
+	var idx := _skel.find_bone("spine")
 	if idx >= 0:
 		_skel.set_bone_pose_scale(idx, Vector3.ONE * (0.001 if on else 1.0))
 
@@ -143,7 +145,8 @@ func _physics_process(delta: float) -> void:
 			var dir := Basis(Vector3.UP, cam_yaw) * Vector3(move_input.x, 0.0, move_input.y)
 			dir.y = 0.0
 			if dir.length() > 0.001:
-				want = dir.normalized() * lerpf(WALK_SPEED, RUN_SPEED, clampf((mag - 0.5) / 0.5, 0.0, 1.0))
+				var top_speed := RUN_SPEED if sprint else WALK_SPEED
+				want = dir.normalized() * top_speed * clampf(mag * 1.25, 0.35, 1.0)
 
 	velocity.x = move_toward(velocity.x, want.x, ACCEL * delta)
 	velocity.z = move_toward(velocity.z, want.z, ACCEL * delta)
@@ -160,7 +163,7 @@ func _physics_process(delta: float) -> void:
 
 	_update_anim()
 	if first_person and _skel:
-		var h := _skel.find_bone("head")
+		var h := _skel.find_bone("spine")
 		if h >= 0:
 			_skel.set_bone_pose_scale(h, Vector3.ONE * 0.001)
 
@@ -172,7 +175,14 @@ func _update_anim() -> void:
 	var speed := Vector2(velocity.x, velocity.z).length()
 	if speed < 0.25:
 		_play_anim("Idle")
+		if anim:
+			anim.speed_scale = 1.0
 	elif speed < WALK_SPEED + 0.9:
 		_play_anim("Walking_A")
+		# Match the stride to the speed so feet don't skate.
+		if anim:
+			anim.speed_scale = clampf(speed / 2.4, 0.6, 1.45)
 	else:
 		_play_anim("Running_A")
+		if anim:
+			anim.speed_scale = clampf(speed / 5.6, 0.85, 1.3)

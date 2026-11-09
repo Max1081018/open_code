@@ -1,30 +1,40 @@
 extends CanvasLayer
 ## Mobile controls for walking around.
 ##
-## Left half: a floating joystick that appears under your thumb.
+## Left: a joystick (floating under your thumb, or fixed in place).
+## Above it: a RUN toggle. Releasing the stick drops back to walking.
 ## Right half: drag to look.
-## Bottom right: a context action pill (FISH / BUY 170 / EQUIP ...).
-## Centre: a crosshair, with a compact info pill for whatever it's on.
+## Bottom right: a context action pill (FISH / BUY / SELL 3 ...).
+## Centre: a crosshair with a compact info pill for whatever it's on.
 ##
-## Multi-touch: the joystick, the look drag and the button each track their own
+## Multi-touch: stick, look, RUN and the action pill each track their own
 ## finger, so you can walk, aim and act at the same time.
+##
+## HUD options (from Settings): hud_scale, fixed_joystick, hud_opacity.
 
 signal interact_pressed
 
-const JOY_RADIUS := 105.0
-const JOY_KNOB := 44.0
+const BASE_JOY_R := 105.0
+const BASE_KNOB_R := 44.0
+const BASE_RUN_R := 50.0
+const BASE_BTN := Vector2(300, 96)
 const LOOK_SENS := 0.0048
-const BTN_SIZE := Vector2(300, 96)
 
 var move := Vector2.ZERO       # -1..1, screen space
 var look := Vector2.ZERO       # consumed each frame by the camera
+var sprint := false            # RUN toggle
 var prompt := ""               # action pill label; empty hides it
 var look_info := ""            # name of whatever the crosshair is on
 var look_stat := ""            # small grey stat line, e.g. "+1 power"
 var look_cost := ""            # price or status, drawn in gold
-var crosshair := true
 var carry_info := ""           # "Carrying 3/5 - worth 120"
+var crosshair := true
 var sens_scale := 1.0
+
+# HUD customisation
+var hud_scale := 1.0
+var fixed_joystick := false
+var hud_opacity := 1.0
 
 var _view: Painter
 var _joy_index := -1
@@ -35,6 +45,7 @@ var _look_index := -1
 var _look_last := Vector2.ZERO
 var _btn_rect := Rect2()
 var _btn_held := false
+var _run_center := Vector2.ZERO
 var _toast := ""
 var _toast_t := 0.0
 
@@ -50,10 +61,29 @@ func _ready() -> void:
 	get_viewport().size_changed.connect(_recalc)
 
 
+func joy_r() -> float:
+	return BASE_JOY_R * hud_scale
+
+
+func knob_r() -> float:
+	return BASE_KNOB_R * hud_scale
+
+
+func run_r() -> float:
+	return BASE_RUN_R * hud_scale
+
+
+func apply_layout() -> void:
+	_recalc()
+
+
 func _recalc() -> void:
 	var s := get_viewport().get_visible_rect().size
-	_joy_home = Vector2(205, s.y - 195)
-	_btn_rect = Rect2(Vector2(s.x - BTN_SIZE.x - 60, s.y - BTN_SIZE.y - 170), BTN_SIZE)
+	var m := 60.0
+	_joy_home = Vector2(m + joy_r() + 40.0, s.y - m - joy_r() - 30.0)
+	_run_center = _joy_home + Vector2(joy_r() + run_r() + 26.0, -joy_r() - 10.0)
+	var bs := BASE_BTN * hud_scale
+	_btn_rect = Rect2(Vector2(s.x - bs.x - m, s.y - bs.y - m - 110.0 * hud_scale), bs)
 
 
 func flash(text: String) -> void:
@@ -73,6 +103,13 @@ func _process(d: float) -> void:
 	_view.queue_redraw()
 
 
+func _release_stick() -> void:
+	_joy_index = -1
+	_joy_knob = Vector2.ZERO
+	move = Vector2.ZERO
+	sprint = false          # letting go drops back to a walk
+
+
 func _input(event: InputEvent) -> void:
 	if not visible:
 		return
@@ -84,9 +121,15 @@ func _input(event: InputEvent) -> void:
 				_btn_held = true
 				interact_pressed.emit()
 				return
-			if event.position.x < half and _joy_index == -1:
+			if event.position.distance_to(_run_center) <= run_r() * 1.25:
+				sprint = not sprint
+				return
+			var on_stick: bool = event.position.x < half
+			if fixed_joystick:
+				on_stick = event.position.distance_to(_joy_home) <= joy_r() * 1.6
+			if on_stick and _joy_index == -1:
 				_joy_index = event.index
-				_joy_origin = event.position
+				_joy_origin = _joy_home if fixed_joystick else event.position
 				_joy_knob = Vector2.ZERO
 				move = Vector2.ZERO
 			elif event.position.x >= half and _look_index == -1:
@@ -95,16 +138,14 @@ func _input(event: InputEvent) -> void:
 		else:
 			_btn_held = false
 			if event.index == _joy_index:
-				_joy_index = -1
-				_joy_knob = Vector2.ZERO
-				move = Vector2.ZERO
+				_release_stick()
 			elif event.index == _look_index:
 				_look_index = -1
 
 	elif event is InputEventScreenDrag:
 		if event.index == _joy_index:
-			_joy_knob = (event.position - _joy_origin).limit_length(JOY_RADIUS)
-			move = _joy_knob / JOY_RADIUS
+			_joy_knob = (event.position - _joy_origin).limit_length(joy_r())
+			move = _joy_knob / joy_r()
 		elif event.index == _look_index:
 			look += (event.position - _look_last) * LOOK_SENS * sens_scale
 			_look_last = event.position
@@ -112,6 +153,11 @@ func _input(event: InputEvent) -> void:
 
 class Painter extends Control:
 	var ui
+
+	func _a(c: Color) -> Color:
+		var o := c
+		o.a *= float(ui.hud_opacity)
+		return o
 
 	func _pill(rect: Rect2, color: Color, radius := 22, border := Color(1, 1, 1, 0.16)) -> void:
 		var sb := StyleBoxFlat.new()
@@ -121,12 +167,10 @@ class Painter extends Control:
 		sb.border_color = border
 		draw_style_box(sb, rect)
 
-	func _centred(font: Font, text: String, mid: Vector2, size: int, color: Color, outline := 0) -> void:
+	func _centred(font: Font, text: String, mid: Vector2, size: int, color: Color) -> void:
 		var w := font.get_string_size(text, HORIZONTAL_ALIGNMENT_LEFT, -1, size).x
-		var p := Vector2(mid.x - w * 0.5, mid.y + size * 0.35)
-		if outline > 0:
-			draw_string_outline(font, p, text, HORIZONTAL_ALIGNMENT_LEFT, -1, size, outline, Color(0, 0, 0, 0.75))
-		draw_string(font, p, text, HORIZONTAL_ALIGNMENT_LEFT, -1, size, color)
+		draw_string(font, Vector2(mid.x - w * 0.5, mid.y + size * 0.35), text,
+			HORIZONTAL_ALIGNMENT_LEFT, -1, size, color)
 
 	func _draw() -> void:
 		var vp := get_viewport_rect().size
@@ -187,19 +231,28 @@ class Painter extends Control:
 			_centred(font, ui._toast, trect.position + trect.size * 0.5, 30, tc)
 
 		# ---- Joystick ----
+		var jr: float = ui.joy_r()
+		var kr: float = ui.knob_r()
 		var active: bool = ui._joy_index != -1
 		var centre: Vector2 = ui._joy_origin if active else ui._joy_home
-		var base_a := 0.20 if active else 0.11
-		draw_circle(centre, float(ui.JOY_RADIUS), Color(0.02, 0.06, 0.12, base_a + 0.12))
-		draw_arc(centre, float(ui.JOY_RADIUS), 0, TAU, 56, Color(1, 1, 1, 0.30 if active else 0.18), 3.0)
+		draw_circle(centre, jr, _a(Color(0.02, 0.06, 0.12, 0.32 if active else 0.22)))
+		draw_arc(centre, jr, 0, TAU, 56, _a(Color(1, 1, 1, 0.34 if active else 0.20)), 3.0)
 		var knob: Vector2 = centre + ui._joy_knob
-		draw_circle(knob, float(ui.JOY_KNOB) + 2.0, Color(0, 0, 0, 0.25))
-		draw_circle(knob, float(ui.JOY_KNOB), Color(1, 1, 1, 0.55 if active else 0.26))
+		draw_circle(knob, kr + 2.0, _a(Color(0, 0, 0, 0.25)))
+		draw_circle(knob, kr, _a(Color(1, 1, 1, 0.58 if active else 0.30)))
+
+		# ---- RUN toggle ----
+		var rr: float = ui.run_r()
+		var on: bool = ui.sprint
+		draw_circle(ui._run_center, rr, _a(UITheme.ACCENT if on else Color(0.02, 0.06, 0.12, 0.45)))
+		draw_arc(ui._run_center, rr, 0, TAU, 40, _a(Color(1, 1, 1, 0.55 if on else 0.30)), 3.0)
+		_centred(font, "RUN", ui._run_center, int(22 * ui.hud_scale),
+			_a(Color(0.12, 0.07, 0.03) if on else Color(1, 1, 1, 0.85)))
 
 		# ---- Action pill ----
 		if ui.prompt != "":
 			var held: bool = ui._btn_held
 			var col: Color = UITheme.ACCENT_LO if held else UITheme.ACCENT
-			_pill(ui._btn_rect, col, 26, Color(1, 1, 1, 0.28))
-			_centred(font, ui.prompt, ui._btn_rect.position + ui._btn_rect.size * 0.5, 34,
-				Color(0.12, 0.07, 0.03))
+			_pill(ui._btn_rect, _a(col), int(26 * ui.hud_scale), _a(Color(1, 1, 1, 0.28)))
+			_centred(font, ui.prompt, ui._btn_rect.position + ui._btn_rect.size * 0.5,
+				int(34 * ui.hud_scale), Color(0.12, 0.07, 0.03))

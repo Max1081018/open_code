@@ -29,7 +29,7 @@ var touch: CanvasLayer
 var cam_yaw := 0.0
 var cam_pitch := -0.12
 var near_fishing_spot := false
-const PLAYER_SPAWN := Vector3(0, 1.2, 11.0)       # on the jetty
+const PLAYER_SPAWN := Vector3(0, 1.2, 7.0)        # out on the jetty
 const FISHING_SPOT := Vector3(0, 0.72, 4.6)     # where you stand to cast
 const EYE_HEIGHT := 1.62   # first-person camera height above the player's feet
 
@@ -294,6 +294,8 @@ var frame := 0
 var start_screen := "menu"  # autotest can jump straight to a screen
 var test_yaw := PI
 var test_walk := 450
+var test_sprint := false
+var _test_max_speed := 0.0
 
 
 func _ready() -> void:
@@ -355,7 +357,7 @@ func _ready() -> void:
 				cam_pitch = -0.10
 			"legs":
 				_start_play()
-				cam_pitch = -1.05
+				cam_pitch = -1.30
 			"settings": _go_main_menu(); menu_ui.open_settings_for_test()
 			"pause": _start_play(); _pause()
 			"help": _go_main_menu(); menu_ui.open_help_for_test()
@@ -385,6 +387,7 @@ func _parse_args() -> void:
 		elif a.begins_with("--screen="): start_screen = a.get_slice("=", 1)
 		elif a.begins_with("--yaw="): test_yaw = float(a.get_slice("=", 1))
 		elif a.begins_with("--walk="): test_walk = int(a.get_slice("=", 1))
+		elif a == "--sprint": test_sprint = true
 
 
 # --- Wave height (mirror of the shader) --------------------------------------
@@ -481,7 +484,7 @@ func _build_world() -> void:
 	smat.set_shader_parameter("deep_color", Color(0.02, 0.22, 0.42, 0.96))
 	smat.set_shader_parameter("depth_distance", 3.2)
 	smat.set_shader_parameter("foam_color", Color(0.97, 0.99, 1.0, 1.0))
-	smat.set_shader_parameter("foam_width", 0.42)
+	smat.set_shader_parameter("foam_width", 0.16)
 	smat.set_shader_parameter("wave_height", WAVE_HEIGHT)
 	smat.set_shader_parameter("wave_length", WAVE_LENGTH)
 	smat.set_shader_parameter("wave_speed", WAVE_SPEED)
@@ -556,46 +559,78 @@ func _spawn(key: String, pos: Vector3, rot_y := 0.0, scl := 1.0, parent: Node = 
 	return n
 
 
-## Height of an island dome at a world x/z (for standing props on it).
+## Height of an island at a world x/z. The profile is a smooth bump,
+## H * (1 - (d/R)^2)^2, which meets the water tangentially, so every beach is
+## a gentle walkable slope (max ~16 degrees) rather than a dome's vertical edge.
+## Past the radius it keeps sloping down under the water so there's no lip.
 func _island_y(center: Vector3, radius: float, vheight: float, x: float, z: float) -> float:
 	var d := Vector2(x - center.x, z - center.z).length()
 	if d >= radius:
-		return center.y
-	var t := d / radius
-	return center.y + vheight * sqrt(max(0.0, 1.0 - t * t))
+		return center.y - 0.30 - (d - radius) * 0.22
+	var u := 1.0 - (d * d) / (radius * radius)
+	return center.y + vheight * u * u - 0.30
 
 
-## A smooth island: a sand dome with a grass cap, leaving a beach ring.
+## Builds an island as one generated mesh: a polar grid on the bump profile,
+## coloured by height (wet sand under water, dry sand on the beach, grass on
+## top) with smooth normals. Walkable islands get matching trimesh collision.
 func _make_island(center: Vector3, radius: float, height: float, grassy := true,
 		walkable := false) -> void:
-	var sand := MeshInstance3D.new()
-	var sm := SphereMesh.new()
-	sm.radius = radius
-	sm.height = radius * 2.0
-	sm.radial_segments = 40
-	sm.rings = 20
-	sm.material = _mat(Color(0.83, 0.70, 0.45), 1.0)
-	sand.mesh = sm
-	sand.scale = Vector3(1, (height * 0.85) / radius, 1)
-	sand.position = center
-	add_child(sand)
-	if walkable:
-		sand.create_trimesh_collision()
+	var rings := 34
+	var segs := 72
+	var outer := radius * 1.22
+	var grid: Array = []
+	for i in rings + 1:
+		var rr := outer * float(i) / float(rings)
+		var row: Array = []
+		for j in segs:
+			var a := TAU * float(j) / float(segs)
+			var x := center.x + cos(a) * rr
+			var z := center.z + sin(a) * rr
+			row.append(Vector3(x, _island_y(center, radius, height, x, z), z))
+		grid.append(row)
 
-	if grassy:
-		var grass := MeshInstance3D.new()
-		var gm := SphereMesh.new()
-		gm.radius = radius * 0.80
-		gm.height = radius * 1.6
-		gm.radial_segments = 36
-		gm.rings = 18
-		gm.material = _mat(Color(0.30, 0.60, 0.25), 1.0)
-		grass.mesh = gm
-		grass.scale = Vector3(1, height / (radius * 0.80), 1)
-		grass.position = center + Vector3(0, 0.05, 0)
-		add_child(grass)
-		if walkable:
-			grass.create_trimesh_collision()
+	var wet := Color(0.60, 0.50, 0.33)
+	var sand := Color(0.86, 0.73, 0.48)
+	var grass := Color(0.32, 0.61, 0.26)
+	var deep_grass := Color(0.24, 0.50, 0.21)
+	var st := SurfaceTool.new()
+	st.begin(Mesh.PRIMITIVE_TRIANGLES)
+	var add := func(v: Vector3) -> void:
+		var h := v.y - center.y
+		var c: Color
+		if h < 0.05:
+			c = wet.lerp(sand, clampf((h + 0.6) / 0.65, 0.0, 1.0))
+		elif not grassy or h < 0.75:
+			c = sand
+		elif h < 1.25:
+			c = sand.lerp(grass, (h - 0.75) / 0.5)
+		else:
+			c = grass.lerp(deep_grass, clampf((h - 1.25) / (height + 0.01), 0.0, 1.0))
+		st.set_color(c)
+		st.add_vertex(v)
+	for i in rings:
+		for j in segs:
+			var j2 := (j + 1) % segs
+			var p0: Vector3 = grid[i][j]
+			var p1: Vector3 = grid[i][j2]
+			var p2: Vector3 = grid[i + 1][j2]
+			var p3: Vector3 = grid[i + 1][j]
+			# Clockwise seen from above = front face in Godot.
+			add.call(p0); add.call(p2); add.call(p1)
+			add.call(p0); add.call(p3); add.call(p2)
+	st.generate_normals()
+	var mesh := st.commit()
+	var m := StandardMaterial3D.new()
+	m.vertex_color_use_as_albedo = true
+	m.vertex_color_is_srgb = true      # colours above are picked in sRGB
+	m.roughness = 1.0
+	var mi := MeshInstance3D.new()
+	mi.mesh = mesh
+	mi.material_override = m
+	add_child(mi)
+	if walkable:
+		mi.create_trimesh_collision()
 
 
 const HOME := Vector3(0, 0, 36)
@@ -607,14 +642,13 @@ func _build_island() -> void:
 	_make_island(HOME, HOME_R, HOME_H, true, true)
 
 	# Wooden jetty out over the water (tile depth ~2.5).
-	for i in 5:
-		_spawn("dock", Vector3(0, -0.59, 14.0 - i * 2.5))
+	for i in 7:
+		_spawn("dock", Vector3(0, -0.59, 19.0 - i * 2.5))
 
 	# Dockside clutter.
-	_spawn("barrel", Vector3(-1.5, DECK_Y, 13.4), 0.3, 0.75)
-	_spawn("crate", Vector3(1.55, DECK_Y, 14.2), -0.4, 0.8)
-	_spawn("chest", Vector3(1.5, DECK_Y, 11.8), 0.9, 0.7)
-	_spawn("barrel", Vector3(-1.6, DECK_Y, 10.8), -0.2, 0.65)
+	_spawn("barrel", Vector3(-1.62, DECK_Y, 16.2), 0.3, 0.70)
+	_spawn("crate", Vector3(1.62, DECK_Y, 17.0), -0.4, 0.75)
+	_spawn("barrel", Vector3(-1.66, DECK_Y, 15.2), -0.2, 0.60)
 
 	# A little fishing boat moored alongside.
 	_spawn("boat", Vector3(3.6, -0.35, 10.0), -PI / 2.0 + 0.12, 0.9)
@@ -624,10 +658,10 @@ func _build_island() -> void:
 	var dock_body := StaticBody3D.new()
 	var dock_col := CollisionShape3D.new()
 	var dock_box := BoxShape3D.new()
-	dock_box.size = Vector3(2.3, 0.4, 13.6)
+	dock_box.size = Vector3(2.3, 0.4, 18.6)
 	dock_col.shape = dock_box
 	dock_body.add_child(dock_col)
-	dock_body.position = Vector3(0, DECK_Y - 0.2, 8.6)
+	dock_body.position = Vector3(0, DECK_Y - 0.2, 11.1)
 	add_child(dock_body)
 
 
@@ -928,9 +962,10 @@ var _menu_cam_t := 0.0
 func _update_explore(delta: float) -> void:
 	var look: Vector2 = touch.consume_look()
 	cam_yaw -= look.x
-	cam_pitch = clampf(cam_pitch - look.y, -0.95, 0.40)
+	cam_pitch = clampf(cam_pitch - look.y, -1.40, 0.45)
 
 	player.move_input = touch.move
+	player.sprint = touch.sprint
 	player.cam_yaw = cam_yaw
 
 	# Fell in the lake? Put them back on the jetty.
@@ -941,7 +976,7 @@ func _update_explore(delta: float) -> void:
 	# Sit the camera a little ahead of the chest so looking down shows your own
 	# body and legs rather than the inside of your shoulders.
 	var fwd := (Basis(Vector3.UP, cam_yaw) * Vector3(0, 0, -1)).normalized()
-	camera.global_position = player.global_position + Vector3(0, EYE_HEIGHT, 0) + fwd * 0.07
+	camera.global_position = player.global_position + Vector3(0, EYE_HEIGHT, 0) + fwd * 0.26
 	camera.rotation = Vector3(cam_pitch, cam_yaw, 0.0)
 
 	_update_look()
@@ -1235,6 +1270,21 @@ func _flat_pad(x: float, z: float, top_r: float) -> float:
 	return ground
 
 
+## A painted sign: text in the world, facing -Z (toward the jetty) unless told.
+func _sign(text: String, pos: Vector3, size := 72, yaw := PI, color := Color(0.16, 0.10, 0.05)) -> Label3D:
+	var l := Label3D.new()
+	l.text = text
+	l.font_size = size
+	l.pixel_size = 0.0055
+	l.modulate = color
+	l.outline_size = 0
+	l.position = pos
+	l.rotation.y = yaw
+	l.double_sided = false
+	add_child(l)
+	return l
+
+
 ## A wooden display stand with collision; returns the height of its top.
 func _pedestal(pos: Vector3) -> float:
 	var b := MeshInstance3D.new()
@@ -1278,6 +1328,10 @@ func _build_shop() -> void:
 			continue
 		if nm.begins_with("Shack_Walls"):
 			walls = m.global_transform * m.mesh.get_aabb()
+		if nm.begins_with("SignBoard"):
+			var sb: AABB = m.global_transform * m.mesh.get_aabb()
+			var c := sb.position + sb.size * 0.5
+			_sign("BAIT & BLADE", Vector3(c.x, c.y, sb.position.z - 0.03), 76)
 		if nm.begins_with("Shack_Walls") or nm.begins_with("Porch") or nm.begins_with("Shack_Roof"):
 			m.create_trimesh_collision()
 
@@ -1342,6 +1396,12 @@ func _build_market() -> void:
 	body.position = Vector3(MARKET_POS.x, g + 0.6, MARKET_POS.z)
 	add_child(body)
 	market_ground = g
+
+	var fm := _sign("FISH MARKET", Vector3(MARKET_POS.x - 0.2, g + 3.45, MARKET_POS.z), 92,
+		-PI * 0.5, Color(1.0, 0.95, 0.85))
+	fm.billboard = BaseMaterial3D.BILLBOARD_FIXED_Y   # turns to face you
+	fm.outline_size = 14
+	fm.outline_modulate = Color(0.55, 0.18, 0.12)
 
 	fish_buyer = _spawn_character("res://assets/models/characters/Knight.glb",
 		Vector3(MARKET_POS.x + 1.15, g + 0.02, MARKET_POS.z), -PI * 0.5, "Idle")
@@ -1446,6 +1506,10 @@ func _apply_settings() -> void:
 	if touch:
 		touch.crosshair = st.get("crosshair", true)
 		touch.sens_scale = float(st.get("look_sens", 1.0))
+		touch.hud_scale = float(st.get("hud_scale", 1.0))
+		touch.hud_opacity = float(st.get("hud_opacity", 1.0))
+		touch.fixed_joystick = bool(st.get("fixed_joystick", false))
+		touch.apply_layout()
 	if player:
 		player.show_body = bool(st.get("show_body", true))
 		player.set_first_person(player.first_person)
@@ -1464,7 +1528,7 @@ func _apply_graphics() -> void:
 		world_env.fog_enabled = q != "Low"
 	if water_mat:
 		water_mat.set_shader_parameter("normal_scale", 0.12 if q == "Low" else (0.28 if q == "Medium" else 0.38))
-		water_mat.set_shader_parameter("foam_width", 0.0 if q == "Low" else 0.42)
+		water_mat.set_shader_parameter("foam_width", 0.0 if q == "Low" else 0.16)
 	var vp := get_viewport()
 	if vp:
 		vp.msaa_3d = Viewport.MSAA_DISABLED if q == "Low" else (Viewport.MSAA_2X if q == "Medium" else Viewport.MSAA_4X)
@@ -1843,6 +1907,8 @@ func _autotest(_delta: float) -> void:
 	if start_screen == "explore":
 		if frame == 10:
 			cam_yaw = test_yaw
+		touch.sprint = test_sprint
+		_test_max_speed = maxf(_test_max_speed, Vector2(player.velocity.x, player.velocity.z).length())
 		if frame < 30:
 			touch.move = Vector2.ZERO
 		elif frame < 30 + test_walk:
@@ -1852,9 +1918,9 @@ func _autotest(_delta: float) -> void:
 		if frame >= 30 + test_walk + 20:
 			if autotest_shot != "":
 				get_viewport().get_texture().get_image().save_png(autotest_shot)
-			print("AUTOTEST(explore) pos=%s on_floor=%s prompt='%s' anim=%s" % [
+			print("AUTOTEST(explore) pos=%s on_floor=%s prompt='%s' anim=%s max_speed=%.2f" % [
 				player.position.snapped(Vector3.ONE * 0.01), player.is_on_floor(),
-				touch.prompt, player._cur])
+				touch.prompt, player._cur, _test_max_speed])
 			get_tree().quit()
 		return
 

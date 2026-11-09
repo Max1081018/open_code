@@ -29,6 +29,9 @@ var settings := {
 	"shadows": true,
 	"crosshair": true,
 	"show_body": true,
+	"hud_scale": 1.0,
+	"hud_opacity": 1.0,
+	"fixed_joystick": false,
 }
 
 var _root: Control
@@ -198,6 +201,11 @@ func _build() -> void:
 	_slider_row(sbody, "Look sensitivity", "look_sens", 0.3, 2.0, 0.05)
 	_settings_toggle(sbody, "Left-handed controls", "left_handed")
 	_settings_toggle(sbody, "Camera sway", "camera_sway")
+
+	_group(sbody, "HUD")
+	_slider_row(sbody, "HUD size", "hud_scale", 0.8, 1.35, 0.05)
+	_slider_row(sbody, "HUD opacity", "hud_opacity", 0.4, 1.0, 0.05)
+	_settings_toggle(sbody, "Fixed joystick", "fixed_joystick")
 
 	_group(sbody, "DISPLAY")
 	_cycle_row(sbody, "Graphics", "graphics", GRAPHICS_LEVELS)
