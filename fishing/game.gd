@@ -66,6 +66,13 @@ var shop_building: Node3D
 var shop_counter: Node3D
 var shopkeeper: Node3D
 var near_shop := false
+var fish_buyer: Node3D
+var near_market := false
+var market_ground := 0.0
+var shop_floor_y := 0.0
+var shop_door_z := 0.0
+var held: Array = []              # catches you're carrying: {name, weight, value, set, node}
+var held_view: Node3D             # the latest one, shown in your hand
 const WEAPON_LAYER := 4          # collision layer the crosshair ray looks for
 var weapon_bodies := {}          # weapon id -> StaticBody3D
 var weapon_outlines := {}        # weapon id -> Array[MeshInstance3D]
@@ -77,21 +84,36 @@ var paddle: Node3D
 var whacks_left := 0
 var whack_anim := 0.0          # 0..1 swing progress
 var catch_hop := 0.0           # bounce applied to the catch
+var _catch_base_scale := Vector3.ONE
 var pending_weight := 0.0
 var pending_value := 0
 var cam_pitch_target := -10.0  # degrees; eased each frame
 const WHACK_SPOT := Vector3(0, 0.72, 3.55)  # on the deck, just in front of us
 
 # Fish table: name, colour, weight range (kg). A few junk "catches" for laughs.
+const CATCH_SETS := {
+	"river": "res://assets/models/fishing/river-fish-set.glb",
+	"rarity": "res://assets/models/fishing/rarity-fish-set.glb",
+	"ocean": "res://assets/models/fishing/low-poly-ocean-fish-set.glb",
+	"junk": "res://assets/models/fishing/junk-catches-set.glb",
+}
+
+# Every catch is a real model pulled out of one of the sets above by node name.
 var fish_table := [
-	{"name": "Dizzy Perch", "color": Color(0.5, 0.8, 0.4), "min": 0.2, "max": 1.1, "junk": false},
-	{"name": "Grumpy Carp", "color": Color(0.8, 0.6, 0.3), "min": 0.8, "max": 3.5, "junk": false},
-	{"name": "Rubber Trout", "color": Color(0.9, 0.4, 0.5), "min": 0.4, "max": 2.0, "junk": false},
-	{"name": "Lord Bassington", "color": Color(0.3, 0.5, 0.7), "min": 1.5, "max": 5.0, "junk": false},
-	{"name": "Tiny Terror", "color": Color(0.95, 0.75, 0.2), "min": 0.05, "max": 0.3, "junk": false},
-	{"name": "an Old Crate", "color": Color(0.6, 0.45, 0.3), "min": 0.6, "max": 1.2, "junk": true, "model": "crate"},
-	{"name": "a Rusty Barrel", "color": Color(0.6, 0.45, 0.3), "min": 1.0, "max": 2.0, "junk": true, "model": "barrel"},
-	{"name": "a TREASURE CHEST", "color": Color(0.9, 0.75, 0.3), "min": 2.0, "max": 4.0, "junk": true, "model": "chest", "treasure": true},
+	{"name": "Minnow", "set": "rarity", "node": "Fish_Minnow", "min": 0.05, "max": 0.30, "junk": false},
+	{"name": "Perch", "set": "rarity", "node": "Fish_Perch", "min": 0.25, "max": 1.10, "junk": false},
+	{"name": "Sunfish", "set": "river", "node": "Fish_Sunfish", "min": 0.30, "max": 1.40, "junk": false},
+	{"name": "Trout", "set": "rarity", "node": "Fish_Trout", "min": 0.50, "max": 2.20, "junk": false},
+	{"name": "Bass", "set": "river", "node": "Fish_Bass", "min": 0.80, "max": 3.20, "junk": false},
+	{"name": "Carp", "set": "river", "node": "Fish_Carp", "min": 1.20, "max": 4.50, "junk": false},
+	{"name": "Catfish", "set": "rarity", "node": "Fish_Catfish", "min": 1.80, "max": 6.00, "junk": false},
+	{"name": "Pike", "set": "river", "node": "Fish_Pike", "min": 2.00, "max": 7.50, "junk": false},
+	{"name": "Golden Koi", "set": "rarity", "node": "Fish_Golden", "min": 3.00, "max": 9.00, "junk": false, "prize": true},
+	{"name": "an Old Boot", "set": "junk", "node": "Boot_Old", "min": 0.60, "max": 1.20, "junk": true},
+	{"name": "a Rusty Tin", "set": "junk", "node": "TinCan_Rusty", "min": 0.20, "max": 0.50, "junk": true},
+	{"name": "an Old Tyre", "set": "junk", "node": "Tyre_Seaweed", "min": 2.00, "max": 4.00, "junk": true},
+	{"name": "a Message in a Bottle", "set": "junk", "node": "Bottle_Message", "min": 0.30, "max": 0.60, "junk": true},
+	{"name": "a Sunken Chest", "set": "junk", "node": "Chest_Barnacle", "min": 2.50, "max": 5.00, "junk": true, "treasure": true},
 ]
 
 enum { IDLE, CHARGING, FLYING, WAITING, BITE, FIGHT, CAUGHT, SNAP, WHACK }
@@ -207,6 +229,7 @@ func _load_save() -> void:
 		seen_help = bool(cfg.get_value("save", "seen_help", false))
 		owned_weapons = cfg.get_value("save", "owned_weapons", [])
 		equipped_weapon = str(cfg.get_value("save", "equipped_weapon", ""))
+		held = cfg.get_value("save", "held", [])
 		for key in upgrades:
 			upgrades[key] = int(cfg.get_value("upgrades", key, 0))
 
@@ -220,6 +243,7 @@ func _save_game() -> void:
 	cfg.set_value("save", "seen_help", seen_help)
 	cfg.set_value("save", "owned_weapons", owned_weapons)
 	cfg.set_value("save", "equipped_weapon", equipped_weapon)
+	cfg.set_value("save", "held", held)
 	for key in upgrades:
 		cfg.set_value("upgrades", key, upgrades[key])
 	cfg.save(SAVE_PATH)
@@ -314,6 +338,21 @@ func _ready() -> void:
 		match start_screen:
 			"play": _start_play(); _enter_fishing()
 			"explore": _start_play()
+			"shopview":
+				_start_play()
+				player.position = Vector3(SHOP_POS.x, shop_floor_y + 0.3, shop_door_z - 0.4)
+				cam_yaw = PI
+				cam_pitch = -0.10
+			"sell":
+				_start_play()
+				held = [
+					{"name": "Bass", "weight": 2.1, "value": 29, "set": "river", "node": "Fish_Bass"},
+					{"name": "Trout", "weight": 1.4, "value": 20, "set": "rarity", "node": "Fish_Trout"},
+				]
+				_refresh_held_view()
+				player.position = Vector3(SELL_SPOT.x - 1.4, market_ground + 0.3, SELL_SPOT.z)
+				cam_yaw = -PI * 0.5   # face +X, toward the buyer
+				cam_pitch = -0.10
 			"legs":
 				_start_play()
 				cam_pitch = -1.05
@@ -325,9 +364,9 @@ func _ready() -> void:
 				_start_play()
 				# Stand at the counter looking at the stock.
 				var gy := _island_y(HOME, HOME_R, HOME_H, SHOP_POS.x, SHOP_POS.z)
-				player.position = Vector3(SHOP_POS.x - 0.25, gy + 0.3, SHOP_POS.z - 1.2)
-				cam_yaw = PI
-				cam_pitch = -0.16
+				player.position = Vector3(SHOP_POS.x + 0.2, shop_floor_y + 0.3, SHOP_POS.z - 0.9)
+				cam_yaw = 1.68            # toward the first display stand
+				cam_pitch = -0.17
 			"shop":
 				coins = 500
 				_go_main_menu()
@@ -482,15 +521,22 @@ const MDL := {
 	# Shop
 	"shop_building": "res://assets/models/fishing/lakeside-bait-shop.glb",
 	"shop_counter": "res://assets/models/fishing/tackle-shop-counter.glb",
+	"market": "res://assets/models/fishing/fish-market-stand.glb",
 }
 
 # Island 1 shop placement
-const SHOP_POS := Vector3(-5.5, 0, 24.0)
-const SHOP_SCALE := 0.27
-const COUNTER_SCALE := 0.17
+const SHOP_POS := Vector3(-7.0, 0, 25.0)
+const SHOP_SCALE := 0.34
+const COUNTER_SCALE := 0.214
 # Where the player stands to be served, and where the shopkeeper waits.
-const SHOP_TALK_SPOT := Vector3(-5.5, 0, 24.3)
+const SHOP_TALK_SPOT := Vector3(-7.0, 0, 25.4)
 const WEAPON_DIR := "res://assets/models/weapons/"
+
+# Fish market (where you sell what you carry)
+const MARKET_POS := Vector3(7.0, 0, 19.5)
+const MARKET_SCALE := 0.27
+const SELL_SPOT := Vector3(5.2, 0, 19.5)    # in front of the counter
+const MAX_CARRY := 5
 
 const DECK_Y := 0.72   # top of the dock planks, in world units
 
@@ -552,9 +598,9 @@ func _make_island(center: Vector3, radius: float, height: float, grassy := true,
 			grass.create_trimesh_collision()
 
 
-const HOME := Vector3(0, 0, 28)
-const HOME_R := 15.0
-const HOME_H := 3.6
+const HOME := Vector3(0, 0, 36)
+const HOME_R := 23.0
+const HOME_H := 4.4
 
 
 func _build_island() -> void:
@@ -588,16 +634,20 @@ func _build_island() -> void:
 func _build_scenery() -> void:
 	# Palms and rocks on the home island, standing on the dome surface.
 	var home_props := [
-		{"k": "palm", "x": -7.0, "z": 29.0, "s": 1.05, "r": 0.4},
-		{"k": "palm_bend", "x": 6.5, "z": 31.0, "s": 0.95, "r": 2.1},
-		{"k": "palm", "x": -3.0, "z": 34.0, "s": 1.15, "r": 1.2},
-		{"k": "palm_bend", "x": 9.5, "z": 25.5, "s": 0.85, "r": 3.4},
-		{"k": "palm", "x": -10.0, "z": 25.0, "s": 0.8, "r": 5.0},
-		{"k": "rocks_sand", "x": -9.5, "z": 33.0, "s": 0.7, "r": 1.0},
-		{"k": "rocks", "x": 10.5, "z": 33.5, "s": 0.55, "r": 2.4},
-		{"k": "grass", "x": -4.5, "z": 26.5, "s": 1.0, "r": 0.0},
-		{"k": "grass", "x": 4.0, "z": 27.5, "s": 0.9, "r": 1.5},
-		{"k": "grass", "x": 0.0, "z": 32.0, "s": 1.1, "r": 2.8},
+		{"k": "palm", "x": -16.0, "z": 34.0, "s": 1.10, "r": 0.4},
+		{"k": "palm_bend", "x": 13.0, "z": 31.0, "s": 1.00, "r": 2.1},
+		{"k": "palm", "x": -4.0, "z": 41.0, "s": 1.20, "r": 1.2},
+		{"k": "palm_bend", "x": 15.0, "z": 42.0, "s": 0.95, "r": 3.4},
+		{"k": "palm", "x": -13.0, "z": 46.0, "s": 1.00, "r": 5.0},
+		{"k": "palm", "x": 5.0, "z": 50.0, "s": 1.15, "r": 0.9},
+		{"k": "palm_bend", "x": -18.0, "z": 23.0, "s": 0.90, "r": 2.6},
+		{"k": "rocks_sand", "x": -17.0, "z": 40.0, "s": 0.75, "r": 1.0},
+		{"k": "rocks", "x": 17.0, "z": 36.0, "s": 0.60, "r": 2.4},
+		{"k": "rocks_sand", "x": 10.0, "z": 52.0, "s": 0.70, "r": 0.3},
+		{"k": "grass", "x": 2.0, "z": 29.0, "s": 1.0, "r": 0.0},
+		{"k": "grass", "x": -3.0, "z": 35.0, "s": 0.9, "r": 1.5},
+		{"k": "grass", "x": 8.0, "z": 38.0, "s": 1.1, "r": 2.8},
+		{"k": "grass", "x": -9.0, "z": 38.0, "s": 1.0, "r": 0.7},
 	]
 	for pr in home_props:
 		var x: float = pr["x"]
@@ -606,8 +656,8 @@ func _build_scenery() -> void:
 		_spawn(pr["k"], Vector3(x, y - 0.15, z), pr["r"], pr["s"])
 
 	# A watchtower landmark set back on the island.
-	var ty := _island_y(HOME, HOME_R, HOME_H, 2.5, 36.0)
-	_spawn("tower", Vector3(2.5, ty - 0.2, 36.0), -0.5, 1.0)
+	var ty := _island_y(HOME, HOME_R, HOME_H, 3.0, 42.0)
+	_spawn("tower", Vector3(3.0, ty - 0.2, 42.0), -0.5, 1.2)
 
 	# Buoys bobbing on the open water (they float at their origin).
 	for b in [
@@ -619,6 +669,7 @@ func _build_scenery() -> void:
 		floaters.append(n)
 
 	_build_shop()
+	_build_market()
 
 	# A wrecked ship on the horizon for silhouette.
 	_spawn("wreck", Vector3(-38, -1.0, -60), 0.7, 1.3)
@@ -816,7 +867,10 @@ func _process(delta: float) -> void:
 
 	match state:
 		IDLE, CHARGING:
-			if action:
+			if held.size() >= MAX_CARRY:
+				hud.message = "Hands full!\nSell your catch at the fish market"
+				power = 0.0
+			elif action:
 				state = CHARGING
 				hud.mode = Hud.M_CHARGING
 				power = min(power + delta * 1.1, 1.0)
@@ -892,9 +946,10 @@ func _update_explore(delta: float) -> void:
 
 	_update_look()
 
-	near_fishing_spot = player.global_position.distance_to(FISHING_SPOT) < 3.0
+	near_fishing_spot = _hdist(player.global_position, FISHING_SPOT) < 3.0
+	near_market = _hdist(player.global_position, SELL_SPOT) < 2.6
 	var was_near := near_shop
-	near_shop = player.global_position.distance_to(SHOP_TALK_SPOT) < 4.5
+	near_shop = _hdist(player.global_position, SHOP_TALK_SPOT) < 3.4
 	if near_shop and not was_near:
 		_greet_shopkeeper()
 	if _greet_timer > 0.0:
@@ -917,7 +972,9 @@ func _update_explore(delta: float) -> void:
 		touch.look_info = ""
 		touch.look_stat = ""
 		touch.look_cost = ""
-		if near_fishing_spot:
+		if near_market and not held.is_empty():
+			touch.prompt = "SELL %d" % held.size()
+		elif near_fishing_spot:
 			touch.prompt = "FISH"
 		else:
 			touch.prompt = ""
@@ -939,6 +996,9 @@ func _on_interact() -> void:
 				_play("snap")
 			else:
 				_buy_weapon(looked_weapon)
+		return
+	if near_market and not held.is_empty():
+		_sell_all()
 		return
 	if near_fishing_spot:
 		_enter_fishing()
@@ -1039,6 +1099,9 @@ func _enter_fishing() -> void:
 	play_mode = "fishing"
 	_set_weapon_outline(looked_weapon, false)
 	looked_weapon = ""
+	if held_view:
+		held_view.queue_free()
+		held_view = null
 	touch.look_info = ""
 	touch.look_stat = ""
 	touch.look_cost = ""
@@ -1071,6 +1134,7 @@ func _leave_fishing() -> void:
 	hud.set_hud_visible(false)
 	touch.visible = true
 	cam_yaw = PI  # look back down the jetty
+	_refresh_held_view()
 
 
 ## World-space AABB of all meshes under a node.
@@ -1089,21 +1153,29 @@ func _node_aabb(node: Node) -> AABB:
 	return out
 
 
-## AABB of a node's meshes expressed in that node's own space.
+## AABB of a node's meshes in that node's own space. Walks local transforms by
+## hand rather than using global_transform, so it also works on a subtree that
+## has not been added to the scene yet.
 func _local_aabb(root: Node3D) -> AABB:
-	var inv := root.global_transform.affine_inverse()
-	var out := AABB()
-	var first := true
-	for n in root.find_children("*", "MeshInstance3D", true):
-		if n.mesh == null:
-			continue
-		var a: AABB = (inv * n.global_transform) * n.mesh.get_aabb()
-		if first:
-			out = a
-			first = false
-		else:
-			out = out.merge(a)
+	var acc: Array[AABB] = []
+	for c in root.get_children():
+		_collect_aabb(c, Transform3D.IDENTITY, acc)
+	if acc.is_empty():
+		return AABB()
+	var out: AABB = acc[0]
+	for i in range(1, acc.size()):
+		out = out.merge(acc[i])
 	return out
+
+
+func _collect_aabb(node: Node, xform: Transform3D, acc: Array[AABB]) -> void:
+	var t := xform
+	if node is Node3D:
+		t = xform * (node as Node3D).transform
+	if node is MeshInstance3D and (node as MeshInstance3D).mesh:
+		acc.append(t * (node as MeshInstance3D).mesh.get_aabb())
+	for c in node.get_children():
+		_collect_aabb(c, t, acc)
 
 
 ## Spawns a KayKit character scaled to human height, looping one animation.
@@ -1145,69 +1217,134 @@ func _spawn_weapon(key: String, pos: Vector3, rot := Vector3.ZERO, scl := 0.45, 
 
 ## Island 1's weapon shop: a bait shack you can actually walk into, standing on
 ## a flat foundation so it doesn't sink into the curved island.
-func _build_shop() -> void:
-	var ground := _island_y(HOME, HOME_R, HOME_H, SHOP_POS.x, SHOP_POS.z)
-
-	# Flat foundation pad. It flares out at the bottom so the sides are a gentle
-	# ramp you can walk up, rather than a step that blocks you.
+## Levels a patch of the dome island and returns its height. The pad flares at
+## the bottom so its edge is a ramp you can walk up, not a step.
+func _flat_pad(x: float, z: float, top_r: float) -> float:
+	var ground := _island_y(HOME, HOME_R, HOME_H, x, z)
 	var pad := MeshInstance3D.new()
 	var pm := CylinderMesh.new()
-	pm.top_radius = 4.6
-	pm.bottom_radius = 6.8
-	pm.height = 1.5
-	pm.radial_segments = 28
+	pm.top_radius = top_r
+	pm.bottom_radius = top_r + 2.6
+	pm.height = 1.8
+	pm.radial_segments = 32
 	pm.material = _mat(Color(0.78, 0.66, 0.43), 1.0)
 	pad.mesh = pm
-	pad.position = Vector3(SHOP_POS.x, ground - 0.75, SHOP_POS.z)
+	pad.position = Vector3(x, ground - 0.9, z)
 	add_child(pad)
 	pad.create_trimesh_collision()
+	return ground
+
+
+## A wooden display stand with collision; returns the height of its top.
+func _pedestal(pos: Vector3) -> float:
+	var b := MeshInstance3D.new()
+	var bm := BoxMesh.new()
+	bm.size = Vector3(0.52, 0.86, 0.52)
+	bm.material = _mat(Color(0.40, 0.27, 0.17), 0.85)
+	b.mesh = bm
+	b.position = pos + Vector3(0, 0.43, 0)
+	add_child(b)
+	var cap := MeshInstance3D.new()
+	var cpm := BoxMesh.new()
+	cpm.size = Vector3(0.62, 0.06, 0.62)
+	cpm.material = _mat(Color(0.64, 0.46, 0.30), 0.7)
+	cap.mesh = cpm
+	cap.position = pos + Vector3(0, 0.89, 0)
+	add_child(cap)
+	var body := StaticBody3D.new()
+	var col := CollisionShape3D.new()
+	var bs := BoxShape3D.new()
+	bs.size = Vector3(0.62, 0.92, 0.62)
+	col.shape = bs
+	body.add_child(col)
+	body.position = pos + Vector3(0, 0.46, 0)
+	add_child(body)
+	return pos.y + 0.92
+
+
+## Island 1's weapon shop: a bait shack you walk into. The interior is laid out
+## from the shack's measured wall bounds, so nothing floats or sinks.
+func _build_shop() -> void:
+	var k := SHOP_SCALE / 0.27
+	var ground := _flat_pad(SHOP_POS.x, SHOP_POS.z, 4.6 * k)
 
 	# The shack, door facing back toward the jetty (-Z).
 	shop_building = _spawn("shop_building", Vector3(SHOP_POS.x, ground, SHOP_POS.z), PI, SHOP_SCALE)
-
-	# Open the doorway and give the structure collision (skipping the door so we
-	# can walk through it).
+	var walls := AABB()
 	for m in shop_building.find_children("*", "MeshInstance3D", true):
 		var nm: String = m.name
 		if nm.begins_with("Door"):
 			m.visible = false
 			continue
+		if nm.begins_with("Shack_Walls"):
+			walls = m.global_transform * m.mesh.get_aabb()
 		if nm.begins_with("Shack_Walls") or nm.begins_with("Porch") or nm.begins_with("Shack_Roof"):
 			m.create_trimesh_collision()
 
-	# Shop counter against the inside back wall.
-	shop_counter = _spawn("shop_counter",
-		Vector3(SHOP_POS.x, ground + 0.02, SHOP_POS.z + 1.25), PI, COUNTER_SCALE)
+	# Inside faces of the room (door on the low-z wall).
+	var floor_y := walls.position.y
+	var x0 := walls.position.x + 0.30
+	var x1 := walls.end.x - 0.30
+	var z0 := walls.position.z + 0.30
+	var z1 := walls.end.z - 0.30
+	var cx := (x0 + x1) * 0.5
+	shop_floor_y = floor_y
+	shop_door_z = walls.position.z
 
-	# The shopkeeper, waiting behind the counter, facing the door.
+	# Tackle counter as the back-wall display (rods, shelves, aquarium).
+	shop_counter = _spawn("shop_counter", Vector3(cx, floor_y, z1 - 0.98), PI, COUNTER_SCALE)
+
+	# Shopkeeper in the back corner beside his counter, facing the door.
 	shopkeeper = _spawn_character("res://assets/models/characters/Barbarian.glb",
-		Vector3(SHOP_POS.x + 1.15, ground + 0.02, SHOP_POS.z + 1.75), PI - 0.30, "Idle")
+		Vector3(x1 - 0.42, floor_y, z1 - 0.50), PI - 0.25, "Idle")
 
-	# Stock on display. Each one is a real model you walk up to, look at and buy.
-	var top := ground + 0.92          # desk surface
-	var cz := SHOP_POS.z + 1.25       # on the desk, toward its front edge
-	_add_weapon_display("dagger_A", Vector3(SHOP_POS.x - 0.80, top, cz), Vector3.ZERO, 0.40)
-	_add_weapon_display("dagger_B", Vector3(SHOP_POS.x - 0.25, top, cz), Vector3.ZERO, 0.40)
-	_add_weapon_display("fistweapon_A", Vector3(SHOP_POS.x + 0.30, top, cz), Vector3.ZERO, 0.40)
-	# The best one here gets pride of place, mounted above the counter.
-	_add_weapon_display("axe_A", Vector3(SHOP_POS.x - 0.85, ground + 2.32, SHOP_POS.z + 2.25), Vector3.ZERO, 0.46)
+	# Stock on its own stands, turned to face the middle of the room.
+	var t1 := _pedestal(Vector3(x0 + 0.40, floor_y, z0 + 0.55))
+	_add_weapon_display("dagger_A", Vector3(x0 + 0.40, t1, z0 + 0.55), Vector3(0, PI * 0.5, 0), 0.42)
+	var t2 := _pedestal(Vector3(x0 + 0.40, floor_y, z0 + 1.55))
+	_add_weapon_display("dagger_B", Vector3(x0 + 0.40, t2, z0 + 1.55), Vector3(0, PI * 0.5, 0), 0.42)
+	var t3 := _pedestal(Vector3(x1 - 0.40, floor_y, z0 + 0.55))
+	_add_weapon_display("fistweapon_A", Vector3(x1 - 0.40, t3, z0 + 0.55), Vector3(0, -PI * 0.5, 0), 0.55)
+	# The best of the lot, mounted on the side wall above the stands.
+	_add_weapon_display("axe_A", Vector3(x0 + 0.08, floor_y + 1.55, z0 + 1.05), Vector3(0, PI * 0.5, 0), 0.50)
 
-	# Ceiling, so the interior isn't open to the sky.
 	var ceil := MeshInstance3D.new()
 	var cm := BoxMesh.new()
-	cm.size = Vector3(4.6, 0.12, 4.6)
+	cm.size = Vector3(walls.size.x, 0.12, walls.size.z)
 	cm.material = _mat(Color(0.34, 0.24, 0.17), 1.0)
 	ceil.mesh = cm
-	ceil.position = Vector3(SHOP_POS.x, ground + 2.95, SHOP_POS.z + 0.35)
+	ceil.position = Vector3(cx, floor_y + 3.25, (z0 + z1) * 0.5)
 	add_child(ceil)
 
-	# Warm interior light.
 	var lamp := OmniLight3D.new()
-	lamp.position = Vector3(SHOP_POS.x, ground + 2.1, SHOP_POS.z + 0.1)
+	lamp.position = Vector3(cx, floor_y + 2.7, (z0 + z1) * 0.5)
 	lamp.light_color = Color(1.0, 0.86, 0.66)
-	lamp.light_energy = 1.25
-	lamp.omni_range = 6.0
+	lamp.light_energy = 1.3
+	lamp.omni_range = 7.5
 	add_child(lamp)
+
+
+## The fish market: a stall near the jetty where the buyer pays for your catch.
+func _build_market() -> void:
+	var g := _flat_pad(MARKET_POS.x, MARKET_POS.z, 3.4)
+	# Front of the stall faces -X, toward the path up from the jetty.
+	var stall := _spawn("market", Vector3(MARKET_POS.x, g, MARKET_POS.z), -PI * 0.5, MARKET_SCALE)
+	for m in stall.find_children("*", "MeshInstance3D", true):
+		if m.name.begins_with("Counter") or m.name.begins_with("Stand") or m.name.begins_with("Base"):
+			m.create_trimesh_collision()
+	# A solid box for the counter so you can't walk through the stall.
+	var body := StaticBody3D.new()
+	var col := CollisionShape3D.new()
+	var bs := BoxShape3D.new()
+	bs.size = Vector3(1.4, 1.2, 3.6)
+	col.shape = bs
+	body.add_child(col)
+	body.position = Vector3(MARKET_POS.x, g + 0.6, MARKET_POS.z)
+	add_child(body)
+	market_ground = g
+
+	fish_buyer = _spawn_character("res://assets/models/characters/Knight.glb",
+		Vector3(MARKET_POS.x + 1.15, g + 0.02, MARKET_POS.z), -PI * 0.5, "Idle")
 
 
 ## Buoys ride the same waves the water shader draws.
@@ -1244,6 +1381,7 @@ func _start_play() -> void:
 	hud.set_hud_visible(false)
 	touch.visible = true
 	menu_ui.show_play()
+	_refresh_held_view()
 	# First-ever play: show the modal how-to-play card.
 	if not seen_help:
 		app_state = "paused"
@@ -1473,6 +1611,7 @@ func _land_fish() -> void:
 	hud.mode = Hud.M_WHACK
 	bobber.visible = false
 	rod.visible = false
+	_refresh_whack_tool()
 	paddle.visible = true
 	cam_pitch_target = -36.0
 
@@ -1484,7 +1623,9 @@ func _land_fish() -> void:
 
 	# Coin value: by weight; crates/barrels are near-worthless, chests are not.
 	if pending_fish.get("treasure", false):
-		pending_value = 60 + randi() % 90
+		pending_value = 70 + randi() % 110
+	elif pending_fish.get("prize", false):
+		pending_value = maxi(1, int(round(pending_weight * 32.0)))
 	elif pending_fish.get("junk", false):
 		pending_value = 1 + randi() % 3
 	else:
@@ -1521,14 +1662,81 @@ func _do_whack() -> void:
 func _finish_catch() -> void:
 	state = CAUGHT
 	hud.mode = Hud.M_CAUGHT
-	coins += pending_value
+	held.append({
+		"name": pending_fish["name"], "weight": pending_weight, "value": pending_value,
+		"set": pending_fish.get("set", "river"), "node": pending_fish.get("node", ""),
+	})
 	_save_game()
-	var extra := ""
-	if pending_fish.get("treasure", false):
-		extra = "  JACKPOT!"
-	hud.message = "+%d coins%s\n(tap to continue)" % [pending_value, extra]
+	var line2 := "Hands full - sell at the market" if held.size() >= MAX_CARRY \
+		else "Carrying %d of %d  -  keep fishing or go sell" % [held.size(), MAX_CARRY]
+	hud.message = "Into the bag!  worth %d\n%s" % [pending_value, line2]
 	_play("caught")
 	_update_info()
+
+
+## The thing in your hand when you whack: your equipped weapon, or the old
+## paddle if you haven't bought one yet.
+func _refresh_whack_tool() -> void:
+	for c in paddle.get_children():
+		c.queue_free()
+	var m: Node3D
+	if equipped_weapon != "" and ResourceLoader.exists(WEAPON_DIR + equipped_weapon + ".gltf"):
+		m = load(WEAPON_DIR + equipped_weapon + ".gltf").instantiate()
+		m.scale = Vector3.ONE * 0.62
+		m.rotation_degrees = Vector3(0, 90, -40)
+	else:
+		m = load(MDL["paddle"]).instantiate()
+		m.scale = Vector3.ONE * 0.40
+		m.rotation_degrees = Vector3(0, 0, -38)
+	paddle.add_child(m)
+	for mi in m.find_children("*", "MeshInstance3D", true):
+		mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+
+
+## What you're carrying, shown in your right hand while walking around.
+func _refresh_held_view() -> void:
+	if held_view:
+		held_view.queue_free()
+		held_view = null
+	if touch:
+		if held.is_empty():
+			touch.carry_info = ""
+		else:
+			var total := 0
+			for h in held:
+				total += int(h["value"])
+			touch.carry_info = "Carrying %d/%d  -  worth %d" % [held.size(), MAX_CARRY, total]
+	if held.is_empty() or play_mode != "explore" or app_state != "playing":
+		return
+	var top: Dictionary = held[held.size() - 1]
+	held_view = _make_fish(top, minf(float(top["weight"]), 2.5))
+	held_view.scale *= 0.75
+	held_view.position = Vector3(0.40, -0.46, -0.78)
+	held_view.rotation = Vector3(0.25, 0.65, -0.15)
+	camera.add_child(held_view)
+	for mi in held_view.find_children("*", "MeshInstance3D", true):
+		mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+
+
+func _sell_all() -> void:
+	var total := 0
+	for h in held:
+		total += int(h["value"])
+	var n := held.size()
+	coins += total
+	held.clear()
+	_save_game()
+	_update_info()
+	_refresh_held_view()
+	_flash("Sold %d for %d coins!" % [n, total])
+	_play("caught")
+	var ap = fish_buyer.get_meta("anim") if fish_buyer and fish_buyer.has_meta("anim") else null
+	if ap and ap.has_animation("Cheer"):
+		ap.play("Cheer")
+
+
+func _hdist(a: Vector3, b: Vector3) -> float:
+	return Vector2(a.x - b.x, a.z - b.z).length()
 
 
 ## Animates the paddle swing and the catch bouncing on the deck.
@@ -1544,7 +1752,7 @@ func _update_whack(delta: float) -> void:
 	if caught_fish:
 		var hop: float = sin(catch_hop * PI)
 		caught_fish.position.y = WHACK_SPOT.y + hop * 0.28
-		caught_fish.scale = Vector3(1.0 + hop * 0.18, 1.0 - hop * 0.22, 1.0 + hop * 0.18)
+		caught_fish.scale = _catch_base_scale * Vector3(1.0 + hop * 0.18, 1.0 - hop * 0.22, 1.0 + hop * 0.18)
 		caught_fish.rotation.z = sin(elapsed * 14.0) * 0.07 * (0.3 + hop)
 
 
@@ -1553,123 +1761,53 @@ func _update_whack(delta: float) -> void:
 func _show_catch(info: Dictionary) -> void:
 	if caught_fish:
 		caught_fish.queue_free()
-	caught_fish = _make_fish(info["color"], info.get("junk", false), info.get("model", ""))
-	var scl: float = clampf(0.55 + pending_weight * 0.17, 0.55, 1.5)
-	caught_fish.scale = Vector3.ONE * scl
+	caught_fish = _make_fish(info, pending_weight)
+	_catch_base_scale = caught_fish.scale
 	caught_fish.position = WHACK_SPOT
-	caught_fish.rotation = Vector3(0, PI * 0.5, 0)  # side profile across the deck
+	caught_fish.rotation = Vector3.ZERO  # models lie along X: side-on to the camera
 	add_child(caught_fish)
 
 
-## Builds a smooth, tapered fish: a lofted body with generated normals, a forked
-## tail, dorsal and pectoral fins, and googly eyes. Faces -Z, tail toward +Z.
-func _make_fish(color: Color, junk: bool, model_key := "") -> Node3D:
-	if junk:
-		# Gag catches are real props: a crate, a barrel, a treasure chest.
-		var holder := Node3D.new()
-		var packed: PackedScene = load(MDL[model_key if model_key != "" else "crate"])
-		var prop: Node3D = packed.instantiate()
-		prop.position = Vector3(0, -0.35, 0)
-		prop.scale = Vector3.ONE * 0.85
-		holder.add_child(prop)
+## Pulls one species (or one piece of junk) out of its set by node name and
+## sizes it by weight, so every catch is a real model rather than a stand-in.
+func _make_fish(info: Dictionary, weight: float) -> Node3D:
+	var holder := Node3D.new()
+	var set_key := str(info.get("set", "river"))
+	var node_name := str(info.get("node", ""))
+	var path := str(CATCH_SETS.get(set_key, CATCH_SETS["river"]))
+	if node_name == "" or not ResourceLoader.exists(path):
 		return holder
 
-	var n := Node3D.new()
-	var mat := _mat(color, 0.55)
-	var belly := _mat(color.lightened(0.35), 0.6)
-	var fin_mat := _mat(color.darkened(0.18), 0.6)
-	fin_mat.cull_mode = BaseMaterial3D.CULL_DISABLED
+	var root: Node3D = load(path).instantiate()
+	var target := root.find_child(node_name, true, false)
+	if target == null:
+		root.queue_free()
+		return holder
+	# Lift just this species out of the set and throw the rest away.
+	target.get_parent().remove_child(target)
+	holder.add_child(target)
+	root.queue_free()
+	if target is Node3D:
+		(target as Node3D).transform = Transform3D.IDENTITY
 
-	# ---- Body: loft ellipse cross-sections along the spine ----
-	var rings := 16
-	var segs := 14
-	var st := SurfaceTool.new()
-	st.begin(Mesh.PRIMITIVE_TRIANGLES)
-	var pts := []
-	for i in rings:
-		var t := float(i) / float(rings - 1)
-		var z: float = lerpf(-0.62, 0.62, t)
-		# Fat just behind the head, tapering to a thin tail stalk.
-		var prof: float = pow(sin(PI * pow(t, 0.78)), 0.80)
-		var r: float = maxf(prof * 0.30, 0.012)
-		var ring := []
-		for j in segs:
-			var a := TAU * float(j) / float(segs)
-			ring.append(Vector3(cos(a) * r * 0.78, sin(a) * r * 1.30, z))
-		pts.append(ring)
-	for i in rings - 1:
-		for j in segs:
-			var j2 := (j + 1) % segs
-			var a1: Vector3 = pts[i][j]
-			var b1: Vector3 = pts[i][j2]
-			var c1: Vector3 = pts[i + 1][j2]
-			var d1: Vector3 = pts[i + 1][j]
-			st.add_vertex(a1); st.add_vertex(b1); st.add_vertex(c1)
-			st.add_vertex(a1); st.add_vertex(c1); st.add_vertex(d1)
-	st.generate_normals()
-	var body := MeshInstance3D.new()
-	body.mesh = st.commit()
-	body.material_override = mat
-	n.add_child(body)
+	# Lay it flat: whichever axis is longest becomes the fish's length, pointing
+	# along X so it lies across the deck rather than standing on its tail.
+	var t := target as Node3D
+	var box0 := _local_aabb(holder)
+	if box0.size.y >= box0.size.x and box0.size.y >= box0.size.z:
+		t.rotation = Vector3(0, 0, PI * 0.5)
+	elif box0.size.z >= box0.size.x and box0.size.z >= box0.size.y:
+		t.rotation = Vector3(0, PI * 0.5, 0)
 
-	# Pale belly: a second, slightly smaller body squashed downward.
-	var belly_mi := MeshInstance3D.new()
-	belly_mi.mesh = body.mesh
-	belly_mi.material_override = belly
-	belly_mi.scale = Vector3(0.97, 0.52, 0.985)
-	belly_mi.position = Vector3(0, -0.085, 0)
-	n.add_child(belly_mi)
-
-	# ---- Fins ----
-	n.add_child(_fin([
-		Vector3(0, 0.0, 0.52), Vector3(0, 0.34, 0.92), Vector3(0, 0.0, 0.74),
-		Vector3(0, 0.0, 0.52), Vector3(0, 0.0, 0.74), Vector3(0, -0.32, 0.92),
-	], fin_mat))                                           # forked tail
-	n.add_child(_fin([
-		Vector3(0, 0.26, -0.10), Vector3(0, 0.52, 0.16), Vector3(0, 0.22, 0.30),
-	], fin_mat))                                           # dorsal
-	for sx in [-1.0, 1.0]:
-		n.add_child(_fin([
-			Vector3(0.14 * sx, -0.02, -0.16), Vector3(0.40 * sx, -0.20, 0.10),
-			Vector3(0.14 * sx, -0.10, 0.12),
-		], fin_mat))                                       # pectorals
-
-	# ---- Googly eyes ----
-	for sx in [-1.0, 1.0]:
-		var eye := MeshInstance3D.new()
-		var em := SphereMesh.new()
-		em.radius = 0.068
-		em.height = 0.136
-		em.radial_segments = 12
-		em.rings = 7
-		em.material = _mat(Color(1, 1, 1), 0.25)
-		eye.mesh = em
-		eye.position = Vector3(0.088 * sx, 0.078, -0.305)
-		n.add_child(eye)
-		var pup := MeshInstance3D.new()
-		var pm := SphereMesh.new()
-		pm.radius = 0.034
-		pm.height = 0.068
-		pm.radial_segments = 10
-		pm.rings = 6
-		pm.material = _mat(Color(0.05, 0.05, 0.07), 0.2)
-		pup.mesh = pm
-		pup.position = Vector3(0.118 * sx, 0.082, -0.345)
-		n.add_child(pup)
-	return n
-
-
-## A flat, double-sided fin from a list of triangle corners.
-func _fin(tris: Array, mat: StandardMaterial3D) -> MeshInstance3D:
-	var st := SurfaceTool.new()
-	st.begin(Mesh.PRIMITIVE_TRIANGLES)
-	for v in tris:
-		st.set_normal(Vector3(0, 0, 1))
-		st.add_vertex(v)
-	var mi := MeshInstance3D.new()
-	mi.mesh = st.commit()
-	mi.material_override = mat
-	return mi
+	# Size by weight, then sit it on the deck, centred.
+	var box := _local_aabb(holder)
+	var longest: float = maxf(maxf(box.size.x, box.size.y), box.size.z)
+	if longest > 0.0001:
+		var want: float = clampf(0.38 + weight * 0.15, 0.38, 1.35)
+		holder.scale = Vector3.ONE * (want / longest)
+		t.position -= Vector3(box.position.x + box.size.x * 0.5,
+			box.position.y, box.position.z + box.size.z * 0.5)
+	return holder
 
 
 # --- Line mesh ----------------------------------------------------------------
@@ -1731,7 +1869,19 @@ func _autotest(_delta: float) -> void:
 			_on_interact()
 			print("AUTOTEST after 2nd press (equip toggle) -> equipped='%s'" % equipped_weapon)
 
-	if start_screen in ["menu", "settings", "pause", "shop", "help", "weaponshop", "legs"]:
+	if start_screen == "sell":
+		if frame == 25:
+			print("AUTOTEST near_market=%s prompt='%s' carry='%s'" % [near_market, touch.prompt, touch.carry_info])
+		if frame == 40 and autotest_shot != "":
+			get_viewport().get_texture().get_image().save_png(autotest_shot)
+		if frame == 42:
+			_on_interact()
+			print("AUTOTEST after sell -> coins=%d held=%d" % [coins, held.size()])
+		if frame >= 50:
+			get_tree().quit()
+		return
+
+	if start_screen in ["menu", "settings", "pause", "shop", "help", "weaponshop", "legs", "shopview"]:
 		if frame > 40:
 			if autotest_shot != "":
 				get_viewport().get_texture().get_image().save_png(autotest_shot)

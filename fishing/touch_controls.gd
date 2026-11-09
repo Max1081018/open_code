@@ -23,6 +23,7 @@ var look_info := ""            # name of whatever the crosshair is on
 var look_stat := ""            # small grey stat line, e.g. "+1 power"
 var look_cost := ""            # price or status, drawn in gold
 var crosshair := true
+var carry_info := ""           # "Carrying 3/5 - worth 120"
 var sens_scale := 1.0
 
 var _view: Painter
@@ -165,6 +166,13 @@ class Painter extends Control:
 				if ui.look_cost != "":
 					draw_string(font, Vector2(sx + sw + gap, sy), ui.look_cost,
 						HORIZONTAL_ALIGNMENT_LEFT, -1, sub_size, UITheme.GOLD)
+
+		# ---- What you're carrying ----
+		if ui.carry_info != "":
+			var cw2 := font.get_string_size(ui.carry_info, HORIZONTAL_ALIGNMENT_LEFT, -1, 22).x
+			var crect := Rect2(Vector2(mid.x - cw2 * 0.5 - 22, 22), Vector2(cw2 + 44, 46))
+			_pill(crect, UITheme.PANEL, 23, Color(1, 0.8, 0.3, 0.35))
+			_centred(font, ui.carry_info, crect.position + crect.size * 0.5, 22, UITheme.GOLD)
 
 		# ---- Toast ----
 		if ui._toast_t > 0.0 and ui._toast != "":
