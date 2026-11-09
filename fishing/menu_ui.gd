@@ -32,6 +32,7 @@ var settings := {
 	"hud_scale": 1.0,
 	"hud_opacity": 1.0,
 	"fixed_joystick": false,
+	"weather": true,
 }
 
 var _root: Control
@@ -310,6 +311,7 @@ func _build() -> void:
 	_group(sbody, "DISPLAY")
 	_cycle_row(sbody, "Graphics", "graphics", GRAPHICS_LEVELS)
 	_settings_toggle(sbody, "Shadows", "shadows")
+	_settings_toggle(sbody, "Weather (light rain)", "weather")
 	_settings_toggle(sbody, "Crosshair", "crosshair")
 	_settings_toggle(sbody, "Show your body", "show_body")
 

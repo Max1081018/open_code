@@ -71,7 +71,17 @@ var _death_roll_dir := 1.0
 var reel_click_t := 0.0
 var floaters: Array[Node3D] = []  # buoys etc. that ride the waves
 var sun_light: DirectionalLight3D
+var grass_mm: MultiMeshInstance3D
+var flower_mm: MultiMeshInstance3D
+var clouds: Array = []
+var rain: CPUParticles3D
+var _weather_t := 60.0
+var _raining := false
+var _rain_amt := 0.0
+var weather_enabled := true
 var world_env: Environment
+var sky_mat: ProceduralSkyMaterial
+var _sky_rain := -1.0
 var water_mat: ShaderMaterial
 var shop_building: Node3D
 var shop_counter: Node3D
@@ -391,6 +401,7 @@ var start_screen := "menu"  # autotest can jump straight to a screen
 var test_yaw := PI
 var test_walk := 450
 var test_sprint := false
+var test_rain := false
 var _test_max_speed := 0.0
 var _boss_logged := false
 var _flop_seen := false
@@ -512,6 +523,7 @@ func _parse_args() -> void:
 		elif a.begins_with("--yaw="): test_yaw = float(a.get_slice("=", 1))
 		elif a.begins_with("--walk="): test_walk = int(a.get_slice("=", 1))
 		elif a == "--sprint": test_sprint = true
+		elif a == "--rain": test_rain = true
 
 
 # --- Wave height (mirror of the shader) --------------------------------------
@@ -555,7 +567,7 @@ func _box(parent: Node3D, pos: Vector3, size: Vector3, color: Color, rot := Vect
 
 func _build_world() -> void:
 	# Sky + warm light.
-	var sky_mat := ProceduralSkyMaterial.new()
+	sky_mat = ProceduralSkyMaterial.new()
 	sky_mat.sky_top_color = Color(0.13, 0.36, 0.78)
 	sky_mat.sky_horizon_color = Color(0.74, 0.88, 0.97)
 	sky_mat.ground_horizon_color = Color(0.74, 0.88, 0.97)
@@ -570,9 +582,17 @@ func _build_world() -> void:
 	env.ambient_light_color = Color(0.46, 0.57, 0.70)
 	env.ambient_light_energy = 0.42
 	env.tonemap_mode = Environment.TONE_MAPPER_FILMIC
+	# Distance haze: clear up close, the far islands fade into a soft grey-blue.
 	env.fog_enabled = true
-	env.fog_light_color = Color(0.66, 0.82, 0.94)
-	env.fog_density = 0.0016
+	env.fog_light_color = Color(0.52, 0.61, 0.70)
+	env.fog_light_energy = 1.0
+	env.fog_density = 0.0085
+	env.fog_sky_affect = 0.55
+	env.fog_height = -1.5
+	env.fog_height_density = 0.05
+	env.adjustment_enabled = true
+	env.adjustment_saturation = 1.12
+	env.adjustment_contrast = 1.05
 	var we := WorldEnvironment.new()
 	we.environment = env
 	add_child(we)
@@ -724,6 +744,9 @@ func _make_island(center: Vector3, radius: float, height: float, grassy := true,
 	var wet := Color(0.60, 0.50, 0.33)
 	var sand := Color(0.86, 0.73, 0.48)
 	var grass := Color(0.32, 0.61, 0.26)
+	var noise := FastNoiseLite.new()
+	noise.seed = int(center.x * 13.0 + center.z * 7.0)
+	noise.frequency = 0.09
 	var deep_grass := Color(0.24, 0.50, 0.21)
 	var st := SurfaceTool.new()
 	st.begin(Mesh.PRIMITIVE_TRIANGLES)
@@ -738,6 +761,9 @@ func _make_island(center: Vector3, radius: float, height: float, grassy := true,
 			c = sand.lerp(grass, (h - 0.75) / 0.5)
 		else:
 			c = grass.lerp(deep_grass, clampf((h - 1.25) / (height + 0.01), 0.0, 1.0))
+		# patchy variation so the ground isn't one flat colour
+		var n := noise.get_noise_2d(v.x, v.z)
+		c = c.lightened(maxf(n, 0.0) * 0.16).darkened(maxf(-n, 0.0) * 0.18)
 		st.set_color(c)
 		st.add_vertex(v)
 	for i in rings:
@@ -845,6 +871,9 @@ func _build_scenery() -> void:
 
 	_build_shop()
 	_build_market()
+	_build_grass()
+	_build_clouds()
+	_build_weather()
 	if island2_unlocked:
 		_show_island2_marker()
 	for d in _pending_loose:
@@ -1049,6 +1078,7 @@ func _process(delta: float) -> void:
 
 	_update_floaters()
 	_update_health(delta)
+	_update_weather(delta)
 
 	if app_state == "menu":
 		_menu_camera(delta)
@@ -1904,6 +1934,241 @@ func _respawn() -> void:
 	_refresh_held_view()
 
 
+## Grass tufts and wildflowers scattered over the green part of the home
+## island, drawn as two MultiMeshes with a wind shader. Kept off the shop and
+## market pads and the path up from the jetty.
+func _tuft_mesh(blades: int, height: float, base_col: Color, tip_col: Color) -> ArrayMesh:
+	var st := SurfaceTool.new()
+	st.begin(Mesh.PRIMITIVE_TRIANGLES)
+	for i in blades:
+		var a := TAU * float(i) / float(blades) + randf() * 0.6
+		var lean := Vector3(cos(a), 0, sin(a)) * randf_range(0.04, 0.10)
+		var side := Vector3(-sin(a), 0, cos(a)) * 0.035
+		var h := height * randf_range(0.7, 1.15)
+		var root := Vector3(cos(a), 0, sin(a)) * 0.03
+		var tip := root + lean + Vector3(0, h, 0)
+		var verts := [root - side, root + side, tip]
+		var uvs := [Vector2(0, 0), Vector2(1, 0), Vector2(0.5, 1)]
+		var cols := [base_col, base_col, tip_col]
+		for k in 3:
+			st.set_color(cols[k])
+			st.set_uv(uvs[k])
+			st.set_normal(Vector3.UP)
+			st.add_vertex(verts[k])
+	return st.commit()
+
+
+func _flower_mesh() -> ArrayMesh:
+	var st := SurfaceTool.new()
+	st.begin(Mesh.PRIMITIVE_TRIANGLES)
+	var stem := Color(0.30, 0.56, 0.24)
+	var h := 0.26
+	# stem
+	for v in [[Vector3(-0.012, 0, 0), 0.0], [Vector3(0.012, 0, 0), 0.0], [Vector3(0, h, 0), 1.0]]:
+		st.set_color(stem)
+		st.set_uv(Vector2(0, v[1]))
+		st.set_normal(Vector3.UP)
+		st.add_vertex(v[0])
+	# petals: a small flat star facing up (white so the instance tint colours it)
+	var c := Vector3(0, h, 0)
+	for i in 5:
+		var a0 := TAU * i / 5.0
+		var a1 := a0 + TAU / 10.0
+		var a2 := a0 + TAU / 5.0
+		# petals tilt up into a shallow cup so they read from standing height
+		var tip_a := c + Vector3(cos(a0) * 0.11, 0.06, sin(a0) * 0.11)
+		var mid := c + Vector3(cos(a1) * 0.045, 0.02, sin(a1) * 0.045)
+		var tip_b := c + Vector3(cos(a2) * 0.11, 0.06, sin(a2) * 0.11)
+		var pts := [c, tip_a, mid]
+		var pts2 := [c, mid, tip_b]
+		for tri in [pts, pts2]:
+			for q in tri:
+				st.set_color(Color(1, 1, 1))
+				st.set_uv(Vector2(0, 1))
+				st.set_normal(Vector3.UP)
+				st.add_vertex(q)
+	return st.commit()
+
+
+func _scatter_ok(x: float, z: float) -> bool:
+	var g := _island_y(HOME, HOME_R, HOME_H, x, z)
+	if g - HOME.y < 1.35:                      # only on the green part
+		return false
+	if _hdist(Vector3(x, 0, z), SHOP_POS) < 6.6:
+		return false
+	if _hdist(Vector3(x, 0, z), MARKET_POS) < 5.2:
+		return false
+	if absf(x) < 1.6 and z < 20.0:             # top of the jetty path
+		return false
+	return true
+
+
+func _build_grass() -> void:
+	var mat := ShaderMaterial.new()
+	mat.shader = load("res://assets/grass.gdshader")
+
+	# Root matches the ground's grass colour so tufts blend in; tips catch the light.
+	var tuft := _tuft_mesh(7, 0.34, Color(0.28, 0.56, 0.23), Color(0.62, 0.86, 0.38))
+	var mm := MultiMesh.new()
+	mm.transform_format = MultiMesh.TRANSFORM_3D
+	mm.use_custom_data = true
+	mm.use_colors = true      # instance colour multiplies COLOR; left off it reads as black
+	mm.mesh = tuft
+	var spots: Array = []
+	var tries := 0
+	while spots.size() < 3600 and tries < 16000:
+		tries += 1
+		var a := randf() * TAU
+		var r := sqrt(randf()) * HOME_R
+		var x := HOME.x + cos(a) * r
+		var z := HOME.z + sin(a) * r
+		if _scatter_ok(x, z):
+			spots.append(Vector2(x, z))
+	mm.instance_count = spots.size()
+	for i in spots.size():
+		var p: Vector2 = spots[i]
+		var y := _island_y(HOME, HOME_R, HOME_H, p.x, p.y) - 0.02
+		var sc := randf_range(0.7, 1.35)
+		var t := Transform3D(Basis(Vector3.UP, randf() * TAU).scaled(Vector3(sc, sc * randf_range(0.8, 1.2), sc)),
+			Vector3(p.x, y, p.y))
+		mm.set_instance_transform(i, t)
+		var tint := Color(1, 1, 1).lerp(Color(1.05, 1.0, 0.72), randf() * 0.5)
+		mm.set_instance_custom_data(i, tint)
+		mm.set_instance_color(i, Color.WHITE)
+	grass_mm = MultiMeshInstance3D.new()
+	grass_mm.multimesh = mm
+	grass_mm.material_override = mat
+	grass_mm.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	add_child(grass_mm)
+
+	# Wildflowers in small clumps.
+	var fm := MultiMesh.new()
+	fm.transform_format = MultiMesh.TRANSFORM_3D
+	fm.use_custom_data = true
+	fm.use_colors = true
+	fm.mesh = _flower_mesh()
+	var palette := [Color(1.0, 0.92, 0.35), Color(1.0, 1.0, 1.0), Color(1.0, 0.55, 0.65),
+		Color(0.70, 0.60, 1.0), Color(1.0, 0.65, 0.30)]
+	var fl: Array = []
+	tries = 0
+	while fl.size() < 360 and tries < 6000:
+		tries += 1
+		var a := randf() * TAU
+		var r := sqrt(randf()) * HOME_R
+		var cx := HOME.x + cos(a) * r
+		var cz := HOME.z + sin(a) * r
+		if not _scatter_ok(cx, cz):
+			continue
+		var col: Color = palette[randi() % palette.size()]
+		for k in 6:
+			var x := cx + randf_range(-0.7, 0.7)
+			var z := cz + randf_range(-0.7, 0.7)
+			if _scatter_ok(x, z):
+				fl.append([Vector3(x, _island_y(HOME, HOME_R, HOME_H, x, z) - 0.02, z), col])
+	fm.instance_count = fl.size()
+	for i in fl.size():
+		var sc := randf_range(0.8, 1.3)
+		fm.set_instance_transform(i, Transform3D(Basis(Vector3.UP, randf() * TAU).scaled(Vector3.ONE * sc), fl[i][0]))
+		fm.set_instance_custom_data(i, fl[i][1])
+		fm.set_instance_color(i, Color.WHITE)
+	flower_mm = MultiMeshInstance3D.new()
+	flower_mm.multimesh = fm
+	flower_mm.material_override = mat
+	flower_mm.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	add_child(flower_mm)
+
+
+## Low-poly clouds: clusters of flattened spheres drifting slowly overhead.
+func _build_clouds() -> void:
+	var cm := StandardMaterial3D.new()
+	cm.albedo_color = Color(1, 1, 1)
+	cm.roughness = 1.0
+	cm.emission_enabled = true
+	cm.emission = Color(0.85, 0.88, 0.95)
+	cm.emission_energy_multiplier = 0.35
+	cm.disable_receive_shadows = true
+	for i in 12:
+		var cloud := Node3D.new()
+		var a := randf() * TAU
+		var r := randf_range(70.0, 150.0)
+		cloud.position = Vector3(cos(a) * r, randf_range(34.0, 52.0), sin(a) * r + 10.0)
+		for k in randi_range(4, 7):
+			var puff := MeshInstance3D.new()
+			var sm := SphereMesh.new()
+			sm.radius = randf_range(3.0, 6.0)
+			sm.height = sm.radius * 2.0
+			sm.radial_segments = 10
+			sm.rings = 6
+			sm.material = cm
+			puff.mesh = sm
+			puff.scale = Vector3(1.3, randf_range(0.5, 0.7), 1.0)
+			puff.position = Vector3(randf_range(-9, 9), randf_range(-1.5, 1.5), randf_range(-4, 4))
+			puff.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+			cloud.add_child(puff)
+		add_child(cloud)
+		clouds.append(cloud)
+
+
+## Light weather: mostly clear, now and then a short drizzle that dims the sun
+## and thickens the haze a touch. Rain is a particle box that follows the camera.
+func _build_weather() -> void:
+	rain = CPUParticles3D.new()
+	rain.amount = 520
+	rain.lifetime = 0.9
+	rain.local_coords = false
+	rain.emission_shape = CPUParticles3D.EMISSION_SHAPE_BOX
+	rain.emission_box_extents = Vector3(16, 0.5, 16)
+	rain.direction = Vector3(0.12, -1, 0.05)
+	rain.spread = 2.0
+	rain.gravity = Vector3(0, -6, 0)
+	rain.initial_velocity_min = 16.0
+	rain.initial_velocity_max = 19.0
+	rain.particle_flag_align_y = true
+	var drop := BoxMesh.new()
+	drop.size = Vector3(0.012, 0.42, 0.012)
+	var rm := StandardMaterial3D.new()
+	rm.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	rm.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+	rm.albedo_color = Color(0.85, 0.9, 1.0, 0.35)
+	drop.material = rm
+	rain.mesh = drop
+	rain.emitting = false
+	add_child(rain)
+	_weather_t = randf_range(40.0, 90.0)
+
+
+func _update_weather(delta: float) -> void:
+	if rain == null:
+		return
+	# clouds drift and wrap around
+	for c in clouds:
+		c.position.x += delta * 1.2
+		if c.position.x > 160.0:
+			c.position.x = -160.0
+	_weather_t -= delta
+	if test_rain:
+		_raining = true
+		_rain_amt = 1.0
+		_weather_t = 99.0
+	if _weather_t <= 0.0:
+		_raining = not _raining and weather_enabled
+		_weather_t = randf_range(25.0, 40.0) if _raining else randf_range(90.0, 160.0)
+	var want := 1.0 if (_raining and weather_enabled) else 0.0
+	_rain_amt = move_toward(_rain_amt, want, delta * 0.25)
+	rain.emitting = _rain_amt > 0.15
+	rain.global_position = camera.global_position + Vector3(0, 11, 0)
+	if sun_light:
+		sun_light.light_energy = lerpf(1.02, 0.66, _rain_amt)
+	if world_env:
+		world_env.fog_density = lerpf(0.0085, 0.016, _rain_amt)
+		world_env.ambient_light_energy = lerpf(0.42, 0.36, _rain_amt)
+	# Grey the sky a little in a shower (only when it changes: sky updates cost).
+	if sky_mat and absf(_rain_amt - _sky_rain) > 0.02:
+		_sky_rain = _rain_amt
+		sky_mat.sky_top_color = Color(0.13, 0.36, 0.78).lerp(Color(0.36, 0.44, 0.55), _rain_amt)
+		sky_mat.sky_horizon_color = Color(0.74, 0.88, 0.97).lerp(Color(0.66, 0.72, 0.78), _rain_amt)
+
+
 ## Buoys ride the same waves the water shader draws.
 func _update_floaters() -> void:
 	if boat and play_mode != "sailing":
@@ -2031,10 +2296,14 @@ func _apply_graphics() -> void:
 	if sun_light:
 		sun_light.shadow_enabled = want_shadows
 	if world_env:
-		world_env.fog_enabled = q != "Low"
+		world_env.fog_enabled = true
 	if water_mat:
 		water_mat.set_shader_parameter("normal_scale", 0.12 if q == "Low" else (0.28 if q == "Medium" else 0.38))
 		water_mat.set_shader_parameter("foam_width", 0.0 if q == "Low" else 0.16)
+	if grass_mm:
+		var n := grass_mm.multimesh.instance_count
+		grass_mm.multimesh.visible_instance_count = int(n * (0.35 if q == "Low" else (0.7 if q == "Medium" else 1.0)))
+	weather_enabled = bool(menu_ui.settings.get("weather", true))
 	var vp := get_viewport()
 	if vp:
 		vp.msaa_3d = Viewport.MSAA_DISABLED if q == "Low" else (Viewport.MSAA_2X if q == "Medium" else Viewport.MSAA_4X)
@@ -2733,6 +3002,10 @@ func _autotest(_delta: float) -> void:
 			print("AUTOTEST after hand sell -> coins=%d holding=%s loose=%d" % [coins, holding != null, loose_fish.size()])
 		if frame >= 160:
 			print("AUTOTEST after counter drop -> coins=%d loose=%d" % [coins, loose_fish.size()])
+			for b in loose_fish:
+				if is_instance_valid(b):
+					var rel: Vector3 = b.global_position - Vector3(MARKET_POS.x, market_ground, MARKET_POS.z)
+					print("AUTOTEST   loose %s rel=%s v=%.2f" % [b.get_meta("fish").get("name", "?"), rel, b.linear_velocity.length()])
 			get_tree().quit()
 		return
 

@@ -28,6 +28,16 @@ market and a moored motorboat.
 
 Real catches include Minnow, Perch, Sunfish, Trout, Bass, Carp, Catfish, Pike,
 a rare Golden Koi, and junk like an old boot, a message in a bottle and a sunken chest.
+Each fish has its own rarity, price per kg, bite strength and fight speed; a
+better **Reel** makes rarer fish bite more often.
+
+**Watch out:** rarer fish fight back. A landed fish can wind up and leap at you
+(whack it during the warning to stop it), and wading too deep runs out your
+breath until you drown. Dying drops what you're carrying and costs 10% of your
+coins; you wake up on the jetty.
+
+Caught fish are real physics objects: grab them, carry them, throw them, or
+drop them on the market counter to sell.
 
 Settings let you change look sensitivity, HUD size and opacity, fixed or
 floating joystick, graphics preset (Low/Medium/High), shadows and more.
@@ -69,7 +79,11 @@ GODOT=/path/to/Godot_v4.3-stable_linux.x86_64 fishing/tools/play.sh 1600 shot.pn
 | File | What it is |
 | --- | --- |
 | `game.gd` | The whole game: world, rod, cast/bite/reel loop, fish, state machine |
-| `hud.gd` | Touch controls, meters, messages |
+| `hud.gd` | Fishing HUD: action button, fight meters, catch card, messages |
+| `touch_controls.gd` | Walking HUD: joystick, RUN, action/secondary buttons, look info |
+| `status_ui.gd` | Health and breath bars, hit flash, underwater tint, death screen |
+| `ui_draw.gd` / `ui_theme.gd` | Shared HUD drawing kit (round buttons, pills, bars, vector icons) and colours |
+| `assets/grass.gdshader` | Wind-swayed grass tufts and wildflowers (MultiMesh) |
 | `water.gdshader` | Animated low-poly water (its wave formula is mirrored in `game.gd` so the bobber floats correctly) |
 | `sfx.gd` | Procedurally generated sound effects |
 | `tools/play.sh` | Headless play-test + screenshot harness |
