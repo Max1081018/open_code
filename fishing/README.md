@@ -10,14 +10,27 @@ there are no art or audio files to manage.
 
 ![Catch screen](docs/catch.png)
 
-## How to play
+## How to play (Island 1 - Bait Bay)
 
-- **Cast** — hold the big button (bottom-right) to charge, release to fling the bobber out. Longer hold = farther cast.
-- **Bite** — when you see **TAP!**, tap anywhere fast to hook the fish.
-- **Reel** — hold the button to reel in. Watch the **tension** bar: reel in bursts and let go when it gets near the red, or the line snaps.
-- Land it and your catch pops up with its name and weight. Beat your best!
+You play in first person on a little island with a jetty, a weapon shop, a fish
+market and a moored motorboat.
 
-On desktop the mouse acts as touch, so you can play it in the editor too.
+1. **Walk** with the left stick, **look** by dragging the right half, tap **RUN** to sprint.
+2. At the end of the jetty press **FISH**. Hold to charge, release to cast.
+   On **TAP!** tap fast to hook, then hold to reel while keeping the tension out of the red.
+3. The catch lands on the deck: **tap to whack it**. Your equipped weapon takes fewer whacks.
+4. It goes into your hands. Carry up to 5, then walk to the **FISH MARKET** and **SELL**.
+5. Spend coins at **BAIT & BLADE**: look at an item (it outlines white) and press **BUY**.
+   Beginner gear: Gutting Knife, Fisherman's Dirk, Scaling Grips, Bait Hatchet.
+6. Buy the **Boss Reel**, then walk to the boat and **SAIL** out to the boss waters.
+7. Land **the Baby Kraken**, sail home and sell it. The buyer hands you a map:
+   **Island 2 unlocks** (coming soon).
+
+Real catches include Minnow, Perch, Sunfish, Trout, Bass, Carp, Catfish, Pike,
+a rare Golden Koi, and junk like an old boot, a message in a bottle and a sunken chest.
+
+Settings let you change look sensitivity, HUD size and opacity, fixed or
+floating joystick, graphics preset (Low/Medium/High), shadows and more.
 
 ## Run it on a computer
 

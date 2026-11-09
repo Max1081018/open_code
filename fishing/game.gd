@@ -921,6 +921,18 @@ func _update_info() -> void:
 	hud.coins = coins
 	if menu_ui:
 		menu_ui.set_coins(coins)
+		var landed_boss := island2_unlocked
+		for h in held:
+			if h.get("boss", false):
+				landed_boss = true
+		menu_ui.set_menu_stats({
+			"Coins": coins,
+			"Catches": catches,
+			"Best catch": "%s %.1fkg" % [best_name, best_weight] if best_name != "" else "-",
+			"Boss": "Landed!" if landed_boss else ("Hunting" if has_boss_reel else "Need Boss Reel"),
+			"Next island": "Unlocked" if island2_unlocked else "Locked",
+			"Where": "Island 1  -  Bait Bay",
+		})
 
 
 # --- Main loop ----------------------------------------------------------------
@@ -1618,11 +1630,13 @@ func _update_floaters() -> void:
 
 
 func _menu_camera(delta: float) -> void:
-	# Slow cinematic drift over the lake toward the distant islands.
-	_menu_cam_t += delta * 0.09
-	var a := _menu_cam_t
-	camera.position = Vector3(sin(a) * 7.0, 3.4 + sin(a * 0.7) * 0.7, 2.0 + cos(a) * 4.0)
-	camera.look_at(Vector3(sin(a * 0.5) * 10.0, 0.6, -45.0))
+	# Slow orbit around the home island, framed to the right of the menu.
+	_menu_cam_t += delta * 0.045
+	var a := -0.55 + sin(_menu_cam_t) * 0.55
+	var centre := Vector3(0.0, 2.5, 24.0)
+	camera.position = centre + Vector3(sin(a) * 34.0, 10.0 + sin(_menu_cam_t * 0.7) * 1.2, -cos(a) * 34.0)
+	camera.look_at(centre)
+	camera.rotate_object_local(Vector3.UP, 0.34)
 
 
 func _start_play() -> void:
