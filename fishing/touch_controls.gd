@@ -13,17 +13,20 @@ extends CanvasLayer
 ## HUD options (from Settings): hud_scale, fixed_joystick, hud_opacity.
 
 signal interact_pressed
+signal secondary_pressed
 
-const BASE_JOY_R := 105.0
-const BASE_KNOB_R := 44.0
-const BASE_RUN_R := 50.0
-const BASE_BTN := Vector2(300, 96)
+const BASE_JOY_R := 100.0
+const BASE_KNOB_R := 40.0
+const BASE_RUN_R := 44.0
+const BASE_ACT_R := 80.0
+const BASE_SEC_R := 50.0
 const LOOK_SENS := 0.0048
 
 var move := Vector2.ZERO       # -1..1, screen space
 var look := Vector2.ZERO       # consumed each frame by the camera
 var sprint := false            # RUN toggle
-var prompt := ""               # action pill label; empty hides it
+var prompt := ""               # main action label; empty hides it
+var secondary := ""            # second action (e.g. DROP / THROW); empty hides it
 var look_info := ""            # name of whatever the crosshair is on
 var look_stat := ""            # small grey stat line, e.g. "+1 power"
 var look_cost := ""            # price or status, drawn in gold
@@ -43,7 +46,8 @@ var _joy_origin := Vector2.ZERO
 var _joy_knob := Vector2.ZERO
 var _look_index := -1
 var _look_last := Vector2.ZERO
-var _btn_rect := Rect2()
+var _act_center := Vector2.ZERO
+var _sec_center := Vector2.ZERO
 var _btn_held := false
 var _run_center := Vector2.ZERO
 var _toast := ""
@@ -73,17 +77,43 @@ func run_r() -> float:
 	return BASE_RUN_R * hud_scale
 
 
+func act_r() -> float:
+	return BASE_ACT_R * hud_scale
+
+
+func sec_r() -> float:
+	return BASE_SEC_R * hud_scale
+
+
+## Icon for whatever the action button says.
+static func icon_for(label: String) -> String:
+	var l := label.split(" ")[0]
+	match l:
+		"FISH": return "cast"
+		"BUY": return "buy"
+		"EQUIP": return "equip"
+		"UNEQUIP": return "back"
+		"SELL": return "coin"
+		"DROP": return "drop"
+		"THROW": return "run"
+		"GRAB": return "hand"
+		"SAIL": return "boat"
+		"LOCKED", "TOO": return "lock"
+		_: return "hand"
+
+
 func apply_layout() -> void:
 	_recalc()
 
 
 func _recalc() -> void:
 	var s := get_viewport().get_visible_rect().size
-	var m := 60.0
-	_joy_home = Vector2(m + joy_r() + 40.0, s.y - m - joy_r() - 30.0)
-	_run_center = _joy_home + Vector2(joy_r() + run_r() + 26.0, -joy_r() - 10.0)
-	var bs := BASE_BTN * hud_scale
-	_btn_rect = Rect2(Vector2(s.x - bs.x - m, s.y - bs.y - m - 110.0 * hud_scale), bs)
+	var m := 56.0
+	_joy_home = Vector2(m + joy_r() + 36.0, s.y - m - joy_r() - 20.0)
+	# Right-thumb cluster: big action, secondary above-left, RUN to the left.
+	_act_center = Vector2(s.x - m - act_r() - 10.0, s.y - m - act_r() - 10.0)
+	_sec_center = _act_center + Vector2(-act_r() * 0.55, -(act_r() + sec_r() + 22.0))
+	_run_center = _act_center + Vector2(-(act_r() + run_r() + 36.0), act_r() * 0.35)
 
 
 func flash(text: String) -> void:
@@ -117,9 +147,12 @@ func _input(event: InputEvent) -> void:
 
 	if event is InputEventScreenTouch:
 		if event.pressed:
-			if prompt != "" and _btn_rect.has_point(event.position):
+			if prompt != "" and event.position.distance_to(_act_center) <= act_r() * 1.08:
 				_btn_held = true
 				interact_pressed.emit()
+				return
+			if secondary != "" and event.position.distance_to(_sec_center) <= sec_r() * 1.15:
+				secondary_pressed.emit()
 				return
 			if event.position.distance_to(_run_center) <= run_r() * 1.25:
 				sprint = not sprint
@@ -231,28 +264,29 @@ class Painter extends Control:
 			_centred(font, ui._toast, trect.position + trect.size * 0.5, 30, tc)
 
 		# ---- Joystick ----
+		var op: float = ui.hud_opacity
 		var jr: float = ui.joy_r()
 		var kr: float = ui.knob_r()
 		var active: bool = ui._joy_index != -1
 		var centre: Vector2 = ui._joy_origin if active else ui._joy_home
-		draw_circle(centre, jr, _a(Color(0.02, 0.06, 0.12, 0.32 if active else 0.22)))
-		draw_arc(centre, jr, 0, TAU, 56, _a(Color(1, 1, 1, 0.34 if active else 0.20)), 3.0)
+		draw_circle(centre, jr, Color(0.03, 0.07, 0.13, (0.40 if active else 0.26) * op))
+		draw_arc(centre, jr - 1.5, 0, TAU, 64, Color(1, 1, 1, (0.45 if active else 0.25) * op), 3.0, true)
+		# direction ticks
+		for i in 4:
+			var a := i * PI * 0.5
+			var p := centre + Vector2(cos(a), sin(a)) * (jr - 14.0)
+			draw_circle(p, 3.0, Color(1, 1, 1, 0.35 * op))
 		var knob: Vector2 = centre + ui._joy_knob
-		draw_circle(knob, kr + 2.0, _a(Color(0, 0, 0, 0.25)))
-		draw_circle(knob, kr, _a(Color(1, 1, 1, 0.58 if active else 0.30)))
+		draw_circle(knob + Vector2(0, 3), kr, Color(0, 0, 0, 0.25 * op))
+		draw_circle(knob, kr, Color(1, 1, 1, (0.85 if active else 0.45) * op))
+		draw_arc(knob, kr * 0.62, 0, TAU, 32, Color(0.03, 0.07, 0.13, 0.25 * op), 2.0, true)
 
-		# ---- RUN toggle ----
-		var rr: float = ui.run_r()
-		var on: bool = ui.sprint
-		draw_circle(ui._run_center, rr, _a(UITheme.ACCENT if on else Color(0.02, 0.06, 0.12, 0.45)))
-		draw_arc(ui._run_center, rr, 0, TAU, 40, _a(Color(1, 1, 1, 0.55 if on else 0.30)), 3.0)
-		_centred(font, "RUN", ui._run_center, int(22 * ui.hud_scale),
-			_a(Color(0.12, 0.07, 0.03) if on else Color(1, 1, 1, 0.85)))
-
-		# ---- Action pill ----
+		# ---- right cluster ----
+		UIDraw.round_button(self, font, ui._run_center, ui.run_r(), "RUN", "run", ui.sprint, false, op)
+		if ui.secondary != "":
+			UIDraw.round_button(self, font, ui._sec_center, ui.sec_r(), ui.secondary,
+				ui.icon_for(ui.secondary), false, false, op)
 		if ui.prompt != "":
-			var held: bool = ui._btn_held
-			var col: Color = UITheme.ACCENT_LO if held else UITheme.ACCENT
-			_pill(ui._btn_rect, _a(col), int(26 * ui.hud_scale), _a(Color(1, 1, 1, 0.28)))
-			_centred(font, ui.prompt, ui._btn_rect.position + ui._btn_rect.size * 0.5,
-				int(34 * ui.hud_scale), Color(0.12, 0.07, 0.03))
+			var dim: bool = ui.prompt == "LOCKED" or ui.prompt == "TOO DEAR"
+			UIDraw.round_button(self, font, ui._act_center, ui.act_r(), ui.prompt,
+				ui.icon_for(ui.prompt), not dim, ui._btn_held, op)

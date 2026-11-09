@@ -28,6 +28,8 @@ var _skel: Skeleton3D
 var first_person := false
 var show_body := true
 var sprint := false              # set by the RUN button
+var wading := false              # knee-deep or more: slower
+var carry_slow := 1.0            # < 1 while hauling something heavy
 
 
 ## In first person we still draw the body (so you can look down and see your
@@ -146,6 +148,9 @@ func _physics_process(delta: float) -> void:
 			dir.y = 0.0
 			if dir.length() > 0.001:
 				var top_speed := RUN_SPEED if sprint else WALK_SPEED
+				if wading:
+					top_speed *= 0.5
+				top_speed *= carry_slow
 				want = dir.normalized() * top_speed * clampf(mag * 1.25, 0.35, 1.0)
 
 	velocity.x = move_toward(velocity.x, want.x, ACCEL * delta)
