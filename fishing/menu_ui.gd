@@ -17,11 +17,18 @@ signal first_help_done
 
 const CFG_PATH := "user://settings.cfg"
 
+const GRAPHICS_LEVELS := ["Low", "Medium", "High"]
+
 var settings := {
 	"sfx_volume": 0.8,
 	"sfx_enabled": true,
 	"left_handed": false,
 	"camera_sway": true,
+	"look_sens": 1.0,
+	"graphics": "High",
+	"shadows": true,
+	"crosshair": true,
+	"show_body": true,
 }
 
 var _root: Control
@@ -172,29 +179,31 @@ func _build() -> void:
 	var sres := _panel("Settings")
 	_settings = sres[0]
 	var sv: VBoxContainer = sres[1]
-	sv.custom_minimum_size = Vector2(620, 0)
+	sv.custom_minimum_size = Vector2(700, 0)
 
-	# Sound volume row.
-	var vol_row := HBoxContainer.new()
-	vol_row.add_theme_constant_override("separation", 20)
-	var vol_lbl := _label("Sound")
-	vol_lbl.custom_minimum_size = Vector2(220, 0)
-	var vol_slider := HSlider.new()
-	vol_slider.name = "VolSlider"
-	vol_slider.min_value = 0.0
-	vol_slider.max_value = 1.0
-	vol_slider.step = 0.05
-	vol_slider.value = settings["sfx_volume"]
-	vol_slider.custom_minimum_size = Vector2(300, 60)
-	vol_slider.size_flags_vertical = Control.SIZE_SHRINK_CENTER
-	vol_slider.value_changed.connect(_on_volume)
-	vol_row.add_child(vol_lbl)
-	vol_row.add_child(vol_slider)
-	sv.add_child(vol_row)
+	var sscroll := ScrollContainer.new()
+	sscroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
+	sscroll.custom_minimum_size = Vector2(700, 420)
+	var sbody := VBoxContainer.new()
+	sbody.add_theme_constant_override("separation", 14)
+	sbody.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	sscroll.add_child(sbody)
+	sv.add_child(sscroll)
 
-	_settings_toggle(sv, "Sound effects", "sfx_enabled")
-	_settings_toggle(sv, "Left-handed controls", "left_handed")
-	_settings_toggle(sv, "Camera sway", "camera_sway")
+	_group(sbody, "AUDIO")
+	_slider_row(sbody, "Sound volume", "sfx_volume", 0.0, 1.0, 0.05)
+	_settings_toggle(sbody, "Sound effects", "sfx_enabled")
+
+	_group(sbody, "CONTROLS")
+	_slider_row(sbody, "Look sensitivity", "look_sens", 0.3, 2.0, 0.05)
+	_settings_toggle(sbody, "Left-handed controls", "left_handed")
+	_settings_toggle(sbody, "Camera sway", "camera_sway")
+
+	_group(sbody, "DISPLAY")
+	_cycle_row(sbody, "Graphics", "graphics", GRAPHICS_LEVELS)
+	_settings_toggle(sbody, "Shadows", "shadows")
+	_settings_toggle(sbody, "Crosshair", "crosshair")
+	_settings_toggle(sbody, "Show your body", "show_body")
 
 	var back := _button("BACK")
 	back.pressed.connect(_on_settings_back)
@@ -296,19 +305,71 @@ func _label(text: String) -> Label:
 	return l
 
 
-func _settings_toggle(parent: VBoxContainer, label: String, key: String) -> void:
+## A small section heading inside the settings list.
+func _group(parent: VBoxContainer, text: String) -> void:
+	var l := Label.new()
+	l.text = text
+	l.add_theme_font_size_override("font_size", 22)
+	l.add_theme_color_override("font_color", UITheme.PRIMARY_HI)
+	parent.add_child(l)
+
+
+func _row(parent: VBoxContainer, label: String) -> HBoxContainer:
 	var row := HBoxContainer.new()
-	row.add_theme_constant_override("separation", 20)
+	row.add_theme_constant_override("separation", 18)
 	var lbl := _label(label)
-	lbl.custom_minimum_size = Vector2(380, 0)
+	lbl.custom_minimum_size = Vector2(330, 54)
 	lbl.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	row.add_child(lbl)
+	parent.add_child(row)
+	return row
+
+
+func _slider_row(parent: VBoxContainer, label: String, key: String, lo: float, hi: float, step: float) -> void:
+	var row := _row(parent, label)
+	var value := _label("")
+	value.custom_minimum_size = Vector2(80, 0)
+	value.add_theme_color_override("font_color", UITheme.GOLD)
+	var sl := HSlider.new()
+	sl.min_value = lo
+	sl.max_value = hi
+	sl.step = step
+	sl.value = settings[key]
+	sl.custom_minimum_size = Vector2(250, 54)
+	sl.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	value.text = "%d%%" % int(round(float(settings[key]) * 100.0))
+	sl.value_changed.connect(func(v):
+		settings[key] = v
+		value.text = "%d%%" % int(round(v * 100.0))
+		if key == "sfx_volume":
+			_apply_audio()
+		else:
+			settings_changed.emit()
+		_save_settings())
+	row.add_child(sl)
+	row.add_child(value)
+
+
+## A button that cycles through a list of named options.
+func _cycle_row(parent: VBoxContainer, label: String, key: String, options: Array) -> void:
+	var row := _row(parent, label)
+	var b := _button(str(settings[key]), 230, 62)
+	b.pressed.connect(func():
+		var i: int = options.find(str(settings[key]))
+		settings[key] = options[(i + 1) % options.size()]
+		b.text = str(settings[key])
+		settings_changed.emit()
+		_save_settings())
+	row.add_child(b)
+
+
+func _settings_toggle(parent: VBoxContainer, label: String, key: String) -> void:
+	var row := _row(parent, label)
 	var cb := CheckButton.new()
 	cb.button_pressed = settings[key]
-	cb.custom_minimum_size = Vector2(0, 60)
+	cb.custom_minimum_size = Vector2(0, 54)
 	cb.toggled.connect(func(on): _on_toggle(key, on))
-	row.add_child(lbl)
 	row.add_child(cb)
-	parent.add_child(row)
 
 
 # --- Screen transitions -------------------------------------------------------
@@ -507,8 +568,7 @@ func _on_toggle(key: String, on: bool) -> void:
 	settings[key] = on
 	if key == "sfx_enabled":
 		_apply_audio()
-	else:
-		settings_changed.emit()
+	settings_changed.emit()
 	_save_settings()
 
 

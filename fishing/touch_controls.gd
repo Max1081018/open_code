@@ -23,6 +23,7 @@ var look_info := ""            # name of whatever the crosshair is on
 var look_stat := ""            # small grey stat line, e.g. "+1 power"
 var look_cost := ""            # price or status, drawn in gold
 var crosshair := true
+var sens_scale := 1.0
 
 var _view: Painter
 var _joy_index := -1
@@ -104,7 +105,7 @@ func _input(event: InputEvent) -> void:
 			_joy_knob = (event.position - _joy_origin).limit_length(JOY_RADIUS)
 			move = _joy_knob / JOY_RADIUS
 		elif event.index == _look_index:
-			look += (event.position - _look_last) * LOOK_SENS
+			look += (event.position - _look_last) * LOOK_SENS * sens_scale
 			_look_last = event.position
 
 

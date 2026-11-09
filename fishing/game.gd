@@ -59,6 +59,9 @@ var caught_fish: Node3D
 var players := {}  # name -> AudioStreamPlayer
 var reel_click_t := 0.0
 var floaters: Array[Node3D] = []  # buoys etc. that ride the waves
+var sun_light: DirectionalLight3D
+var world_env: Environment
+var water_mat: ShaderMaterial
 var shop_building: Node3D
 var shop_counter: Node3D
 var shopkeeper: Node3D
@@ -311,6 +314,9 @@ func _ready() -> void:
 		match start_screen:
 			"play": _start_play(); _enter_fishing()
 			"explore": _start_play()
+			"legs":
+				_start_play()
+				cam_pitch = -1.05
 			"settings": _go_main_menu(); menu_ui.open_settings_for_test()
 			"pause": _start_play(); _pause()
 			"help": _go_main_menu(); menu_ui.open_help_for_test()
@@ -404,6 +410,7 @@ func _build_world() -> void:
 	var we := WorldEnvironment.new()
 	we.environment = env
 	add_child(we)
+	world_env = env
 
 	var sun := DirectionalLight3D.new()
 	sun.rotation_degrees = Vector3(-48, 40, 0)
@@ -412,6 +419,7 @@ func _build_world() -> void:
 	sun.shadow_enabled = true
 	sun.directional_shadow_max_distance = 80.0
 	add_child(sun)
+	sun_light = sun
 
 	# Seabed, so the transparent water has something to tint against.
 	var bed := MeshInstance3D.new()
@@ -444,6 +452,7 @@ func _build_world() -> void:
 	smat.set_shader_parameter("normal_map_a", load("res://assets/water/water_normal_a.png"))
 	smat.set_shader_parameter("normal_map_b", load("res://assets/water/water_normal_b.png"))
 	plane.material = smat
+	water_mat = smat
 	water.mesh = plane
 	water.position = Vector3(0, 0, -20)
 	add_child(water)
@@ -644,6 +653,7 @@ func _build_scenery() -> void:
 func _build_player_view() -> void:
 	camera = Camera3D.new()
 	camera.fov = 68
+	camera.near = 0.08
 	camera.position = EYE
 	camera.rotation_degrees = Vector3(-10, 0, 0)  # look slightly down at the water
 	add_child(camera)
@@ -874,7 +884,10 @@ func _update_explore(delta: float) -> void:
 		player.velocity = Vector3.ZERO
 		player.position = PLAYER_SPAWN
 
-	camera.global_position = player.global_position + Vector3(0, EYE_HEIGHT, 0)
+	# Sit the camera a little ahead of the chest so looking down shows your own
+	# body and legs rather than the inside of your shoulders.
+	var fwd := (Basis(Vector3.UP, cam_yaw) * Vector3(0, 0, -1)).normalized()
+	camera.global_position = player.global_position + Vector3(0, EYE_HEIGHT, 0) + fwd * 0.07
 	camera.rotation = Vector3(cam_pitch, cam_yaw, 0.0)
 
 	_update_look()
@@ -1046,7 +1059,8 @@ func _leave_fishing() -> void:
 	play_mode = "explore"
 	_enter_idle()
 	player.frozen = false
-	player.visible = false   # first person
+	player.visible = true
+	player.set_first_person(true)
 	player.velocity = Vector3.ZERO
 	player.position = FISHING_SPOT + Vector3(0, 0.5, 1.6)
 	rod.visible = false
@@ -1219,7 +1233,8 @@ func _start_play() -> void:
 	_enter_idle()
 	rod.visible = false
 	paddle.visible = false
-	player.visible = false   # first person
+	player.visible = true
+	player.set_first_person(true)
 	player.frozen = false
 	player.velocity = Vector3.ZERO
 	player.position = PLAYER_SPAWN
@@ -1286,9 +1301,35 @@ func _go_main_menu() -> void:
 func _apply_settings() -> void:
 	if not menu_ui:
 		return
-	_camera_sway = menu_ui.settings["camera_sway"]
-	hud.left_handed = menu_ui.settings["left_handed"]
+	var st: Dictionary = menu_ui.settings
+	_camera_sway = st["camera_sway"]
+	hud.left_handed = st["left_handed"]
 	hud.recalc_layout()
+	if touch:
+		touch.crosshair = st.get("crosshair", true)
+		touch.sens_scale = float(st.get("look_sens", 1.0))
+	if player:
+		player.show_body = bool(st.get("show_body", true))
+		player.set_first_person(player.first_person)
+	_apply_graphics()
+
+
+## Graphics preset: trades shadows, water detail, fog and anti-aliasing.
+func _apply_graphics() -> void:
+	if not menu_ui:
+		return
+	var q := str(menu_ui.settings.get("graphics", "High"))
+	var want_shadows: bool = bool(menu_ui.settings.get("shadows", true)) and q != "Low"
+	if sun_light:
+		sun_light.shadow_enabled = want_shadows
+	if world_env:
+		world_env.fog_enabled = q != "Low"
+	if water_mat:
+		water_mat.set_shader_parameter("normal_scale", 0.12 if q == "Low" else (0.28 if q == "Medium" else 0.38))
+		water_mat.set_shader_parameter("foam_width", 0.0 if q == "Low" else 0.42)
+	var vp := get_viewport()
+	if vp:
+		vp.msaa_3d = Viewport.MSAA_DISABLED if q == "Low" else (Viewport.MSAA_2X if q == "Medium" else Viewport.MSAA_4X)
 
 
 var _idle_delay := 0.0
@@ -1690,7 +1731,7 @@ func _autotest(_delta: float) -> void:
 			_on_interact()
 			print("AUTOTEST after 2nd press (equip toggle) -> equipped='%s'" % equipped_weapon)
 
-	if start_screen in ["menu", "settings", "pause", "shop", "help", "weaponshop"]:
+	if start_screen in ["menu", "settings", "pause", "shop", "help", "weaponshop", "legs"]:
 		if frame > 40:
 			if autotest_shot != "":
 				get_viewport().get_texture().get_image().save_png(autotest_shot)

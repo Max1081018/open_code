@@ -24,6 +24,22 @@ var model: Node3D
 var anim: AnimationPlayer
 var _cur := ""
 var _model_yaw_offset := 0.0
+var _skel: Skeleton3D
+var first_person := false
+var show_body := true
+
+
+## In first person we still draw the body (so you can look down and see your
+## legs), but the head is shrunk away so the camera isn't inside it.
+func set_first_person(on: bool) -> void:
+	first_person = on
+	if model:
+		model.visible = show_body
+	if _skel == null:
+		return
+	var idx := _skel.find_bone("head")
+	if idx >= 0:
+		_skel.set_bone_pose_scale(idx, Vector3.ONE * (0.001 if on else 1.0))
 
 
 func _ready() -> void:
@@ -50,6 +66,7 @@ func _build_model() -> void:
 		model.position.y = -box.position.y * s
 
 	anim = model.find_child("AnimationPlayer", true, false)
+	_skel = model.find_child("Skeleton3D", true, false)
 	_play_anim("Idle")
 
 
@@ -132,12 +149,20 @@ func _physics_process(delta: float) -> void:
 	velocity.z = move_toward(velocity.z, want.z, ACCEL * delta)
 	move_and_slide()
 
-	# Face the way we're going.
-	if want.length() > 0.01 and model:
-		var target_yaw := atan2(want.x, want.z) + _model_yaw_offset
-		model.rotation.y = lerp_angle(model.rotation.y, target_yaw, clampf(delta * TURN_RATE, 0.0, 1.0))
+	# In first person the body faces wherever you're looking, so your own legs
+	# line up with the camera. Otherwise it turns the way it's walking.
+	if model:
+		if first_person:
+			model.rotation.y = cam_yaw + _model_yaw_offset
+		elif want.length() > 0.01:
+			var target_yaw := atan2(want.x, want.z) + _model_yaw_offset
+			model.rotation.y = lerp_angle(model.rotation.y, target_yaw, clampf(delta * TURN_RATE, 0.0, 1.0))
 
 	_update_anim()
+	if first_person and _skel:
+		var h := _skel.find_bone("head")
+		if h >= 0:
+			_skel.set_bone_pose_scale(h, Vector3.ONE * 0.001)
 
 
 func _update_anim() -> void:
