@@ -13,6 +13,15 @@ const LOOK_SENS := 0.0052
 var move := Vector2.ZERO       # -1..1, screen space
 var look := Vector2.ZERO       # consumed each frame by the camera
 var prompt := ""               # interact button label; empty hides it
+var look_info := ""            # line under the crosshair (what you're looking at)
+var crosshair := true
+var _toast := ""
+var _toast_t := 0.0
+
+
+func flash(text: String) -> void:
+	_toast = text
+	_toast_t = 2.2
 
 var _view: Painter
 var _joy_index := -1
@@ -40,7 +49,9 @@ func _recalc() -> void:
 	_btn_center = Vector2(s.x - 150, s.y - 330)
 
 
-func _process(_d: float) -> void:
+func _process(d: float) -> void:
+	if _toast_t > 0.0:
+		_toast_t -= d
 	_view.queue_redraw()
 
 
@@ -94,6 +105,27 @@ class Painter extends Control:
 	func _draw() -> void:
 		var vp := get_viewport_rect().size
 		var font := ThemeDB.fallback_font
+		var mid := vp * 0.5
+
+		# Crosshair dot.
+		if ui.crosshair:
+			var lit: bool = ui.look_info != ""
+			draw_circle(mid, 7.0 if lit else 5.0, Color(1, 1, 1, 0.85 if lit else 0.45))
+			draw_arc(mid, 11.0, 0, TAU, 24, Color(0, 0, 0, 0.45), 2.0)
+
+		# What you're looking at.
+		if ui.look_info != "":
+			var iw := font.get_string_size(ui.look_info, HORIZONTAL_ALIGNMENT_LEFT, -1, 30).x
+			var ip := mid + Vector2(-iw * 0.5, 54)
+			draw_string_outline(font, ip, ui.look_info, HORIZONTAL_ALIGNMENT_LEFT, -1, 30, 7, Color(0, 0, 0, 0.8))
+			draw_string(font, ip, ui.look_info, HORIZONTAL_ALIGNMENT_LEFT, -1, 30, Color(1, 1, 1, 0.97))
+
+		# Transient message (purchases etc).
+		if ui._toast_t > 0.0 and ui._toast != "":
+			var tw := font.get_string_size(ui._toast, HORIZONTAL_ALIGNMENT_LEFT, -1, 36).x
+			var tp := Vector2(mid.x - tw * 0.5, vp.y * 0.22)
+			draw_string_outline(font, tp, ui._toast, HORIZONTAL_ALIGNMENT_LEFT, -1, 36, 8, Color(0, 0, 0, 0.8))
+			draw_string(font, tp, ui._toast, HORIZONTAL_ALIGNMENT_LEFT, -1, 36, Color(1, 0.95, 0.6))
 
 		# Joystick: shown where you grabbed, or as a hint when idle.
 		var active: bool = ui._joy_index != -1

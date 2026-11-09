@@ -43,7 +43,7 @@ func _build_model() -> void:
 	add_child(model)
 
 	# Fit the model: scale to PLAYER_HEIGHT and stand it on the origin.
-	var box := _aabb(model)
+	var box := _local_aabb(model)
 	if box.size.y > 0.001:
 		var s := PLAYER_HEIGHT / box.size.y
 		model.scale = Vector3.ONE * s
@@ -51,6 +51,23 @@ func _build_model() -> void:
 
 	anim = model.find_child("AnimationPlayer", true, false)
 	_play_anim("Idle")
+
+
+## AABB of a node's meshes in that node's own space.
+func _local_aabb(root: Node3D) -> AABB:
+	var inv := root.global_transform.affine_inverse()
+	var out := AABB()
+	var first := true
+	for n in root.find_children("*", "MeshInstance3D", true):
+		if n.mesh == null:
+			continue
+		var a: AABB = (inv * n.global_transform) * n.mesh.get_aabb()
+		if first:
+			out = a
+			first = false
+		else:
+			out = out.merge(a)
+	return out
 
 
 ## World-space AABB of every mesh under a node.

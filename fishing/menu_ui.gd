@@ -366,6 +366,11 @@ func _open_settings(from: Control) -> void:
 	_root.mouse_filter = Control.MOUSE_FILTER_STOP
 
 
+func set_pause_button_visible(v: bool) -> void:
+	if _pause_btn:
+		_pause_btn.visible = v
+
+
 func open_settings_for_test() -> void:
 	_open_settings(_main)
 

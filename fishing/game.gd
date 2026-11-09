@@ -59,6 +59,15 @@ var caught_fish: Node3D
 var players := {}  # name -> AudioStreamPlayer
 var reel_click_t := 0.0
 var floaters: Array[Node3D] = []  # buoys etc. that ride the waves
+var shop_building: Node3D
+var shop_counter: Node3D
+var shopkeeper: Node3D
+var near_shop := false
+const WEAPON_LAYER := 4          # collision layer the crosshair ray looks for
+var weapon_bodies := {}          # weapon id -> StaticBody3D
+var weapon_outlines := {}        # weapon id -> Array[MeshInstance3D]
+var looked_weapon := ""          # what the crosshair is on right now
+var _greet_timer := 0.0
 
 # Whacking the catch on the dock
 var paddle: Node3D
@@ -118,6 +127,69 @@ var coins := 0
 var upgrades := {"rod": 0, "line": 0, "bait": 0, "luck": 0}
 var seen_help := false
 
+# --- Weapons -------------------------------------------------------------------
+# Island 1 (beginner) stock. `power` shaves whacks off landing a catch, so the
+# gear you buy actually changes how the game plays.
+const SHOP_STOCK := [
+	{"id": "dagger_A", "name": "Gutting Knife", "rarity": "Common",
+	 "desc": "A stubby blade for cleaning your catch.", "price": 45, "power": 1},
+	{"id": "dagger_B", "name": "Fisherman's Dirk", "rarity": "Common",
+	 "desc": "Holds an edge in salt air. Barely.", "price": 90, "power": 1},
+	{"id": "axe_A", "name": "Bait Hatchet", "rarity": "Uncommon",
+	 "desc": "Chops bait. Chops most things, really.", "price": 170, "power": 2},
+	{"id": "sword_A", "name": "Rusty Cutlass", "rarity": "Uncommon",
+	 "desc": "Washed up in a crate. Mostly sharp.", "price": 300, "power": 2},
+	{"id": "hammer_A", "name": "Dock Mallet", "rarity": "Rare",
+	 "desc": "For stubborn planks and stubborner fish.", "price": 520, "power": 3},
+]
+var owned_weapons: Array = []
+var equipped_weapon := ""
+
+
+func weapon_by_id(id: String) -> Dictionary:
+	for w in SHOP_STOCK:
+		if w["id"] == id:
+			return w
+	return {}
+
+
+## Whack bonus from the equipped weapon.
+func weapon_power() -> int:
+	if equipped_weapon == "":
+		return 0
+	var w := weapon_by_id(equipped_weapon)
+	return int(w.get("power", 0))
+
+
+func _buy_weapon(id: String) -> void:
+	var w := weapon_by_id(id)
+	if w.is_empty() or owned_weapons.has(id):
+		return
+	var price := int(w["price"])
+	if coins < price:
+		return
+	coins -= price
+	owned_weapons.append(id)
+	equipped_weapon = id        # equip what you just bought
+	_play("caught")
+	_save_game()
+	_update_info()
+	_flash("Bought %s!   -%d coins" % [w["name"], price])
+
+
+func _equip_weapon(id: String) -> void:
+	if id != "" and not owned_weapons.has(id):
+		return
+	equipped_weapon = "" if equipped_weapon == id else id
+	_play("click")
+	_save_game()
+	var nm: String = weapon_by_id(id).get("name", "it")
+	_flash("Equipped %s" % nm if equipped_weapon == id else "Put %s away" % nm)
+
+
+func _refresh_weapon_shop() -> void:
+	pass
+
 
 func upgrade_cost(key: String) -> int:
 	# Rising cost: base * (level+1), e.g. 40, 80, 120, ...
@@ -132,6 +204,8 @@ func _load_save() -> void:
 		best_weight = float(cfg.get_value("save", "best_weight", 0.0))
 		best_name = str(cfg.get_value("save", "best_name", ""))
 		seen_help = bool(cfg.get_value("save", "seen_help", false))
+		owned_weapons = cfg.get_value("save", "owned_weapons", [])
+		equipped_weapon = str(cfg.get_value("save", "equipped_weapon", ""))
 		for key in upgrades:
 			upgrades[key] = int(cfg.get_value("upgrades", key, 0))
 
@@ -143,6 +217,8 @@ func _save_game() -> void:
 	cfg.set_value("save", "best_weight", best_weight)
 	cfg.set_value("save", "best_name", best_name)
 	cfg.set_value("save", "seen_help", seen_help)
+	cfg.set_value("save", "owned_weapons", owned_weapons)
+	cfg.set_value("save", "equipped_weapon", equipped_weapon)
 	for key in upgrades:
 		cfg.set_value("upgrades", key, upgrades[key])
 	cfg.save(SAVE_PATH)
@@ -191,6 +267,8 @@ var sim_action := false
 var sim_tap := false
 var frame := 0
 var start_screen := "menu"  # autotest can jump straight to a screen
+var test_yaw := PI
+var test_walk := 450
 
 
 func _ready() -> void:
@@ -226,6 +304,7 @@ func _ready() -> void:
 	touch.interact_pressed.connect(_on_interact)
 	touch.visible = false
 
+
 	_enter_idle()
 	_apply_settings()
 	# Players always start at the menu; autotest can jump to a screen to shoot it.
@@ -237,6 +316,14 @@ func _ready() -> void:
 			"settings": _go_main_menu(); menu_ui.open_settings_for_test()
 			"pause": _start_play(); _pause()
 			"help": _go_main_menu(); menu_ui.open_help_for_test()
+			"weaponshop":
+				coins = 600
+				_start_play()
+				# Stand at the counter looking at the stock.
+				var gy := _island_y(HOME, HOME_R, HOME_H, SHOP_POS.x, SHOP_POS.z)
+				player.position = Vector3(SHOP_POS.x - 0.08, gy + 0.3, SHOP_POS.z - 1.5)
+				cam_yaw = PI
+				cam_pitch = -0.22
 			"shop":
 				coins = 500
 				_go_main_menu()
@@ -253,6 +340,8 @@ func _parse_args() -> void:
 		elif a.begins_with("--shot="): autotest_shot = a.get_slice("=", 1)
 		elif a.begins_with("--shot-on="): shot_on = a.get_slice("=", 1)
 		elif a.begins_with("--screen="): start_screen = a.get_slice("=", 1)
+		elif a.begins_with("--yaw="): test_yaw = float(a.get_slice("=", 1))
+		elif a.begins_with("--walk="): test_walk = int(a.get_slice("=", 1))
 
 
 # --- Wave height (mirror of the shader) --------------------------------------
@@ -364,7 +453,18 @@ const MDL := {
 	"boat": "res://assets/models/watercraft/boat_fishing.glb",
 	"buoy": "res://assets/models/watercraft/buoy.glb",
 	"buoy_flag": "res://assets/models/watercraft/buoy_flag.glb",
+	# Shop
+	"shop_building": "res://assets/models/fishing/lakeside-bait-shop.glb",
+	"shop_counter": "res://assets/models/fishing/tackle-shop-counter.glb",
 }
+
+# Island 1 shop placement
+const SHOP_POS := Vector3(-5.5, 0, 24.0)
+const SHOP_SCALE := 0.27
+const COUNTER_SCALE := 0.17
+# Where the player stands to be served, and where the shopkeeper waits.
+const SHOP_TALK_SPOT := Vector3(-5.5, 0, 24.3)
+const WEAPON_DIR := "res://assets/models/weapons/"
 
 const DECK_Y := 0.72   # top of the dock planks, in world units
 
@@ -491,6 +591,8 @@ func _build_scenery() -> void:
 	]:
 		var n := _spawn(b["k"], b["p"], randf() * TAU, b["s"])
 		floaters.append(n)
+
+	_build_shop()
 
 	# A wrecked ship on the horizon for silhouette.
 	_spawn("wreck", Vector3(-38, -1.0, -60), 0.7, 1.3)
@@ -758,19 +860,155 @@ func _update_explore(delta: float) -> void:
 	camera.global_position = player.global_position + Vector3(0, EYE_HEIGHT, 0)
 	camera.rotation = Vector3(cam_pitch, cam_yaw, 0.0)
 
+	_update_look()
+
 	near_fishing_spot = player.global_position.distance_to(FISHING_SPOT) < 3.0
-	touch.prompt = "FISH" if near_fishing_spot else ""
+	var was_near := near_shop
+	near_shop = player.global_position.distance_to(SHOP_TALK_SPOT) < 4.5
+	if near_shop and not was_near:
+		_greet_shopkeeper()
+	if _greet_timer > 0.0:
+		_greet_timer -= delta
+
+	# What the crosshair is on decides the prompt.
+	if looked_weapon != "":
+		var w := weapon_by_id(looked_weapon)
+		var price := int(w.get("price", 0))
+		var owned: bool = owned_weapons.has(looked_weapon)
+		touch.look_info = "%s  ·  %s  ·  whack +%d" % [w.get("name", "?"), w.get("rarity", ""), int(w.get("power", 0))]
+		if owned:
+			touch.prompt = "EQUIPPED" if equipped_weapon == looked_weapon else "EQUIP"
+		elif coins >= price:
+			touch.prompt = "BUY %d" % price
+			touch.look_info += "   —   %d coins" % price
+		else:
+			touch.prompt = "NEED %d" % price
+			touch.look_info += "   —   %d coins" % price
+	else:
+		touch.look_info = ""
+		if near_fishing_spot:
+			touch.prompt = "FISH"
+		else:
+			touch.prompt = ""
 
 
 func _on_interact() -> void:
 	if app_state != "playing":
 		return
-	if play_mode == "explore" and near_fishing_spot:
+	if play_mode != "explore":
+		return
+	# Looking at stock takes priority: buy it or equip it right there.
+	if looked_weapon != "":
+		if owned_weapons.has(looked_weapon):
+			_equip_weapon(looked_weapon)
+		else:
+			var w := weapon_by_id(looked_weapon)
+			if coins < int(w.get("price", 0)):
+				_flash("Not enough coins")
+				_play("snap")
+			else:
+				_buy_weapon(looked_weapon)
+		return
+	if near_fishing_spot:
 		_enter_fishing()
+
+
+## Puts a weapon on display: the model, a white outline that lights up when you
+## look at it, and a pick body on its own collision layer for the crosshair ray.
+func _add_weapon_display(id: String, pos: Vector3, rot := Vector3.ZERO, scl := 0.42) -> void:
+	var holder := Node3D.new()
+	holder.position = pos
+	holder.rotation = rot
+	holder.scale = Vector3.ONE * scl
+	add_child(holder)
+	var packed: PackedScene = load(WEAPON_DIR + id + ".gltf")
+	var m: Node3D = packed.instantiate()
+	holder.add_child(m)
+
+	# Sit it on the surface: pos.y is the shelf, not the model origin.
+	var pre := _node_aabb(m)
+	holder.position.y += pos.y - pre.position.y
+
+	# White "grown" shell, drawn only while highlighted.
+	var om := StandardMaterial3D.new()
+	om.albedo_color = Color(1, 1, 1)
+	om.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	om.cull_mode = BaseMaterial3D.CULL_FRONT
+	om.grow = true
+	om.grow_amount = 0.05
+	var outlines: Array = []
+	for mi in m.find_children("*", "MeshInstance3D", true):
+		if mi.mesh == null:
+			continue
+		var o := MeshInstance3D.new()
+		o.mesh = mi.mesh
+		o.material_override = om
+		o.transform = mi.transform
+		o.visible = false
+		mi.get_parent().add_child(o)
+		outlines.append(o)
+	weapon_outlines[id] = outlines
+
+	# Pick body sized to the model, parented to the world so scale stays simple.
+	var box := _node_aabb(m)
+	var body := StaticBody3D.new()
+	body.collision_layer = WEAPON_LAYER
+	body.collision_mask = 0
+	var col := CollisionShape3D.new()
+	var bs := BoxShape3D.new()
+	bs.size = box.size + Vector3(0.14, 0.14, 0.14)
+	col.shape = bs
+	body.add_child(col)
+	body.position = box.position + box.size * 0.5
+	body.set_meta("weapon_id", id)
+	add_child(body)
+	weapon_bodies[id] = body
+
+
+func _set_weapon_outline(id: String, on: bool) -> void:
+	if id == "" or not weapon_outlines.has(id):
+		return
+	for o in weapon_outlines[id]:
+		o.visible = on
+
+
+## Casts a ray from the middle of the screen and highlights any stock it hits.
+func _update_look() -> void:
+	var space := get_world_3d().direct_space_state
+	var from: Vector3 = camera.global_position
+	var to: Vector3 = from - camera.global_transform.basis.z * 3.8
+	var q := PhysicsRayQueryParameters3D.create(from, to)
+	q.collision_mask = WEAPON_LAYER
+	var hit := space.intersect_ray(q)
+	var id := ""
+	if not hit.is_empty() and hit.has("collider"):
+		var c = hit["collider"]
+		if c and c.has_meta("weapon_id"):
+			id = str(c.get_meta("weapon_id"))
+	if id != looked_weapon:
+		_set_weapon_outline(looked_weapon, false)
+		_set_weapon_outline(id, true)
+		looked_weapon = id
+
+
+func _flash(text: String) -> void:
+	if touch:
+		touch.flash(text)
+
+
+## The shopkeeper waves when you come in.
+func _greet_shopkeeper() -> void:
+	var ap = shopkeeper.get_meta("anim") if shopkeeper and shopkeeper.has_meta("anim") else null
+	if ap and ap.has_animation("Cheer"):
+		ap.play("Cheer")
+		_greet_timer = 2.0
 
 
 func _enter_fishing() -> void:
 	play_mode = "fishing"
+	_set_weapon_outline(looked_weapon, false)
+	looked_weapon = ""
+	touch.look_info = ""
 	player.frozen = true
 	player.visible = false
 	touch.visible = false
@@ -799,6 +1037,135 @@ func _leave_fishing() -> void:
 	hud.set_hud_visible(false)
 	touch.visible = true
 	cam_yaw = PI  # look back down the jetty
+
+
+## World-space AABB of all meshes under a node.
+func _node_aabb(node: Node) -> AABB:
+	var out := AABB()
+	var first := true
+	for n in node.find_children("*", "MeshInstance3D", true):
+		if n.mesh == null:
+			continue
+		var a: AABB = n.global_transform * n.mesh.get_aabb()
+		if first:
+			out = a
+			first = false
+		else:
+			out = out.merge(a)
+	return out
+
+
+## AABB of a node's meshes expressed in that node's own space.
+func _local_aabb(root: Node3D) -> AABB:
+	var inv := root.global_transform.affine_inverse()
+	var out := AABB()
+	var first := true
+	for n in root.find_children("*", "MeshInstance3D", true):
+		if n.mesh == null:
+			continue
+		var a: AABB = (inv * n.global_transform) * n.mesh.get_aabb()
+		if first:
+			out = a
+			first = false
+		else:
+			out = out.merge(a)
+	return out
+
+
+## Spawns a KayKit character scaled to human height, looping one animation.
+func _spawn_character(path: String, pos: Vector3, yaw := 0.0, anim_name := "Idle") -> Node3D:
+	var root := Node3D.new()
+	root.position = pos
+	root.rotation.y = yaw
+	add_child(root)
+	var m: Node3D = load(path).instantiate()
+	root.add_child(m)
+	var box := _local_aabb(m)
+	if box.size.y > 0.001:
+		var sc := 1.75 / box.size.y
+		m.scale = Vector3.ONE * sc
+		m.position.y = -box.position.y * sc
+	var ap: AnimationPlayer = m.find_child("AnimationPlayer", true, false)
+	if ap and ap.has_animation(anim_name):
+		var a := ap.get_animation(anim_name)
+		if a:
+			a.loop_mode = Animation.LOOP_LINEAR
+		ap.play(anim_name)
+		root.set_meta("anim", ap)
+	return root
+
+
+## Puts a weapon model in the world at a display size.
+func _spawn_weapon(key: String, pos: Vector3, rot := Vector3.ZERO, scl := 0.45, parent: Node = null) -> Node3D:
+	var packed: PackedScene = load(WEAPON_DIR + key + ".gltf")
+	var n: Node3D = packed.instantiate()
+	n.position = pos
+	n.rotation = rot
+	n.scale = Vector3.ONE * scl
+	if parent == null:
+		add_child(n)
+	else:
+		parent.add_child(n)
+	return n
+
+
+## Island 1's weapon shop: a bait shack you can actually walk into, standing on
+## a flat foundation so it doesn't sink into the curved island.
+func _build_shop() -> void:
+	var ground := _island_y(HOME, HOME_R, HOME_H, SHOP_POS.x, SHOP_POS.z)
+
+	# Flat foundation pad. It flares out at the bottom so the sides are a gentle
+	# ramp you can walk up, rather than a step that blocks you.
+	var pad := MeshInstance3D.new()
+	var pm := CylinderMesh.new()
+	pm.top_radius = 4.6
+	pm.bottom_radius = 6.8
+	pm.height = 1.5
+	pm.radial_segments = 28
+	pm.material = _mat(Color(0.80, 0.72, 0.54), 1.0)
+	pad.mesh = pm
+	pad.position = Vector3(SHOP_POS.x, ground - 0.75, SHOP_POS.z)
+	add_child(pad)
+	pad.create_trimesh_collision()
+
+	# The shack, door facing back toward the jetty (-Z).
+	shop_building = _spawn("shop_building", Vector3(SHOP_POS.x, ground, SHOP_POS.z), PI, SHOP_SCALE)
+
+	# Open the doorway and give the structure collision (skipping the door so we
+	# can walk through it).
+	for m in shop_building.find_children("*", "MeshInstance3D", true):
+		var nm: String = m.name
+		if nm.begins_with("Door"):
+			m.visible = false
+			continue
+		if nm.begins_with("Shack_Walls") or nm.begins_with("Porch") or nm.begins_with("Shack_Roof"):
+			m.create_trimesh_collision()
+
+	# Shop counter against the inside back wall.
+	shop_counter = _spawn("shop_counter",
+		Vector3(SHOP_POS.x, ground + 0.02, SHOP_POS.z + 1.25), PI, COUNTER_SCALE)
+
+	# The shopkeeper, waiting behind the counter, facing the door.
+	shopkeeper = _spawn_character("res://assets/models/characters/Barbarian.glb",
+		Vector3(SHOP_POS.x + 0.55, ground + 0.02, SHOP_POS.z + 1.60), PI, "Idle")
+
+	# Stock on display. Each one is a real model you walk up to, look at and buy.
+	var top := ground + 0.95          # counter surface
+	var cz := SHOP_POS.z + 0.80
+	_add_weapon_display("dagger_A", Vector3(SHOP_POS.x - 1.15, top, cz), Vector3.ZERO, 0.40)
+	_add_weapon_display("dagger_B", Vector3(SHOP_POS.x - 0.62, top, cz), Vector3.ZERO, 0.40)
+	_add_weapon_display("axe_A", Vector3(SHOP_POS.x - 0.08, top, cz), Vector3.ZERO, 0.40)
+	_add_weapon_display("sword_A", Vector3(SHOP_POS.x + 0.48, top, cz), Vector3.ZERO, 0.40)
+	# The pricey one is displayed up on the wall.
+	_add_weapon_display("hammer_A", Vector3(SHOP_POS.x - 1.6, ground + 1.55, SHOP_POS.z + 1.1), Vector3.ZERO, 0.46)
+
+	# Warm interior light.
+	var lamp := OmniLight3D.new()
+	lamp.position = Vector3(SHOP_POS.x, ground + 2.1, SHOP_POS.z + 0.1)
+	lamp.light_color = Color(1.0, 0.86, 0.66)
+	lamp.light_energy = 1.25
+	lamp.omni_range = 6.0
+	add_child(lamp)
 
 
 ## Buoys ride the same waves the water shader draws.
@@ -1055,7 +1422,7 @@ func _land_fish() -> void:
 		pending_value = maxi(1, int(round(pending_weight * 14.0)))
 
 	# Heavier catches take more whacks.
-	whacks_left = clampi(1 + int(round(pending_weight * 0.9)), 1, 5)
+	whacks_left = clampi(1 + int(round(pending_weight * 0.9)) - weapon_power(), 1, 5)
 	whack_anim = 0.0
 	catch_hop = 0.0
 	_play("caught")
@@ -1268,14 +1635,14 @@ func _autotest(_delta: float) -> void:
 	# Explore: walk the character forward for a while, then shoot.
 	if start_screen == "explore":
 		if frame == 10:
-			cam_yaw = PI          # turn around to face the island
+			cam_yaw = test_yaw
 		if frame < 30:
 			touch.move = Vector2.ZERO
-		elif frame < 480:
-			touch.move = Vector2(0, -1)   # walk forward (now toward the island)
+		elif frame < 30 + test_walk:
+			touch.move = Vector2(0, -1)
 		else:
 			touch.move = Vector2.ZERO
-		if frame >= 500:
+		if frame >= 30 + test_walk + 20:
 			if autotest_shot != "":
 				get_viewport().get_texture().get_image().save_png(autotest_shot)
 			print("AUTOTEST(explore) pos=%s on_floor=%s prompt='%s' anim=%s" % [
@@ -1284,7 +1651,18 @@ func _autotest(_delta: float) -> void:
 			get_tree().quit()
 		return
 
-	if start_screen in ["menu", "settings", "pause", "shop", "help"]:
+	# Exercise a real purchase through the crosshair, not a menu.
+	if start_screen == "weaponshop":
+		if frame == 20:
+			print("AUTOTEST looking at '%s'  prompt='%s'  info='%s'" % [looked_weapon, touch.prompt, touch.look_info])
+		if frame == 26:
+			_on_interact()
+			print("AUTOTEST after buy -> coins=%d owned=%s equipped=%s" % [coins, owned_weapons, equipped_weapon])
+		if frame == 32:
+			_on_interact()
+			print("AUTOTEST after 2nd press (equip toggle) -> equipped='%s'" % equipped_weapon)
+
+	if start_screen in ["menu", "settings", "pause", "shop", "help", "weaponshop"]:
 		if frame > 40:
 			if autotest_shot != "":
 				get_viewport().get_texture().get_image().save_png(autotest_shot)
