@@ -79,6 +79,81 @@ var catches := 0
 var best_weight := 0.0
 var best_name := ""
 
+# --- Economy / progression ----------------------------------------------------
+const SAVE_PATH := "user://save.cfg"
+# Each upgrade: display name, blurb, number of levels, and base cost (cost grows
+# per level). Effects are applied in the gameplay formulas below.
+const UPGRADES := {
+	"rod":  {"name": "Rod",  "desc": "Cast farther",        "levels": 5, "cost": 40},
+	"line": {"name": "Line", "desc": "Line resists tension", "levels": 5, "cost": 55},
+	"bait": {"name": "Bait", "desc": "Fish bite sooner",     "levels": 5, "cost": 50},
+	"luck": {"name": "Luck", "desc": "Bigger, rarer catches", "levels": 5, "cost": 70},
+}
+var coins := 0
+var upgrades := {"rod": 0, "line": 0, "bait": 0, "luck": 0}
+
+
+func upgrade_cost(key: String) -> int:
+	# Rising cost: base * (level+1), e.g. 40, 80, 120, ...
+	return int(UPGRADES[key]["cost"]) * (int(upgrades[key]) + 1)
+
+
+func _load_save() -> void:
+	var cfg := ConfigFile.new()
+	if cfg.load(SAVE_PATH) == OK:
+		coins = int(cfg.get_value("save", "coins", 0))
+		catches = int(cfg.get_value("save", "catches", 0))
+		best_weight = float(cfg.get_value("save", "best_weight", 0.0))
+		best_name = str(cfg.get_value("save", "best_name", ""))
+		for key in upgrades:
+			upgrades[key] = int(cfg.get_value("upgrades", key, 0))
+
+
+func _save_game() -> void:
+	var cfg := ConfigFile.new()
+	cfg.set_value("save", "coins", coins)
+	cfg.set_value("save", "catches", catches)
+	cfg.set_value("save", "best_weight", best_weight)
+	cfg.set_value("save", "best_name", best_name)
+	for key in upgrades:
+		cfg.set_value("upgrades", key, upgrades[key])
+	cfg.save(SAVE_PATH)
+
+
+func _refresh_shop() -> void:
+	var rows := []
+	for key in ["rod", "line", "bait", "luck"]:
+		var lvl: int = upgrades[key]
+		var maxed: bool = lvl >= int(UPGRADES[key]["levels"])
+		var cost := upgrade_cost(key)
+		rows.append({
+			"key": key,
+			"name": UPGRADES[key]["name"],
+			"desc": UPGRADES[key]["desc"],
+			"level": lvl,
+			"max": int(UPGRADES[key]["levels"]),
+			"cost": cost,
+			"maxed": maxed,
+			"afford": coins >= cost,
+		})
+	menu_ui.set_shop_model(coins, rows)
+
+
+func _buy_upgrade(key: String) -> void:
+	if not upgrades.has(key):
+		return
+	if upgrades[key] >= int(UPGRADES[key]["levels"]):
+		return
+	var cost := upgrade_cost(key)
+	if coins < cost:
+		return
+	coins -= cost
+	upgrades[key] += 1
+	_play("caught")
+	_save_game()
+	_refresh_shop()
+	_update_info()
+
 # Autotest
 var autotest := false
 var autotest_frames := 1800
@@ -96,6 +171,7 @@ func _ready() -> void:
 		seed(7)
 	else:
 		randomize()
+	_load_save()
 	_build_world()
 	_build_player_view()
 	_build_sounds()
@@ -108,6 +184,9 @@ func _ready() -> void:
 	menu_ui.resume_pressed.connect(_resume)
 	menu_ui.to_main_menu.connect(_go_main_menu)
 	menu_ui.settings_changed.connect(_apply_settings)
+	menu_ui.shop_opened.connect(_refresh_shop)
+	menu_ui.buy_pressed.connect(_buy_upgrade)
+	menu_ui.set_coins(coins)
 
 	_enter_idle()
 	_apply_settings()
@@ -117,6 +196,10 @@ func _ready() -> void:
 			"play": _start_play()
 			"settings": _go_main_menu(); menu_ui.open_settings_for_test()
 			"pause": _start_play(); _pause()
+			"shop":
+				coins = 500
+				_go_main_menu()
+				menu_ui.open_shop_for_test()
 			_: _go_main_menu()
 	else:
 		_go_main_menu()
@@ -466,6 +549,9 @@ func _update_info() -> void:
 	if best_name != "":
 		s += "   Best: %s (%.2f kg)" % [best_name, best_weight]
 	hud.info = s
+	hud.coins = coins
+	if menu_ui:
+		menu_ui.set_coins(coins)
 
 
 # --- Main loop ----------------------------------------------------------------
@@ -616,7 +702,8 @@ func _hud_sync() -> void:
 # --- Casting ------------------------------------------------------------------
 
 func _do_cast(p: float) -> void:
-	var dist: float = lerpf(MIN_CAST, MAX_CAST, p)
+	var max_cast: float = MAX_CAST + float(upgrades["rod"]) * 6.0  # Rod upgrade
+	var dist: float = lerpf(MIN_CAST, max_cast, p)
 	var fwd := -camera.global_transform.basis.z
 	fwd.y = 0
 	fwd = fwd.normalized()
@@ -642,7 +729,9 @@ func _update_flight(delta: float) -> void:
 	bobber.position = flat + Vector3.UP * arc
 	if flight_t >= 1.0:
 		_play("splash")
-		bite_timer = randf_range(2.5, 6.5)
+		# Bait upgrade shortens the wait.
+		var bait_factor: float = 1.0 - float(upgrades["bait"]) * 0.13
+		bite_timer = randf_range(2.5, 6.5) * bait_factor
 		state = WAITING
 		hud.message = "Waiting for a bite..."
 
@@ -670,6 +759,12 @@ func _hook_fish() -> void:
 	var pick: Dictionary = fish_table[randi() % fish_table.size()]
 	while pick.get("junk", false) and randf() > 0.35:
 		pick = fish_table[randi() % fish_table.size()]
+	# Luck upgrade: take the better of extra rolls, so bigger fish appear more.
+	var luck: int = int(upgrades["luck"])
+	for i in luck:
+		var other: Dictionary = fish_table[randi() % fish_table.size()]
+		if not other.get("junk", false) and float(other["max"]) > float(pick["max"]):
+			pick = other
 	pending_fish = pick
 	fish_strength = lerpf(0.5, 1.4, randf()) * (1.0 + float(pick["max"]) * 0.12)
 	distance = 1.0
@@ -685,7 +780,9 @@ func _hook_fish() -> void:
 func _update_fight(delta: float, reeling: bool) -> void:
 	if reeling:
 		distance = max(distance - delta * 0.17, 0.0)
-		tension += delta * (0.42 * fish_strength)
+		# Line upgrade reduces how fast tension builds.
+		var line_factor: float = 1.0 - float(upgrades["line"]) * 0.12
+		tension += delta * (0.42 * fish_strength) * line_factor
 		reel_click_t -= delta
 		if reel_click_t <= 0.0:
 			_play("click")
@@ -725,8 +822,16 @@ func _land_fish() -> void:
 	if weight > best_weight:
 		best_weight = weight
 		best_name = pending_fish["name"]
+	# Coins: by weight, with junk worth little.
+	var value := 1
+	if pending_fish.get("junk", false):
+		value = 1 + randi() % 3
+	else:
+		value = maxi(1, int(round(weight * 14.0)))
+	coins += value
+	_save_game()
 	var verb := "Caught" if not pending_fish.get("junk", false) else "Reeled up"
-	hud.message = "%s %s!\n%.2f kg  (tap to continue)" % [verb, pending_fish["name"], weight]
+	hud.message = "%s %s!\n%.2f kg   +%d coins\n(tap to continue)" % [verb, pending_fish["name"], weight, value]
 	_play("caught")
 	_show_catch(pending_fish)
 	_update_info()
@@ -824,7 +929,7 @@ func _autotest(_delta: float) -> void:
 	sim_action = false
 
 	# For non-gameplay screens, just let them settle and screenshot.
-	if start_screen in ["menu", "settings", "pause"]:
+	if start_screen in ["menu", "settings", "pause", "shop"]:
 		if frame > 40:
 			if autotest_shot != "":
 				get_viewport().get_texture().get_image().save_png(autotest_shot)

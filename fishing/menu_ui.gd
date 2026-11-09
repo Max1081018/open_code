@@ -11,6 +11,8 @@ signal play_pressed
 signal resume_pressed
 signal to_main_menu
 signal settings_changed
+signal shop_opened
+signal buy_pressed(key)
 
 const CFG_PATH := "user://settings.cfg"
 
@@ -25,6 +27,10 @@ var _root: Control
 var _main: Control
 var _settings: Control
 var _pause: Control
+var _shop: Control
+var _shop_rows: VBoxContainer
+var _shop_coins: Label
+var _shop_return_to: Control
 var _pause_btn: Button
 var _title_node: Label
 var _title_pulse := 0.0
@@ -145,11 +151,14 @@ func _build() -> void:
 	var play := _button("PLAY", 480, 118)
 	play.add_theme_font_size_override("font_size", 52)
 	play.pressed.connect(func(): play_pressed.emit())
+	var shopb := _button("SHOP")
+	shopb.pressed.connect(func(): _open_shop(_main))
 	var sbtn := _button("SETTINGS")
 	sbtn.pressed.connect(func(): _open_settings(_main))
 	var qbtn := _button("QUIT")
 	qbtn.pressed.connect(_on_quit)
 	col.add_child(play)
+	col.add_child(shopb)
 	col.add_child(sbtn)
 	col.add_child(qbtn)
 
@@ -194,15 +203,38 @@ func _build() -> void:
 	pv.custom_minimum_size = Vector2(520, 0)
 	var resume := _button("RESUME")
 	resume.pressed.connect(func(): resume_pressed.emit())
+	var pshop := _button("SHOP")
+	pshop.pressed.connect(func(): _open_shop(_pause))
 	var pset := _button("SETTINGS")
 	pset.pressed.connect(func(): _open_settings(_pause))
 	var pmenu := _button("MAIN MENU")
 	pmenu.pressed.connect(func(): to_main_menu.emit())
 	pv.add_child(resume)
+	pv.add_child(pshop)
 	pv.add_child(pset)
 	pv.add_child(pmenu)
 	_root.add_child(_pause)
 	_pause.visible = false
+
+	# ---- Shop ----
+	var shres := _panel("Shop")
+	_shop = shres[0]
+	var shv: VBoxContainer = shres[1]
+	shv.custom_minimum_size = Vector2(720, 0)
+	_shop_coins = Label.new()
+	_shop_coins.text = "Coins: 0"
+	_shop_coins.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	_shop_coins.add_theme_font_size_override("font_size", 36)
+	_shop_coins.add_theme_color_override("font_color", Color(1, 0.9, 0.4))
+	shv.add_child(_shop_coins)
+	_shop_rows = VBoxContainer.new()
+	_shop_rows.add_theme_constant_override("separation", 14)
+	shv.add_child(_shop_rows)
+	var shback := _button("BACK")
+	shback.pressed.connect(_on_shop_back)
+	shv.add_child(shback)
+	_root.add_child(_shop)
+	_shop.visible = false
 
 	# ---- In-game pause button (top-left) ----
 	_pause_btn = Button.new()
@@ -256,19 +288,25 @@ func consume_pause() -> bool:
 
 var _settings_return_to: Control
 
+func _hide_overlays() -> void:
+	_settings.visible = false
+	if _shop:
+		_shop.visible = false
+
+
 func show_main() -> void:
 	_main.visible = true
-	_settings.visible = false
 	_pause.visible = false
 	_pause_btn.visible = false
+	_hide_overlays()
 	_root.mouse_filter = Control.MOUSE_FILTER_STOP
 
 
 func show_play() -> void:
 	_main.visible = false
-	_settings.visible = false
 	_pause.visible = false
 	_pause_btn.visible = true
+	_hide_overlays()
 	# Let touches fall through to the gameplay HUD except on the pause button.
 	_root.mouse_filter = Control.MOUSE_FILTER_IGNORE
 
@@ -276,8 +314,8 @@ func show_play() -> void:
 func show_pause() -> void:
 	_pause.visible = true
 	_main.visible = false
-	_settings.visible = false
 	_pause_btn.visible = false
+	_hide_overlays()
 	_root.mouse_filter = Control.MOUSE_FILTER_STOP
 
 
@@ -291,6 +329,67 @@ func _open_settings(from: Control) -> void:
 
 func open_settings_for_test() -> void:
 	_open_settings(_main)
+
+
+func open_shop_for_test() -> void:
+	_open_shop(_main)
+
+
+func _open_shop(from: Control) -> void:
+	_shop_return_to = from
+	from.visible = false
+	_shop.visible = true
+	_pause_btn.visible = false
+	_root.mouse_filter = Control.MOUSE_FILTER_STOP
+	shop_opened.emit()
+
+
+func _on_shop_back() -> void:
+	_shop.visible = false
+	_shop_return_to.visible = true
+	if _shop_return_to == _main:
+		_root.mouse_filter = Control.MOUSE_FILTER_STOP
+
+
+func set_coins(c: int) -> void:
+	if _shop_coins:
+		_shop_coins.text = "Coins: %d" % c
+
+
+## rows: Array of { key, name, desc, level, max, cost, maxed, afford }.
+func set_shop_model(coins: int, rows: Array) -> void:
+	set_coins(coins)
+	if not _shop_rows:
+		return
+	for c in _shop_rows.get_children():
+		c.queue_free()
+	for row in rows:
+		var hb := HBoxContainer.new()
+		hb.add_theme_constant_override("separation", 16)
+		var info := VBoxContainer.new()
+		info.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		var name_lbl := Label.new()
+		name_lbl.text = "%s  (Lv %d/%d)" % [row["name"], row["level"], row["max"]]
+		name_lbl.add_theme_font_size_override("font_size", 32)
+		name_lbl.add_theme_color_override("font_color", Color.WHITE)
+		var desc_lbl := Label.new()
+		desc_lbl.text = row["desc"]
+		desc_lbl.add_theme_font_size_override("font_size", 24)
+		desc_lbl.add_theme_color_override("font_color", Color(0.75, 0.85, 0.95))
+		info.add_child(name_lbl)
+		info.add_child(desc_lbl)
+		hb.add_child(info)
+		var buy := _button("", 240, 78)
+		if row["maxed"]:
+			buy.text = "MAX"
+			buy.disabled = true
+		else:
+			buy.text = "%d" % row["cost"]
+			buy.disabled = not row["afford"]
+			var key: String = row["key"]
+			buy.pressed.connect(func(): buy_pressed.emit(key))
+		hb.add_child(buy)
+		_shop_rows.add_child(hb)
 
 
 func _on_settings_back() -> void:

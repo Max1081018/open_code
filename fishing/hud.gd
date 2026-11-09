@@ -22,6 +22,7 @@ var _tapped := false
 
 var enabled := true        # gameplay input only when playing
 var left_handed := false   # mirror the action button to the left
+var coins := 0
 
 
 func _ready() -> void:
@@ -95,6 +96,11 @@ class Painter extends Control:
 		# Top-left info (clear of the pause button).
 		if hud.info != "":
 			_text(font, Vector2(130, 44), hud.info, 30, Color(1, 1, 1, 0.95))
+
+		# Coins, top-right.
+		var ctext := "Coins: %d" % hud.coins
+		var cw := font.get_string_size(ctext, HORIZONTAL_ALIGNMENT_LEFT, -1, 32).x
+		_text(font, Vector2(vp.x - cw - 28, 46), ctext, 32, Color(1, 0.9, 0.4))
 
 		# Big centre message — multi-line, auto-shrunk to fit the width.
 		if hud.message != "":
