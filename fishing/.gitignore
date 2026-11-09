@@ -3,3 +3,4 @@
 build/
 android/
 export_presets_local.cfg
+docs/*.png.import

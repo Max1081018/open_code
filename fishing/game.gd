@@ -91,6 +91,7 @@ const UPGRADES := {
 }
 var coins := 0
 var upgrades := {"rod": 0, "line": 0, "bait": 0, "luck": 0}
+var seen_help := false
 
 
 func upgrade_cost(key: String) -> int:
@@ -105,6 +106,7 @@ func _load_save() -> void:
 		catches = int(cfg.get_value("save", "catches", 0))
 		best_weight = float(cfg.get_value("save", "best_weight", 0.0))
 		best_name = str(cfg.get_value("save", "best_name", ""))
+		seen_help = bool(cfg.get_value("save", "seen_help", false))
 		for key in upgrades:
 			upgrades[key] = int(cfg.get_value("upgrades", key, 0))
 
@@ -115,6 +117,7 @@ func _save_game() -> void:
 	cfg.set_value("save", "catches", catches)
 	cfg.set_value("save", "best_weight", best_weight)
 	cfg.set_value("save", "best_name", best_name)
+	cfg.set_value("save", "seen_help", seen_help)
 	for key in upgrades:
 		cfg.set_value("upgrades", key, upgrades[key])
 	cfg.save(SAVE_PATH)
@@ -186,16 +189,19 @@ func _ready() -> void:
 	menu_ui.settings_changed.connect(_apply_settings)
 	menu_ui.shop_opened.connect(_refresh_shop)
 	menu_ui.buy_pressed.connect(_buy_upgrade)
+	menu_ui.first_help_done.connect(_on_first_help_done)
 	menu_ui.set_coins(coins)
 
 	_enter_idle()
 	_apply_settings()
 	# Players always start at the menu; autotest can jump to a screen to shoot it.
 	if autotest:
+		seen_help = true  # don't let the first-time card block play tests
 		match start_screen:
 			"play": _start_play()
 			"settings": _go_main_menu(); menu_ui.open_settings_for_test()
 			"pause": _start_play(); _pause()
+			"help": _go_main_menu(); menu_ui.open_help_for_test()
 			"shop":
 				coins = 500
 				_go_main_menu()
@@ -643,6 +649,18 @@ func _start_play() -> void:
 	hud.enabled = true
 	hud.set_hud_visible(true)
 	menu_ui.show_play()
+	# First-ever play: show the modal how-to-play card.
+	if not seen_help:
+		app_state = "paused"
+		hud.enabled = false
+		hud.set_hud_visible(false)
+		menu_ui.show_first_help()
+
+
+func _on_first_help_done() -> void:
+	seen_help = true
+	_save_game()
+	_resume()
 
 
 func _pause() -> void:
@@ -929,7 +947,7 @@ func _autotest(_delta: float) -> void:
 	sim_action = false
 
 	# For non-gameplay screens, just let them settle and screenshot.
-	if start_screen in ["menu", "settings", "pause", "shop"]:
+	if start_screen in ["menu", "settings", "pause", "shop", "help"]:
 		if frame > 40:
 			if autotest_shot != "":
 				get_viewport().get_texture().get_image().save_png(autotest_shot)

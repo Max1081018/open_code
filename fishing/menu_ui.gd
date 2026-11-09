@@ -13,6 +13,7 @@ signal to_main_menu
 signal settings_changed
 signal shop_opened
 signal buy_pressed(key)
+signal first_help_done
 
 const CFG_PATH := "user://settings.cfg"
 
@@ -31,6 +32,10 @@ var _shop: Control
 var _shop_rows: VBoxContainer
 var _shop_coins: Label
 var _shop_return_to: Control
+var _help: Control
+var _help_btn: Button
+var _help_return_to: Control
+var _help_firsttime := false
 var _pause_btn: Button
 var _title_node: Label
 var _title_pulse := 0.0
@@ -153,12 +158,15 @@ func _build() -> void:
 	play.pressed.connect(func(): play_pressed.emit())
 	var shopb := _button("SHOP")
 	shopb.pressed.connect(func(): _open_shop(_main))
+	var howb := _button("HOW TO PLAY")
+	howb.pressed.connect(func(): _open_help(_main))
 	var sbtn := _button("SETTINGS")
 	sbtn.pressed.connect(func(): _open_settings(_main))
 	var qbtn := _button("QUIT")
 	qbtn.pressed.connect(_on_quit)
 	col.add_child(play)
 	col.add_child(shopb)
+	col.add_child(howb)
 	col.add_child(sbtn)
 	col.add_child(qbtn)
 
@@ -205,12 +213,15 @@ func _build() -> void:
 	resume.pressed.connect(func(): resume_pressed.emit())
 	var pshop := _button("SHOP")
 	pshop.pressed.connect(func(): _open_shop(_pause))
+	var phow := _button("HOW TO PLAY")
+	phow.pressed.connect(func(): _open_help(_pause))
 	var pset := _button("SETTINGS")
 	pset.pressed.connect(func(): _open_settings(_pause))
 	var pmenu := _button("MAIN MENU")
 	pmenu.pressed.connect(func(): to_main_menu.emit())
 	pv.add_child(resume)
 	pv.add_child(pshop)
+	pv.add_child(phow)
 	pv.add_child(pset)
 	pv.add_child(pmenu)
 	_root.add_child(_pause)
@@ -235,6 +246,32 @@ func _build() -> void:
 	shv.add_child(shback)
 	_root.add_child(_shop)
 	_shop.visible = false
+
+	# ---- How to Play ----
+	var hres := _panel("How to Play")
+	_help = hres[0]
+	var hv: VBoxContainer = hres[1]
+	hv.custom_minimum_size = Vector2(780, 0)
+	hv.add_theme_constant_override("separation", 18)
+	for linetext in [
+		"HOLD the button to charge, release to cast.",
+		"When you see  TAP!  — tap fast to hook it.",
+		"HOLD to reel in, but keep LINE TENSION",
+		"out of the red or the line snaps.",
+		"Catch fish for coins, then buy upgrades",
+		"in the Shop to land bigger ones.",
+	]:
+		var l := Label.new()
+		l.text = linetext
+		l.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+		l.add_theme_font_size_override("font_size", 30)
+		l.add_theme_color_override("font_color", Color(0.9, 0.95, 1.0))
+		hv.add_child(l)
+	_help_btn = _button("BACK")
+	_help_btn.pressed.connect(_on_help_button)
+	hv.add_child(_help_btn)
+	_root.add_child(_help)
+	_help.visible = false
 
 	# ---- In-game pause button (top-left) ----
 	_pause_btn = Button.new()
@@ -292,6 +329,8 @@ func _hide_overlays() -> void:
 	_settings.visible = false
 	if _shop:
 		_shop.visible = false
+	if _help:
+		_help.visible = false
 
 
 func show_main() -> void:
@@ -333,6 +372,45 @@ func open_settings_for_test() -> void:
 
 func open_shop_for_test() -> void:
 	_open_shop(_main)
+
+
+func open_help_for_test() -> void:
+	_open_help(_main)
+
+
+func show_first_help() -> void:
+	# Modal help the first time the player starts; button resumes play.
+	_help_firsttime = true
+	_help_btn.text = "START FISHING"
+	_main.visible = false
+	_pause.visible = false
+	_pause_btn.visible = false
+	_settings.visible = false
+	if _shop:
+		_shop.visible = false
+	_help.visible = true
+	_root.mouse_filter = Control.MOUSE_FILTER_STOP
+
+
+func _open_help(from: Control) -> void:
+	_help_firsttime = false
+	_help_btn.text = "BACK"
+	_help_return_to = from
+	from.visible = false
+	_help.visible = true
+	_pause_btn.visible = false
+	_root.mouse_filter = Control.MOUSE_FILTER_STOP
+
+
+func _on_help_button() -> void:
+	if _help_firsttime:
+		_help.visible = false
+		first_help_done.emit()
+	else:
+		_help.visible = false
+		_help_return_to.visible = true
+		if _help_return_to == _main:
+			_root.mouse_filter = Control.MOUSE_FILTER_STOP
 
 
 func _open_shop(from: Control) -> void:
