@@ -15,10 +15,15 @@ extends Node3D
 
 const Hud := preload("res://hud.gd")
 
-# Shared wave parameters — MUST match water.gdshader so the bobber sits on the
-# surface instead of floating above or sinking through it.
-const WAVE_SPEED := 0.9
-const WAVE_HEIGHT := 0.16
+# Shared wave parameters — MUST match water.gdshader (WAVES) so the bobber sits
+# on the surface. Each is direction.xy, wavelength, amplitude.
+const WATER_WAVES := [
+	Vector4(0.8, 0.6, 16.0, 0.28),
+	Vector4(-0.7, 0.7, 10.0, 0.16),
+	Vector4(0.2, -0.95, 6.0, 0.09),
+	Vector4(-0.95, -0.25, 3.5, 0.05),
+]
+const TIME_SCALE := 1.0
 
 const DOCK_TIP := Vector3(0, 0, 4)       # end of the jetty, where we stand
 const EYE := Vector3(0, 2.1, 5.2)        # camera position
@@ -104,9 +109,16 @@ func _parse_args() -> void:
 # --- Wave height (mirror of the shader) --------------------------------------
 
 func wave_height(x: float, z: float) -> float:
-	var t := elapsed * WAVE_SPEED
-	var h := sin(x * 0.60 + t) * 0.5 + sin(z * 0.80 + t * 1.3) * 0.5 + sin((x + z) * 0.40 + t * 0.7) * 0.5
-	return h * WAVE_HEIGHT
+	# Vertical part of the Gerstner sum in water.gdshader.
+	var t := elapsed * TIME_SCALE
+	var y := 0.0
+	for w in WATER_WAVES:
+		var dir := Vector2(w.x, w.y).normalized()
+		var k: float = TAU / w.z
+		var amp: float = w.w
+		var speed := sqrt(9.8 / k)
+		y += amp * sin(k * dir.dot(Vector2(x, z)) + t * speed)
+	return y
 
 
 # --- World --------------------------------------------------------------------
@@ -160,7 +172,7 @@ func _build_world() -> void:
 
 	var sun := DirectionalLight3D.new()
 	sun.rotation_degrees = Vector3(-48, 40, 0)
-	sun.light_energy = 1.0
+	sun.light_energy = 0.9
 	sun.light_color = Color(1.0, 0.96, 0.86)
 	sun.shadow_enabled = true
 	sun.directional_shadow_max_distance = 80.0
@@ -174,8 +186,8 @@ func _build_world() -> void:
 	plane.subdivide_depth = 90
 	var smat := ShaderMaterial.new()
 	smat.shader = load("res://water.gdshader")
-	smat.set_shader_parameter("wave_speed", WAVE_SPEED)
-	smat.set_shader_parameter("wave_height", WAVE_HEIGHT)
+	smat.set_shader_parameter("time_scale", TIME_SCALE)
+	smat.set_shader_parameter("sun_dir", Vector3(0.45, 0.7, 0.35))
 	plane.material = smat
 	water.mesh = plane
 	water.position = Vector3(0, 0, -20)
@@ -185,37 +197,62 @@ func _build_world() -> void:
 	_build_scenery()
 
 
-func _build_island() -> void:
-	# The island/shore sits behind the camera (positive Z) so we look out over
-	# open water. Grass cap + dirt underside for a floating low-poly look.
+## A smooth rounded island: a grass dome ringed by a sand beach, rising out of
+## the water. `center` is at the waterline.
+func _make_island(center: Vector3, radius: float, height: float,
+		grass_color := Color(0.40, 0.70, 0.34)) -> void:
+	var beach_top := 0.12
+
+	# Sand beach ring (slightly wider than the grass so a shore shows).
+	var sand := MeshInstance3D.new()
+	var sc := CylinderMesh.new()
+	sc.top_radius = radius * 1.18
+	sc.bottom_radius = radius * 1.05
+	sc.height = 0.6
+	sc.radial_segments = 28
+	sc.material = _mat(Color(0.82, 0.72, 0.52))
+	sand.mesh = sc
+	sand.position = center + Vector3(0, beach_top - 0.3, 0)
+	add_child(sand)
+
+	# Grass dome (a vertically-squashed sphere).
 	var grass := MeshInstance3D.new()
-	var gc := CylinderMesh.new()
-	gc.top_radius = 11.0
-	gc.bottom_radius = 11.0
-	gc.height = 1.2
-	gc.radial_segments = 9
-	gc.material = _mat(Color(0.42, 0.72, 0.36))
-	grass.mesh = gc
-	grass.position = Vector3(0, -0.6, 12)
+	var gm := SphereMesh.new()
+	gm.radius = radius
+	gm.height = radius * 2.0
+	gm.radial_segments = 30
+	gm.rings = 16
+	gm.material = _mat(grass_color)
+	grass.mesh = gm
+	grass.scale = Vector3(1, height / radius, 1)
+	grass.position = center + Vector3(0, beach_top, 0)
 	add_child(grass)
 
-	var dirt := MeshInstance3D.new()
-	var dc := CylinderMesh.new()
-	dc.top_radius = 10.0
-	dc.bottom_radius = 3.0
-	dc.height = 6.0
-	dc.radial_segments = 9
-	dc.material = _mat(Color(0.46, 0.33, 0.22))
-	dirt.mesh = dc
-	dirt.position = Vector3(0, -4.0, 12)
-	add_child(dirt)
+
+func _rock(pos: Vector3, size: float, color := Color(0.55, 0.56, 0.6)) -> void:
+	var rock := MeshInstance3D.new()
+	var rm := SphereMesh.new()
+	rm.radius = size
+	rm.height = size * 1.6
+	rm.radial_segments = 7
+	rm.rings = 4
+	rm.material = _mat(color)
+	rock.mesh = rm
+	rock.scale = Vector3(1.0, 0.7, 1.1)
+	rock.position = pos + Vector3(0, size * 0.3, 0)
+	rock.rotation.y = randf() * TAU
+	add_child(rock)
+
+
+func _build_island() -> void:
+	# Home island sits behind the camera (positive Z) so we look over open water.
+	_make_island(Vector3(0, 0, 14), 12.0, 4.5)
 
 	# Wooden jetty reaching out to where we stand.
-	for i in 4:
-		_box(self, Vector3(0, -0.05, 9.0 - i * 1.6), Vector3(2.2, 0.25, 1.4), Color(0.62, 0.45, 0.28))
-	# Posts at the tip.
-	_box(self, Vector3(-1.0, -0.4, 4.0), Vector3(0.25, 1.4, 0.25), Color(0.5, 0.36, 0.22))
-	_box(self, Vector3(1.0, -0.4, 4.0), Vector3(0.25, 1.4, 0.25), Color(0.5, 0.36, 0.22))
+	for i in 5:
+		_box(self, Vector3(0, 0.08, 9.5 - i * 1.6), Vector3(2.2, 0.25, 1.5), Color(0.62, 0.45, 0.28))
+	_box(self, Vector3(-1.0, -0.3, 4.2), Vector3(0.25, 1.4, 0.25), Color(0.5, 0.36, 0.22))
+	_box(self, Vector3(1.0, -0.3, 4.2), Vector3(0.25, 1.4, 0.25), Color(0.5, 0.36, 0.22))
 
 
 func _tree(pos: Vector3, scale := 1.0) -> void:
@@ -242,24 +279,31 @@ func _tree(pos: Vector3, scale := 1.0) -> void:
 
 
 func _build_scenery() -> void:
-	# A couple of trees on our island (off to the sides, behind the camera).
-	_tree(Vector3(-6, -0.1, 14), 1.1)
-	_tree(Vector3(5.5, -0.1, 15), 0.9)
-	_tree(Vector3(-2, -0.1, 17), 1.0)
+	# Trees and rocks on the home island (to the sides, behind the camera).
+	_tree(Vector3(-6.5, 1.8, 15), 1.2)
+	_tree(Vector3(6.0, 1.8, 16), 1.0)
+	_tree(Vector3(-2.5, 2.4, 18.5), 1.15)
+	_tree(Vector3(3.0, 2.2, 19), 0.9)
+	_rock(Vector3(-8.5, 0.1, 10), 0.9)
+	_rock(Vector3(8.0, 0.1, 11), 0.7)
 
-	# Distant low-poly islets across the lake for depth.
-	for spot in [Vector3(-34, 0, -40), Vector3(30, 0, -52), Vector3(-8, 0, -70)]:
-		var islet := MeshInstance3D.new()
-		var im := CylinderMesh.new()
-		im.top_radius = randf_range(5, 9)
-		im.bottom_radius = randf_range(2, 4)
-		im.height = 5.0
-		im.radial_segments = 7
-		im.material = _mat(Color(0.4, 0.6, 0.45))
-		islet.mesh = im
-		islet.position = spot + Vector3(0, -1.0, 0)
-		add_child(islet)
-		_tree(spot + Vector3(0, 1.5, 0), randf_range(1.4, 2.2))
+	# Rounded islands across the lake, each with its own greenery.
+	var isles := [
+		{"c": Vector3(-36, 0, -42), "r": 9.0, "h": 5.0},
+		{"c": Vector3(34, 0, -55), "r": 7.0, "h": 4.0},
+		{"c": Vector3(-6, 0, -74), "r": 11.0, "h": 6.5},
+		{"c": Vector3(48, 0, -30), "r": 6.0, "h": 3.5},
+	]
+	for isle in isles:
+		var c: Vector3 = isle["c"]
+		var r: float = isle["r"]
+		_make_island(c, r, isle["h"], Color(0.36, 0.64, 0.33).lerp(Color(0.5, 0.72, 0.4), randf()))
+		var trees := 2 + randi() % 3
+		for i in trees:
+			var a := randf() * TAU
+			var rr := randf_range(0.2, 0.6) * r
+			_tree(c + Vector3(cos(a) * rr, isle["h"] * 0.5 + 0.5, sin(a) * rr), randf_range(1.4, 2.4))
+		_rock(c + Vector3(r * 0.8, 0.1, r * 0.2), randf_range(0.8, 1.6))
 
 	# A funny rubber duck bobbing nearby.
 	var duck := _make_duck()
