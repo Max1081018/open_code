@@ -73,6 +73,20 @@ var shop_floor_y := 0.0
 var shop_door_z := 0.0
 var held: Array = []              # catches you're carrying: {name, weight, value, set, node}
 var held_view: Node3D             # the latest one, shown in your hand
+
+# Boat
+const BOAT_MOOR := Vector3(4.3, -0.55, 9.5)
+const BOAT_YAW := PI                 # bow points out to sea (-Z)
+const BOSS_WATERS := Vector3(-6.0, -0.55, -46.0)
+const SAIL_TIME := 4.0
+var boat: Node3D
+var on_boat := false
+var near_boat := false
+var _sail_t := 0.0
+var _sail_from := Vector3.ZERO
+var _sail_to := Vector3.ZERO
+var _sail_out := true
+var island2_marker: Node3D
 const WEAPON_LAYER := 4          # collision layer the crosshair ray looks for
 var weapon_bodies := {}          # weapon id -> StaticBody3D
 var weapon_outlines := {}        # weapon id -> Array[MeshInstance3D]
@@ -89,6 +103,10 @@ var pending_weight := 0.0
 var pending_value := 0
 var cam_pitch_target := -10.0  # degrees; eased each frame
 const WHACK_SPOT := Vector3(0, 0.72, 3.55)  # on the deck, just in front of us
+# Where fishing happens right now: the jetty by default, the boat at sea.
+var fish_eye := EYE
+var fish_tip := DOCK_TIP
+var whack_spot := WHACK_SPOT
 
 # Fish table: name, colour, weight range (kg). A few junk "catches" for laughs.
 const CATCH_SETS := {
@@ -96,7 +114,13 @@ const CATCH_SETS := {
 	"rarity": "res://assets/models/fishing/rarity-fish-set.glb",
 	"ocean": "res://assets/models/fishing/low-poly-ocean-fish-set.glb",
 	"junk": "res://assets/models/fishing/junk-catches-set.glb",
+	"mythic": "res://assets/models/fishing/mythic-fish-set.glb",
 }
+
+# Island 1's boss: only bites out at sea, from the boat, with the Boss Reel.
+const BOSS := {"name": "the Baby Kraken", "set": "mythic", "node": "BabyKraken",
+	"min": 18.0, "max": 26.0, "junk": false, "boss": true}
+const BOSS_VALUE := 650
 
 # Every catch is a real model pulled out of one of the sets above by node name.
 var fish_table := [
@@ -164,9 +188,15 @@ const SHOP_STOCK := [
 	 "desc": "Knuckle guards for wrestling a slippery one.", "price": 130, "power": 2},
 	{"id": "axe_A", "name": "Bait Hatchet", "rarity": "Uncommon",
 	 "desc": "Chops bait. Chops most things, really.", "price": 210, "power": 2},
+	{"id": "boss_reel", "name": "Boss Reel", "rarity": "Rare", "kind": "gear",
+	 "desc": "Heavy carbon reel. Lets you take the boat out after something big.",
+	 "price": 360, "power": 0,
+	 "model": "res://assets/models/fishing/tiered-fishing-rods.glb", "node": "FishingRod_Carbon"},
 ]
 var owned_weapons: Array = []
 var equipped_weapon := ""
+var has_boss_reel := false
+var island2_unlocked := false
 
 
 func weapon_by_id(id: String) -> Dictionary:
@@ -193,6 +223,13 @@ func _buy_weapon(id: String) -> void:
 		return
 	coins -= price
 	owned_weapons.append(id)
+	if str(w.get("kind", "")) == "gear":
+		has_boss_reel = true
+		_play("caught")
+		_save_game()
+		_update_info()
+		_flash("Boss Reel bought!  Take the boat out")
+		return
 	equipped_weapon = id        # equip what you just bought
 	_play("caught")
 	_save_game()
@@ -202,6 +239,9 @@ func _buy_weapon(id: String) -> void:
 
 func _equip_weapon(id: String) -> void:
 	if id != "" and not owned_weapons.has(id):
+		return
+	if str(weapon_by_id(id).get("kind", "")) == "gear":
+		_flash("Boss Reel ready - sail out in the boat")
 		return
 	equipped_weapon = "" if equipped_weapon == id else id
 	_play("click")
@@ -230,6 +270,8 @@ func _load_save() -> void:
 		owned_weapons = cfg.get_value("save", "owned_weapons", [])
 		equipped_weapon = str(cfg.get_value("save", "equipped_weapon", ""))
 		held = cfg.get_value("save", "held", [])
+		has_boss_reel = bool(cfg.get_value("save", "has_boss_reel", false))
+		island2_unlocked = bool(cfg.get_value("save", "island2_unlocked", false))
 		for key in upgrades:
 			upgrades[key] = int(cfg.get_value("upgrades", key, 0))
 
@@ -244,6 +286,8 @@ func _save_game() -> void:
 	cfg.set_value("save", "owned_weapons", owned_weapons)
 	cfg.set_value("save", "equipped_weapon", equipped_weapon)
 	cfg.set_value("save", "held", held)
+	cfg.set_value("save", "has_boss_reel", has_boss_reel)
+	cfg.set_value("save", "island2_unlocked", island2_unlocked)
 	for key in upgrades:
 		cfg.set_value("upgrades", key, upgrades[key])
 	cfg.save(SAVE_PATH)
@@ -296,6 +340,9 @@ var test_yaw := PI
 var test_walk := 450
 var test_sprint := false
 var _test_max_speed := 0.0
+var _boss_logged := false
+var _boss_sold := false
+var _boss_sell_frame := -1
 
 
 func _ready() -> void:
@@ -340,6 +387,12 @@ func _ready() -> void:
 		match start_screen:
 			"play": _start_play(); _enter_fishing()
 			"explore": _start_play()
+			"boss":
+				coins = 500
+				_start_play()
+				_buy_weapon("boss_reel")
+				player.position = Vector3(1.3, DECK_Y + 0.4, BOAT_MOOR.z)
+				cam_yaw = -PI * 0.5
 			"shopview":
 				_start_play()
 				player.position = Vector3(SHOP_POS.x, shop_floor_y + 0.3, shop_door_z - 0.4)
@@ -519,6 +572,7 @@ const MDL := {
 	"tower": "res://assets/models/pirate/tower.glb",
 	"wreck": "res://assets/models/pirate/shipwreck.glb",
 	"boat": "res://assets/models/watercraft/boat_fishing.glb",
+	"motorboat": "res://assets/models/fishing/fishing-motorboat.glb",
 	"buoy": "res://assets/models/watercraft/buoy.glb",
 	"buoy_flag": "res://assets/models/watercraft/buoy_flag.glb",
 	# Shop
@@ -650,8 +704,8 @@ func _build_island() -> void:
 	_spawn("crate", Vector3(1.62, DECK_Y, 17.0), -0.4, 0.75)
 	_spawn("barrel", Vector3(-1.66, DECK_Y, 15.2), -0.2, 0.60)
 
-	# A little fishing boat moored alongside.
-	_spawn("boat", Vector3(3.6, -0.35, 10.0), -PI / 2.0 + 0.12, 0.9)
+	# The motorboat, moored alongside the jetty. Buy the Boss Reel to take it out.
+	boat = _spawn("motorboat", BOAT_MOOR, BOAT_YAW, 0.30)
 
 	# Walkable surface for the jetty: one flat box rather than trimeshing every
 	# plank, so the player glides along it.
@@ -704,6 +758,8 @@ func _build_scenery() -> void:
 
 	_build_shop()
 	_build_market()
+	if island2_unlocked:
+		_show_island2_marker()
 
 	# A wrecked ship on the horizon for silhouette.
 	_spawn("wreck", Vector3(-38, -1.0, -60), 0.7, 1.3)
@@ -890,6 +946,9 @@ func _process(delta: float) -> void:
 	if play_mode == "explore":
 		_update_explore(delta)
 		return
+	if play_mode == "sailing":
+		_update_sail(delta)
+		return
 
 	if hud.consume_leave():
 		_leave_fishing()
@@ -942,7 +1001,8 @@ func _process(delta: float) -> void:
 
 	# Subtle first-person sway while playing (not while lining up a whack).
 	if _camera_sway and state != WHACK:
-		camera.position = EYE + Vector3(sin(elapsed * 0.8) * 0.05, sin(elapsed * 1.1) * 0.04, 0)
+		var bob := wave_height(fish_eye.x, fish_eye.z) * 0.6 if on_boat else 0.0
+		camera.position = fish_eye + Vector3(sin(elapsed * 0.8) * 0.05, sin(elapsed * 1.1) * 0.04 + bob, 0)
 		camera.rotation_degrees.z = sin(elapsed * 0.6) * 0.3
 
 	# Ease the camera pitch between fishing and whacking.
@@ -983,6 +1043,7 @@ func _update_explore(delta: float) -> void:
 
 	near_fishing_spot = _hdist(player.global_position, FISHING_SPOT) < 3.0
 	near_market = _hdist(player.global_position, SELL_SPOT) < 2.6
+	near_boat = boat != null and _hdist(player.global_position, BOAT_MOOR) < 3.8
 	var was_near := near_shop
 	near_shop = _hdist(player.global_position, SHOP_TALK_SPOT) < 3.4
 	if near_shop and not was_near:
@@ -997,7 +1058,12 @@ func _update_explore(delta: float) -> void:
 		var owned: bool = owned_weapons.has(looked_weapon)
 		touch.look_info = str(w.get("name", "?"))
 		touch.look_stat = "+%d power" % int(w.get("power", 0))
-		if owned:
+		if str(w.get("kind", "")) == "gear":
+			touch.look_stat = "unlocks the boat"
+		if owned and str(w.get("kind", "")) == "gear":
+			touch.look_cost = "OWNED"
+			touch.prompt = ""
+		elif owned:
 			touch.look_cost = "EQUIPPED" if equipped_weapon == looked_weapon else "OWNED"
 			touch.prompt = "UNEQUIP" if equipped_weapon == looked_weapon else "EQUIP"
 		else:
@@ -1009,6 +1075,8 @@ func _update_explore(delta: float) -> void:
 		touch.look_cost = ""
 		if near_market and not held.is_empty():
 			touch.prompt = "SELL %d" % held.size()
+		elif near_boat:
+			touch.prompt = "SAIL" if has_boss_reel else "LOCKED"
 		elif near_fishing_spot:
 			touch.prompt = "FISH"
 		else:
@@ -1035,6 +1103,15 @@ func _on_interact() -> void:
 	if near_market and not held.is_empty():
 		_sell_all()
 		return
+	if near_boat:
+		if not has_boss_reel:
+			_flash("You need the Boss Reel from Bait & Blade")
+			_play("snap")
+		elif held.size() >= MAX_CARRY:
+			_flash("Hands full - sell your catch first")
+		else:
+			_start_sail(true)
+		return
 	if near_fishing_spot:
 		_enter_fishing()
 
@@ -1047,9 +1124,27 @@ func _add_weapon_display(id: String, pos: Vector3, rot := Vector3.ZERO, scl := 0
 	holder.rotation = rot
 	holder.scale = Vector3.ONE * scl
 	add_child(holder)
-	var packed: PackedScene = load(WEAPON_DIR + id + ".gltf")
-	var m: Node3D = packed.instantiate()
-	holder.add_child(m)
+	var info := weapon_by_id(id)
+	var m: Node3D
+	if info.has("model"):
+		# Gear lives inside a multi-item pack: lift out just the one node.
+		var root: Node3D = load(str(info["model"])).instantiate()
+		var part := root.find_child(str(info.get("node", "")), true, false)
+		if part:
+			part.get_parent().remove_child(part)
+			root.queue_free()
+			m = Node3D.new()
+			m.add_child(part)
+			(part as Node3D).transform = Transform3D.IDENTITY
+		else:
+			m = root
+		holder.add_child(m)
+		var lb := _local_aabb(m)
+		(part as Node3D).position -= Vector3(lb.position.x + lb.size.x * 0.5, 0, lb.position.z + lb.size.z * 0.5)
+	else:
+		var packed: PackedScene = load(WEAPON_DIR + id + ".gltf")
+		m = packed.instantiate()
+		holder.add_child(m)
 
 	# Sit it on the surface: pos.y is the shelf, not the model origin.
 	var pre := _node_aabb(m)
@@ -1144,7 +1239,7 @@ func _enter_fishing() -> void:
 	player.visible = false
 	touch.visible = false
 	touch.prompt = ""
-	camera.position = EYE
+	camera.position = fish_eye
 	camera.rotation_degrees = Vector3(-10, 0, 0)
 	cam_pitch_target = -10.0
 	rod.visible = true
@@ -1154,6 +1249,16 @@ func _enter_fishing() -> void:
 
 
 func _leave_fishing() -> void:
+	if on_boat:
+		_enter_idle()
+		rod.visible = false
+		paddle.visible = false
+		bobber.visible = false
+		line.visible = false
+		hud.enabled = false
+		hud.set_hud_visible(false)
+		_start_sail(false)
+		return
 	play_mode = "explore"
 	_enter_idle()
 	player.frozen = false
@@ -1361,6 +1466,8 @@ func _build_shop() -> void:
 	_add_weapon_display("fistweapon_A", Vector3(x1 - 0.40, t3, z0 + 0.55), Vector3(0, -PI * 0.5, 0), 0.55)
 	# The best of the lot, mounted on the side wall above the stands.
 	_add_weapon_display("axe_A", Vector3(x0 + 0.08, floor_y + 1.55, z0 + 1.05), Vector3(0, PI * 0.5, 0), 0.50)
+	var t4 := _pedestal(Vector3(x1 - 0.40, floor_y, z0 + 1.55))
+	_add_weapon_display("boss_reel", Vector3(x1 - 0.40, t4, z0 + 1.55), Vector3(0, 0, 0), 0.30)
 
 	var ceil := MeshInstance3D.new()
 	var cm := BoxMesh.new()
@@ -1407,8 +1514,102 @@ func _build_market() -> void:
 		Vector3(MARKET_POS.x + 1.15, g + 0.02, MARKET_POS.z), -PI * 0.5, "Idle")
 
 
+## Sets off in the boat: out to the boss waters, or back to the jetty.
+func _start_sail(out: bool) -> void:
+	play_mode = "sailing"
+	_sail_out = out
+	_sail_t = 0.0
+	_sail_from = boat.position
+	_sail_to = BOSS_WATERS if out else BOAT_MOOR
+	player.frozen = true
+	player.visible = false
+	touch.visible = false
+	touch.prompt = ""
+	if held_view:
+		held_view.queue_free()
+		held_view = null
+	_flash("Sailing out..." if out else "Heading home...")
+	_play("whoosh")
+
+
+func _update_sail(delta: float) -> void:
+	_sail_t = minf(_sail_t + delta / SAIL_TIME, 1.0)
+	var k := _sail_t * _sail_t * (3.0 - 2.0 * _sail_t)   # ease in/out
+	var pos := _sail_from.lerp(_sail_to, k)
+	pos.y = BOAT_MOOR.y + wave_height(pos.x, pos.z)
+	boat.position = pos
+	# Point the bow along the trip, then settle back to facing out to sea.
+	var dir := _sail_to - _sail_from
+	var travel_yaw := atan2(-dir.x, -dir.z) + PI
+	boat.rotation.y = lerp_angle(BOAT_YAW, travel_yaw, sin(k * PI))
+	boat.rotation.z = sin(elapsed * 1.7) * 0.03
+	# Ride in the boat, looking over the bow.
+	var seat := boat.global_transform * Vector3(0, 5.6, -1.2)
+	camera.global_position = seat
+	camera.rotation = Vector3(-0.10, boat.rotation.y + PI, 0.0)
+	if _sail_t >= 1.0:
+		if _sail_out:
+			_arrive_boss_waters()
+		else:
+			_arrive_home()
+
+
+func _arrive_boss_waters() -> void:
+	on_boat = true
+	boat.rotation = Vector3(0, BOAT_YAW, 0)
+	var b := boat.position
+	fish_eye = Vector3(b.x, b.y + 2.55, b.z + 0.9)
+	fish_tip = Vector3(b.x, 0.0, b.z - 3.3)
+	whack_spot = Vector3(b.x, b.y + 0.95, b.z - 0.8)
+	_enter_fishing()
+	hud.message = "Something huge lives out here...\nCast and hold on tight!"
+
+
+func _arrive_home() -> void:
+	on_boat = false
+	fish_eye = EYE
+	fish_tip = DOCK_TIP
+	whack_spot = WHACK_SPOT
+	boat.position = BOAT_MOOR
+	boat.rotation = Vector3(0, BOAT_YAW, 0)
+	play_mode = "explore"
+	player.frozen = false
+	player.visible = true
+	player.set_first_person(true)
+	player.velocity = Vector3.ZERO
+	player.position = Vector3(1.3, DECK_Y + 0.4, BOAT_MOOR.z)
+	cam_yaw = PI
+	cam_pitch = -0.12
+	touch.visible = true
+	_refresh_held_view()
+
+
+## After the boss is sold: a lit buoy and sign marking the way to island 2.
+func _show_island2_marker() -> void:
+	if island2_marker:
+		return
+	island2_marker = Node3D.new()
+	add_child(island2_marker)
+	var spot := Vector3(-8.0, 0.0, -82.0)
+	var flag := _spawn("buoy_flag", spot + Vector3(0, 0, 16.0), 0.0, 1.6, island2_marker)
+	floaters.append(flag)
+	var l := Label3D.new()
+	l.text = "ISLAND 2\ncoming soon"
+	l.font_size = 140
+	l.pixel_size = 0.02
+	l.outline_size = 22
+	l.modulate = Color(1.0, 0.92, 0.55)
+	l.outline_modulate = Color(0.25, 0.10, 0.05)
+	l.billboard = BaseMaterial3D.BILLBOARD_ENABLED
+	l.position = spot + Vector3(0, 13.0, 0)
+	island2_marker.add_child(l)
+
+
 ## Buoys ride the same waves the water shader draws.
 func _update_floaters() -> void:
+	if boat and play_mode != "sailing":
+		boat.position.y = boat.position.y * 0.0 + BOAT_MOOR.y + wave_height(boat.position.x, boat.position.z)
+		boat.rotation.z = sin(elapsed * 1.3) * 0.025
 	for f in floaters:
 		var h := wave_height(f.position.x, f.position.z)
 		f.position.y = h
@@ -1565,7 +1766,7 @@ func _do_cast(p: float) -> void:
 	# Slight random spread so no two casts land the same.
 	fwd = fwd.rotated(Vector3.UP, randf_range(-0.12, 0.12))
 	cast_from = rod_tip.global_position
-	cast_to = DOCK_TIP + fwd * dist
+	cast_to = fish_tip + fwd * dist
 	cast_to.y = 0.0
 	flight_t = 0.0
 	state = FLYING
@@ -1610,6 +1811,16 @@ func _start_bite() -> void:
 
 
 func _hook_fish() -> void:
+	if on_boat:
+		pending_fish = BOSS
+		fish_strength = 2.4
+		distance = 1.0
+		tension = 0.30
+		lunge_timer = randf_range(0.7, 1.4)
+		state = FIGHT
+		hud.mode = Hud.M_FIGHT
+		hud.message = "IT'S THE BABY KRAKEN!"
+		return
 	# Choose a fish (junk is rarer).
 	var pick: Dictionary = fish_table[randi() % fish_table.size()]
 	while pick.get("junk", false) and randf() > 0.35:
@@ -1686,7 +1897,9 @@ func _land_fish() -> void:
 		best_name = pending_fish["name"]
 
 	# Coin value: by weight; crates/barrels are near-worthless, chests are not.
-	if pending_fish.get("treasure", false):
+	if pending_fish.get("boss", false):
+		pending_value = BOSS_VALUE
+	elif pending_fish.get("treasure", false):
 		pending_value = 70 + randi() % 110
 	elif pending_fish.get("prize", false):
 		pending_value = maxi(1, int(round(pending_weight * 32.0)))
@@ -1697,6 +1910,8 @@ func _land_fish() -> void:
 
 	# Heavier catches take more whacks.
 	whacks_left = clampi(1 + int(round(pending_weight * 0.9)) - weapon_power(), 1, 5)
+	if pending_fish.get("boss", false):
+		whacks_left = 6 - weapon_power()
 	whack_anim = 0.0
 	catch_hop = 0.0
 	_play("caught")
@@ -1729,7 +1944,14 @@ func _finish_catch() -> void:
 	held.append({
 		"name": pending_fish["name"], "weight": pending_weight, "value": pending_value,
 		"set": pending_fish.get("set", "river"), "node": pending_fish.get("node", ""),
+		"boss": pending_fish.get("boss", false),
 	})
+	if pending_fish.get("boss", false):
+		hud.message = "YOU LANDED THE BABY KRAKEN!\nSail back and sell it at the market"
+		_play("caught")
+		_save_game()
+		_update_info()
+		return
 	_save_game()
 	var line2 := "Hands full - sell at the market" if held.size() >= MAX_CARRY \
 		else "Carrying %d of %d  -  keep fishing or go sell" % [held.size(), MAX_CARRY]
@@ -1773,7 +1995,7 @@ func _refresh_held_view() -> void:
 	if held.is_empty() or play_mode != "explore" or app_state != "playing":
 		return
 	var top: Dictionary = held[held.size() - 1]
-	held_view = _make_fish(top, minf(float(top["weight"]), 2.5))
+	held_view = _make_fish(top, 4.5 if top.get("boss", false) else minf(float(top["weight"]), 2.5))
 	held_view.scale *= 0.75
 	held_view.position = Vector3(0.40, -0.46, -0.78)
 	held_view.rotation = Vector3(0.25, 0.65, -0.15)
@@ -1784,8 +2006,11 @@ func _refresh_held_view() -> void:
 
 func _sell_all() -> void:
 	var total := 0
+	var sold_boss := false
 	for h in held:
 		total += int(h["value"])
+		if h.get("boss", false):
+			sold_boss = true
 	var n := held.size()
 	coins += total
 	held.clear()
@@ -1794,6 +2019,12 @@ func _sell_all() -> void:
 	_refresh_held_view()
 	_flash("Sold %d for %d coins!" % [n, total])
 	_play("caught")
+	if sold_boss and not island2_unlocked:
+		island2_unlocked = true
+		_save_game()
+		_show_island2_marker()
+		hud.message = ""
+		_flash("The buyer hands you a map - ISLAND 2 unlocked!")
 	var ap = fish_buyer.get_meta("anim") if fish_buyer and fish_buyer.has_meta("anim") else null
 	if ap and ap.has_animation("Cheer"):
 		ap.play("Cheer")
@@ -1815,7 +2046,7 @@ func _update_whack(delta: float) -> void:
 	paddle.position.y = -0.50 - swing * 0.14
 	if caught_fish:
 		var hop: float = sin(catch_hop * PI)
-		caught_fish.position.y = WHACK_SPOT.y + hop * 0.28
+		caught_fish.position.y = whack_spot.y + hop * 0.28
 		caught_fish.scale = _catch_base_scale * Vector3(1.0 + hop * 0.18, 1.0 - hop * 0.22, 1.0 + hop * 0.18)
 		caught_fish.rotation.z = sin(elapsed * 14.0) * 0.07 * (0.3 + hop)
 
@@ -1827,7 +2058,7 @@ func _show_catch(info: Dictionary) -> void:
 		caught_fish.queue_free()
 	caught_fish = _make_fish(info, pending_weight)
 	_catch_base_scale = caught_fish.scale
-	caught_fish.position = WHACK_SPOT
+	caught_fish.position = whack_spot
 	caught_fish.rotation = Vector3.ZERO  # models lie along X: side-on to the camera
 	add_child(caught_fish)
 
@@ -1868,6 +2099,8 @@ func _make_fish(info: Dictionary, weight: float) -> Node3D:
 	var longest: float = maxf(maxf(box.size.x, box.size.y), box.size.z)
 	if longest > 0.0001:
 		var want: float = clampf(0.38 + weight * 0.15, 0.38, 1.35)
+		if info.get("boss", false):
+			want = 1.7
 		holder.scale = Vector3.ONE * (want / longest)
 		t.position -= Vector3(box.position.x + box.size.x * 0.5,
 			box.position.y, box.position.z + box.size.z * 0.5)
@@ -1921,6 +2154,48 @@ func _autotest(_delta: float) -> void:
 			print("AUTOTEST(explore) pos=%s on_floor=%s prompt='%s' anim=%s max_speed=%.2f" % [
 				player.position.snapped(Vector3.ONE * 0.01), player.is_on_floor(),
 				touch.prompt, player._cur, _test_max_speed])
+			get_tree().quit()
+		return
+
+	# Full boss chain: sail -> fish -> land -> sail home -> walk -> sell.
+	if start_screen == "boss":
+		if frame == 20:
+			print("AUTOTEST reel=%s coins=%d near_boat=%s prompt='%s'" % [has_boss_reel, coins, near_boat, touch.prompt])
+			_on_interact()
+		if play_mode == "fishing" and on_boat:
+			match state:
+				IDLE, CHARGING: sim_action = power < 0.75
+				BITE: sim_tap = true
+				FIGHT:
+					sim_action = tension < 0.70
+					distance = max(distance - 0.02, 0.0)
+				WHACK:
+					if frame % 14 == 0: sim_tap = true
+				CAUGHT:
+					if not _boss_logged:
+						_boss_logged = true
+						print("AUTOTEST landed: held=%s" % [held.map(func(h): return h["name"])])
+						if autotest_shot != "":
+							get_viewport().get_texture().get_image().save_png(autotest_shot.replace(".png", "_landed.png"))
+					if frame % 30 == 0:
+						_leave_fishing()
+		if play_mode == "explore" and _boss_logged and not _boss_sold:
+			player.position = Vector3(SELL_SPOT.x - 1.0, market_ground + 0.3, SELL_SPOT.z)
+			_boss_sold = true
+			_boss_sell_frame = frame + 15
+		if _boss_sold and frame == _boss_sell_frame:
+			_update_explore(0.016)
+			_on_interact()
+			print("AUTOTEST sold -> coins=%d island2=%s held=%d" % [coins, island2_unlocked, held.size()])
+			cam_yaw = PI
+			cam_pitch = 0.05
+			player.position = Vector3(0, DECK_Y + 0.4, 4.0)
+		if _boss_sold and frame == _boss_sell_frame + 20:
+			if autotest_shot != "":
+				get_viewport().get_texture().get_image().save_png(autotest_shot)
+			get_tree().quit()
+		if frame > autotest_frames:
+			print("AUTOTEST boss TIMEOUT mode=%s state=%d on_boat=%s" % [play_mode, state, on_boat])
 			get_tree().quit()
 		return
 
