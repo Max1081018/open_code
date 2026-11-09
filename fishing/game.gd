@@ -33,15 +33,15 @@ const PLAYER_SPAWN := Vector3(0, 1.2, 11.0)       # on the jetty
 const FISHING_SPOT := Vector3(0, 0.72, 4.6)     # where you stand to cast
 const EYE_HEIGHT := 1.62   # first-person camera height above the player's feet
 
-# Shared wave parameters — MUST match water.gdshader (WAVES) so the bobber sits
-# on the surface. Each is direction.xy, wavelength, amplitude.
-const WATER_WAVES := [
-	Vector4(0.8, 0.6, 16.0, 0.28),
-	Vector4(-0.7, 0.7, 10.0, 0.16),
-	Vector4(0.2, -0.95, 6.0, 0.09),
-	Vector4(-0.95, -0.25, 3.5, 0.05),
-]
-const TIME_SCALE := 1.0
+# Wave settings shared with assets/water/stylized_water.gdshader. wave_height()
+# below mirrors its waves() function so floating things ride the real surface.
+const WAVE_HEIGHT := 0.38
+const WAVE_LENGTH := 9.0
+const WAVE_SPEED := 0.5
+const WAVE_DIR := [Vector2(0.958, 0.287), Vector2(-0.447, 0.894), Vector2(0.6, -0.8), Vector2(-0.894, -0.447)]
+const WAVE_LEN_MUL := [1.0, 0.71, 0.53, 0.37]
+const WAVE_SHARE := [0.4, 0.27, 0.2, 0.13]
+const WAVE_HALF_TURNS := [1.0, 2.0, 2.0, 3.0]
 
 const DOCK_TIP := Vector3(0, 0, 3.0)     # end of the jetty, where we cast from
 const EYE := Vector3(0, 2.40, 5.6)       # camera position (standing on the deck)
@@ -132,15 +132,13 @@ var seen_help := false
 # gear you buy actually changes how the game plays.
 const SHOP_STOCK := [
 	{"id": "dagger_A", "name": "Gutting Knife", "rarity": "Common",
-	 "desc": "A stubby blade for cleaning your catch.", "price": 45, "power": 1},
+	 "desc": "A stubby blade for cleaning your catch.", "price": 40, "power": 1},
 	{"id": "dagger_B", "name": "Fisherman's Dirk", "rarity": "Common",
-	 "desc": "Holds an edge in salt air. Barely.", "price": 90, "power": 1},
+	 "desc": "Holds an edge in salt air. Just about.", "price": 85, "power": 1},
+	{"id": "fistweapon_A", "name": "Scaling Grips", "rarity": "Common",
+	 "desc": "Knuckle guards for wrestling a slippery one.", "price": 130, "power": 2},
 	{"id": "axe_A", "name": "Bait Hatchet", "rarity": "Uncommon",
-	 "desc": "Chops bait. Chops most things, really.", "price": 170, "power": 2},
-	{"id": "sword_A", "name": "Rusty Cutlass", "rarity": "Uncommon",
-	 "desc": "Washed up in a crate. Mostly sharp.", "price": 300, "power": 2},
-	{"id": "hammer_A", "name": "Dock Mallet", "rarity": "Rare",
-	 "desc": "For stubborn planks and stubborner fish.", "price": 520, "power": 3},
+	 "desc": "Chops bait. Chops most things, really.", "price": 210, "power": 2},
 ]
 var owned_weapons: Array = []
 var equipped_weapon := ""
@@ -321,9 +319,9 @@ func _ready() -> void:
 				_start_play()
 				# Stand at the counter looking at the stock.
 				var gy := _island_y(HOME, HOME_R, HOME_H, SHOP_POS.x, SHOP_POS.z)
-				player.position = Vector3(SHOP_POS.x - 0.08, gy + 0.3, SHOP_POS.z - 1.5)
+				player.position = Vector3(SHOP_POS.x - 0.25, gy + 0.3, SHOP_POS.z - 1.2)
 				cam_yaw = PI
-				cam_pitch = -0.22
+				cam_pitch = -0.16
 			"shop":
 				coins = 500
 				_go_main_menu()
@@ -347,16 +345,15 @@ func _parse_args() -> void:
 # --- Wave height (mirror of the shader) --------------------------------------
 
 func wave_height(x: float, z: float) -> float:
-	# Vertical part of the Gerstner sum in water.gdshader.
-	var t := elapsed * TIME_SCALE
-	var y := 0.0
-	for w in WATER_WAVES:
-		var dir := Vector2(w.x, w.y).normalized()
-		var k: float = TAU / w.z
-		var amp: float = w.w
-		var speed := sqrt(9.8 / k)
-		y += amp * sin(k * dir.dot(Vector2(x, z)) + t * speed)
-	return y
+	# Mirrors waves() in stylized_water.gdshader.
+	var t := float(Time.get_ticks_msec()) / 1000.0 * WAVE_SPEED
+	var p := Vector2(x, z)
+	var h := 0.0
+	for i in 4:
+		var k: float = TAU / (WAVE_LENGTH * float(WAVE_LEN_MUL[i]))
+		var phase: float = k * (WAVE_DIR[i] as Vector2).dot(p) - PI * float(WAVE_HALF_TURNS[i]) * t
+		h += WAVE_HEIGHT * float(WAVE_SHARE[i]) * sin(phase)
+	return h
 
 
 # --- World --------------------------------------------------------------------
@@ -387,10 +384,10 @@ func _box(parent: Node3D, pos: Vector3, size: Vector3, color: Color, rot := Vect
 func _build_world() -> void:
 	# Sky + warm light.
 	var sky_mat := ProceduralSkyMaterial.new()
-	sky_mat.sky_top_color = Color(0.28, 0.5, 0.86)
-	sky_mat.sky_horizon_color = Color(0.85, 0.9, 0.95)
-	sky_mat.ground_horizon_color = Color(0.85, 0.9, 0.95)
-	sky_mat.ground_bottom_color = Color(0.6, 0.72, 0.8)
+	sky_mat.sky_top_color = Color(0.13, 0.36, 0.78)
+	sky_mat.sky_horizon_color = Color(0.74, 0.88, 0.97)
+	sky_mat.ground_horizon_color = Color(0.74, 0.88, 0.97)
+	sky_mat.ground_bottom_color = Color(0.32, 0.52, 0.66)
 	sky_mat.sun_angle_max = 40.0
 	var sky := Sky.new()
 	sky.sky_material = sky_mat
@@ -398,34 +395,54 @@ func _build_world() -> void:
 	env.background_mode = Environment.BG_SKY
 	env.sky = sky
 	env.ambient_light_source = Environment.AMBIENT_SOURCE_COLOR
-	env.ambient_light_color = Color(0.6, 0.66, 0.74)
-	env.ambient_light_energy = 0.55
+	env.ambient_light_color = Color(0.46, 0.57, 0.70)
+	env.ambient_light_energy = 0.42
 	env.tonemap_mode = Environment.TONE_MAPPER_FILMIC
 	env.fog_enabled = true
-	env.fog_light_color = Color(0.70, 0.82, 0.92)
-	env.fog_density = 0.0022
+	env.fog_light_color = Color(0.66, 0.82, 0.94)
+	env.fog_density = 0.0016
 	var we := WorldEnvironment.new()
 	we.environment = env
 	add_child(we)
 
 	var sun := DirectionalLight3D.new()
 	sun.rotation_degrees = Vector3(-48, 40, 0)
-	sun.light_energy = 0.9
-	sun.light_color = Color(1.0, 0.96, 0.86)
+	sun.light_energy = 1.02
+	sun.light_color = Color(1.0, 0.93, 0.78)
 	sun.shadow_enabled = true
 	sun.directional_shadow_max_distance = 80.0
 	add_child(sun)
 
-	# Water: a big subdivided plane with the wave shader.
+	# Seabed, so the transparent water has something to tint against.
+	var bed := MeshInstance3D.new()
+	var bm := PlaneMesh.new()
+	bm.size = Vector2(300, 300)
+	bm.material = _mat(Color(0.72, 0.64, 0.44), 1.0)
+	bed.mesh = bm
+	bed.position = Vector3(0, -7.0, -20)
+	add_child(bed)
+
+	# Water: a big subdivided plane running the stylized water shader.
 	var water := MeshInstance3D.new()
 	var plane := PlaneMesh.new()
-	plane.size = Vector2(160, 160)
-	plane.subdivide_width = 90
-	plane.subdivide_depth = 90
+	plane.size = Vector2(300, 300)
+	plane.subdivide_width = 150
+	plane.subdivide_depth = 150
 	var smat := ShaderMaterial.new()
-	smat.shader = load("res://water.gdshader")
-	smat.set_shader_parameter("time_scale", TIME_SCALE)
-	smat.set_shader_parameter("sun_dir", Vector3(0.45, 0.7, 0.35))
+	smat.shader = load("res://assets/water/stylized_water.gdshader")
+	smat.set_shader_parameter("shallow_color", Color(0.30, 0.86, 0.82, 0.38))
+	smat.set_shader_parameter("deep_color", Color(0.02, 0.22, 0.42, 0.96))
+	smat.set_shader_parameter("depth_distance", 3.2)
+	smat.set_shader_parameter("foam_color", Color(0.97, 0.99, 1.0, 1.0))
+	smat.set_shader_parameter("foam_width", 0.42)
+	smat.set_shader_parameter("wave_height", WAVE_HEIGHT)
+	smat.set_shader_parameter("wave_length", WAVE_LENGTH)
+	smat.set_shader_parameter("wave_speed", WAVE_SPEED)
+	smat.set_shader_parameter("normal_scale", 0.35)
+	smat.set_shader_parameter("normal_tile_size", 9.0)
+	smat.set_shader_parameter("roughness", 0.07)
+	smat.set_shader_parameter("normal_map_a", load("res://assets/water/water_normal_a.png"))
+	smat.set_shader_parameter("normal_map_b", load("res://assets/water/water_normal_b.png"))
 	plane.material = smat
 	water.mesh = plane
 	water.position = Vector3(0, 0, -20)
@@ -502,7 +519,7 @@ func _make_island(center: Vector3, radius: float, height: float, grassy := true,
 	sm.height = radius * 2.0
 	sm.radial_segments = 40
 	sm.rings = 20
-	sm.material = _mat(Color(0.88, 0.80, 0.58), 1.0)
+	sm.material = _mat(Color(0.83, 0.70, 0.45), 1.0)
 	sand.mesh = sm
 	sand.scale = Vector3(1, (height * 0.85) / radius, 1)
 	sand.position = center
@@ -517,7 +534,7 @@ func _make_island(center: Vector3, radius: float, height: float, grassy := true,
 		gm.height = radius * 1.6
 		gm.radial_segments = 36
 		gm.rings = 18
-		gm.material = _mat(Color(0.40, 0.66, 0.33), 1.0)
+		gm.material = _mat(Color(0.30, 0.60, 0.25), 1.0)
 		grass.mesh = gm
 		grass.scale = Vector3(1, height / (radius * 0.80), 1)
 		grass.position = center + Vector3(0, 0.05, 0)
@@ -875,17 +892,18 @@ func _update_explore(delta: float) -> void:
 		var w := weapon_by_id(looked_weapon)
 		var price := int(w.get("price", 0))
 		var owned: bool = owned_weapons.has(looked_weapon)
-		touch.look_info = "%s  ·  %s  ·  whack +%d" % [w.get("name", "?"), w.get("rarity", ""), int(w.get("power", 0))]
+		touch.look_info = str(w.get("name", "?"))
+		touch.look_stat = "+%d power" % int(w.get("power", 0))
 		if owned:
-			touch.prompt = "EQUIPPED" if equipped_weapon == looked_weapon else "EQUIP"
-		elif coins >= price:
-			touch.prompt = "BUY %d" % price
-			touch.look_info += "   —   %d coins" % price
+			touch.look_cost = "EQUIPPED" if equipped_weapon == looked_weapon else "OWNED"
+			touch.prompt = "UNEQUIP" if equipped_weapon == looked_weapon else "EQUIP"
 		else:
-			touch.prompt = "NEED %d" % price
-			touch.look_info += "   —   %d coins" % price
+			touch.look_cost = "%d" % price
+			touch.prompt = "BUY" if coins >= price else "TOO DEAR"
 	else:
 		touch.look_info = ""
+		touch.look_stat = ""
+		touch.look_cost = ""
 		if near_fishing_spot:
 			touch.prompt = "FISH"
 		else:
@@ -1009,6 +1027,8 @@ func _enter_fishing() -> void:
 	_set_weapon_outline(looked_weapon, false)
 	looked_weapon = ""
 	touch.look_info = ""
+	touch.look_stat = ""
+	touch.look_cost = ""
 	player.frozen = true
 	player.visible = false
 	touch.visible = false
@@ -1122,7 +1142,7 @@ func _build_shop() -> void:
 	pm.bottom_radius = 6.8
 	pm.height = 1.5
 	pm.radial_segments = 28
-	pm.material = _mat(Color(0.80, 0.72, 0.54), 1.0)
+	pm.material = _mat(Color(0.78, 0.66, 0.43), 1.0)
 	pad.mesh = pm
 	pad.position = Vector3(SHOP_POS.x, ground - 0.75, SHOP_POS.z)
 	add_child(pad)
@@ -1147,17 +1167,25 @@ func _build_shop() -> void:
 
 	# The shopkeeper, waiting behind the counter, facing the door.
 	shopkeeper = _spawn_character("res://assets/models/characters/Barbarian.glb",
-		Vector3(SHOP_POS.x + 0.55, ground + 0.02, SHOP_POS.z + 1.60), PI, "Idle")
+		Vector3(SHOP_POS.x + 1.15, ground + 0.02, SHOP_POS.z + 1.75), PI - 0.30, "Idle")
 
 	# Stock on display. Each one is a real model you walk up to, look at and buy.
-	var top := ground + 0.95          # counter surface
-	var cz := SHOP_POS.z + 0.80
-	_add_weapon_display("dagger_A", Vector3(SHOP_POS.x - 1.15, top, cz), Vector3.ZERO, 0.40)
-	_add_weapon_display("dagger_B", Vector3(SHOP_POS.x - 0.62, top, cz), Vector3.ZERO, 0.40)
-	_add_weapon_display("axe_A", Vector3(SHOP_POS.x - 0.08, top, cz), Vector3.ZERO, 0.40)
-	_add_weapon_display("sword_A", Vector3(SHOP_POS.x + 0.48, top, cz), Vector3.ZERO, 0.40)
-	# The pricey one is displayed up on the wall.
-	_add_weapon_display("hammer_A", Vector3(SHOP_POS.x - 1.6, ground + 1.55, SHOP_POS.z + 1.1), Vector3.ZERO, 0.46)
+	var top := ground + 0.92          # desk surface
+	var cz := SHOP_POS.z + 1.25       # on the desk, toward its front edge
+	_add_weapon_display("dagger_A", Vector3(SHOP_POS.x - 0.80, top, cz), Vector3.ZERO, 0.40)
+	_add_weapon_display("dagger_B", Vector3(SHOP_POS.x - 0.25, top, cz), Vector3.ZERO, 0.40)
+	_add_weapon_display("fistweapon_A", Vector3(SHOP_POS.x + 0.30, top, cz), Vector3.ZERO, 0.40)
+	# The best one here gets pride of place, mounted above the counter.
+	_add_weapon_display("axe_A", Vector3(SHOP_POS.x - 0.85, ground + 2.32, SHOP_POS.z + 2.25), Vector3.ZERO, 0.46)
+
+	# Ceiling, so the interior isn't open to the sky.
+	var ceil := MeshInstance3D.new()
+	var cm := BoxMesh.new()
+	cm.size = Vector3(4.6, 0.12, 4.6)
+	cm.material = _mat(Color(0.34, 0.24, 0.17), 1.0)
+	ceil.mesh = cm
+	ceil.position = Vector3(SHOP_POS.x, ground + 2.95, SHOP_POS.z + 0.35)
+	add_child(ceil)
 
 	# Warm interior light.
 	var lamp := OmniLight3D.new()

@@ -52,36 +52,30 @@ func _ready() -> void:
 # --- Theme + builders ---------------------------------------------------------
 
 func _sb(color: Color, radius := 18) -> StyleBoxFlat:
-	var s := StyleBoxFlat.new()
-	s.bg_color = color
-	s.set_corner_radius_all(radius)
-	s.content_margin_left = 26
-	s.content_margin_right = 26
-	s.content_margin_top = 12
-	s.content_margin_bottom = 12
-	return s
+	return UITheme.box(color, radius, 26, 12)
 
 
 func _make_theme() -> Theme:
 	var t := Theme.new()
 	t.default_font_size = 34
-	t.set_stylebox("normal", "Button", _sb(Color(0.10, 0.44, 0.60)))
-	t.set_stylebox("hover", "Button", _sb(Color(0.14, 0.54, 0.72)))
-	t.set_stylebox("pressed", "Button", _sb(Color(0.07, 0.34, 0.48)))
-	t.set_stylebox("disabled", "Button", _sb(Color(0.2, 0.22, 0.26)))
+	t.set_stylebox("normal", "Button", _sb(UITheme.PRIMARY))
+	t.set_stylebox("hover", "Button", _sb(UITheme.PRIMARY_HI))
+	t.set_stylebox("pressed", "Button", _sb(UITheme.PRIMARY_LO))
+	t.set_stylebox("disabled", "Button", _sb(Color(0.16, 0.20, 0.26)))
 	var focus := StyleBoxFlat.new()
 	focus.bg_color = Color(0, 0, 0, 0)
 	focus.set_border_width_all(3)
-	focus.border_color = Color(1, 1, 1, 0.5)
+	focus.border_color = Color(1, 1, 1, 0.35)
 	focus.set_corner_radius_all(18)
 	t.set_stylebox("focus", "Button", focus)
-	t.set_color("font_color", "Button", Color.WHITE)
+	t.set_color("font_color", "Button", UITheme.TEXT)
 	t.set_color("font_hover_color", "Button", Color.WHITE)
+	t.set_color("font_disabled_color", "Button", UITheme.TEXT_DIM)
 	t.set_font_size("font_size", "Button", 36)
 	return t
 
 
-func _button(text: String, w := 460.0, h := 84.0) -> Button:
+func _button(text: String, w := 460.0, h := 78.0) -> Button:
 	var b := Button.new()
 	b.text = text
 	b.custom_minimum_size = Vector2(w, h)
@@ -95,7 +89,7 @@ func _panel(title: String) -> Array:
 	var cc := CenterContainer.new()
 	cc.set_anchors_preset(Control.PRESET_FULL_RECT)
 	var panel := PanelContainer.new()
-	panel.add_theme_stylebox_override("panel", _sb(Color(0.05, 0.08, 0.15, 0.94), 28))
+	panel.add_theme_stylebox_override("panel", UITheme.box_edged(UITheme.PANEL, Color(1, 1, 1, 0.07), 26))
 	var vbox := VBoxContainer.new()
 	vbox.add_theme_constant_override("separation", 22)
 	vbox.alignment = BoxContainer.ALIGNMENT_CENTER
@@ -104,7 +98,7 @@ func _panel(title: String) -> Array:
 		lbl.text = title
 		lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 		lbl.add_theme_font_size_override("font_size", 52)
-		lbl.add_theme_color_override("font_color", Color(1, 1, 0.9))
+		lbl.add_theme_color_override("font_color", UITheme.TEXT_WARM)
 		vbox.add_child(lbl)
 	panel.add_child(vbox)
 	cc.add_child(panel)
@@ -126,7 +120,7 @@ func _build() -> void:
 	var col := VBoxContainer.new()
 	col.set_anchors_preset(Control.PRESET_FULL_RECT)
 	col.alignment = BoxContainer.ALIGNMENT_CENTER
-	col.add_theme_constant_override("separation", 13)
+	col.add_theme_constant_override("separation", 12)
 	_main.add_child(col)
 
 	var title := Label.new()
@@ -134,8 +128,8 @@ func _build() -> void:
 	title.text = "LAZY  LAKE"
 	title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	title.add_theme_font_size_override("font_size", 86)
-	title.add_theme_color_override("font_color", Color(1, 0.98, 0.85))
-	title.add_theme_color_override("font_outline_color", Color(0.02, 0.15, 0.25))
+	title.add_theme_color_override("font_color", UITheme.TEXT_WARM)
+	title.add_theme_color_override("font_outline_color", Color(0.02, 0.10, 0.18))
 	title.add_theme_constant_override("outline_size", 14)
 	col.add_child(title)
 	_title_node = title
@@ -144,7 +138,7 @@ func _build() -> void:
 	subtitle.text = "a calm little fishing game"
 	subtitle.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	subtitle.add_theme_font_size_override("font_size", 28)
-	subtitle.add_theme_color_override("font_color", Color(0.85, 0.95, 1.0))
+	subtitle.add_theme_color_override("font_color", UITheme.TEXT_DIM)
 	subtitle.add_theme_color_override("font_outline_color", Color(0, 0, 0, 0.6))
 	subtitle.add_theme_constant_override("outline_size", 6)
 	col.add_child(subtitle)
@@ -153,8 +147,12 @@ func _build() -> void:
 	spacer.custom_minimum_size = Vector2(0, 12)
 	col.add_child(spacer)
 
-	var play := _button("PLAY", 480, 100)
+	var play := _button("PLAY", 480, 92)
 	play.add_theme_font_size_override("font_size", 46)
+	play.add_theme_stylebox_override("normal", _sb(UITheme.ACCENT))
+	play.add_theme_stylebox_override("hover", _sb(UITheme.ACCENT_HI))
+	play.add_theme_stylebox_override("pressed", _sb(UITheme.ACCENT_LO))
+	play.add_theme_color_override("font_color", Color(0.12, 0.07, 0.03))
 	play.pressed.connect(func(): play_pressed.emit())
 	var shopb := _button("SHOP")
 	shopb.pressed.connect(func(): _open_shop(_main))
@@ -236,7 +234,7 @@ func _build() -> void:
 	_shop_coins.text = "Coins: 0"
 	_shop_coins.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	_shop_coins.add_theme_font_size_override("font_size", 36)
-	_shop_coins.add_theme_color_override("font_color", Color(1, 0.9, 0.4))
+	_shop_coins.add_theme_color_override("font_color", UITheme.GOLD)
 	shv.add_child(_shop_coins)
 	_shop_rows = VBoxContainer.new()
 	_shop_rows.add_theme_constant_override("separation", 14)
@@ -265,7 +263,7 @@ func _build() -> void:
 		l.text = linetext
 		l.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 		l.add_theme_font_size_override("font_size", 30)
-		l.add_theme_color_override("font_color", Color(0.9, 0.95, 1.0))
+		l.add_theme_color_override("font_color", UITheme.TEXT_DIM)
 		hv.add_child(l)
 	_help_btn = _button("BACK")
 	_help_btn.pressed.connect(_on_help_button)
@@ -278,7 +276,10 @@ func _build() -> void:
 	_pause_btn.text = "| |"
 	_pause_btn.custom_minimum_size = Vector2(86, 86)
 	_pause_btn.position = Vector2(24, 24)
-	_pause_btn.add_theme_font_size_override("font_size", 36)
+	_pause_btn.add_theme_font_size_override("font_size", 32)
+	_pause_btn.add_theme_stylebox_override("normal", UITheme.box(UITheme.PANEL, 22, 10, 10))
+	_pause_btn.add_theme_stylebox_override("hover", UITheme.box(UITheme.RAISED, 22, 10, 10))
+	_pause_btn.add_theme_stylebox_override("pressed", UITheme.box(UITheme.PANEL_SOLID, 22, 10, 10))
 	_pause_btn.pressed.connect(func(): resume_pressed.emit() if false else _request_pause())
 	_root.add_child(_pause_btn)
 	_pause_btn.visible = false
@@ -290,7 +291,7 @@ func _label(text: String) -> Label:
 	var l := Label.new()
 	l.text = text
 	l.add_theme_font_size_override("font_size", 34)
-	l.add_theme_color_override("font_color", Color.WHITE)
+	l.add_theme_color_override("font_color", UITheme.TEXT)
 	l.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
 	return l
 
@@ -454,11 +455,11 @@ func set_shop_model(coins: int, rows: Array) -> void:
 		var name_lbl := Label.new()
 		name_lbl.text = "%s  (Lv %d/%d)" % [row["name"], row["level"], row["max"]]
 		name_lbl.add_theme_font_size_override("font_size", 32)
-		name_lbl.add_theme_color_override("font_color", Color.WHITE)
+		name_lbl.add_theme_color_override("font_color", UITheme.TEXT)
 		var desc_lbl := Label.new()
 		desc_lbl.text = row["desc"]
 		desc_lbl.add_theme_font_size_override("font_size", 24)
-		desc_lbl.add_theme_color_override("font_color", Color(0.75, 0.85, 0.95))
+		desc_lbl.add_theme_color_override("font_color", UITheme.TEXT_DIM)
 		info.add_child(name_lbl)
 		info.add_child(desc_lbl)
 		hb.add_child(info)
