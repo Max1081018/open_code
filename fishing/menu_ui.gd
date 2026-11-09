@@ -57,8 +57,8 @@ func _sb(color: Color, radius := 18) -> StyleBoxFlat:
 	s.set_corner_radius_all(radius)
 	s.content_margin_left = 26
 	s.content_margin_right = 26
-	s.content_margin_top = 16
-	s.content_margin_bottom = 16
+	s.content_margin_top = 12
+	s.content_margin_bottom = 12
 	return s
 
 
@@ -77,11 +77,11 @@ func _make_theme() -> Theme:
 	t.set_stylebox("focus", "Button", focus)
 	t.set_color("font_color", "Button", Color.WHITE)
 	t.set_color("font_hover_color", "Button", Color.WHITE)
-	t.set_font_size("font_size", "Button", 40)
+	t.set_font_size("font_size", "Button", 36)
 	return t
 
 
-func _button(text: String, w := 460.0, h := 104.0) -> Button:
+func _button(text: String, w := 460.0, h := 84.0) -> Button:
 	var b := Button.new()
 	b.text = text
 	b.custom_minimum_size = Vector2(w, h)
@@ -126,14 +126,14 @@ func _build() -> void:
 	var col := VBoxContainer.new()
 	col.set_anchors_preset(Control.PRESET_FULL_RECT)
 	col.alignment = BoxContainer.ALIGNMENT_CENTER
-	col.add_theme_constant_override("separation", 22)
+	col.add_theme_constant_override("separation", 13)
 	_main.add_child(col)
 
 	var title := Label.new()
 	title.name = "Title"
 	title.text = "LAZY  LAKE"
 	title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	title.add_theme_font_size_override("font_size", 104)
+	title.add_theme_font_size_override("font_size", 86)
 	title.add_theme_color_override("font_color", Color(1, 0.98, 0.85))
 	title.add_theme_color_override("font_outline_color", Color(0.02, 0.15, 0.25))
 	title.add_theme_constant_override("outline_size", 14)
@@ -143,18 +143,18 @@ func _build() -> void:
 	var subtitle := Label.new()
 	subtitle.text = "a calm little fishing game"
 	subtitle.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	subtitle.add_theme_font_size_override("font_size", 32)
+	subtitle.add_theme_font_size_override("font_size", 28)
 	subtitle.add_theme_color_override("font_color", Color(0.85, 0.95, 1.0))
 	subtitle.add_theme_color_override("font_outline_color", Color(0, 0, 0, 0.6))
 	subtitle.add_theme_constant_override("outline_size", 6)
 	col.add_child(subtitle)
 
 	var spacer := Control.new()
-	spacer.custom_minimum_size = Vector2(0, 30)
+	spacer.custom_minimum_size = Vector2(0, 12)
 	col.add_child(spacer)
 
-	var play := _button("PLAY", 480, 118)
-	play.add_theme_font_size_override("font_size", 52)
+	var play := _button("PLAY", 480, 100)
+	play.add_theme_font_size_override("font_size", 46)
 	play.pressed.connect(func(): play_pressed.emit())
 	var shopb := _button("SHOP")
 	shopb.pressed.connect(func(): _open_shop(_main))

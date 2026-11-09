@@ -11,7 +11,7 @@ render_mode cull_back, diffuse_burley, specular_schlick_ggx;
 
 uniform vec3 deep_color : source_color = vec3(0.015, 0.08, 0.19);
 uniform vec3 shallow_color : source_color = vec3(0.04, 0.24, 0.38);
-uniform vec3 sky_color : source_color = vec3(0.42, 0.60, 0.78);
+uniform vec3 sky_color : source_color = vec3(0.28, 0.46, 0.66);
 uniform vec3 foam_color : source_color = vec3(0.95, 0.98, 1.0);
 uniform vec3 sun_dir = vec3(0.45, 0.7, 0.35);
 uniform float time_scale = 1.0;
@@ -66,15 +66,15 @@ void fragment() {
 	// Fine ripple detail perturbs the normal for sparkle.
 	vec2 rp = v_world.xz;
 	float r = sin(rp.x * 1.8 + TIME * 1.7) * cos(rp.y * 2.1 - TIME * 1.3);
-	vec3 n = normalize(NORMAL + vec3(r * 0.03, 0.0, r * 0.03));
+	vec3 n = normalize(NORMAL + vec3(r * 0.02, 0.0, r * 0.02));
 
 	float fres = pow(1.0 - clamp(dot(normalize(VIEW), n), 0.0, 1.0), 5.0);
 	vec3 col = mix(deep_color, shallow_color, clamp(n.y * 0.5 + 0.5, 0.0, 1.0));
-	col = mix(col, sky_color, fres * 0.35);
+	col = mix(col, sky_color, fres * 0.22);
 
 	// Foam only on the very highest crests.
-	float foam = smoothstep(0.44, 0.58, v_height);
-	col = mix(col, foam_color, foam * 0.5);
+	float foam = smoothstep(0.50, 0.62, v_height);
+	col = mix(col, foam_color, foam * 0.35);
 
 	ALBEDO = col;
 	ROUGHNESS = mix(0.22, 0.5, foam);

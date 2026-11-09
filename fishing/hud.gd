@@ -4,7 +4,7 @@ extends CanvasLayer
 ## bites and result screens. The game drives everything by setting `mode` and
 ## the meter values; the HUD only reports raw touch back.
 
-enum { M_IDLE, M_CHARGING, M_WAITING, M_BITE, M_FIGHT, M_CAUGHT, M_SNAP }
+enum { M_IDLE, M_CHARGING, M_WAITING, M_BITE, M_FIGHT, M_CAUGHT, M_SNAP, M_WHACK }
 
 var mode := M_IDLE
 var power := 0.0      # 0..1 cast charge
@@ -82,6 +82,7 @@ func button_label() -> String:
 	match mode:
 		M_IDLE, M_CHARGING: return "CAST"
 		M_FIGHT: return "REEL"
+		M_WHACK: return "WHACK!"
 		_: return ""
 
 
