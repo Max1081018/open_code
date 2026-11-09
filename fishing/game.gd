@@ -14,6 +14,11 @@ extends Node3D
 ## "AUTOTEST ..." before quitting.
 
 const Hud := preload("res://hud.gd")
+const MenuUI := preload("res://menu_ui.gd")
+
+# App screen: "menu" (title over the live lake), "playing", or "paused".
+var app_state := "menu"
+var menu_ui
 
 # Shared wave parameters — MUST match water.gdshader (WAVES) so the bobber sits
 # on the surface. Each is direction.xy, wavelength, amplitude.
@@ -82,6 +87,7 @@ var shot_on := "end"  # "end" or "caught": when to grab the screenshot
 var sim_action := false
 var sim_tap := false
 var frame := 0
+var start_screen := "menu"  # autotest can jump straight to a screen
 
 
 func _ready() -> void:
@@ -95,7 +101,25 @@ func _ready() -> void:
 	_build_sounds()
 	hud = Hud.new()
 	add_child(hud)
+
+	menu_ui = MenuUI.new()
+	add_child(menu_ui)
+	menu_ui.play_pressed.connect(_start_play)
+	menu_ui.resume_pressed.connect(_resume)
+	menu_ui.to_main_menu.connect(_go_main_menu)
+	menu_ui.settings_changed.connect(_apply_settings)
+
 	_enter_idle()
+	_apply_settings()
+	# Players always start at the menu; autotest can jump to a screen to shoot it.
+	if autotest:
+		match start_screen:
+			"play": _start_play()
+			"settings": _go_main_menu(); menu_ui.open_settings_for_test()
+			"pause": _start_play(); _pause()
+			_: _go_main_menu()
+	else:
+		_go_main_menu()
 
 
 func _parse_args() -> void:
@@ -104,6 +128,7 @@ func _parse_args() -> void:
 		elif a.begins_with("--frames="): autotest_frames = int(a.get_slice("=", 1))
 		elif a.begins_with("--shot="): autotest_shot = a.get_slice("=", 1)
 		elif a.begins_with("--shot-on="): shot_on = a.get_slice("=", 1)
+		elif a.begins_with("--screen="): start_screen = a.get_slice("=", 1)
 
 
 # --- Wave height (mirror of the shader) --------------------------------------
@@ -450,6 +475,17 @@ func _process(delta: float) -> void:
 	if autotest:
 		_autotest(delta)
 
+	# Pause from the in-game button.
+	if app_state == "playing" and menu_ui and menu_ui.consume_pause():
+		_pause()
+
+	if app_state == "menu":
+		_menu_camera(delta)
+		return
+	if app_state == "paused":
+		_update_line()
+		return
+
 	var action: bool = hud.action_down() or sim_action
 	var tap: bool = hud.consume_tap() or sim_tap
 	sim_tap = false
@@ -490,8 +526,71 @@ func _process(delta: float) -> void:
 			if tap:
 				_enter_idle()
 
+	# Subtle first-person sway while playing.
+	if _camera_sway:
+		camera.position = EYE + Vector3(sin(elapsed * 0.8) * 0.05, sin(elapsed * 1.1) * 0.04, 0)
+		camera.rotation_degrees.z = sin(elapsed * 0.6) * 0.3
+
 	_update_line()
 	_hud_sync()
+
+
+# --- Screen transitions -------------------------------------------------------
+
+var _camera_sway := true
+var _menu_cam_t := 0.0
+
+func _menu_camera(delta: float) -> void:
+	# Slow cinematic drift over the lake toward the distant islands.
+	_menu_cam_t += delta * 0.09
+	var a := _menu_cam_t
+	camera.position = Vector3(sin(a) * 7.0, 3.4 + sin(a * 0.7) * 0.7, 2.0 + cos(a) * 4.0)
+	camera.look_at(Vector3(sin(a * 0.5) * 10.0, 0.6, -45.0))
+
+
+func _start_play() -> void:
+	app_state = "playing"
+	_enter_idle()
+	camera.position = EYE
+	camera.rotation_degrees = Vector3(-6, 0, 0)
+	rod.visible = true
+	hud.enabled = true
+	hud.set_hud_visible(true)
+	menu_ui.show_play()
+
+
+func _pause() -> void:
+	app_state = "paused"
+	hud.enabled = false
+	hud.set_hud_visible(false)
+	menu_ui.show_pause()
+
+
+func _resume() -> void:
+	app_state = "playing"
+	hud.enabled = true
+	hud.set_hud_visible(true)
+	menu_ui.show_play()
+
+
+func _go_main_menu() -> void:
+	app_state = "menu"
+	_enter_idle()
+	rod.visible = false
+	bobber.visible = false
+	line.visible = false
+	hud.enabled = false
+	hud.set_hud_visible(false)
+	_menu_cam_t = 0.0
+	menu_ui.show_main()
+
+
+func _apply_settings() -> void:
+	if not menu_ui:
+		return
+	_camera_sway = menu_ui.settings["camera_sway"]
+	hud.left_handed = menu_ui.settings["left_handed"]
+	hud.recalc_layout()
 
 
 var _idle_delay := 0.0
@@ -723,6 +822,16 @@ func _update_line() -> void:
 func _autotest(_delta: float) -> void:
 	frame += 1
 	sim_action = false
+
+	# For non-gameplay screens, just let them settle and screenshot.
+	if start_screen in ["menu", "settings", "pause"]:
+		if frame > 40:
+			if autotest_shot != "":
+				get_viewport().get_texture().get_image().save_png(autotest_shot)
+			print("AUTOTEST(%s) frame=%d" % [start_screen, frame])
+			get_tree().quit()
+		return
+
 	match state:
 		IDLE, CHARGING:
 			# Charge ~0.8s then release.

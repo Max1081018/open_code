@@ -20,6 +20,9 @@ const BTN_RADIUS := 110.0
 var _action_index := -1
 var _tapped := false
 
+var enabled := true        # gameplay input only when playing
+var left_handed := false   # mirror the action button to the left
+
 
 func _ready() -> void:
 	_view = Painter.new()
@@ -33,7 +36,17 @@ func _ready() -> void:
 
 func _recalc() -> void:
 	var s := get_viewport().get_visible_rect().size
-	_btn_center = Vector2(s.x - 160, s.y - 160)
+	# Keep a thumb-sized margin from the bottom corner; honour left-handed mode.
+	var x := 170.0 if left_handed else s.x - 170.0
+	_btn_center = Vector2(x, s.y - 170)
+
+
+func recalc_layout() -> void:
+	_recalc()
+
+
+func set_hud_visible(v: bool) -> void:
+	_view.visible = v
 
 
 func _process(_delta: float) -> void:
@@ -41,6 +54,8 @@ func _process(_delta: float) -> void:
 
 
 func _input(event: InputEvent) -> void:
+	if not enabled:
+		return
 	if event is InputEventScreenTouch:
 		if event.pressed:
 			_tapped = true
@@ -77,9 +92,9 @@ class Painter extends Control:
 		var vp := get_viewport_rect().size
 		var font := ThemeDB.fallback_font
 
-		# Top-left info.
+		# Top-left info (clear of the pause button).
 		if hud.info != "":
-			_text(font, Vector2(28, 44), hud.info, 30, Color(1, 1, 1, 0.95))
+			_text(font, Vector2(130, 44), hud.info, 30, Color(1, 1, 1, 0.95))
 
 		# Big centre message — multi-line, auto-shrunk to fit the width.
 		if hud.message != "":
