@@ -130,7 +130,8 @@ func consume_look() -> Vector2:
 func _process(d: float) -> void:
 	if _toast_t > 0.0:
 		_toast_t -= d
-	_view.queue_redraw()
+	if visible:
+		_view.queue_redraw()
 
 
 func _release_stick() -> void:
@@ -193,12 +194,7 @@ class Painter extends Control:
 		return o
 
 	func _pill(rect: Rect2, color: Color, radius := 22, border := Color(1, 1, 1, 0.16)) -> void:
-		var sb := StyleBoxFlat.new()
-		sb.bg_color = color
-		sb.set_corner_radius_all(radius)
-		sb.set_border_width_all(2)
-		sb.border_color = border
-		draw_style_box(sb, rect)
+		UIDraw.pill(self, rect, color, radius, border, 2)
 
 	func _centred(font: Font, text: String, mid: Vector2, size: int, color: Color) -> void:
 		var w := font.get_string_size(text, HORIZONTAL_ALIGNMENT_LEFT, -1, size).x

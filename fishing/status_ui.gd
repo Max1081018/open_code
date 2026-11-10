@@ -10,6 +10,7 @@ var breath := 1.0
 var show_breath := false
 var underwater := false
 var visible_bars := true
+var show_fps := false
 
 var _hit := 0.0               # 0..1 red flash strength
 var _shake := 0.0
@@ -102,6 +103,14 @@ class Painter extends Control:
 			if ui.show_breath:
 				UIDraw.icon(self, "bubble", Vector2(x + 26, y + 50), 14, Color(0.6, 0.9, 1.0))
 				UIDraw.bar(self, Rect2(Vector2(x + 48, y + 43), Vector2(184, 14)), ui.breath, Color(0.45, 0.82, 1.0))
+
+		# Frame rate (Settings > Show FPS).
+		if ui.show_fps:
+			var fps := Engine.get_frames_per_second()
+			var fc := UITheme.GOOD if fps >= 55 else (UITheme.GOLD if fps >= 30 else UITheme.DANGER)
+			var fr := Rect2(Vector2(128, 116 if ui.show_breath else 84), Vector2(96, 30))
+			UIDraw.pill(self, fr, UITheme.PANEL, 15)
+			UIDraw.text_c(self, font, "%d FPS" % fps, fr.position + fr.size * 0.5, 17, fc)
 
 		# Death screen.
 		if ui._dead:

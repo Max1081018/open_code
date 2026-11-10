@@ -33,6 +33,8 @@ var settings := {
 	"hud_opacity": 1.0,
 	"fixed_joystick": false,
 	"weather": true,
+	"show_hands": true,
+	"show_fps": false,
 }
 
 var _root: Control
@@ -44,6 +46,9 @@ var _shop_rows: VBoxContainer
 var _shop_coins: Label
 var _shop_return_to: Control
 var _help: Control
+var _journal: Control
+var _journal_grid: JournalGrid
+var _journal_title: Label
 var _help_btn: Button
 var _help_return_to: Control
 var _help_firsttime := false
@@ -221,7 +226,10 @@ func _build() -> void:
 	howb.pressed.connect(func(): _open_help(_main))
 	var sbtn := _tile("SETTINGS")
 	sbtn.pressed.connect(func(): _open_settings(_main))
+	var jbtn := _tile("JOURNAL")
+	jbtn.pressed.connect(func(): _open_journal(_main))
 	tiles.add_child(shopb)
+	tiles.add_child(jbtn)
 	tiles.add_child(howb)
 	tiles.add_child(sbtn)
 
@@ -314,6 +322,8 @@ func _build() -> void:
 	_settings_toggle(sbody, "Weather (light rain)", "weather")
 	_settings_toggle(sbody, "Crosshair", "crosshair")
 	_settings_toggle(sbody, "Show your body", "show_body")
+	_settings_toggle(sbody, "Show your hands", "show_hands")
+	_settings_toggle(sbody, "Show FPS", "show_fps")
 
 	var back := _button("BACK")
 	back.pressed.connect(_on_settings_back)
@@ -371,17 +381,17 @@ func _build() -> void:
 	hv.custom_minimum_size = Vector2(780, 0)
 	hv.add_theme_constant_override("separation", 18)
 	for linetext in [
-		"HOLD the button to charge, release to cast.",
-		"When you see  TAP!  — tap fast to hook it.",
-		"HOLD to reel in, but keep LINE TENSION",
-		"out of the red or the line snaps.",
-		"Catch fish for coins, then buy upgrades",
-		"in the Shop to land bigger ones.",
+		"At the end of the jetty press FISH. HOLD to charge, let go to cast.",
+		"On HOOK! tap fast, then HOLD to reel. Keep the tension out of the red.",
+		"Whack your catch on the deck - and whack it before it leaps at you!",
+		"GRAB fish and carry them to the FISH MARKET to sell.",
+		"Buy weapons at BAIT & BLADE. A better Reel brings rarer fish.",
+		"Deep water drowns you. Get the Boss Reel, then SAIL to the boss.",
 	]:
 		var l := Label.new()
 		l.text = linetext
 		l.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-		l.add_theme_font_size_override("font_size", 30)
+		l.add_theme_font_size_override("font_size", 25)
 		l.add_theme_color_override("font_color", UITheme.TEXT_DIM)
 		hv.add_child(l)
 	_help_btn = _button("BACK")
@@ -389,6 +399,31 @@ func _build() -> void:
 	hv.add_child(_help_btn)
 	_root.add_child(_help)
 	_help.visible = false
+
+	# ---- Fish journal ----
+	var jres := _panel("")
+	_journal = jres[0]
+	var jv: VBoxContainer = jres[1]
+	jv.add_theme_constant_override("separation", 14)
+	_journal_title = Label.new()
+	_journal_title.text = "Journal"
+	_journal_title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	_journal_title.add_theme_font_size_override("font_size", 40)
+	_journal_title.add_theme_color_override("font_color", UITheme.TEXT_WARM)
+	jv.add_child(_journal_title)
+	var jhint := Label.new()
+	jhint.text = "Catch every species. The first of each pays a %d coin bonus." % 15
+	jhint.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	jhint.add_theme_font_size_override("font_size", 19)
+	jhint.add_theme_color_override("font_color", UITheme.TEXT_DIM)
+	jv.add_child(jhint)
+	_journal_grid = JournalGrid.new()
+	jv.add_child(_journal_grid)
+	var jback := _button("BACK", 360, 70)
+	jback.pressed.connect(_on_journal_back)
+	jv.add_child(jback)
+	_root.add_child(_journal)
+	_journal.visible = false
 
 	# ---- In-game pause button (top-left) ----
 	_pause_btn = Button.new()
@@ -410,8 +445,8 @@ func _build() -> void:
 func _tile(text: String) -> Button:
 	var b := Button.new()
 	b.text = text
-	b.custom_minimum_size = Vector2(170, 88)
-	b.add_theme_font_size_override("font_size", 24)
+	b.custom_minimum_size = Vector2(126, 88)
+	b.add_theme_font_size_override("font_size", 20)
 	b.add_theme_stylebox_override("normal", UITheme.box_edged(UITheme.PANEL, Color(1, 1, 1, 0.10), 18))
 	b.add_theme_stylebox_override("hover", UITheme.box_edged(UITheme.RAISED, Color(1, 1, 1, 0.18), 18))
 	b.add_theme_stylebox_override("pressed", UITheme.box_edged(UITheme.PRIMARY_LO, Color(1, 1, 1, 0.18), 18))
@@ -498,11 +533,54 @@ func _cycle_row(parent: VBoxContainer, label: String, key: String, options: Arra
 
 func _settings_toggle(parent: VBoxContainer, label: String, key: String) -> void:
 	var row := _row(parent, label)
-	var cb := CheckButton.new()
-	cb.button_pressed = settings[key]
-	cb.custom_minimum_size = Vector2(0, 54)
-	cb.toggled.connect(func(on): _on_toggle(key, on))
-	row.add_child(cb)
+	var sw := Switch.new()
+	sw.on = bool(settings[key])
+	sw._k = 1.0 if sw.on else 0.0
+	sw.toggled.connect(func(on): _on_toggle(key, on))
+	row.add_child(sw)
+
+
+## A big, obvious on/off switch: coral track and knob on the right when on,
+## dark track and knob on the left when off. Tap anywhere on it.
+class Switch extends Control:
+	signal toggled(on: bool)
+	var on := false
+	var _k := 0.0
+
+	func _init() -> void:
+		custom_minimum_size = Vector2(96, 54)
+		mouse_filter = Control.MOUSE_FILTER_PASS
+		size_flags_vertical = Control.SIZE_SHRINK_CENTER
+
+	var _down_at := Vector2(-1, -1)
+
+	# Touches arrive as emulated mouse clicks; toggle on a clean release so a
+	# scroll that starts on a switch doesn't flip it.
+	func _gui_input(e: InputEvent) -> void:
+		if e is InputEventMouseButton and e.button_index == MOUSE_BUTTON_LEFT:
+			if e.pressed:
+				_down_at = e.position
+			elif _down_at.x >= 0.0 and e.position.distance_to(_down_at) < 14.0:
+				_down_at = Vector2(-1, -1)
+				on = not on
+				toggled.emit(on)
+				accept_event()
+
+	func _process(d: float) -> void:
+		var want := 1.0 if on else 0.0
+		if absf(_k - want) > 0.001:
+			_k = move_toward(_k, want, d * 7.0)
+			queue_redraw()
+
+	func _draw() -> void:
+		var h := 40.0
+		var r := Rect2(Vector2(0, (size.y - h) * 0.5), Vector2(88, h))
+		var track := Color(0.16, 0.22, 0.30).lerp(UITheme.ACCENT, _k)
+		UIDraw.pill(self, r, track, int(h * 0.5), Color(1, 1, 1, 0.18), 2)
+		var kx := lerpf(r.position.x + h * 0.5, r.end.x - h * 0.5, _k)
+		var kc := Vector2(kx, r.position.y + h * 0.5)
+		draw_circle(kc + Vector2(0, 2), h * 0.5 - 4.0, Color(0, 0, 0, 0.25))
+		draw_circle(kc, h * 0.5 - 4.0, Color(1, 1, 1).lerp(Color(1, 0.97, 0.92), _k))
 
 
 # --- Screen transitions -------------------------------------------------------
@@ -526,6 +604,8 @@ func _hide_overlays() -> void:
 		_shop.visible = false
 	if _help:
 		_help.visible = false
+	if _journal:
+		_journal.visible = false
 
 
 func show_main() -> void:
@@ -590,6 +670,77 @@ func show_first_help() -> void:
 		_shop.visible = false
 	_help.visible = true
 	_root.mouse_filter = Control.MOUSE_FILTER_STOP
+
+
+var _journal_return_to: Control
+
+func _open_journal(from: Control) -> void:
+	_journal_return_to = from
+	from.visible = false
+	_journal.visible = true
+	_pause_btn.visible = false
+	_root.mouse_filter = Control.MOUSE_FILTER_STOP
+
+
+func _on_journal_back() -> void:
+	_journal.visible = false
+	_journal_return_to.visible = true
+
+
+func open_journal_for_test() -> void:
+	_open_journal(_main)
+
+
+## Fish journal entries from the game: [{name, rarity, count, best, junk}].
+func set_journal(entries: Array) -> void:
+	if _journal_grid == null:
+		return
+	_journal_grid.entries = entries
+	_journal_grid.queue_redraw()
+	var found := 0
+	for e in entries:
+		if int(e["count"]) > 0:
+			found += 1
+	_journal_title.text = "Journal   ·   %d / %d found" % [found, entries.size()]
+
+
+## The journal as a grid of cards drawn in one go: undiscovered ones show "???".
+class JournalGrid extends Control:
+	var entries: Array = []
+	const COLS := 4
+	const CW := 214.0
+	const CH := 86.0
+	const GAP := 10.0
+
+	func _init() -> void:
+		custom_minimum_size = Vector2(COLS * CW + (COLS - 1) * GAP, 4 * CH + 3 * GAP)
+		mouse_filter = Control.MOUSE_FILTER_IGNORE
+
+	func _draw() -> void:
+		var font := ThemeDB.fallback_font
+		for i in entries.size():
+			var e: Dictionary = entries[i]
+			var col := i % COLS
+			var row := i / COLS
+			var r := Rect2(Vector2(col * (CW + GAP), row * (CH + GAP)), Vector2(CW, CH))
+			var known := int(e["count"]) > 0
+			var rc: Color = UITheme.RARITY.get(str(e["rarity"]), Color.WHITE)
+			UIDraw.pill(self, r, Color(0.08, 0.12, 0.19, 0.95) if known else Color(0.05, 0.07, 0.11, 0.9), 14,
+				rc * Color(1, 1, 1, 0.5) if known else Color(1, 1, 1, 0.06), 2)
+			draw_rect(Rect2(r.position + Vector2(10, 14), Vector2(5, CH - 28)), rc if known else Color(1, 1, 1, 0.12))
+			var name: String = str(e["name"]) if known else "???"
+			var fs := 22
+			while fs > 14 and UIDraw.text_w(font, name, fs) > CW - 40:
+				fs -= 1
+			draw_string(font, r.position + Vector2(26, 34), name, HORIZONTAL_ALIGNMENT_LEFT, -1, fs,
+				UITheme.TEXT if known else UITheme.TEXT_DIM)
+			draw_string(font, r.position + Vector2(26, 58), str(e["rarity"]), HORIZONTAL_ALIGNMENT_LEFT, -1, 16,
+				rc if known else Color(1, 1, 1, 0.25))
+			if known:
+				var sub := "x%d   ·   best %.2f kg" % [int(e["count"]), float(e["best"])]
+				draw_string(font, r.position + Vector2(26, 80), sub, HORIZONTAL_ALIGNMENT_LEFT, -1, 15, UITheme.TEXT_DIM)
+			else:
+				UIDraw.icon(self, "fish", r.position + Vector2(CW - 34, CH * 0.5), 18, Color(1, 1, 1, 0.10))
 
 
 func _open_help(from: Control) -> void:

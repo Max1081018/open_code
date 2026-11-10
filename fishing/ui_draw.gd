@@ -10,14 +10,25 @@ const BTN_RING := Color(1, 1, 1, 0.55)
 const INK := Color(0.12, 0.07, 0.03)          # dark text on the coral accent
 
 
+static var _boxes := {}
+
+
+## Style boxes are cached by look, so HUDs that redraw every frame don't
+## allocate new ones each time.
 static func pill(ci: CanvasItem, rect: Rect2, color: Color, radius := 22.0,
 		border := Color(1, 1, 1, 0.12), border_w := 2) -> void:
-	var sb := StyleBoxFlat.new()
-	sb.bg_color = color
-	sb.set_corner_radius_all(int(radius))
-	sb.set_border_width_all(border_w)
-	sb.border_color = border
-	sb.anti_aliasing = true
+	var key := "%s|%d|%s|%d" % [color.to_html(), int(radius), border.to_html(), border_w]
+	var sb: StyleBoxFlat = _boxes.get(key)
+	if sb == null:
+		if _boxes.size() > 256:
+			_boxes.clear()
+		sb = StyleBoxFlat.new()
+		sb.bg_color = color
+		sb.set_corner_radius_all(int(radius))
+		sb.set_border_width_all(border_w)
+		sb.border_color = border
+		sb.anti_aliasing = true
+		_boxes[key] = sb
 	ci.draw_style_box(sb, rect)
 
 

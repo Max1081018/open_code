@@ -75,7 +75,8 @@ func clear_card() -> void:
 
 
 func _process(_delta: float) -> void:
-	_view.queue_redraw()
+	if _view.visible:
+		_view.queue_redraw()
 
 
 func _input(event: InputEvent) -> void:

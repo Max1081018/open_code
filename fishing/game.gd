@@ -99,8 +99,16 @@ var held_view: Node3D             # unused; kept so old references stay valid
 const FISH_LAYER := 8
 var loose_fish: Array = []        # RigidBody3D, each with meta "fish" (its data)
 var holding: RigidBody3D = null   # the fish in your hands
+var shop_lamp: OmniLight3D
+var _static_props: Array = []    # multi-part models to batch into few draws
+var _shop_box := AABB()
 var hands: FPHands                # first-person hands (camera child)
 var _reach := 0.0
+var _hands_enabled := true
+var fx: WorldFX
+var _surf: AudioStreamPlayer
+var _step_dist := 0.0
+var _gull_t := 8.0
 var looked_fish: RigidBody3D = null
 var _pending_loose: Array = []    # from the save, spawned once the world exists
 var boat_deck: AnimatableBody3D
@@ -154,6 +162,7 @@ const CATCH_SETS := {
 }
 
 # Island 1's boss: only bites out at sea, from the boat, with the Boss Reel.
+const NEW_SPECIES_BONUS := 15
 const BOSS := {"name": "the Baby Kraken", "set": "mythic", "node": "BabyKraken",
 	"min": 18.0, "max": 26.0, "junk": false, "boss": true,
 	"rarity": "Legendary", "atk": 30, "spd": 1.6, "tier": 0}
@@ -250,6 +259,8 @@ const SHOP_STOCK := [
 	 "model": "res://assets/models/fishing/tiered-fishing-rods.glb", "node": "FishingRod_Carbon"},
 ]
 var owned_weapons: Array = []
+var journal := {}              # species name -> [times caught, best kg]
+var _new_species := false
 var equipped_weapon := ""
 var has_boss_reel := false
 var island2_unlocked := false
@@ -329,6 +340,16 @@ func _load_save() -> void:
 		_pending_loose = cfg.get_value("save", "loose", [])
 		has_boss_reel = bool(cfg.get_value("save", "has_boss_reel", false))
 		island2_unlocked = bool(cfg.get_value("save", "island2_unlocked", false))
+		journal = cfg.get_value("save", "journal", {})
+		if journal.is_empty() and catches > 0:
+			# Older save: start the journal from what we know you've caught.
+			if best_name != "":
+				journal[best_name] = [1, best_weight]
+			for d in _pending_loose:
+				var nm := str(d.get("name", ""))
+				if nm != "":
+					var e: Array = journal.get(nm, [0, 0.0])
+					journal[nm] = [int(e[0]) + 1, maxf(float(e[1]), float(d.get("weight", 0.0)))]
 		for key in upgrades:
 			upgrades[key] = int(cfg.get_value("upgrades", key, 0))
 
@@ -352,6 +373,7 @@ func _save_game() -> void:
 	cfg.set_value("save", "loose", loose_out)
 	cfg.set_value("save", "has_boss_reel", has_boss_reel)
 	cfg.set_value("save", "island2_unlocked", island2_unlocked)
+	cfg.set_value("save", "journal", journal)
 	for key in upgrades:
 		cfg.set_value("upgrades", key, upgrades[key])
 	cfg.save(SAVE_PATH)
@@ -499,6 +521,10 @@ func _ready() -> void:
 			"settings": _go_main_menu(); menu_ui.open_settings_for_test()
 			"pause": _start_play(); _pause()
 			"help": _go_main_menu(); menu_ui.open_help_for_test()
+			"journal":
+				_go_main_menu()
+				_update_info()
+				menu_ui.open_journal_for_test()
 			"weaponshop":
 				coins = 600
 				_start_play()
@@ -606,7 +632,9 @@ func _build_world() -> void:
 	sun.light_energy = 1.02
 	sun.light_color = Color(1.0, 0.93, 0.78)
 	sun.shadow_enabled = true
-	sun.directional_shadow_max_distance = 80.0
+	sun.directional_shadow_max_distance = 48.0
+	sun.directional_shadow_mode = DirectionalLight3D.SHADOW_PARALLEL_2_SPLITS
+	sun.directional_shadow_blend_splits = false
 	add_child(sun)
 	sun_light = sun
 
@@ -629,8 +657,8 @@ func _build_world() -> void:
 	var water := MeshInstance3D.new()
 	var plane := PlaneMesh.new()
 	plane.size = Vector2(300, 300)
-	plane.subdivide_width = 150
-	plane.subdivide_depth = 150
+	plane.subdivide_width = 110       # ~2.7 m quads: plenty for 9 m waves
+	plane.subdivide_depth = 110
 	var smat := ShaderMaterial.new()
 	smat.shader = load("res://assets/water/stylized_water.gdshader")
 	smat.set_shader_parameter("shallow_color", Color(0.30, 0.86, 0.82, 0.38))
@@ -654,6 +682,10 @@ func _build_world() -> void:
 
 	_build_island()
 	_build_scenery()
+	_optimize_world()
+	fx = WorldFX.new()
+	fx.gull_centre = HOME
+	add_child(fx)
 
 
 # --- Kenney model library (CC0, see assets/CREDITS.md) ------------------------
@@ -861,7 +893,7 @@ func _build_scenery() -> void:
 
 	# A watchtower landmark set back on the island.
 	var ty := _island_y(HOME, HOME_R, HOME_H, 3.0, 42.0)
-	_spawn("tower", Vector3(3.0, ty - 0.2, 42.0), -0.5, 1.2)
+	_static_props.append(_spawn("tower", Vector3(3.0, ty - 0.2, 42.0), -0.5, 1.2))
 
 	# Buoys bobbing on the open water (they float at their origin).
 	for b in [
@@ -891,7 +923,7 @@ func _build_scenery() -> void:
 	_pending_loose = []
 
 	# A wrecked ship on the horizon for silhouette.
-	_spawn("wreck", Vector3(-38, -1.0, -60), 0.7, 1.3)
+	_static_props.append(_spawn("wreck", Vector3(-38, -1.0, -60), 0.7, 1.3))
 
 	# Outlying islands with their own palms and rocks.
 	var isles := [
@@ -1010,12 +1042,23 @@ func _build_sounds() -> void:
 	var streams := {
 		"whoosh": Sfx.whoosh(), "splash": Sfx.splash(), "bite": Sfx.bite(),
 		"click": Sfx.click(), "caught": Sfx.caught(), "snap": Sfx.snap(),
+		"bonk": Sfx.bonk(), "hurt": Sfx.hurt(), "coins": Sfx.coins(),
+		"step_soft": Sfx.step_soft(), "step_wood": Sfx.step_wood(), "gull": Sfx.gull(),
 	}
 	for key in streams:
 		var p := AudioStreamPlayer.new()
 		p.stream = streams[key]
 		add_child(p)
 		players[key] = p
+	players["step_soft"].volume_db = -9.0
+	players["step_wood"].volume_db = -6.0
+	players["gull"].volume_db = -10.0
+	# The sea, always there in the background.
+	_surf = AudioStreamPlayer.new()
+	_surf.stream = Sfx.surf_loop()
+	_surf.volume_db = -16.0
+	_surf.autoplay = true
+	add_child(_surf)
 
 
 func _play(key: String) -> void:
@@ -1067,11 +1110,19 @@ func _update_info() -> void:
 		menu_ui.set_menu_stats({
 			"Coins": coins,
 			"Catches": catches,
-			"Best catch": "%s %.1fkg" % [best_name, best_weight] if best_name != "" else "-",
+			"Best catch": "%s %.1f kg" % [_short_name(best_name), best_weight] if best_name != "" else "-",
 			"Boss": "Landed!" if landed_boss else ("Hunting" if has_boss_reel else "Need Boss Reel"),
 			"Next island": "Unlocked" if island2_unlocked else "Locked",
 			"Where": "Island 1  -  Bait Bay",
 		})
+		var entries: Array = []
+		for f in fish_table + [BOSS]:
+			var nm := str(f["name"])
+			var e: Array = journal.get(nm, [0, 0.0])
+			entries.append({"name": nm.substr(0, 1).to_upper() + nm.substr(1),
+				"rarity": str(f.get("rarity", "Common")), "count": int(e[0]), "best": float(e[1]),
+				"junk": f.get("junk", false), "price": int(f.get("price", f.get("flat", 0)))})
+		menu_ui.set_journal(entries)
 
 
 # --- Main loop ----------------------------------------------------------------
@@ -1210,12 +1261,15 @@ func _update_explore(delta: float) -> void:
 	_update_look()
 	_update_fish_look()
 	_refresh_held_view()
+	_update_ambience(delta, surface, depth)
 
 	near_fishing_spot = _hdist(player.global_position, FISHING_SPOT) < 3.0
 	near_market = _hdist(player.global_position, SELL_SPOT) < 2.6
 	near_boat = boat != null and _hdist(player.global_position, BOAT_MOOR) < 3.8
 	var was_near := near_shop
 	near_shop = _hdist(player.global_position, SHOP_TALK_SPOT) < 3.4
+	if shop_lamp:
+		shop_lamp.visible = _hdist(player.global_position, SHOP_POS) < 11.0
 	if near_shop and not was_near:
 		_greet_shopkeeper()
 	if _greet_timer > 0.0:
@@ -1700,6 +1754,8 @@ func _build_shop() -> void:
 	lamp.light_energy = 1.3
 	lamp.omni_range = 7.5
 	add_child(lamp)
+	shop_lamp = lamp
+	_shop_box = walls.grow(0.2)
 
 
 ## The fish market: a stall near the jetty where the buyer pays for your catch.
@@ -1707,6 +1763,7 @@ func _build_market() -> void:
 	var g := _flat_pad(MARKET_POS.x, MARKET_POS.z, 3.4)
 	# Front of the stall faces -X, toward the path up from the jetty.
 	var stall := _spawn("market", Vector3(MARKET_POS.x, g, MARKET_POS.z), -PI * 0.5, MARKET_SCALE)
+	_static_props.append(stall)
 	for m in stall.find_children("*", "MeshInstance3D", true):
 		if m.name.begins_with("Counter") or m.name.begins_with("Stand") or m.name.begins_with("Base"):
 			m.create_trimesh_collision()
@@ -1876,6 +1933,7 @@ func _take_damage(amount: float, cause: String, flash := true) -> void:
 		hands.play_hit()
 	if flash:
 		status.hit(amount)
+		_play("hurt")
 	if health <= 0.0:
 		_die(cause)
 
@@ -2106,28 +2164,101 @@ func _build_clouds() -> void:
 		var a := randf() * TAU
 		var r := randf_range(70.0, 150.0)
 		cloud.position = Vector3(cos(a) * r, randf_range(34.0, 52.0), sin(a) * r + 10.0)
+		# All the puffs of one cloud baked into a single mesh: one draw call.
+		var st := SurfaceTool.new()
+		st.begin(Mesh.PRIMITIVE_TRIANGLES)
 		for k in randi_range(4, 7):
-			var puff := MeshInstance3D.new()
 			var sm := SphereMesh.new()
 			sm.radius = randf_range(3.0, 6.0)
 			sm.height = sm.radius * 2.0
 			sm.radial_segments = 10
 			sm.rings = 6
-			sm.material = cm
-			puff.mesh = sm
-			puff.scale = Vector3(1.3, randf_range(0.5, 0.7), 1.0)
-			puff.position = Vector3(randf_range(-9, 9), randf_range(-1.5, 1.5), randf_range(-4, 4))
-			puff.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
-			cloud.add_child(puff)
+			var xf := Transform3D(Basis().scaled(Vector3(1.3, randf_range(0.5, 0.7), 1.0)),
+				Vector3(randf_range(-9, 9), randf_range(-1.5, 1.5), randf_range(-4, 4)))
+			st.append_from(sm, 0, xf)
+		var puff := MeshInstance3D.new()
+		puff.mesh = st.commit()
+		puff.material_override = cm
+		puff.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+		cloud.add_child(puff)
 		add_child(cloud)
 		clouds.append(cloud)
+
+
+## Static batching: bakes every visible mesh under `root` into one mesh per
+## material (the originals are hidden, so collision bodies under them keep
+## working). A 50-piece market stall becomes a handful of draw calls.
+func _merge_static(root: Node3D) -> void:
+	if root == null:
+		return
+	var inv := root.global_transform.affine_inverse()
+	var by_mat := {}
+	var mats := {}
+	var shadows := {}
+	for mi in root.find_children("*", "MeshInstance3D", true, false):
+		var m := mi as MeshInstance3D
+		if m.mesh == null or not m.is_visible_in_tree() or m.skin != null \
+				or m.get_node_or_null(m.skeleton) is Skeleton3D:
+			continue
+		var xf := inv * m.global_transform
+		for si in m.mesh.get_surface_count():
+			var mat := m.get_active_material(si)
+			var key := mat.get_instance_id() if mat else 0
+			if not by_mat.has(key):
+				var st := SurfaceTool.new()
+				st.begin(Mesh.PRIMITIVE_TRIANGLES)
+				by_mat[key] = st
+				mats[key] = mat
+				shadows[key] = false
+			(by_mat[key] as SurfaceTool).append_from(m.mesh, si, xf)
+			if m.cast_shadow != GeometryInstance3D.SHADOW_CASTING_SETTING_OFF:
+				shadows[key] = true
+		m.visible = false
+	for key in by_mat:
+		var out := MeshInstance3D.new()
+		out.mesh = (by_mat[key] as SurfaceTool).commit()
+		out.material_override = mats[key]
+		out.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_ON if shadows[key] \
+			else GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+		root.add_child(out)
+
+
+## One pass over the built world to cut draw calls on phones:
+## - only things big enough to matter cast shadows (not water, terrain or
+##   small props), so the shadow passes stay short;
+## - the shop's interior (shelves, stock, stands, the keeper) only draws when
+##   you're close enough to see inside.
+func _optimize_world() -> void:
+	var t0 := Time.get_ticks_usec()
+	for n in _static_props + [shop_building, shop_counter, boat]:
+		if n and is_instance_valid(n):
+			_merge_static(n)
+	if autotest:
+		print("PERF merge_ms=%.1f" % ((Time.get_ticks_usec() - t0) / 1000.0))
+	for gi in find_children("*", "GeometryInstance3D", true, false):
+		if camera and camera.is_ancestor_of(gi):
+			continue
+		var g := gi as GeometryInstance3D
+		var box := AABB()
+		if g is MeshInstance3D and (g as MeshInstance3D).mesh:
+			box = g.global_transform * (g as MeshInstance3D).mesh.get_aabb()
+		var big := box.size.x > 0.9 or box.size.y > 0.9 or box.size.z > 0.9
+		if g is MeshInstance3D and ((g as MeshInstance3D).mesh is PlaneMesh or box.size.x > 40.0):
+			big = false                       # water, seabed, islands
+		if not big:
+			g.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+		if _shop_box.has_volume() and box.has_volume() and _shop_box.encloses(box) \
+				and not shop_building.is_ancestor_of(g):
+			g.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+			g.visibility_range_end = 26.0
+			g.visibility_range_end_margin = 2.0
 
 
 ## Light weather: mostly clear, now and then a short drizzle that dims the sun
 ## and thickens the haze a touch. Rain is a particle box that follows the camera.
 func _build_weather() -> void:
 	rain = CPUParticles3D.new()
-	rain.amount = 520
+	rain.amount = 400
 	rain.lifetime = 0.9
 	rain.local_coords = false
 	rain.emission_shape = CPUParticles3D.EMISSION_SHAPE_BOX
@@ -2318,9 +2449,16 @@ func _apply_graphics() -> void:
 		var n := grass_mm.multimesh.instance_count
 		grass_mm.multimesh.visible_instance_count = int(n * (0.35 if q == "Low" else (0.7 if q == "Medium" else 1.0)))
 	weather_enabled = bool(menu_ui.settings.get("weather", true))
+	_hands_enabled = bool(menu_ui.settings.get("show_hands", true))
+	if status:
+		status.show_fps = bool(menu_ui.settings.get("show_fps", false))
 	var vp := get_viewport()
 	if vp:
 		vp.msaa_3d = Viewport.MSAA_DISABLED if q == "Low" else (Viewport.MSAA_2X if q == "Medium" else Viewport.MSAA_4X)
+	if camera:
+		camera.far = 170.0 if q == "Low" else 260.0
+	if shop_lamp and q == "Low":
+		shop_lamp.omni_range = 5.0
 
 
 var _idle_delay := 0.0
@@ -2377,6 +2515,8 @@ func _update_flight(delta: float) -> void:
 	bobber.position = flat + Vector3.UP * arc
 	if flight_t >= 1.0:
 		_play("splash")
+		if fx:
+			fx.splash(Vector3(bobber.position.x, wave_height(bobber.position.x, bobber.position.z), bobber.position.z), 1.0)
 		# Bait upgrade shortens the wait.
 		var bait_factor: float = 1.0 - float(upgrades["bait"]) * 0.13
 		bite_timer = randf_range(2.5, 6.5) * bait_factor
@@ -2398,6 +2538,8 @@ func _start_bite() -> void:
 	hud.mode = Hud.M_BITE
 	hud.message = "!!  TAP  !!"
 	_play("bite")
+	if fx:
+		fx.splash(bobber.position, 0.7)
 	# Tug the bobber under briefly.
 	bobber.position.y -= 0.25
 
@@ -2506,6 +2648,11 @@ func _land_fish() -> void:
 
 	pending_weight = lerpf(pending_fish["min"], pending_fish["max"], randf())
 	catches += 1
+	# Journal: count it, and a little bonus the first time you land a species.
+	var jn := str(pending_fish["name"])
+	_new_species = not journal.has(jn)
+	var je: Array = journal.get(jn, [0, 0.0])
+	journal[jn] = [int(je[0]) + 1, maxf(float(je[1]), pending_weight)]
 	if pending_weight > best_weight:
 		best_weight = pending_weight
 		best_name = pending_fish["name"]
@@ -2517,6 +2664,9 @@ func _land_fish() -> void:
 		pending_value = int(pending_fish["flat"]) + randi() % maxi(1, int(pending_fish["flat"]) / 2 + 1)
 	else:
 		pending_value = maxi(2, int(round(pending_weight * float(pending_fish.get("price", 14)))))
+	if _new_species:
+		pending_value += NEW_SPECIES_BONUS
+		_flash("New species for your journal!  +%d coins" % NEW_SPECIES_BONUS)
 
 	# Heavier catches take more whacks.
 	whacks_left = clampi(1 + int(round(pending_weight * 0.9)) - weapon_power(), 1, 5)
@@ -2536,7 +2686,7 @@ func _whack_message() -> void:
 	var rar := str(pending_fish.get("rarity", "Common"))
 	hud.card_title = str(pending_fish["name"]).capitalize() if pending_fish.get("junk", false) else str(pending_fish["name"])
 	hud.card_color = UITheme.RARITY.get(rar, Color.WHITE)
-	hud.card_sub = "%s   ·   %.2f kg   ·   %d coins" % [rar, pending_weight, pending_value]
+	hud.card_sub = "%s%s   ·   %.2f kg   ·   %d coins" % ["NEW!  " if _new_species else "", rar, pending_weight, pending_value]
 	if _windup > 0.0:
 		hud.card_hint = "It's going to jump - WHACK IT!"
 	else:
@@ -2549,7 +2699,7 @@ func _do_whack() -> void:
 	whacks_left -= 1
 	whack_anim = 1.0
 	catch_hop = 1.0
-	_play("splash")
+	_play("bonk")
 	if _windup > 0.0:
 		# Caught it mid wind-up: knocked flat, no jump this time.
 		_windup = 0.0
@@ -2724,6 +2874,83 @@ func _held_half() -> float:
 	return 0.2
 
 
+## Footsteps (wood on the jetty and boat, soft on sand and grass, sloshing in
+## the shallows), the odd gull squawk, and the sea louder near the shore.
+func _update_ambience(delta: float, surface: float, depth: float) -> void:
+	var v := Vector2(player.velocity.x, player.velocity.z).length()
+	if player.is_on_floor() and v > 0.6:
+		_step_dist += v * delta
+		var stride := 1.05 if v > 4.0 else 0.78
+		if _step_dist >= stride:
+			_step_dist = 0.0
+			var pp := player.global_position
+			if depth > 0.15:
+				players["splash"].pitch_scale = randf_range(1.3, 1.6)
+				_play("splash")
+			elif pp.y > DECK_Y - 0.25 and (absf(pp.x) < 2.2 and pp.z < 20.0 or near_boat):
+				players["step_wood"].pitch_scale = randf_range(0.9, 1.12)
+				_play("step_wood")
+			else:
+				players["step_soft"].pitch_scale = randf_range(0.85, 1.15)
+				_play("step_soft")
+	else:
+		_step_dist = 0.6
+	players["splash"].pitch_scale = 1.0 if depth <= 0.15 else players["splash"].pitch_scale
+	_gull_t -= delta
+	if _gull_t <= 0.0 and fx:
+		_gull_t = randf_range(9.0, 22.0)
+		if fx.nearest_gull(player.global_position).distance_to(player.global_position) < 30.0:
+			players["gull"].pitch_scale = randf_range(0.9, 1.15)
+			_play("gull")
+	if _surf:
+		var shore := clampf((_hdist(player.global_position, HOME) - 10.0) / 14.0, 0.0, 1.0)
+		_surf.volume_db = lerpf(-20.0, -11.0, shore)
+
+
+## "the Baby Kraken" -> "Baby Kraken", "an Old Boot" -> "Old Boot".
+func _short_name(n: String) -> String:
+	for a in ["the ", "an ", "a "]:
+		if n.begins_with(a):
+			return n.substr(a.length())
+	return n
+
+
+## Render/physics counters for the perf checks (draw calls etc. carry over to
+## phones even though headless frame times don't).
+func _print_perf() -> void:
+	print("PERF draw_calls=%d objects=%d primitives=%d nodes=%d physics_active=%d mem_static=%.1fMB vmem=%.1fMB" % [
+		Performance.get_monitor(Performance.RENDER_TOTAL_DRAW_CALLS_IN_FRAME),
+		Performance.get_monitor(Performance.RENDER_TOTAL_OBJECTS_IN_FRAME),
+		Performance.get_monitor(Performance.RENDER_TOTAL_PRIMITIVES_IN_FRAME),
+		Performance.get_monitor(Performance.OBJECT_NODE_COUNT),
+		Performance.get_monitor(Performance.PHYSICS_3D_ACTIVE_OBJECTS),
+		Performance.get_monitor(Performance.MEMORY_STATIC) / 1048576.0,
+		Performance.get_monitor(Performance.RENDER_VIDEO_MEM_USED) / 1048576.0])
+	if OS.get_environment("PERF_DETAIL") == "":
+		return
+	var groups := {}
+	for mi in find_children("*", "MeshInstance3D", true, false):
+		if not mi.is_visible_in_tree() or mi.mesh == null:
+			continue
+		var top: Node = mi
+		while top.get_parent() != self:
+			top = top.get_parent()
+		var key: String = Array(str(top.name).split("@", false))[0].rstrip("0123456789")
+		if key == "Node3D" and top.get_child_count() > 0:
+			key = "Node3D/" + Array(str(top.get_child(0).name).split("@", false))[0].rstrip("0123456789")
+		var tris := 0
+		var g: Array = groups.get(key, [0, 0, 0, 0])
+		g[0] += 1
+		g[1] += mi.mesh.get_surface_count()
+		g[2] += tris
+		g[3] += 1 if mi.cast_shadow != GeometryInstance3D.SHADOW_CASTING_SETTING_OFF else 0
+		groups[key] = g
+	var keys := groups.keys()
+	keys.sort_custom(func(a, b): return groups[a][1] > groups[b][1])
+	for k in keys.slice(0, 25):
+		print("  %-28s meshes=%4d surfaces=%4d tris=%7d shadow=%4d" % [k, groups[k][0], groups[k][1], groups[k][2], groups[k][3]])
+
+
 ## Drives the first-person hands from whatever you're doing right now.
 func _update_hands(delta: float) -> void:
 	if hands == null:
@@ -2753,7 +2980,7 @@ func _update_hands(delta: float) -> void:
 					m = "whack"
 				elif rod.visible:
 					m = "rod"
-	hands.mode = m
+	hands.mode = m if _hands_enabled else "hidden"
 	hands.reeling = play_mode == "fishing" and state == FIGHT and (hud.action_down() or sim_action)
 	hands.charge = power if (play_mode == "fishing" and state == CHARGING) else 0.0
 	hands.tension = hud.tension if (play_mode == "fishing" and state == FIGHT) else 0.0
@@ -2774,6 +3001,9 @@ func _update_loose_fish() -> void:
 			_flash("%s slipped back into the water!" % str(d.get("name", "It")).capitalize())
 			if b == looked_fish:
 				looked_fish = null
+			if fx:
+				fx.splash(Vector3(p.x, wave_height(p.x, p.z), p.z), 2.2)
+			_play("splash")
 			loose_fish.erase(b)
 			b.queue_free()
 			continue
@@ -2795,7 +3025,7 @@ func _sell_body(b: RigidBody3D) -> void:
 		looked_fish = null
 	loose_fish.erase(b)
 	b.queue_free()
-	_play("caught")
+	_play("coins")
 	_flash("Sold %s for %d coins" % [str(d.get("name", "it")), value])
 	var ap = fish_buyer.get_meta("anim") if fish_buyer and fish_buyer.has_meta("anim") else null
 	if ap and ap.has_animation("Cheer"):
@@ -3011,6 +3241,7 @@ func _autotest(_delta: float) -> void:
 			print("AUTOTEST(explore) pos=%s on_floor=%s prompt='%s' anim=%s max_speed=%.2f" % [
 				player.position.snapped(Vector3.ONE * 0.01), player.is_on_floor(),
 				touch.prompt, player._cur, _test_max_speed])
+			_print_perf()
 			get_tree().quit()
 		return
 
@@ -3122,6 +3353,7 @@ func _autotest(_delta: float) -> void:
 			if autotest_shot != "":
 				get_viewport().get_texture().get_image().save_png(autotest_shot)
 			print("AUTOTEST(%s) frame=%d" % [start_screen, frame])
+			_print_perf()
 			get_tree().quit()
 		return
 
