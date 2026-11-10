@@ -14,6 +14,7 @@ extends CanvasLayer
 
 signal interact_pressed
 signal secondary_pressed
+signal slot_pressed(index: int)
 
 const BASE_JOY_R := 100.0
 const BASE_KNOB_R := 40.0
@@ -34,6 +35,23 @@ var carry_info := ""           # "Carrying 3/5 - worth 120"
 var crosshair := true
 var sens_scale := 1.0
 
+# Hotbar: 4 slots along the bottom. Each entry is {} (empty) or
+# {"icon": String, "count": int, "tint": Color}. `selected` is -1 for bare hands.
+var slots: Array = [{}, {}, {}, {}]
+var selected := -1
+var coins := 0
+
+# Action button extras
+var act_progress := -1.0       # 0..1 ring around the button (cast charge, reeling)
+var act_dim := false           # greyed out (e.g. WAIT, TOO DEAR)
+var act_pulse := false         # throbbing (HOOK!)
+
+# Catch card (shown for a few seconds after landing something)
+var card_title := ""
+var card_sub := ""
+var card_color := Color.WHITE
+var _card_t := 0.0
+
 # HUD customisation
 var hud_scale := 1.0
 var fixed_joystick := false
@@ -49,6 +67,9 @@ var _look_last := Vector2.ZERO
 var _act_center := Vector2.ZERO
 var _sec_center := Vector2.ZERO
 var _btn_held := false
+var _act_index := -1           # finger holding the action button
+var _slot_rects: Array[Rect2] = []
+var _bump := [0.0, 0.0, 0.0, 0.0]  # little pop when a slot is picked
 var _run_center := Vector2.ZERO
 var _toast := ""
 var _toast_t := 0.0
@@ -89,7 +110,14 @@ func sec_r() -> float:
 static func icon_for(label: String) -> String:
 	var l := label.split(" ")[0]
 	match l:
-		"FISH": return "cast"
+		"FISH", "CAST": return "cast"
+		"HOOK", "HOOK!": return "hook"
+		"REEL": return "reel"
+		"PUNCH": return "fist"
+		"HIT": return "whack"
+		"PICK": return "clam"
+		"CANCEL": return "back"
+		"WAIT": return "bubble"
 		"BUY": return "buy"
 		"EQUIP": return "equip"
 		"UNEQUIP": return "back"
@@ -98,7 +126,7 @@ static func icon_for(label: String) -> String:
 		"THROW": return "run"
 		"GRAB": return "hand"
 		"SAIL": return "boat"
-		"LOCKED", "TOO": return "lock"
+		"LOCKED", "TOO", "FULL": return "lock"
 		_: return "hand"
 
 
@@ -114,6 +142,34 @@ func _recalc() -> void:
 	_act_center = Vector2(s.x - m - act_r() - 10.0, s.y - m - act_r() - 10.0)
 	_sec_center = _act_center + Vector2(-act_r() * 0.55, -(act_r() + sec_r() + 22.0))
 	_run_center = _act_center + Vector2(-(act_r() + run_r() + 36.0), act_r() * 0.35)
+	# Hotbar: centred along the bottom edge.
+	var sz := slot_size()
+	var gap := 10.0 * hud_scale
+	var total := sz * 4 + gap * 3
+	_slot_rects.clear()
+	for i in 4:
+		_slot_rects.append(Rect2(Vector2(s.x * 0.5 - total * 0.5 + i * (sz + gap), s.y - 26.0 - sz), Vector2(sz, sz)))
+
+
+func slot_size() -> float:
+	return 72.0 * hud_scale
+
+
+## True while a finger is holding the action button down (charging a cast).
+func action_held() -> bool:
+	return _act_index != -1
+
+
+func show_card(title: String, sub: String, color: Color) -> void:
+	card_title = title
+	card_sub = sub
+	card_color = color
+	_card_t = 3.6
+
+
+func bump_slot(i: int) -> void:
+	if i >= 0 and i < 4:
+		_bump[i] = 1.0
 
 
 func flash(text: String) -> void:
@@ -130,6 +186,10 @@ func consume_look() -> Vector2:
 func _process(d: float) -> void:
 	if _toast_t > 0.0:
 		_toast_t -= d
+	if _card_t > 0.0:
+		_card_t -= d
+	for i in 4:
+		_bump[i] = maxf(float(_bump[i]) - d * 5.0, 0.0)
 	if visible:
 		_view.queue_redraw()
 
@@ -150,8 +210,13 @@ func _input(event: InputEvent) -> void:
 		if event.pressed:
 			if prompt != "" and event.position.distance_to(_act_center) <= act_r() * 1.08:
 				_btn_held = true
+				_act_index = event.index
 				interact_pressed.emit()
 				return
+			for i in _slot_rects.size():
+				if _slot_rects[i].grow(4.0).has_point(event.position):
+					slot_pressed.emit(i)
+					return
 			if secondary != "" and event.position.distance_to(_sec_center) <= sec_r() * 1.15:
 				secondary_pressed.emit()
 				return
@@ -173,7 +238,9 @@ func _input(event: InputEvent) -> void:
 				_look_index = event.index
 				_look_last = event.position
 		else:
-			_btn_held = false
+			if event.index == _act_index:
+				_act_index = -1
+				_btn_held = false
 			if event.index == _joy_index:
 				_release_stick()
 			elif event.index == _look_index:
@@ -250,6 +317,35 @@ class Painter extends Control:
 			_pill(crect, UITheme.PANEL, 23, Color(1, 0.8, 0.3, 0.35))
 			_centred(font, ui.carry_info, crect.position + crect.size * 0.5, 22, UITheme.GOLD)
 
+		# ---- Coins (top right) ----
+		var ct := "%d" % ui.coins
+		var cw := font.get_string_size(ct, HORIZONTAL_ALIGNMENT_LEFT, -1, 24).x
+		var crect2 := Rect2(Vector2(vp.x - cw - 86, 26), Vector2(cw + 62, 44))
+		_pill(crect2, UITheme.PANEL, 22)
+		UIDraw.icon(self, "coin", crect2.position + Vector2(24, 22), 15, UITheme.GOLD)
+		draw_string(font, crect2.position + Vector2(44, 22 + 24 * 0.35), ct, HORIZONTAL_ALIGNMENT_LEFT, -1, 24, UITheme.GOLD)
+
+		# ---- Catch card ----
+		if ui._card_t > 0.0 and ui.card_title != "":
+			var fade2: float = clampf(ui._card_t / 0.5, 0.0, 1.0) * clampf((3.6 - ui._card_t) / 0.2, 0.0, 1.0)
+			var tw2 := font.get_string_size(ui.card_title, HORIZONTAL_ALIGNMENT_LEFT, -1, 30).x
+			var sw2 := font.get_string_size(ui.card_sub, HORIZONTAL_ALIGNMENT_LEFT, -1, 19).x
+			var w2: float = maxf(tw2, sw2) + 64.0
+			var y0 := 80.0 if ui.carry_info != "" else 26.0
+			var cr := Rect2(Vector2(mid.x - w2 * 0.5, y0), Vector2(w2, 80))
+			var bgc := UITheme.PANEL
+			bgc.a *= fade2
+			var edge: Color = ui.card_color
+			edge.a = 0.6 * fade2
+			UIDraw.pill(self, cr, bgc, 18, edge, 2)
+			var stripe: Color = ui.card_color
+			stripe.a = fade2
+			draw_rect(Rect2(cr.position + Vector2(14, 16), Vector2(5, 48)), stripe)
+			var tcol := UITheme.TEXT
+			tcol.a = fade2
+			_centred(font, ui.card_title, Vector2(mid.x + 6, cr.position.y + 30), 30, tcol)
+			_centred(font, ui.card_sub, Vector2(mid.x + 6, cr.position.y + 60), 19, stripe)
+
 		# ---- Toast ----
 		if ui._toast_t > 0.0 and ui._toast != "":
 			var fade: float = clampf(ui._toast_t / 0.5, 0.0, 1.0)
@@ -280,12 +376,45 @@ class Painter extends Control:
 		draw_circle(knob, kr, Color(1, 1, 1, (0.85 if active else 0.45) * op))
 		draw_arc(knob, kr * 0.62, 0, TAU, 32, Color(0.03, 0.07, 0.13, 0.25 * op), 2.0, true)
 
+		# ---- Hotbar: four see-through slots with fine outlines ----
+		for i in ui._slot_rects.size():
+			var r: Rect2 = ui._slot_rects[i]
+			var sel: bool = ui.selected == i
+			var lift: float = 6.0 if sel else 0.0
+			lift += sin(float(ui._bump[i]) * PI) * 6.0
+			r.position.y -= lift
+			var fill := Color(0.02, 0.05, 0.09, (0.42 if sel else 0.26) * op)
+			var line := UITheme.ACCENT if sel else Color(1, 1, 1, 0.50)
+			line.a *= op
+			UIDraw.pill(self, r, fill, 14, line, 3 if sel else 2)
+			# a faint inner line for the glassy look
+			draw_rect(Rect2(r.position + Vector2(7, 7), r.size - Vector2(14, 14)), Color(1, 1, 1, 0.07 * op), false, 1.0)
+			draw_string(font, r.position + Vector2(9, 20), str(i + 1), HORIZONTAL_ALIGNMENT_LEFT, -1, 14, Color(1, 1, 1, 0.45 * op))
+			var it: Dictionary = ui.slots[i] if i < ui.slots.size() else {}
+			if not it.is_empty():
+				var ic: Color = it.get("tint", Color(1, 1, 1, 0.95))
+				ic.a *= op
+				UIDraw.icon(self, str(it.get("icon", "")), r.position + r.size * 0.5 + Vector2(0, 2), r.size.x * 0.32, ic)
+				var n: int = int(it.get("count", 1))
+				if n > 1:
+					var ns := "x%d" % n
+					var nw := font.get_string_size(ns, HORIZONTAL_ALIGNMENT_LEFT, -1, 16).x
+					draw_string(font, r.end - Vector2(nw + 8, 8), ns, HORIZONTAL_ALIGNMENT_LEFT, -1, 16, Color(1, 1, 1, 0.9 * op))
+
 		# ---- right cluster ----
 		UIDraw.round_button(self, font, ui._run_center, ui.run_r(), "RUN", "run", ui.sprint, false, op)
 		if ui.secondary != "":
 			UIDraw.round_button(self, font, ui._sec_center, ui.sec_r(), ui.secondary,
 				ui.icon_for(ui.secondary), false, false, op)
 		if ui.prompt != "":
-			var dim: bool = ui.prompt == "LOCKED" or ui.prompt == "TOO DEAR"
-			UIDraw.round_button(self, font, ui._act_center, ui.act_r(), ui.prompt,
+			var dim: bool = ui.act_dim or ui.prompt == "LOCKED" or ui.prompt == "TOO DEAR"
+			var ar: float = ui.act_r()
+			if ui.act_pulse:
+				ar *= 1.0 + sin(Time.get_ticks_msec() / 1000.0 * 14.0) * 0.06
+			UIDraw.round_button(self, font, ui._act_center, ar, ui.prompt,
 				ui.icon_for(ui.prompt), not dim, ui._btn_held, op)
+			if ui.act_progress >= 0.0:
+				draw_arc(ui._act_center, ar + 9.0, 0, TAU, 64, Color(0, 0, 0, 0.35 * op), 7.0, true)
+				if ui.act_progress > 0.001:
+					draw_arc(ui._act_center, ar + 9.0, -PI / 2, -PI / 2 + TAU * clampf(ui.act_progress, 0.0, 1.0),
+						64, UITheme.GOLD, 7.0, true)

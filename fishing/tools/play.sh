@@ -17,6 +17,6 @@ mkdir -p "$(dirname "$SHOT")"
 
 LIBGL_ALWAYS_SOFTWARE=1 xvfb-run -a -s "-screen 0 1280x720x24" \
   "$GODOT" --path "$GAME_DIR" --rendering-driver opengl3 --resolution 1280x720 --fixed-fps 60 \
-  -- --autotest --frames="$FRAMES" --shot="$SHOT"
+  -- --autotest --fresh --screen=play --frames="$FRAMES" --shot="$SHOT"
 
 echo "Screenshot: $SHOT"

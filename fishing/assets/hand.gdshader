@@ -21,7 +21,7 @@ void vertex() {
 	if (past > 0.0) {
 		// Bend the finger into a circular arc that keeps its length: total bend
 		// ~200 degrees at a full fist, so the tips tuck in under the palm.
-		float k = max(curl * (1.0 - thumb * 0.35) * 3.5 / finger_len, 0.0001);
+		float k = max(curl * (1.0 - thumb) * 3.5 / finger_len, 0.0001);
 		float phi = past * k;
 		float c = cos(phi);
 		float sn = sin(phi);
@@ -34,8 +34,13 @@ void vertex() {
 		NORMAL.y = n.x;
 		NORMAL.z = n.y;
 	}
-	// thumb folds in across the palm a little as the hand closes
-	VERTEX.x -= thumb * curl * 0.03 * thumb_side * clamp(-VERTEX.z / 0.12, 0.0, 1.0);
+	// The thumb folds across the front of the curled fingers as the hand
+	// closes: in toward the palm's middle, down, and back a little.
+	float d = max(-VERTEX.z - 0.035, 0.0);
+	float tf = thumb * curl;
+	VERTEX.x -= tf * thumb_side * d * 0.75;
+	VERTEX.y -= tf * d * 0.45;
+	VERTEX.z += tf * d * 0.35;
 }
 
 void fragment() {

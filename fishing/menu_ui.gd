@@ -381,12 +381,12 @@ func _build() -> void:
 	hv.custom_minimum_size = Vector2(780, 0)
 	hv.add_theme_constant_override("separation", 18)
 	for linetext in [
-		"At the end of the jetty press FISH. HOLD to charge, let go to cast.",
-		"On HOOK! tap fast, then HOLD to reel. Keep the tension out of the red.",
-		"Whack your catch on the deck - and whack it before it leaps at you!",
-		"GRAB fish and carry them to the FISH MARKET to sell.",
-		"Buy weapons at BAIT & BLADE. A better Reel brings rarer fish.",
-		"Deep water drowns you. Get the Boss Reel, then SAIL to the boss.",
+		"Start with bare hands: PICK UP clams on the beach, SELL them at the FISH MARKET.",
+		"Buy a FISHING ROD at BAIT & BLADE. Tap a slot to hold what's in it.",
+		"With the rod: HOLD CAST, let go. On HOOK! tap it, then tap REEL until it's out.",
+		"DROP your catch, then PUNCH it out - quick, before it jumps at you!",
+		"GRAB the knocked-out fish and sell it. A better Reel brings rarer fish.",
+		"Deep water drowns you. Get the Boss Reel, SAIL out and catch the Kraken.",
 	]:
 		var l := Label.new()
 		l.text = linetext

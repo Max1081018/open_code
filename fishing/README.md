@@ -1,8 +1,9 @@
 # Lazy Lake 🎣
 
 A calm, funny, low-poly **first-person fishing game** for mobile, made in
-**Godot 4.3**. Cast off a little island, wait for a bite, tap to hook, then reel
-your goofy catch in while keeping the line from snapping.
+**Godot 4.3**. Start with bare hands on a little island, sell clams for your
+first rod, then cast anywhere, tap to reel in your goofy catch, drop it on the
+boards and punch it out before it jumps at you.
 
 Everything — the island, animated water, the rod, the fish, and all the sound
 effects — is generated in code from simple shapes and sine-wave shaders, so
@@ -16,15 +17,19 @@ You play in first person on a little island with a jetty, a weapon shop, a fish
 market and a moored motorboat.
 
 1. **Walk** with the left stick, **look** by dragging the right half, tap **RUN** to sprint.
-2. At the end of the jetty press **FISH**. Hold to charge, release to cast.
-   On **TAP!** tap fast to hook, then hold to reel while keeping the tension out of the red.
-3. The catch lands on the deck: **tap to whack it**. Your equipped weapon takes fewer whacks.
-4. It goes into your hands. Carry up to 5, then walk to the **FISH MARKET** and **SELL**.
-5. Spend coins at **BAIT & BLADE**: look at an item (it outlines white) and press **BUY**.
-   Beginner gear: Gutting Knife, Fisherman's Dirk, Scaling Grips, Bait Hatchet.
-6. Buy the **Boss Reel**, then walk to the boat and **SAIL** out to the boss waters.
-7. Land **the Baby Kraken**, sail home and sell it. The buyer hands you a map:
-   **Island 2 unlocks** (coming soon).
+2. You start with **bare hands**. **PICK UP** clams on the beach (they stack in one
+   of your **4 slots**) and **SELL** them at the **FISH MARKET**.
+3. Buy a **Fishing Rod** at **BAIT & BLADE** (look at it: it outlines white, press **BUY**).
+   Tap a slot along the bottom to hold what's in it; tap it again for bare hands.
+4. With the rod, anywhere there's water: **hold CAST** to charge, let go. Wait —
+   on **HOOK!** tap it, then tap **REEL** a few times (rarer fish take more taps;
+   stop and it swims off).
+5. The catch hangs off your rod while you walk. **DROP** it (or put the rod away),
+   then **PUNCH** it — or **HIT** it with a weapon — until it's knocked out. Be quick:
+   live fish flop about and leap at you.
+6. **GRAB** it and carry it to the market to **SELL** (or drop it on the counter).
+7. Buy the **Boss Reel**, **SAIL** out, catch **the Baby Kraken** from the deck, beat
+   it, sail home and sell it. The buyer hands you a map: **Island 2 unlocks**.
 
 Real catches include Minnow, Perch, Sunfish, Trout, Bass, Carp, Catfish, Pike,
 a rare Golden Koi, and junk like an old boot, a message in a bottle and a sunken chest.
@@ -51,10 +56,11 @@ for it; sell one and a new request goes up.
 **Journal:** every species you've landed, how many and your best weight. The
 first catch of each species pays a +15 coin bonus.
 
-You see your own hands: they swing as you walk, reach for things you look at,
-grip the rod and turn the reel crank while you reel, hold your weapon for the
-whack, carry fish by the sides, and flinch up in front of your face when a
-fish winds up to jump.
+You see your own hands: loose fists that swing as you walk, alternating jabs,
+a reach and scoop when you pick something up, a palm cradling a clam, a grip on
+the rod with the other hand cranking the reel on every tap, a weapon held low
+and chopped down, fish carried by their sides, and a flinch in front of your
+face when a fish winds up to jump.
 
 Settings let you change look sensitivity, HUD size and opacity, fixed or
 floating joystick, graphics preset (Low/Medium/High), shadows, weather, your
@@ -108,9 +114,9 @@ GODOT=/path/to/Godot_v4.3-stable_linux.x86_64 fishing/tools/play.sh 1600 shot.pn
 
 | File | What it is |
 | --- | --- |
-| `game.gd` | The whole game: world, rod, cast/bite/reel loop, fish, state machine |
-| `hud.gd` | Fishing HUD: action button, fight meters, catch card, messages |
-| `touch_controls.gd` | Walking HUD: joystick, RUN, action/secondary buttons, look info |
+| `game.gd` | The whole game: world, inventory, free-roam rod fishing, live fish and punching, clams, shops, boat and boss |
+| `touch_controls.gd` | The on-screen controls: joystick, RUN, action/secondary buttons (with cast and reel rings), the 4-slot hotbar, look-at info, catch card, coins |
+| `hud.gd` | Old fixed-camera fishing HUD (no longer shown) |
 | `status_ui.gd` | Health and breath bars, hit flash, underwater tint, death screen |
 | `ui_draw.gd` / `ui_theme.gd` | Shared HUD drawing kit (round buttons, pills, bars, vector icons) and colours |
 | `fp_hands.gd` / `assets/hand.gdshader` | First-person hands: pose blending, gestures, finger curl |

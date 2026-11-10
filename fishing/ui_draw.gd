@@ -150,6 +150,45 @@ static func icon(ci: CanvasItem, kind: String, c: Vector2, s: float, col: Color)
 		"bubble":
 			ci.draw_arc(c, s * 0.55, 0, TAU, 20, col, w, true)
 			ci.draw_arc(c + Vector2(-s * 0.18, -s * 0.18), s * 0.18, PI, PI * 1.6, 8, col, w * 0.8, true)
+		"fist":   # knuckles from the front
+			ci.draw_rect(Rect2(c + Vector2(-s * 0.55, -s * 0.30), Vector2(s * 1.1, s * 0.75)), col)
+			for i in 4:
+				ci.draw_circle(c + Vector2(-s * 0.41 + i * s * 0.275, -s * 0.30), s * 0.15, col)
+			ci.draw_rect(Rect2(c + Vector2(-s * 0.62, s * 0.05), Vector2(s * 0.42, s * 0.20)), col)
+		"rod":    # rod with a reel and a hanging hook
+			ci.draw_line(c + Vector2(-s * 0.70, s * 0.70), c + Vector2(s * 0.62, -s * 0.70), col, w, true)
+			ci.draw_arc(c + Vector2(-s * 0.30, s * 0.42), s * 0.20, 0, TAU, 14, col, w * 0.8, true)
+			ci.draw_line(c + Vector2(s * 0.62, -s * 0.70), c + Vector2(s * 0.62, -s * 0.05), col, maxf(1.0, w * 0.4), true)
+			ci.draw_arc(c + Vector2(s * 0.52, -s * 0.05), s * 0.10, 0, PI, 8, col, maxf(1.0, w * 0.5), true)
+		"dagger":
+			ci.draw_colored_polygon(PackedVector2Array([
+				c + Vector2(-s * 0.08, s * 0.10), c + Vector2(s * 0.08, s * 0.10), c + Vector2(0, -s * 0.78)]), col)
+			ci.draw_line(c + Vector2(-s * 0.32, s * 0.16), c + Vector2(s * 0.32, s * 0.16), col, w, true)
+			ci.draw_line(c + Vector2(0, s * 0.16), c + Vector2(0, s * 0.70), col, w * 1.3, true)
+		"axe":
+			ci.draw_line(c + Vector2(-s * 0.45, s * 0.72), c + Vector2(s * 0.30, -s * 0.62), col, w * 1.1, true)
+			ci.draw_colored_polygon(PackedVector2Array([
+				c + Vector2(s * 0.12, -s * 0.70), c + Vector2(s * 0.70, -s * 0.52),
+				c + Vector2(s * 0.62, -s * 0.05), c + Vector2(s * 0.26, -s * 0.22)]), col)
+		"grips":  # knuckle duster rings
+			for i in 3:
+				ci.draw_arc(c + Vector2(-s * 0.42 + i * s * 0.42, -s * 0.05), s * 0.20, 0, TAU, 14, col, w * 0.8, true)
+			ci.draw_line(c + Vector2(-s * 0.62, s * 0.28), c + Vector2(s * 0.62, s * 0.28), col, w * 1.2, true)
+		"clam":   # scallop fan with ridges
+			var pts := PackedVector2Array([c + Vector2(0, s * 0.55)])
+			for i in 13:
+				var a := PI + PI * float(i) / 12.0
+				pts.append(c + Vector2(cos(a) * s * 0.66, sin(a) * s * 0.62 + s * 0.12))
+			ci.draw_colored_polygon(pts, col)
+			var ink := Color(0, 0, 0, 0.35 * col.a)
+			for i in 4:
+				var a := PI + PI * (float(i) + 1.0) / 5.0
+				ci.draw_line(c + Vector2(0, s * 0.50), c + Vector2(cos(a) * s * 0.58, sin(a) * s * 0.55 + s * 0.12), ink, maxf(1.0, w * 0.45), true)
+			ci.draw_rect(Rect2(c + Vector2(-s * 0.16, s * 0.48), Vector2(s * 0.32, s * 0.16)), col)
+		"hook":
+			ci.draw_line(c + Vector2(s * 0.18, -s * 0.72), c + Vector2(s * 0.18, s * 0.20), col, w, true)
+			ci.draw_arc(c + Vector2(-s * 0.08, s * 0.20), s * 0.26, 0, PI, 12, col, w, true)
+			ci.draw_line(c + Vector2(-s * 0.34, s * 0.20), c + Vector2(-s * 0.34, -s * 0.05), col, w, true)
 		_:
 			ci.draw_circle(c, s * 0.3, col)
 

@@ -14,6 +14,8 @@ var _rings: Array[MeshInstance3D] = []
 var _ring_t: Array[float] = []
 var _ring_size: Array[float] = []
 var _next := 0
+var _hits: Array[CPUParticles3D] = []
+var _hit_next := 0
 
 var _gull_mm: MultiMesh
 var _gulls: Array = []        # [centre, radius, height, speed, angle, bob phase]
@@ -29,6 +31,7 @@ var wave_fn: Callable                       # (x, z) -> surface height
 
 
 func _ready() -> void:
+	_build_hits()
 	_build_splashes()
 	_build_gulls()
 	_build_shadows()
@@ -124,6 +127,50 @@ func _update_rings(delta: float) -> void:
 		r.scale = Vector3(sc, 0.4, sc)
 		var m := r.material_override as StandardMaterial3D
 		m.albedo_color.a = 0.6 * (1.0 - k)
+
+
+# --- Hit bursts ---------------------------------------------------------------------
+
+func _build_hits() -> void:
+	var star := PrismMesh.new()
+	star.size = Vector3(0.07, 0.07, 0.02)
+	var sm := StandardMaterial3D.new()
+	sm.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	sm.vertex_color_use_as_albedo = true
+	star.material = sm
+	for i in 3:
+		var p := CPUParticles3D.new()
+		p.emitting = false
+		p.one_shot = true
+		p.amount = 14
+		p.lifetime = 0.5
+		p.explosiveness = 1.0
+		p.mesh = star
+		p.direction = Vector3.UP
+		p.spread = 180.0
+		p.initial_velocity_min = 1.6
+		p.initial_velocity_max = 3.2
+		p.gravity = Vector3(0, -4.0, 0)
+		p.angular_velocity_min = -400
+		p.angular_velocity_max = 400
+		p.scale_amount_min = 0.7
+		p.scale_amount_max = 1.4
+		p.local_coords = false
+		p.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+		add_child(p)
+		_hits.append(p)
+
+
+## A burst of little stars where a blow lands; gold and bigger for a knockout.
+func hit_burst(pos: Vector3, ko := false) -> void:
+	var p := _hits[_hit_next]
+	_hit_next = (_hit_next + 1) % _hits.size()
+	p.global_position = pos
+	p.color = Color(1.0, 0.85, 0.25) if ko else Color(1, 1, 1)
+	p.amount = 22 if ko else 12
+	p.initial_velocity_max = 4.2 if ko else 3.0
+	p.restart()
+	p.emitting = true
 
 
 # --- Seagulls -------------------------------------------------------------------------
