@@ -27,7 +27,8 @@ market and a moored motorboat.
 5. The catch hangs off your rod while you walk. **DROP** it (or put the rod away),
    then **PUNCH** it — or **HIT** it with a weapon — until it's knocked out. Be quick:
    live fish flop about and leap at you.
-6. **GRAB** it and carry it to the market to **SELL** (or drop it on the counter).
+6. **GRAB** it: it goes into a slot, so you can switch to the rod and back. Hold it
+   at the market and **SELL** (or drop it on the counter).
 7. Buy the **Boss Reel**, **SAIL** out, catch **the Baby Kraken** from the deck, beat
    it, sail home and sell it. The buyer hands you a map: **Island 2 unlocks**.
 
@@ -56,11 +57,13 @@ for it; sell one and a new request goes up.
 **Journal:** every species you've landed, how many and your best weight. The
 first catch of each species pays a +15 coin bonus.
 
-You see your own hands: loose fists that swing as you walk, alternating jabs,
-a reach and scoop when you pick something up, a palm cradling a clam, a grip on
-the rod with the other hand cranking the reel on every tap, a weapon held low
-and chopped down, fish carried by their sides, and a flinch in front of your
-face when a fish winds up to jump.
+You see your own arms (rigged and animated): relaxed hands while you walk,
+fists up and jabbing left-right when you punch, a reach to pick things up, a
+push to drop, throw or hand over. Whatever you hold is really in your grip: the
+rod sits in your fist (the wrist aims it, pulls it back to charge, flicks the
+cast and jerks the hook), a knife is held blade-up and slashes, a clam sits in
+your fist, and a fish is held out by its tail. Only the boss shows a health
+bar; ordinary fish just fight until they're knocked out.
 
 Settings let you change look sensitivity, HUD size and opacity, fixed or
 floating joystick, graphics preset (Low/Medium/High), shadows, weather, your
@@ -119,7 +122,7 @@ GODOT=/path/to/Godot_v4.3-stable_linux.x86_64 fishing/tools/play.sh 1600 shot.pn
 | `hud.gd` | Old fixed-camera fishing HUD (no longer shown) |
 | `status_ui.gd` | Health and breath bars, hit flash, underwater tint, death screen |
 | `ui_draw.gd` / `ui_theme.gd` | Shared HUD drawing kit (round buttons, pills, bars, vector icons) and colours |
-| `fp_hands.gd` / `assets/hand.gdshader` | First-person hands: pose blending, gestures, finger curl |
+| `fp_arms.gd` | First-person arms: the rigged PSX arms, clip blending, wrist aim, items held in the fist |
 | `world_fx.gd` | Splashes and ripples, seagulls, fish shadows |
 | `assets/grass.gdshader` | Wind-swayed grass tufts and wildflowers (MultiMesh) |
 | `water.gdshader` | Animated low-poly water (its wave formula is mirrored in `game.gd` so the bobber floats correctly) |
@@ -128,9 +131,8 @@ GODOT=/path/to/Godot_v4.3-stable_linux.x86_64 fishing/tools/play.sh 1600 shot.pn
 
 ## Credits
 
-- Hand model: ["Hand (low poly)"](https://sketchfab.com/3d-models/hand-low-poly-d6c802a74a174c8c805deb20186d1877)
-  by scribbletoad, licensed [CC-BY-4.0](http://creativecommons.org/licenses/by/4.0/)
-  (re-posed and mirrored in code).
+- First-person arms: "PSX First Person Arms" (free game assets pack), rigged
+  and animated; the wrist is re-aimed in code so the fist grips the rod.
 - 3D models from Kenney (Nature, Pirate, Watercraft kits) and KayKit
   (Adventurers, Fantasy Weapons Bits), CC0.
 - Stylized water shader: see `assets/water/LICENSE.txt`.

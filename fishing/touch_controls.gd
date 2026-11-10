@@ -40,6 +40,9 @@ var sens_scale := 1.0
 var slots: Array = [{}, {}, {}, {}]
 var selected := -1
 var coins := 0
+var boss_name := ""
+var boss_hp := -1.0            # 0..1 boss health bar (hidden when < 0)
+var _boss_shown := 0.0
 
 # Action button extras
 var act_progress := -1.0       # 0..1 ring around the button (cast charge, reeling)
@@ -188,6 +191,7 @@ func _process(d: float) -> void:
 		_toast_t -= d
 	if _card_t > 0.0:
 		_card_t -= d
+	_boss_shown = lerpf(_boss_shown, maxf(boss_hp, 0.0), clampf(d * 6.0, 0.0, 1.0))
 	for i in 4:
 		_bump[i] = maxf(float(_bump[i]) - d * 5.0, 0.0)
 	if visible:
@@ -324,6 +328,14 @@ class Painter extends Control:
 		_pill(crect2, UITheme.PANEL, 22)
 		UIDraw.icon(self, "coin", crect2.position + Vector2(24, 22), 15, UITheme.GOLD)
 		draw_string(font, crect2.position + Vector2(44, 22 + 24 * 0.35), ct, HORIZONTAL_ALIGNMENT_LEFT, -1, 24, UITheme.GOLD)
+
+		# ---- Boss health bar ----
+		if ui.boss_hp >= 0.0:
+			var bw: float = minf(vp.x * 0.42, 460.0)
+			var br := Rect2(Vector2(mid.x - bw * 0.5, 84), Vector2(bw, 18))
+			_centred(font, ui.boss_name.to_upper(), Vector2(mid.x, 70), 20, Color(1.0, 0.86, 0.80))
+			UIDraw.bar(self, br, ui._boss_shown, UITheme.DANGER, Color(0, 0, 0, 0.55))
+			draw_rect(br.grow(1.0), Color(1, 1, 1, 0.25), false, 1.5)
 
 		# ---- Catch card ----
 		if ui._card_t > 0.0 and ui.card_title != "":

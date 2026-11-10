@@ -3,13 +3,13 @@
 importer="scene"
 importer_version=1
 type="PackedScene"
-uid="uid://bb5mc7rjbu6wo"
-path="res://.godot/imported/hand.glb-cc3f340022251e5aa069e6637ee06a10.scn"
+uid="uid://4aqmf0umtllp"
+path="res://.godot/imported/arms_rig.glb-3686248113009f23599048d08dbabfa9.scn"
 
 [deps]
 
-source_file="res://assets/hands/hand.glb"
-dest_files=["res://.godot/imported/hand.glb-cc3f340022251e5aa069e6637ee06a10.scn"]
+source_file="res://assets/arms/arms_rig.glb"
+dest_files=["res://.godot/imported/arms_rig.glb-3686248113009f23599048d08dbabfa9.scn"]
 
 [params]
 

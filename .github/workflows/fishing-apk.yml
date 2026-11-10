@@ -5,6 +5,15 @@ name: Build Lazy Lake APK
 # automatically when the game changes.
 on:
   workflow_dispatch:
+    inputs:
+      release:
+        description: "Also publish the APK as a GitHub Release"
+        type: boolean
+        default: false
+      version:
+        description: "Release version (e.g. 0.6)"
+        type: string
+        default: "0.6"
   push:
     branches: ["main", "claude/**"]
     paths:
@@ -15,6 +24,9 @@ env:
   GODOT_VERSION: "4.3"
   PROJECT_PATH: fishing
   EXPORT_NAME: LazyLake
+
+permissions:
+  contents: write     # needed to publish a Release when asked
 
 jobs:
   export-android:
@@ -68,3 +80,18 @@ jobs:
           name: LazyLake-Android
           path: build/android/*.apk
           if-no-files-found: error
+
+      - name: Publish release
+        if: ${{ github.event_name == 'workflow_dispatch' && inputs.release }}
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: lazy-lake-v${{ inputs.version }}
+          target_commitish: ${{ github.sha }}
+          name: Lazy Lake v${{ inputs.version }} (Android)
+          body: |
+            Lazy Lake for Android. Download **LazyLake.apk** below on your phone,
+            open it and allow installing from this source.
+
+            Built from ${{ github.sha }}.
+          files: build/android/LazyLake.apk
+          make_latest: true

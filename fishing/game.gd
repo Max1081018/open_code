@@ -104,7 +104,9 @@ var holding: RigidBody3D = null   # the fish in your hands
 var shop_lamp: OmniLight3D
 var _static_props: Array = []    # multi-part models to batch into few draws
 var _shop_box := AABB()
-var hands: FPHands                # first-person hands (camera child)
+var hands: FPArms                 # first-person arms (camera child)
+var _held_prop: Node3D            # clam / fish model shown in your hand
+var _held_prop_key := ""
 var _reach := 0.0
 var _hands_enabled := true
 var fx: WorldFX
@@ -375,6 +377,7 @@ static func _item_icon(id: String) -> String:
 		"dagger_A", "dagger_B": return "dagger"
 		"axe_A": return "axe"
 		"fistweapon_A": return "grips"
+		"fish": return "fish"
 		_: return "whack"
 
 
@@ -390,6 +393,9 @@ func _sync_hotbar() -> void:
 			var tint := Color(1, 1, 1, 0.95)
 			if id == "clam":
 				tint = Color(1.0, 0.86, 0.76, 0.95)
+			elif id == "fish":
+				var rar := str((it.get("data", {}) as Dictionary).get("rarity", "Common"))
+				tint = UITheme.RARITY.get(rar, Color.WHITE)
 			elif id == "rod":
 				tint = Color(0.86, 0.96, 1.0, 0.95)
 			arr.append({"icon": _item_icon(id), "count": int(it.get("n", 1)), "tint": tint})
@@ -418,7 +424,7 @@ func _select_slot(i: int) -> void:
 	_sync_hotbar()
 
 
-## Shows whatever is in your hand: the rod, a weapon, or nothing.
+## Shows whatever is in your hand: the rod, a weapon, a clam, a fish, or nothing.
 func _apply_held() -> void:
 	var id := held_id()
 	equipped_weapon = held_weapon()
@@ -428,6 +434,41 @@ func _apply_held() -> void:
 		paddle.visible = equipped_weapon != "" and play_mode == "explore"
 		if equipped_weapon != "":
 			_refresh_whack_tool()
+	# Clam or fish model riding with the right hand.
+	var key := ""
+	if id == "clam":
+		key = "clam"
+	elif id == "fish":
+		var d: Dictionary = inv[sel].get("data", {})
+		key = "fish:%s:%.2f" % [str(d.get("name", "")), float(d.get("weight", 0.0))]
+	if key != _held_prop_key:
+		if _held_prop:
+			_held_prop.queue_free()
+			_held_prop = null
+		_held_prop_key = key
+		if key == "clam":
+			_held_prop = _clam_model()
+			_held_prop.scale = Vector3.ONE * 0.42
+		elif key != "":
+			var d: Dictionary = inv[sel].get("data", {})
+			var w := 4.5 if d.get("boss", false) else float(d.get("weight", 1.0))
+			_held_prop = _make_fish(d, w)
+			# keep it to a size you can hold up in front of you
+			var box := _local_aabb(_held_prop)
+			var longest: float = maxf(maxf(box.size.x, box.size.y), box.size.z) * _held_prop.scale.x
+			if longest > 0.42:
+				_held_prop.scale *= 0.42 / longest
+				longest = 0.42
+			hands.prop_half = longest * 0.5
+		if _held_prop:
+			for mi in _held_prop.find_children("*", "MeshInstance3D", true, false):
+				(mi as MeshInstance3D).cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+			camera.add_child(_held_prop)
+	if hands:
+		hands.prop = _held_prop
+	if player:
+		var hf: Dictionary = inv[sel].get("data", {}) if id == "fish" else {}
+		player.carry_slow = 0.6 if hf.get("boss", false) else (0.85 if float(hf.get("weight", 0.0)) > 5.0 else 1.0)
 
 
 func _buy_weapon(id: String) -> void:
@@ -719,6 +760,17 @@ func _ready() -> void:
 				_spawn_loose_fish({"name": cf["name"], "weight": 3.2, "value": 58, "rarity": cf["rarity"],
 					"set": cf["set"], "node": cf["node"], "alive": true, "hp": 4, "hpmax": 4,
 					"atk": cf["atk"], "spd": cf["spd"]}, Vector3(0, DECK_Y + 0.6, 10.6), 0.0)
+			"held":
+				_start_play()
+				_test_give("rod", false)
+				_test_give("dagger_A", false)
+				_inv_add("clam")
+				var fs := _inv_add("fish")
+				inv[fs] = {"id": "fish", "data": {"name": "Bass", "weight": 2.2, "value": 35, "rarity": "Uncommon",
+					"set": "river", "node": "Fish_Bass", "alive": false}}
+				_sync_hotbar()
+				cam_yaw = PI
+				cam_pitch = -0.1
 			"clams":
 				coins = 0
 				_start_play()
@@ -1222,10 +1274,10 @@ func _build_player_view() -> void:
 	paddle.visible = false
 
 	# First-person hands, with a reel on the rod for the left hand to crank.
-	hands = FPHands.new()
+	hands = FPArms.new()
 	camera.add_child(hands)
 	hands.attach_reel(rod)
-	hands.paddle = paddle
+	hands.mount_tool(paddle)
 
 	# The line (updated every frame).
 	line = MeshInstance3D.new()
@@ -1313,6 +1365,9 @@ func _update_info() -> void:
 		var landed_boss := island2_unlocked
 		for b in loose_fish:
 			if is_instance_valid(b) and (b.get_meta("fish") as Dictionary).get("boss", false):
+				landed_boss = true
+		for it in inv:
+			if str(it.get("id", "")) == "fish" and (it.get("data", {}) as Dictionary).get("boss", false):
 				landed_boss = true
 		menu_ui.set_menu_stats({
 			"Coins": coins,
@@ -1515,8 +1570,8 @@ func _update_prompts() -> void:
 		if wanted != "" and str(fd.get("name", "")) == wanted:
 			touch.look_stat += "  ·  WANTED x2"
 		if fd.get("alive", false):
-			var hp := int(fd.get("hp", 1))
-			touch.look_cost = "ALIVE " + "|".repeat(hp)
+			# No health readout on ordinary fish; the boss gets a bar up top.
+			touch.look_cost = "" if fd.get("boss", false) else "ALIVE"
 			p = "HIT" if held_weapon() != "" else "PUNCH"
 		else:
 			touch.look_cost = "%d" % int(fd.get("value", 0))
@@ -1525,7 +1580,7 @@ func _update_prompts() -> void:
 		touch.look_info = "Clam"
 		touch.look_stat = "sells for %d at the market" % CLAM_PRICE
 		p = "PICK UP" if not _inv_full_for("clam") else "FULL"
-	elif id == "clam" and near_market:
+	elif (id == "clam" or id == "fish") and near_market:
 		p = "SELL"
 		touch.secondary = "DROP"
 	elif near_boat and (on_boat or not holding):
@@ -1539,6 +1594,13 @@ func _update_prompts() -> void:
 		p = "CAST"
 	elif id == "clam":
 		touch.secondary = "DROP"
+	elif id == "fish":
+		p = "THROW"
+		touch.secondary = "DROP"
+	if id == "fish" and touch.look_info == "":
+		var hd := held_fish()
+		touch.carry_info = "%s  -  %d coins%s" % [_nice_name(str(hd.get("name", ""))), int(hd.get("value", 0)),
+			"  (WANTED x2)" if wanted != "" and str(hd.get("name", "")) == wanted else ""]
 	touch.prompt = p
 
 
@@ -1581,17 +1643,23 @@ func _on_interact() -> void:
 				_sell_body(holding)
 			elif held_id() == "clam":
 				_sell_clams()
+			elif held_id() == "fish":
+				_sell_held_fish()
+		"THROW":
+			_drop_held_fish(true)
 		"DROP":
 			_drop_holding()
 			if hands:
 				hands.play_drop()
 		"GRAB":
 			if looked_fish:
-				if held_id() == "rod":
-					_select_slot(sel)        # both hands: put the rod away first
 				_grab(looked_fish)
 		"PUNCH", "HIT":
 			if looked_fish:
+				# Rod, clam or fish in hand: put it away and use both fists.
+				if held_id() in ["rod", "clam", "fish"]:
+					_select_slot(sel)
+					_hit_cd = 0.0
 				_hit_fish(looked_fish)
 		"PICK UP":
 			_pick_clam(looked_clam)
@@ -1721,6 +1789,8 @@ func _on_secondary() -> void:
 					hands.play_drop()
 			elif held_id() == "clam":
 				_drop_clam()
+			elif held_id() == "fish":
+				_drop_held_fish()
 		"THROW":
 			_drop_holding(true)
 		"CANCEL":
@@ -1738,6 +1808,8 @@ func _on_secondary() -> void:
 
 ## Crosshair on a loose catch (when not already on shop stock).
 func _update_fish_look() -> void:
+	if looked_fish != null and not is_instance_valid(looked_fish):
+		looked_fish = null
 	var found: RigidBody3D = null
 	if looked_weapon == "" and holding == null:
 		var space := get_world_3d().direct_space_state
@@ -3094,7 +3166,7 @@ func _spawn_loose_fish(data: Dictionary, pos: Vector3, yaw := 0.0) -> RigidBody3
 	return body
 
 
-func _set_fish_outline(b: RigidBody3D, on: bool) -> void:
+func _set_fish_outline(b, on: bool) -> void:
 	if b == null or not is_instance_valid(b) or not b.has_meta("outlines"):
 		return
 	for o in b.get_meta("outlines"):
@@ -3102,21 +3174,36 @@ func _set_fish_outline(b: RigidBody3D, on: bool) -> void:
 			o.visible = on
 
 
+## Picking up a knocked-out catch puts it in a slot (and in your hand), so you
+## can switch to the rod or a weapon and come back to it.
 func _grab(b: RigidBody3D) -> void:
 	if b == null or not is_instance_valid(b):
 		return
-	_drop_holding()
-	holding = b
-	_hold_far_t = 0.0
-	_set_fish_outline(b, false)
-	b.gravity_scale = 0.0
-	b.angular_damp = 4.0
-	b.add_collision_exception_with(player)
-	if hands:
-		hands.play_grab()
 	var d: Dictionary = b.get_meta("fish")
-	player.carry_slow = 0.6 if d.get("boss", false) else 0.9
+	if d.get("alive", false):
+		return
+	if _inv_full_for("fish"):
+		_flash("Your 4 slots are full")
+		_play("snap")
+		return
+	_line_fish_release()
+	_reset_rod()
+	var slot := _inv_add("fish")
+	inv[slot] = {"id": "fish", "data": d.duplicate()}
+	_set_fish_outline(b, false)
+	if b == looked_fish:
+		looked_fish = null
+	loose_fish.erase(b)
+	b.queue_free()
+	sel = slot
+	_apply_held()
+	_sync_hotbar()
+	if hands:
+		hands.play_pickup()
+	players["whoosh"].pitch_scale = 1.3
 	_play("whoosh")
+	players["whoosh"].pitch_scale = 1.0
+	_save_game()
 
 
 func _drop_holding(throw := false) -> void:
@@ -3269,6 +3356,8 @@ func _update_hands(delta: float) -> void:
 					m = "rod"
 				elif id == "clam":
 					m = "clam"
+				elif id == "fish":
+					m = "fish"
 				elif held_weapon() != "":
 					m = "weapon"
 				else:
@@ -3335,6 +3424,19 @@ func _update_loose_fish(delta: float) -> void:
 				and rel.y < 1.6 and b.linear_velocity.length() < 0.6:
 			_sell_body(b)
 	_windup_vis = vis
+	# Boss health bar while the Kraken is alive and near you.
+	var bhp := -1.0
+	for b in loose_fish:
+		if is_instance_valid(b):
+			var bd: Dictionary = b.get_meta("fish")
+			if bd.get("boss", false) and bd.get("alive", false) and player \
+					and b.global_position.distance_to(player.global_position) < 10.0:
+				bhp = float(bd.get("hp", 0)) / maxf(float(bd.get("hpmax", 12)), 1.0)
+				touch.boss_name = _nice_name(str(bd.get("name", "")))
+	if rs == R_HOOKED and line_fish_data.get("boss", false):
+		bhp = 1.0
+		touch.boss_name = _nice_name(str(line_fish_data.get("name", "")))
+	touch.boss_hp = bhp
 
 
 ## One live fish: flops, sometimes winds up and leaps at you. Returns how close
@@ -3348,6 +3450,8 @@ func _update_live_fish(b: RigidBody3D, d: Dictionary, delta: float) -> float:
 	var chest := player.global_position + Vector3(0, 1.2, 0)
 	var near := play_mode == "explore" and b.global_position.distance_to(chest) < 3.4
 	var out := 0.0
+	if near:
+		b.set_meta("atk_t", float(b.get_meta("atk_t", 2.0 / spd)) - delta)
 	if lt > 0.0:
 		lt -= delta
 		if not b.get_meta("hit_done", false) and b.global_position.distance_to(chest) < 1.05:
@@ -3368,7 +3472,11 @@ func _update_live_fish(b: RigidBody3D, d: Dictionary, delta: float) -> float:
 			_play("snap")
 	elif ft <= 0.0 and absf(b.linear_velocity.y) < 0.3:
 		var close := b.global_position.distance_to(chest) < 2.4
-		if near and atk > 0.0 and randf() < (0.5 if close else 0.3) * spd:
+		# Biters go for you: a chance on every flop, and never more than a few
+		# seconds between jumps while you're close.
+		var due := float(b.get_meta("atk_t", 2.0 / spd)) <= 0.0
+		if near and atk > 0.0 and (due or randf() < (0.5 if close else 0.3) * spd):
+			b.set_meta("atk_t", randf_range(2.4, 3.6) / spd)
 			wt = 0.75
 			players["bite"].pitch_scale = 0.8
 			_play("bite")
@@ -3378,6 +3486,9 @@ func _update_live_fish(b: RigidBody3D, d: Dictionary, delta: float) -> float:
 			var h := Vector2(randf_range(-1, 1), randf_range(-1, 1)).normalized()
 			var p := b.global_position
 			var sd := _safe_dir(p)
+			if near and atk > 0.0:
+				var tp := Vector2(chest.x - p.x, chest.z - p.z).normalized()
+				h = (h * 0.5 + tp * 0.8).normalized()          # creeping toward you
 			if sd != Vector3.ZERO:
 				h = (h * 0.3 + Vector2(sd.x, sd.z)).normalized()
 			var hs := 0.9 / (1.0 + float(d.get("weight", 1.0)) * 0.1)
@@ -3447,6 +3558,9 @@ func _apply_hit(b: RigidBody3D) -> void:
 	if int(d["hp"]) <= 0:
 		d["alive"] = false
 		d["hp"] = 0
+		# flops over belly-up, done for
+		b.linear_velocity = Vector3(0, 2.6, 0)
+		b.angular_velocity = Vector3(0, 0, 9.0) * (1.0 if randf() < 0.5 else -1.0)
 		_play("caught")
 		_flash("KO!  Grab it")
 		_save_game()
@@ -3489,7 +3603,7 @@ func _sell_body(b: RigidBody3D) -> void:
 func _refresh_whack_tool() -> void:
 	for c in paddle.get_children():
 		c.queue_free()
-	# The tool node sits in the right fist (FPHands moves it): its origin is the
+	# The tool node sits in the right fist (bone-attached by FPArms): its origin is the
 	# grip and +Y runs up the blade.
 	var m: Node3D
 	var style := "chop"
@@ -3500,7 +3614,7 @@ func _refresh_whack_tool() -> void:
 			m.scale = Vector3.ONE * 0.55
 			m.rotation_degrees = Vector3(0, 90, 0)
 		else:
-			m.scale = Vector3.ONE * 0.36
+			m.scale = Vector3.ONE * 0.28
 	else:
 		m = load(MDL["paddle"]).instantiate()
 		m.scale = Vector3.ONE * 0.21
@@ -3702,6 +3816,67 @@ func _drop_clam() -> void:
 
 
 ## Sell the whole stack in your hand. Now and then there's a pearl inside.
+## Data of the fish in your hand ({} if you're not holding one).
+func held_fish() -> Dictionary:
+	if held_id() != "fish":
+		return {}
+	return inv[sel].get("data", {})
+
+
+## Puts the fish in your hand back into the world in front of you (or flings it).
+func _drop_held_fish(throw := false) -> void:
+	var d := held_fish()
+	if d.is_empty():
+		return
+	inv[sel] = {}
+	sel = -1
+	_apply_held()
+	_sync_hotbar()
+	var fwd := -camera.global_transform.basis.z
+	var flat := Vector3(fwd.x, 0, fwd.z).normalized()
+	var at := player.global_position + flat * 0.8 + Vector3(0, 1.0, 0)
+	var body := _spawn_loose_fish(d, at, cam_yaw)
+	body.linear_velocity = (fwd * 6.0 + Vector3(0, 2.5, 0)) if throw else Vector3(0, 0.5, 0)
+	if hands and throw:
+		hands.play_throw()
+	elif hands:
+		hands.play_drop()
+	_play("whoosh")
+	_save_game()
+
+
+func _sell_held_fish() -> void:
+	var d := held_fish()
+	if d.is_empty():
+		return
+	var value := int(d.get("value", 0))
+	var was_wanted := wanted != "" and str(d.get("name", "")) == wanted
+	if was_wanted:
+		value *= 2
+	coins += value
+	inv[sel] = {}
+	sel = -1
+	_apply_held()
+	_sync_hotbar()
+	if hands:
+		hands.play_throw()
+	_play("coins")
+	if was_wanted:
+		_flash("WANTED! Double pay: %d coins" % value)
+		_roll_wanted()
+	else:
+		_flash("Sold %s for %d coins" % [_nice_name(str(d.get("name", "it"))), value])
+	var ap = fish_buyer.get_meta("anim") if fish_buyer and fish_buyer.has_meta("anim") else null
+	if ap and ap.has_animation("Cheer"):
+		ap.play("Cheer")
+	if d.get("boss", false) and not island2_unlocked:
+		island2_unlocked = true
+		_show_island2_marker()
+		_flash("The buyer hands you a map - ISLAND 2 unlocked!")
+	_save_game()
+	_update_info()
+
+
 func _sell_clams() -> void:
 	if sel < 0 or str(inv[sel].get("id", "")) != "clam":
 		return
@@ -3731,16 +3906,11 @@ func _sell_clams() -> void:
 	_update_info()
 
 
-## Kept for older call sites: the carry pill now describes what's in your hands.
+## Kept for older call sites: the carry pill now describes the fish in your hand.
 func _refresh_held_view() -> void:
 	if touch == null:
 		return
-	if holding and is_instance_valid(holding):
-		var d: Dictionary = holding.get_meta("fish")
-		touch.carry_info = "Holding %s  -  %d coins" % [str(d.get("name", "")), int(d.get("value", 0))]
-		if wanted != "" and str(d.get("name", "")) == wanted:
-			touch.carry_info += "  (WANTED x2)"
-	else:
+	if held_id() != "fish":
 		touch.carry_info = ""
 
 
@@ -3916,13 +4086,13 @@ func _autotest(_delta: float) -> void:
 
 	if start_screen == "sell":
 		if frame == 25:
-			print("AUTOTEST near_market=%s prompt='%s' secondary='%s' holding=%s" % [
-				near_market, touch.prompt, touch.secondary, holding != null])
+			print("AUTOTEST near_market=%s prompt='%s' secondary='%s' held=%s" % [
+				near_market, touch.prompt, touch.secondary, held_id()])
 		if frame == 40:
 			_test_shot()
 		if frame == 42:
 			_on_interact()
-			print("AUTOTEST after hand sell -> coins=%d holding=%s loose=%d" % [coins, holding != null, loose_fish.size()])
+			print("AUTOTEST after hand sell -> coins=%d held=%s loose=%d" % [coins, held_id(), loose_fish.size()])
 		if frame >= 160:
 			print("AUTOTEST after counter drop -> coins=%d loose=%d" % [coins, loose_fish.size()])
 			get_tree().quit()
@@ -3939,6 +4109,11 @@ func _autotest(_delta: float) -> void:
 			print("AUTOTEST flop: catfish missing")
 			get_tree().quit()
 			return
+		if frame % 30 == 0 and frame < 240:
+			print("AUTOTEST flop dbg f=%d ft=%.2f wt=%.2f lt=%.2f vy=%.2f pos=%s dist=%.2f" % [frame,
+				float(fish.get_meta("ft", -9)), float(fish.get_meta("wt", 0)), float(fish.get_meta("lt", 0)),
+				fish.linear_velocity.y, fish.global_position.snapped(Vector3.ONE * 0.01),
+				fish.global_position.distance_to(player.global_position + Vector3(0, 1.2, 0))])
 		if _windup_vis > 0.0 and not _flop_seen:
 			_flop_seen = true
 			print("AUTOTEST windup seen, hands=%s flinch=%.2f" % [hands.mode, hands.windup])
@@ -4002,6 +4177,20 @@ func _autotest(_delta: float) -> void:
 			get_tree().quit()
 		if frame > 600:
 			print("AUTOTEST clams TIMEOUT")
+			get_tree().quit()
+		return
+
+	if start_screen == "held":
+		# Hold each slot in turn (and bare hands), photographing each.
+		var k := frame / 45
+		if frame % 45 == 1 and k <= SLOTS:
+			_select_slot(k if k < SLOTS else sel)
+			if k == SLOTS:
+				_select_slot(sel)
+		if frame % 45 == 40:
+			_test_shot("_%d_%s" % [k, held_id() if held_id() != "" else "bare"])
+			print("AUTOTEST held slot=%d id=%s hands=%s prompt='%s' secondary='%s'" % [sel, held_id(), hands.mode, touch.prompt, touch.secondary])
+		if k > SLOTS:
 			get_tree().quit()
 		return
 
@@ -4145,8 +4334,16 @@ func _test_fish_cycle(boss: bool) -> void:
 				_test_shot()
 				print("AUTOTEST(carry) hands=%s" % hands.mode)
 				get_tree().quit()
-			print("AUTOTEST cycle %d: KO'd and carrying %s (hands=%s)" % [_tcycles + 1, holding.get_meta("fish").get("name") if holding else "-", hands.mode])
-			_on_interact()                         # DROP it on the jetty
+			print("AUTOTEST cycle %d: KO'd, in slot %d: %s (hands=%s) inv=%s" % [_tcycles + 1, sel,
+				held_fish().get("name", "-"), hands.mode, inv.map(func(it): return it.get("id", "-"))])
+			if _tcycles == 0:
+				# switch away and back: the fish stays in its slot
+				var fs := sel
+				_select_slot(_inv_slot_of("rod"))
+				print("AUTOTEST   switched to rod: held=%s fish still in slot %d: %s" % [held_id(), fs, inv[fs].get("id", "-")])
+				_select_slot(fs)
+				print("AUTOTEST   back to slot %d: held=%s" % [fs, held_id()])
+			_on_secondary()                        # DROP it on the jetty
 			_tcycles += 1
 			player.position = PLAYER_SPAWN        # back out to the end of the jetty
 			player.velocity = Vector3.ZERO

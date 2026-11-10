@@ -1,0 +1,427 @@
+class_name FPArms
+extends Node3D
+## First-person arms: the rigged, animated "PSX First Person Arms" (free game
+## assets). A child of the camera; the rig is lined up so its own "camera" bone
+## sits on our camera, which is how the animations were authored.
+##
+## The game sets `mode` and a few live values each frame and calls play_*()
+## for one-shot actions. Clips used from the pack:
+##   relax / guard_idle / guard_draw   idle with empty hands, fists up
+##   jab.L / jab.R                     punches (alternating)
+##   grab.R                            picking something up
+##   push.R                            dropping / throwing / handing over
+##   knife_draw / knife_idle / knife_hit_01/02   holding things, weapon swings
+## The rod, the weapon, a clam or a fish ride in (or with) the right hand.
+
+const RIG := "res://assets/arms/arms_rig.glb"
+const RAISE := 0.06                 # lift the rig a touch so idle hands show on phones
+
+var mode := "hidden"   # hidden, bare, rod, weapon, clam, fish, carry, sail
+var show_hands := true
+
+# Live values from the game
+var move_speed := 0.0
+var sprint := false
+var reach := 0.0
+var carry_point := Vector3(0, -0.3, -0.8)
+var carry_half := 0.18
+var carry_heavy := false
+var rod: Node3D
+var paddle: Node3D
+var charge := 0.0
+var tension := 0.0
+var rod_load := 0.0
+var windup := 0.0
+var whack_style := "chop"
+var prop: Node3D                    # clam or fish model held in the right fist
+var prop_offset := Vector3.ZERO     # (unused, kept for older callers)
+var prop_half := 0.15               # half the held fish's length
+
+var _rig: Node3D
+var _ap: AnimationPlayer
+var _skel: Skeleton3D
+var _mesh: MeshInstance3D
+var _hand_r: BoneAttachment3D
+var _tool_mount: Node3D
+var _base := Transform3D()
+var _t := 0.0
+var _phase := 0.0
+var _oneshot := 0.0                 # seconds left of a one-shot clip
+var _combat := 0.0                  # fists stay up for a moment after a punch
+var _next_side := 1
+var _swing_alt := false
+var _mode_was := ""
+var _cast_t := 0.0
+var _hook_t := 0.0
+var _reel_t := 0.0
+var _hit_t := 0.0
+var _swap_t := 0.0
+var _crank := 0.0
+var _reel: Node3D
+var _crank_arm: Node3D
+var _rod_mount: Node3D
+var _aim: GripAim
+const ROD_SCALE := 0.62
+const ROD_AIM := Vector3(0.02, 0.50, -1.0)    # player view: forward and up
+const WEAPON_AIM := Vector3(-0.10, 1.0, -0.55) # blade up and forward, ready
+const HOLD_SHIFT := Vector3(-0.075, 0.035, 0)  # holding something: right hand clears the buttons
+var _shift := 0.0
+
+
+## Turns the right wrist (after the animation has posed it) so whatever the
+## fist is gripping points along `want` (skeleton space). The fingers stay
+## closed round the handle, so the rod is genuinely held, not floating.
+class GripAim extends SkeletonModifier3D:
+	var bone := -1
+	var want := Vector3.FORWARD
+	var weight := 0.0
+
+	func _process_modification() -> void:
+		var sk := get_skeleton()
+		if sk == null or bone < 0 or weight <= 0.001:
+			return
+		var gp := sk.get_bone_global_pose(bone)
+		var cur := (gp.basis * Vector3(0, 0, 1)).normalized()
+		var w := want.normalized()
+		if cur.dot(w) > 0.9999:
+			return
+		var turned := Basis(Quaternion(cur, w)) * gp.basis
+		var q0 := gp.basis.get_rotation_quaternion()
+		var q1 := turned.get_rotation_quaternion()
+		var b := Basis(q0.slerp(q1, clampf(weight, 0.0, 1.0)))
+		sk.set_bone_global_pose(bone, Transform3D(b.scaled(gp.basis.get_scale()), gp.origin))
+
+
+func _ready() -> void:
+	_rig = load(RIG).instantiate()
+	add_child(_rig)
+	# rig faces +Z with its camera bone at (0, 1.743, 0): turn and drop it so
+	# that bone lands on our camera, looking down -Z.
+	_base = Transform3D(Basis(Vector3.UP, PI), Vector3(0, -1.743 + RAISE, 0))
+	_rig.transform = _base
+	_ap = _rig.find_children("*", "AnimationPlayer", true, false)[0]
+	_skel = _rig.find_children("*", "Skeleton3D", true, false)[0]
+	for m in _rig.find_children("*", "MeshInstance3D", true, false):
+		_mesh = m
+		m.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+		# The mesh never leaves the camera; don't let culling think otherwise.
+		m.extra_cull_margin = 2.0
+		# A little self-light so the arms never go muddy in shade.
+		for si in m.mesh.get_surface_count():
+			var mat: Material = m.get_active_material(si)
+			if mat is StandardMaterial3D:
+				var sm := (mat as StandardMaterial3D).duplicate() as StandardMaterial3D
+				sm.emission_enabled = true
+				sm.emission = Color(1, 1, 1)
+				sm.emission_texture = sm.albedo_texture
+				sm.emission_energy_multiplier = 0.12
+				sm.roughness = 0.8
+				m.set_surface_override_material(si, sm)
+	for a in ["relax", "guard_idle", "knife_idle"]:
+		if _ap.has_animation(a):
+			_ap.get_animation(a).loop_mode = Animation.LOOP_LINEAR
+	_hand_r = BoneAttachment3D.new()
+	_hand_r.bone_name = "hand.R"
+	_skel.add_child(_hand_r)
+	_tool_mount = Node3D.new()
+	_hand_r.add_child(_tool_mount)
+	# tool +Y (blade/handle axis) runs across the palm, out of the thumb side
+	_tool_mount.transform = Transform3D(Basis(Vector3.RIGHT, PI * 0.5), Vector3(0.0, 0.085, 0.0))
+	# The rod rides in the same grip: its pole runs along the grip axis.
+	_rod_mount = Node3D.new()
+	_tool_mount.add_child(_rod_mount)
+	_aim = GripAim.new()
+	_aim.bone = _skel.find_bone("hand.R")
+	_skel.add_child(_aim)
+	visible = false
+
+
+# --- clip helpers ------------------------------------------------------------------
+
+func _clip(name: String) -> String:
+	if _ap.has_animation(name):
+		return name
+	var alt := name.replace(".", "_")
+	return alt if _ap.has_animation(alt) else ""
+
+
+func _play_once(name: String, speed := 1.0, blend := 0.08) -> void:
+	var c := _clip(name)
+	if c == "":
+		return
+	_ap.play(c, blend, speed)
+	_oneshot = _ap.get_animation(c).length / speed * 0.92
+
+
+func _base_clip() -> String:
+	match mode:
+		"rod", "weapon":
+			return "knife_idle"
+		"clam", "fish":
+			return "guard_idle"           # right fist up, holding it out
+		"bare":
+			return "guard_idle" if (_combat > 0.0 or windup > 0.0) else "relax"
+		_:
+			return "relax"
+
+
+# --- one-shot actions (same API the game used for the old hands) -------------
+
+func play_punch() -> void:
+	var side := _next_side
+	if mode in ["rod", "weapon", "clam", "fish"]:
+		side = -1                          # right hand is busy: left jab
+	_next_side = -side
+	_combat = 2.5
+	_play_once("jab.R" if side > 0 else "jab.L", 1.9, 0.05)
+
+
+func play_swing() -> void:
+	_swing_alt = not _swing_alt
+	if whack_style == "punch":
+		_play_once("jab.R", 1.9, 0.05)
+	else:
+		_play_once("knife_hit_01" if _swing_alt else "knife_hit_02", 1.35, 0.05)
+
+
+func play_pickup() -> void:
+	_play_once("grab.R", 1.3)
+
+
+func play_grab() -> void:
+	play_pickup()
+
+
+func play_drop() -> void:
+	_play_once("push.R", 1.5)
+
+
+func play_throw() -> void:
+	_play_once("push.R", 1.7)
+
+
+func play_cast() -> void:
+	_cast_t = 1.0
+
+
+func play_hook() -> void:
+	_hook_t = 1.0
+
+
+func play_reel() -> void:
+	_reel_t = 1.0
+
+
+func play_hit() -> void:
+	_hit_t = 1.0
+	_combat = 2.0
+
+
+func play_swap() -> void:
+	_swap_t = 1.0
+
+
+func busy() -> bool:
+	return _oneshot > 0.15
+
+
+# --- rod dressing: a small reel with a crank -------------------------------------------
+
+func attach_reel(r: Node3D) -> void:
+	rod = r
+	# Into the fist: rod -Z (its pole) along the grip's +Y, reel hanging below.
+	if r.get_parent():
+		r.get_parent().remove_child(r)
+	_rod_mount.add_child(r)
+	r.transform = Transform3D(Basis(Vector3.RIGHT, PI * 0.5) * Basis.IDENTITY.scaled(Vector3.ONE * ROD_SCALE),
+		Vector3(0, 0, 0))
+	_reel = Node3D.new()
+	_reel.position = Vector3(0, -0.075, -0.16)
+	r.add_child(_reel)
+	var m := StandardMaterial3D.new()
+	m.albedo_color = Color(0.78, 0.80, 0.84)
+	m.metallic = 0.6
+	m.roughness = 0.35
+	var body := MeshInstance3D.new()
+	var cm := CylinderMesh.new()
+	cm.top_radius = 0.045
+	cm.bottom_radius = 0.045
+	cm.height = 0.05
+	cm.radial_segments = 14
+	cm.rings = 1
+	cm.material = m
+	body.mesh = cm
+	body.rotation_degrees = Vector3(0, 0, 90)
+	body.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	_reel.add_child(body)
+	var foot := MeshInstance3D.new()
+	var fb := BoxMesh.new()
+	fb.size = Vector3(0.016, 0.06, 0.03)
+	fb.material = m
+	foot.mesh = fb
+	foot.position = Vector3(0, 0.04, 0)
+	_reel.add_child(foot)
+	_crank_arm = Node3D.new()
+	_crank_arm.position = Vector3(-0.032, 0, 0)
+	_reel.add_child(_crank_arm)
+	var arm := MeshInstance3D.new()
+	var ab := BoxMesh.new()
+	ab.size = Vector3(0.008, 0.012, 0.075)
+	ab.material = m
+	arm.mesh = ab
+	arm.position = Vector3(0, 0, 0.032)
+	_crank_arm.add_child(arm)
+	var knob := MeshInstance3D.new()
+	var kb := CylinderMesh.new()
+	kb.top_radius = 0.011
+	kb.bottom_radius = 0.011
+	kb.height = 0.03
+	kb.radial_segments = 8
+	kb.rings = 1
+	var km := StandardMaterial3D.new()
+	km.albedo_color = Color(0.14, 0.12, 0.12)
+	kb.material = km
+	knob.mesh = kb
+	knob.rotation_degrees = Vector3(0, 0, 90)
+	knob.position = Vector3(-0.016, 0, 0.066)
+	_crank_arm.add_child(knob)
+
+
+## Puts the weapon model holder into the right fist (bone-attached, so it
+## follows every swing).
+func mount_tool(tool: Node3D) -> void:
+	paddle = tool
+	if tool.get_parent():
+		tool.get_parent().remove_child(tool)
+	_tool_mount.add_child(tool)
+	tool.transform = Transform3D.IDENTITY
+
+
+# --- per frame ----------------------------------------------------------------------------
+
+static func _arc(t: float) -> float:
+	return sin((1.0 - t) * PI) if t > 0.0 else 0.0
+
+
+func _process(delta: float) -> void:
+	_t += delta
+	_oneshot = maxf(_oneshot - delta, 0.0)
+	_combat = maxf(_combat - delta, 0.0)
+	_cast_t = maxf(_cast_t - delta / 0.5, 0.0)
+	_hook_t = maxf(_hook_t - delta / 0.32, 0.0)
+	_reel_t = maxf(_reel_t - delta / 0.22, 0.0)
+	_hit_t = maxf(_hit_t - delta / 0.4, 0.0)
+	_swap_t = maxf(_swap_t - delta / 0.36, 0.0)
+	if mode == "hidden":
+		visible = false
+		_mode_was = mode
+		return
+	visible = true
+	if _mesh:
+		_mesh.visible = show_hands
+
+	# Changing what's in your hand: a draw clip, then back to idle.
+	if mode != _mode_was:
+		if _mode_was != "" and _mode_was != "hidden":
+			if mode in ["rod", "weapon", "clam", "fish"]:
+				_play_once("knife_draw", 1.0, 0.1)
+			elif mode == "bare":
+				_play_once("guard_draw", 1.2, 0.1)
+		_mode_was = mode
+	if _oneshot <= 0.0:
+		var want := _base_clip()
+		if _ap.current_animation != want or not _ap.is_playing():
+			_ap.play(want, 0.22)
+
+	# Whole-rig motion: walk bob, swap dip, hit jolt, cast flick, flinch.
+	var walk := clampf(move_speed / 3.0, 0.0, 1.0)
+	_phase += delta * (2.0 + move_speed * 2.1)
+	var amp := walk * (1.6 if sprint else 1.0)
+	var off := Vector3(sin(_phase * 0.5) * 0.012 * amp, -absf(sin(_phase)) * 0.016 * amp, 0)
+	off.y -= _arc(_swap_t) * 0.22
+	if _hit_t > 0.0:
+		var g := _hit_t * _hit_t
+		off += Vector3(sin(_t * 61.0) * 0.015, -0.05 + cos(_t * 53.0) * 0.01, 0.04) * g
+	var pitch := deg_to_rad(10.0 * charge * charge - 14.0 * _arc(_cast_t) + 6.0 * _arc(_hook_t))
+	if mode == "rod":
+		pitch += sin(_t * 37.0) * tension * 0.012
+	_shift = move_toward(_shift, 1.0 if mode in ["rod", "weapon", "clam", "fish"] else 0.0, delta * 4.0)
+	off += HOLD_SHIFT * _shift
+	var rig_xf := Transform3D(Basis(Vector3.RIGHT, pitch), off) * _base
+	_rig.transform = _rig.transform.interpolate_with(rig_xf, clampf(delta * 20.0, 0.0, 1.0))
+
+	_aim_wrist(delta)
+	_place_rod(delta)
+	_place_prop()
+	if paddle:
+		paddle.visible = mode == "weapon"
+
+
+## In rod mode the wrist points the gripped rod forward and up; charging pulls
+## it back, the cast flicks it forward, the hook jerks it up, a fighting fish
+## shakes it and a heavy catch bows it down.
+func _aim_wrist(delta: float) -> void:
+	var on := mode == "rod" or (mode == "weapon" and whack_style != "punch")
+	_aim.weight = move_toward(_aim.weight, 1.0 if (on and _oneshot <= 0.0) else 0.0, delta * 6.0)
+	if not on:
+		return
+	var cam0 := get_parent() as Node3D
+	if mode == "weapon":
+		if cam0:
+			_aim.want = (_skel.global_basis.inverse() * (cam0.global_basis * WEAPON_AIM.normalized())).normalized()
+		return
+	var back := charge * charge
+	var flick := _arc(_cast_t)
+	var hook := _arc(_hook_t)
+	var shake := tension * 0.06 + _arc(_reel_t) * 0.03
+	var a := ROD_AIM.normalized()
+	a = (a + Vector3(0, 0.55 * back + 0.35 * hook - 0.45 * flick - 0.25 * rod_load, 0.25 * back)).normalized()
+	a += Vector3(sin(_t * 37.0), cos(_t * 31.0), 0) * shake
+	var cam := get_parent() as Node3D
+	if cam == null:
+		return
+	# player-view direction -> skeleton space
+	var world_dir := cam.global_basis * a.normalized()
+	_aim.want = (_skel.global_basis.inverse() * world_dir).normalized()
+
+
+func _place_rod(delta: float) -> void:
+	if rod == null:
+		return
+	if _reel_t > 0.0:
+		_crank -= delta * 16.0
+	if _crank_arm:
+		_crank_arm.rotation.x = _crank
+
+
+## A fish hangs by its tail from the right fist; a clam sits in it.
+func _place_prop() -> void:
+	if prop == null or not is_instance_valid(prop):
+		return
+	prop.visible = mode in ["clam", "fish"]
+	if not prop.visible:
+		return
+	var grip := _tool_mount.global_position
+	var cam := get_parent() as Node3D
+	var yaw := cam.global_rotation.y if cam else 0.0
+	var sc := prop.scale
+	if mode == "fish" and cam:
+		# Held out by the tail: the body points from your fist toward the middle
+		# of the view, drooping a little and swaying as you walk.
+		var sway := sin(_t * 2.1) * 0.06 + sin(_phase) * 0.05 * clampf(move_speed / 3.0, 0.0, 1.0)
+		var d := (cam.global_basis * Vector3(-1.0, -0.42 + sway, -0.35)).normalized()
+		var z := d.cross(Vector3.UP).normalized()
+		var y := z.cross(d).normalized()
+		var b := Basis(d, y, z)
+		prop.global_transform = Transform3D(b.scaled(sc), grip + d * (prop_half - 0.035))
+	else:
+		var b2 := Basis(Vector3.UP, yaw + 0.4) * Basis(Vector3.RIGHT, -0.3)
+		prop.global_transform = Transform3D(b2.scaled(sc), grip + Vector3(0, 0.015, 0))
+
+
+## Right hand position in camera space.
+func _hand_cam() -> Vector3:
+	var cam := get_parent() as Node3D
+	if cam == null or _hand_r == null:
+		return Vector3(0.25, -0.3, -0.45)
+	return cam.global_transform.affine_inverse() * _hand_r.global_position
