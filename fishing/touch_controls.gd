@@ -15,6 +15,7 @@ extends CanvasLayer
 signal interact_pressed
 signal secondary_pressed
 signal slot_pressed(index: int)
+signal jump_pressed
 
 const BASE_JOY_R := 100.0
 const BASE_KNOB_R := 40.0
@@ -74,6 +75,8 @@ var _act_index := -1           # finger holding the action button
 var _slot_rects: Array[Rect2] = []
 var _bump := [0.0, 0.0, 0.0, 0.0]  # little pop when a slot is picked
 var _run_center := Vector2.ZERO
+var _jump_center := Vector2.ZERO
+var _jump_held := false
 var _toast := ""
 var _toast_t := 0.0
 
@@ -145,6 +148,7 @@ func _recalc() -> void:
 	_act_center = Vector2(s.x - m - act_r() - 10.0, s.y - m - act_r() - 10.0)
 	_sec_center = _act_center + Vector2(-act_r() * 0.55, -(act_r() + sec_r() + 22.0))
 	_run_center = _act_center + Vector2(-(act_r() + run_r() + 36.0), act_r() * 0.35)
+	_jump_center = _run_center + Vector2(-run_r() * 0.35, -(run_r() * 2.0 + 30.0))
 	# Hotbar: centred along the bottom edge.
 	var sz := slot_size()
 	var gap := 10.0 * hud_scale
@@ -186,15 +190,29 @@ func consume_look() -> Vector2:
 	return l
 
 
+var _sig := ""
+
 func _process(d: float) -> void:
 	if _toast_t > 0.0:
 		_toast_t -= d
 	if _card_t > 0.0:
 		_card_t -= d
 	_boss_shown = lerpf(_boss_shown, maxf(boss_hp, 0.0), clampf(d * 6.0, 0.0, 1.0))
+	var bumping := false
 	for i in 4:
 		_bump[i] = maxf(float(_bump[i]) - d * 5.0, 0.0)
-	if visible:
+		bumping = bumping or float(_bump[i]) > 0.0
+	if not visible:
+		return
+	# Redraw only when something on it changed or is animating: rebuilding
+	# the whole HUD every frame is real work on a phone's CPU.
+	var animating: bool = bumping or _toast_t > 0.0 or _card_t > 0.0 or act_pulse or _joy_index != -1 \
+		or _act_index != -1 or _jump_held or absf(_boss_shown - maxf(boss_hp, 0.0)) > 0.002
+	var sig := "%s|%s|%s|%s|%s|%s|%d|%d|%.2f|%s|%s|%s|%.2f|%.2f|%d|%.2f|%s|%s|%s" % [prompt, secondary,
+		look_info, look_stat, look_cost, carry_info, selected, coins, act_progress, act_dim, sprint,
+		crosshair, hud_opacity, hud_scale, slots.hash(), boss_hp, boss_name, fixed_joystick, _btn_held]
+	if animating or sig != _sig:
+		_sig = sig
 		_view.queue_redraw()
 
 
@@ -227,6 +245,10 @@ func _input(event: InputEvent) -> void:
 			if event.position.distance_to(_run_center) <= run_r() * 1.25:
 				sprint = not sprint
 				return
+			if event.position.distance_to(_jump_center) <= run_r() * 1.25:
+				_jump_held = true
+				jump_pressed.emit()
+				return
 			# Leave the pause button (top-left corner) to the menu.
 			if Rect2(0, 0, 140, 140).has_point(event.position):
 				return
@@ -242,6 +264,7 @@ func _input(event: InputEvent) -> void:
 				_look_index = event.index
 				_look_last = event.position
 		else:
+			_jump_held = false
 			if event.index == _act_index:
 				_act_index = -1
 				_btn_held = false
@@ -415,6 +438,7 @@ class Painter extends Control:
 
 		# ---- right cluster ----
 		UIDraw.round_button(self, font, ui._run_center, ui.run_r(), "RUN", "run", ui.sprint, false, op)
+		UIDraw.round_button(self, font, ui._jump_center, ui.run_r(), "JUMP", "jump", false, ui._jump_held, op)
 		if ui.secondary != "":
 			UIDraw.round_button(self, font, ui._sec_center, ui.sec_r(), ui.secondary,
 				ui.icon_for(ui.secondary), false, false, op)

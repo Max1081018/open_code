@@ -185,6 +185,11 @@ static func icon(ci: CanvasItem, kind: String, c: Vector2, s: float, col: Color)
 				var a := PI + PI * (float(i) + 1.0) / 5.0
 				ci.draw_line(c + Vector2(0, s * 0.50), c + Vector2(cos(a) * s * 0.58, sin(a) * s * 0.55 + s * 0.12), ink, maxf(1.0, w * 0.45), true)
 			ci.draw_rect(Rect2(c + Vector2(-s * 0.16, s * 0.48), Vector2(s * 0.32, s * 0.16)), col)
+		"jump":   # chevron up over a bar
+			ci.draw_polyline(PackedVector2Array([
+				c + Vector2(-s * 0.5, s * 0.05), c + Vector2(0, -s * 0.5), c + Vector2(s * 0.5, s * 0.05)]),
+				col, w * 1.3, true)
+			ci.draw_line(c + Vector2(-s * 0.45, s * 0.5), c + Vector2(s * 0.45, s * 0.5), col, w * 1.1, true)
 		"hook":
 			ci.draw_line(c + Vector2(s * 0.18, -s * 0.72), c + Vector2(s * 0.18, s * 0.20), col, w, true)
 			ci.draw_arc(c + Vector2(-s * 0.08, s * 0.20), s * 0.26, 0, PI, 12, col, w, true)

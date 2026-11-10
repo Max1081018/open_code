@@ -36,6 +36,7 @@ var whack_style := "chop"
 var prop: Node3D                    # clam or fish model held in the right fist
 var prop_offset := Vector3.ZERO     # (unused, kept for older callers)
 var prop_half := 0.15               # half the held fish's length
+var prop_two_hands := false         # big fish: carried across both open hands
 
 var _rig: Node3D
 var _ap: AnimationPlayer
@@ -61,11 +62,96 @@ var _reel: Node3D
 var _crank_arm: Node3D
 var _rod_mount: Node3D
 var _aim: GripAim
+var _layer: ArmLayer
+var _tips: Array = []               # thumb and index fingertip attachments
+var _hand_l: BoneAttachment3D
+var _grip_l: Node3D
 const ROD_SCALE := 0.62
 const ROD_AIM := Vector3(0.02, 0.50, -1.0)    # player view: forward and up
 const WEAPON_AIM := Vector3(-0.10, 1.0, -0.55) # blade up and forward, ready
 const HOLD_SHIFT := Vector3(-0.075, 0.035, 0)  # holding something: right hand clears the buttons
 var _shift := 0.0
+
+
+## Layers one clip onto just the right arm (shoulder to fingertips) on top of
+## whatever the AnimationPlayer posed: the body stays relaxed with an open left
+## hand while the right hand closes its grip and lifts what it holds.
+class ArmLayer extends SkeletonModifier3D:
+	var clip: Animation
+	var time := 0.0
+	var weight := 0.0
+	var _tracks: Array = []        # [track index, bone index, type]
+	# Open-hand fingers (from the relax clip) with a thumb-index pinch:
+	# `pinch` 0 = all fingers open, 1 = thumb and index closed together.
+	var open_clip: Animation
+	var pinch := 0.0
+	var finger_weight := 0.0
+	var _fingers: Array = []       # [open track, bone index, curl 0..1 for the pinch]
+
+	func set_open_clip(a: Animation, sk: Skeleton3D) -> void:
+		open_clip = a
+		_fingers.clear()
+		if a == null:
+			return
+		for i in a.get_track_count():
+			if a.track_get_type(i) != Animation.TYPE_ROTATION_3D:
+				continue
+			var bn := str(a.track_get_path(i).get_concatenated_subnames())
+			if not bn.ends_with(".R") or not (bn.begins_with("f_") or bn.begins_with("thumb")):
+				continue
+			var bi := sk.find_bone(bn)
+			if bi < 0:
+				continue
+			# index and thumb close into the pinch; the rest stay relaxed open
+			var curl := 0.0
+			if bn.begins_with("f_index"):
+				curl = 0.8
+			elif bn.begins_with("thumb"):
+				curl = 1.0
+			elif bn.begins_with("f_middle"):
+				curl = 0.3
+			_fingers.append([i, bi, curl])
+
+	func set_clip(a: Animation, sk: Skeleton3D) -> void:
+		clip = a
+		_tracks.clear()
+		if a == null:
+			return
+		for i in a.get_track_count():
+			var bone_name := str(a.track_get_path(i).get_concatenated_subnames())
+			if not bone_name.ends_with(".R"):
+				continue
+			var bi := sk.find_bone(bone_name)
+			if bi < 0:
+				continue
+			var tt := a.track_get_type(i)
+			if tt == Animation.TYPE_ROTATION_3D or tt == Animation.TYPE_POSITION_3D:
+				_tracks.append([i, bi, tt])
+
+	func _process_modification() -> void:
+		var sk := get_skeleton()
+		if sk == null or clip == null or weight <= 0.001:
+			return
+		var t := fmod(time, maxf(clip.length, 0.001))
+		var w := clampf(weight, 0.0, 1.0)
+		for tr in _tracks:
+			var i: int = tr[0]
+			var bi: int = tr[1]
+			if int(tr[2]) == Animation.TYPE_ROTATION_3D:
+				var q: Quaternion = clip.rotation_track_interpolate(i, t)
+				sk.set_bone_pose_rotation(bi, sk.get_bone_pose_rotation(bi).slerp(q, w))
+			else:
+				var pv: Vector3 = clip.position_track_interpolate(i, t)
+				sk.set_bone_pose_position(bi, sk.get_bone_pose_position(bi).lerp(pv, w))
+		# Fingers: open hand, with thumb and index pinched together.
+		if open_clip and finger_weight > 0.001:
+			var fw := clampf(finger_weight, 0.0, 1.0)
+			for fr in _fingers:
+				var bi2: int = fr[1]
+				var fist: Quaternion = sk.get_bone_pose_rotation(bi2)       # what the arm clip posed
+				var open: Quaternion = open_clip.rotation_track_interpolate(int(fr[0]), 0.0)
+				var want: Quaternion = open.slerp(fist, float(fr[2]) * pinch)
+				sk.set_bone_pose_rotation(bi2, fist.slerp(want, fw))
 
 
 ## Turns the right wrist (after the animation has posed it) so whatever the
@@ -130,6 +216,24 @@ func _ready() -> void:
 	# The rod rides in the same grip: its pole runs along the grip axis.
 	_rod_mount = Node3D.new()
 	_tool_mount.add_child(_rod_mount)
+	# Left hand too, for carrying big fish across both palms.
+	_hand_l = BoneAttachment3D.new()
+	_hand_l.bone_name = "hand.L"
+	_skel.add_child(_hand_l)
+	_grip_l = Node3D.new()
+	_hand_l.add_child(_grip_l)
+	_grip_l.position = Vector3(0.0, 0.085, 0.0)
+	# Right-arm layer first, then the wrist aim on top of it.
+	_layer = ArmLayer.new()
+	_skel.add_child(_layer)
+	_layer.set_clip(_ap.get_animation(_clip("guard_idle")), _skel)
+	_layer.set_open_clip(_ap.get_animation(_clip("relax")), _skel)
+	# Fingertips we pinch with (the tail sits between them).
+	for bn in ["thumb.03.R", "f_index.03.R"]:
+		var ba := BoneAttachment3D.new()
+		ba.bone_name = bn
+		_skel.add_child(ba)
+		_tips.append(ba)
 	_aim = GripAim.new()
 	_aim.bone = _skel.find_bone("hand.R")
 	_skel.add_child(_aim)
@@ -158,9 +262,9 @@ func _base_clip() -> String:
 		"rod", "weapon":
 			return "knife_idle"
 		"clam", "fish":
-			return "guard_idle"           # right fist up, holding it out
+			return "relax"                # open hands; the right arm is layered on top
 		"bare":
-			return "guard_idle" if (_combat > 0.0 or windup > 0.0) else "relax"
+			return "guard_idle" if windup > 0.0 else "relax"
 		_:
 			return "relax"
 
@@ -350,6 +454,12 @@ func _process(delta: float) -> void:
 	var rig_xf := Transform3D(Basis(Vector3.RIGHT, pitch), off) * _base
 	_rig.transform = _rig.transform.interpolate_with(rig_xf, clampf(delta * 20.0, 0.0, 1.0))
 
+	# Holding a small fish or a clam: only the right arm lifts and grips.
+	var lift := (mode == "clam" or (mode == "fish" and not prop_two_hands)) and _oneshot <= 0.0
+	_layer.weight = move_toward(_layer.weight, 1.0 if lift else 0.0, delta * 5.0)
+	_layer.finger_weight = _layer.weight
+	_layer.pinch = 1.0
+	_layer.time += delta
 	_aim_wrist(delta)
 	_place_rod(delta)
 	_place_prop()
@@ -405,18 +515,54 @@ func _place_prop() -> void:
 	var cam := get_parent() as Node3D
 	var yaw := cam.global_rotation.y if cam else 0.0
 	var sc := prop.scale
-	if mode == "fish" and cam:
+	if mode == "fish" and prop_two_hands and cam:
+		# Big catch: lying across both open hands, head over one palm, tail
+		# over the other, rising and falling a little as you walk.
+		var lp := _grip_l.global_position
+		var rp := _tool_mount.global_position
+		var across := rp - lp
+		var mid := (lp + rp) * 0.5
+		var upv := cam.global_basis.y.normalized()
+		var dx := across.normalized()
+		var dz := dx.cross(upv).normalized()
+		var dy := dz.cross(dx).normalized()
+		var bob := sin(_phase) * 0.008 * clampf(move_speed / 3.0, 0.0, 1.0)
+		var fwd := -cam.global_basis.z.normalized()
+		# resting on the fingers: a little forward of the grips and just above
+		prop.global_transform = Transform3D(Basis(dx, dy, dz).scaled(sc), mid + fwd * 0.07 - dy * (0.035 - bob))
+	elif mode == "fish" and cam:
 		# Held out by the tail: the body points from your fist toward the middle
 		# of the view, drooping a little and swaying as you walk.
 		var sway := sin(_t * 2.1) * 0.06 + sin(_phase) * 0.05 * clampf(move_speed / 3.0, 0.0, 1.0)
-		var d := (cam.global_basis * Vector3(-1.0, -0.42 + sway, -0.35)).normalized()
+		var d := (cam.global_basis * Vector3(-0.22 + sway, -1.0, -0.12)).normalized()
 		var z := d.cross(Vector3.UP).normalized()
+		if z.length() < 0.1:
+			z = cam.global_basis.x.normalized()
 		var y := z.cross(d).normalized()
 		var b := Basis(d, y, z)
-		prop.global_transform = Transform3D(b.scaled(sc), grip + d * (prop_half - 0.035))
+		# the tail fin sits between thumb and index, the body hangs from it
+		var pinch_pt := _pinch_point(grip)
+		prop.global_transform = Transform3D(b.scaled(sc), pinch_pt + d * (prop_half - 0.02))
 	else:
-		var b2 := Basis(Vector3.UP, yaw + 0.4) * Basis(Vector3.RIGHT, -0.3)
-		prop.global_transform = Transform3D(b2.scaled(sc), grip + Vector3(0, 0.015, 0))
+		# the clam sits in the curl of the fingers, its edge peeking out on the
+		# thumb side, tilted to face you
+		# pinched between thumb and index, its face turned toward you
+		var pp := _pinch_point(grip)
+		var cb := cam.global_basis if cam else Basis()
+		var b2 := cb * Basis(Vector3.RIGHT, 1.25)
+		prop.global_transform = Transform3D(b2.scaled(sc), pp + cb.y * -0.012 + cb.z * 0.01)
+
+
+## Where thumb and index fingertips meet (each bone's origin is its last
+## joint, so step out along the bone to the actual tip).
+func _pinch_point(fallback: Vector3) -> Vector3:
+	if _tips.size() != 2:
+		return fallback
+	var sum := Vector3.ZERO
+	for t in _tips:
+		var n := t as Node3D
+		sum += n.global_position + n.global_basis.y.normalized() * 0.024
+	return sum * 0.5
 
 
 ## Right hand position in camera space.

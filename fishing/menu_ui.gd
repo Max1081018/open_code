@@ -17,7 +17,7 @@ signal first_help_done
 
 const CFG_PATH := "user://settings.cfg"
 
-const GRAPHICS_LEVELS := ["Low", "Medium", "High"]
+const GRAPHICS_LEVELS := ["Low", "Medium", "High", "Ultra"]
 
 var settings := {
 	"sfx_volume": 0.8,
@@ -25,7 +25,7 @@ var settings := {
 	"left_handed": false,
 	"camera_sway": true,
 	"look_sens": 1.0,
-	"graphics": "High",
+	"graphics": "Medium",
 	"shadows": true,
 	"crosshair": true,
 	"show_body": true,

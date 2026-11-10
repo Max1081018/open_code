@@ -40,6 +40,11 @@ uniform float roughness : hint_range(0.0, 1.0) = 0.06;
 // The depth buffer of everything opaque drawn before the water.
 uniform sampler2D depth_texture : hint_depth_texture, repeat_disable, filter_nearest;
 
+// A boat-shaped hole so the sea never shows inside the moored boat's hull.
+uniform vec2 hole_center = vec2(0.0, 0.0);
+uniform vec2 hole_axis = vec2(0.0, 1.0);
+uniform vec2 hole_half = vec2(0.0, 0.0);   // (half width, half length); 0 = no hole
+
 // Four sine waves: direction (unit vector), length as a fraction of
 // wave_length, share of wave_height, and how many half turns each makes per
 // unit of TIME * wave_speed. Whole numbers of half turns make every wave repeat
@@ -85,6 +90,15 @@ void vertex() {
 }
 
 void fragment() {
+	if (hole_half.x > 0.0) {
+		vec2 d = world_xz - hole_center;
+		vec2 side = vec2(-hole_axis.y, hole_axis.x);
+		vec2 l = vec2(dot(d, side) / hole_half.x, dot(d, hole_axis) / hole_half.y);
+		// rounded-bow ellipse-ish footprint
+		if (l.x * l.x + pow(abs(l.y), 3.0) < 1.0) {
+			discard;
+		}
+	}
 	float t = TIME * wave_speed;
 
 	// Ripples: two normal maps scrolling in different directions. Each moves a

@@ -54,12 +54,23 @@ func is_dead_screen() -> bool:
 	return _dead
 
 
+var _sig := ""
+var _fps_t := 0.0
+
 func _process(d: float) -> void:
 	_hit = maxf(_hit - d * 1.6, 0.0)
 	_shake = maxf(_shake - d * 3.0, 0.0)
 	if _dead:
 		_dead_t += d
-	_view.queue_redraw()
+	_fps_t += d
+	# Only redraw when the bars / flash / death screen change (FPS twice a second).
+	var fps_tick := 0
+	if show_fps:
+		fps_tick = int(_fps_t * 2.0)
+	var sig := "%.1f|%.2f|%s|%s|%s|%s|%d" % [health, breath, show_breath, underwater, visible_bars, show_fps, fps_tick]
+	if _hit > 0.0 or _dead or sig != _sig:
+		_sig = sig
+		_view.queue_redraw()
 
 
 func _input(event: InputEvent) -> void:

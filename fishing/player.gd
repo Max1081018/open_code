@@ -15,6 +15,8 @@ const RUN_SPEED := 6.2
 const ACCEL := 14.0
 const GRAVITY := 22.0
 const TURN_RATE := 12.0
+const JUMP_SPEED := 7.2
+const STEP_HEIGHT := 0.45         # walks straight up porch steps and kerbs
 
 var move_input := Vector2.ZERO   # x = right, y = forward(-) / back(+)
 var cam_yaw := 0.0
@@ -30,6 +32,7 @@ var show_body := true
 var sprint := false              # set by the RUN button
 var wading := false              # knee-deep or more: slower
 var carry_slow := 1.0            # < 1 while hauling something heavy
+var _jump_buffer := 0.0          # a tap just before landing still jumps
 
 
 ## In first person we still draw the body (so you can look down and see your
@@ -55,6 +58,13 @@ func _ready() -> void:
 	col.position = Vector3(0, PLAYER_HEIGHT * 0.5, 0)
 	add_child(col)
 	_build_model()
+	floor_snap_length = 0.35
+	floor_max_angle = deg_to_rad(50.0)
+
+
+## Jump on the next physics frame you're on the ground (buffered a moment).
+func jump() -> void:
+	_jump_buffer = 0.18
 
 
 func _build_model() -> void:
@@ -155,6 +165,17 @@ func _physics_process(delta: float) -> void:
 
 	velocity.x = move_toward(velocity.x, want.x, ACCEL * delta)
 	velocity.z = move_toward(velocity.z, want.z, ACCEL * delta)
+	_jump_buffer = maxf(_jump_buffer - delta, 0.0)
+	if _jump_buffer > 0.0 and is_on_floor() and not frozen:
+		_jump_buffer = 0.0
+		velocity.y = JUMP_SPEED * (0.85 if wading else 1.0)
+	# Step up onto low ledges (porch steps, kerbs) instead of stopping dead.
+	elif is_on_floor() and is_on_wall() and want.length() > 0.5:
+		var ahead := Vector3(want.x, 0.0, want.z).normalized() * 0.22
+		var up := Vector3(0, STEP_HEIGHT, 0)
+		var t := global_transform
+		if test_move(t, ahead) and not test_move(t, up) and not test_move(t.translated(up), ahead):
+			global_position += up + ahead * 0.5
 	move_and_slide()
 
 	# In first person the body faces wherever you're looking, so your own legs

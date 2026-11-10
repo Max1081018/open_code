@@ -110,6 +110,8 @@ var _held_prop_key := ""
 var _reach := 0.0
 var _hands_enabled := true
 var fx: WorldFX
+var render_view: RenderView
+var quality := 1                 # 0 Low, 1 Medium, 2 High, 3 Ultra
 var _surf: AudioStreamPlayer
 var _step_dist := 0.0
 var _gull_t := 8.0
@@ -448,7 +450,7 @@ func _apply_held() -> void:
 		_held_prop_key = key
 		if key == "clam":
 			_held_prop = _clam_model()
-			_held_prop.scale = Vector3.ONE * 0.42
+			_held_prop.scale = Vector3.ONE * 0.30
 		elif key != "":
 			var d: Dictionary = inv[sel].get("data", {})
 			var w := 4.5 if d.get("boss", false) else float(d.get("weight", 1.0))
@@ -456,9 +458,13 @@ func _apply_held() -> void:
 			# keep it to a size you can hold up in front of you
 			var box := _local_aabb(_held_prop)
 			var longest: float = maxf(maxf(box.size.x, box.size.y), box.size.z) * _held_prop.scale.x
-			if longest > 0.42:
-				_held_prop.scale *= 0.42 / longest
-				longest = 0.42
+			# Small fish: by the tail in one hand. Big ones: across both palms.
+			var two := bool(d.get("boss", false)) or float(d.get("weight", 0.0)) >= 2.5
+			hands.prop_two_hands = two
+			var want_len := 0.5 if two else minf(longest, 0.3)
+			if longest > 0.0001:
+				_held_prop.scale *= want_len / longest
+			longest = want_len
 			hands.prop_half = longest * 0.5
 		if _held_prop:
 			for mi in _held_prop.find_children("*", "MeshInstance3D", true, false):
@@ -659,6 +665,9 @@ var _flop_seen := false
 var _boss_sold := false
 var _boss_sell_frame := -1
 var test_rod := false
+var test_at := Vector3.INF
+var test_pitch := -99.0
+var test_quality := ""
 var test_fresh := false          # autotest: ignore the save and don't write one
 var _tphase := 0
 var _tnext := 0
@@ -677,6 +686,12 @@ func _ready() -> void:
 	_build_world()
 	_build_player_view()
 	_build_sounds()
+	# 3D drawn at a fraction of screen resolution behind a sharp HUD.
+	render_view = RenderView.new()
+	render_view.process_priority = 1000      # copy the camera after it has moved
+	add_child(render_view)
+	render_view.setup(camera, get_viewport().world_3d)
+	Engine.max_fps = 60                       # no point burning a 120 Hz phone's battery
 	hud = Hud.new()
 	add_child(hud)
 
@@ -704,6 +719,9 @@ func _ready() -> void:
 	touch.interact_pressed.connect(_on_interact)
 	touch.secondary_pressed.connect(_on_secondary)
 	touch.slot_pressed.connect(_select_slot)
+	touch.jump_pressed.connect(func():
+		if app_state == "playing" and play_mode == "explore":
+			player.jump())
 	touch.visible = false
 	hud.enabled = false
 	hud.set_hud_visible(false)
@@ -820,6 +838,11 @@ func _parse_args() -> void:
 		elif a == "--rain": test_rain = true
 		elif a == "--rod": test_rod = true
 		elif a == "--fresh": test_fresh = true
+		elif a.begins_with("--at="):
+			var p := a.get_slice("=", 1).split(",")
+			test_at = Vector3(float(p[0]), 0.0, float(p[1]))
+		elif a.begins_with("--pitch="): test_pitch = float(a.get_slice("=", 1))
+		elif a.begins_with("--quality="): test_quality = a.get_slice("=", 1)
 
 
 # --- Wave height (mirror of the shader) --------------------------------------
@@ -941,6 +964,7 @@ func _build_world() -> void:
 	smat.set_shader_parameter("roughness", 0.07)
 	smat.set_shader_parameter("normal_map_a", load("res://assets/water/water_normal_a.png"))
 	smat.set_shader_parameter("normal_map_b", load("res://assets/water/water_normal_b.png"))
+	smat.set_shader_parameter("hole_half", Vector2(0.92, 2.35))
 	plane.material = smat
 	water_mat = smat
 	water.mesh = plane
@@ -1082,10 +1106,8 @@ func _make_island(center: Vector3, radius: float, height: float, grassy := true,
 			add.call(p0); add.call(p3); add.call(p2)
 	st.generate_normals()
 	var mesh := st.commit()
-	var m := StandardMaterial3D.new()
-	m.vertex_color_use_as_albedo = true
-	m.vertex_color_is_srgb = true      # colours above are picked in sRGB
-	m.roughness = 1.0
+	var m := ShaderMaterial.new()
+	m.shader = load("res://assets/terrain.gdshader")
 	var mi := MeshInstance3D.new()
 	mi.mesh = mesh
 	mi.material_override = m
@@ -1107,9 +1129,9 @@ func _build_island() -> void:
 		_spawn("dock", Vector3(0, -0.59, 19.0 - i * 2.5))
 
 	# Dockside clutter.
-	_spawn("barrel", Vector3(-1.62, DECK_Y, 16.2), 0.3, 0.70)
-	_spawn("crate", Vector3(1.62, DECK_Y, 17.0), -0.4, 0.75)
-	_spawn("barrel", Vector3(-1.66, DECK_Y, 15.2), -0.2, 0.60)
+	_spawn("barrel", Vector3(-0.78, DECK_Y, 18.4), 0.3, 0.62)
+	_spawn("crate", Vector3(0.80, DECK_Y, 18.9), -0.4, 0.66)
+	_spawn("barrel", Vector3(-0.80, DECK_Y, 17.6), -0.2, 0.55)
 
 	# The motorboat, moored alongside the jetty. Buy the Boss Reel to take it out.
 	boat = _spawn("motorboat", BOAT_MOOR, BOAT_YAW, 0.30)
@@ -1158,7 +1180,10 @@ func _build_scenery() -> void:
 		var x: float = pr["x"]
 		var z: float = pr["z"]
 		var y := _island_y(HOME, HOME_R, HOME_H, x, z)
-		_spawn(pr["k"], Vector3(x, y - 0.15, z), pr["r"], pr["s"])
+		if str(pr["k"]).begins_with("palm"):
+			_make_palm(Vector3(x, y - 0.12, z), float(pr["s"]), float(pr["r"]), str(pr["k"]) == "palm_bend")
+		else:
+			_spawn(pr["k"], Vector3(x, y - 0.15, z), pr["r"], pr["s"])
 
 	# A watchtower landmark set back on the island.
 	var ty := _island_y(HOME, HOME_R, HOME_H, 3.0, 42.0)
@@ -1195,29 +1220,6 @@ func _build_scenery() -> void:
 	# A wrecked ship on the horizon for silhouette.
 	_static_props.append(_spawn("wreck", Vector3(-38, -1.0, -60), 0.7, 1.3))
 
-	# Outlying islands with their own palms and rocks.
-	var isles := [
-		{"c": Vector3(-40, 0, -46), "r": 11.0, "h": 3.4},
-		{"c": Vector3(36, 0, -58), "r": 9.0, "h": 3.0},
-		{"c": Vector3(-8, 0, -82), "r": 13.0, "h": 4.2},
-		{"c": Vector3(54, 0, -32), "r": 8.0, "h": 2.6},
-	]
-	for isle in isles:
-		var c: Vector3 = isle["c"]
-		var r: float = isle["r"]
-		var h: float = isle["h"]
-		_make_island(c, r, h)
-		for i in 3 + randi() % 3:
-			var a := randf() * TAU
-			var rr := randf_range(0.15, 0.6) * r
-			var px := c.x + cos(a) * rr
-			var pz := c.z + sin(a) * rr
-			var py := _island_y(c, r, h, px, pz)
-			_spawn("palm" if randf() < 0.6 else "palm_bend",
-				Vector3(px, py - 0.15, pz), randf() * TAU, randf_range(0.9, 1.3))
-		var ra := randf() * TAU
-		_spawn("rocks_sand", c + Vector3(cos(ra) * r * 0.8, -0.3, sin(ra) * r * 0.8),
-			randf() * TAU, randf_range(0.6, 0.9))
 
 
 # --- Player view: camera, rod, line, bobber ----------------------------------
@@ -2470,37 +2472,43 @@ func _build_grass() -> void:
 	add_child(flower_mm)
 
 
-## Low-poly clouds: clusters of flattened spheres drifting slowly overhead.
+## Low-poly cumulus clouds: chunky faceted puffs on a flat base, white on top
+## and soft blue-grey underneath, drifting slowly. Built for the Ultra count;
+## lower graphics levels just show fewer.
+var cloud_mat: ShaderMaterial
+
 func _build_clouds() -> void:
-	var cm := StandardMaterial3D.new()
-	cm.albedo_color = Color(1, 1, 1)
-	cm.roughness = 1.0
-	cm.emission_enabled = true
-	cm.emission = Color(0.85, 0.88, 0.95)
-	cm.emission_energy_multiplier = 0.35
-	cm.disable_receive_shadows = true
-	for i in 12:
+	cloud_mat = ShaderMaterial.new()
+	cloud_mat.shader = load("res://assets/cloud.gdshader")
+	var rng := RandomNumberGenerator.new()
+	rng.seed = 4242
+	for i in 28:
 		var cloud := Node3D.new()
-		var a := randf() * TAU
-		var r := randf_range(70.0, 150.0)
-		cloud.position = Vector3(cos(a) * r, randf_range(34.0, 52.0), sin(a) * r + 10.0)
-		# All the puffs of one cloud baked into a single mesh: one draw call.
+		var a := rng.randf() * TAU
+		var r := rng.randf_range(55.0, 230.0)
+		cloud.position = Vector3(cos(a) * r, rng.randf_range(38.0, 62.0) + r * 0.04, sin(a) * r + 10.0)
+		cloud.rotation.y = rng.randf() * TAU
 		var st := SurfaceTool.new()
 		st.begin(Mesh.PRIMITIVE_TRIANGLES)
-		for k in randi_range(4, 7):
+		var size := rng.randf_range(0.8, 1.6)
+		var n := rng.randi_range(5, 9)
+		for k in n:
 			var sm := SphereMesh.new()
-			sm.radius = randf_range(3.0, 6.0)
+			var big := k < 3
+			sm.radius = rng.randf_range(4.2, 6.5) if big else rng.randf_range(2.6, 4.4)
 			sm.height = sm.radius * 2.0
-			sm.radial_segments = 10
-			sm.rings = 6
-			var xf := Transform3D(Basis().scaled(Vector3(1.3, randf_range(0.5, 0.7), 1.0)),
-				Vector3(randf_range(-9, 9), randf_range(-1.5, 1.5), randf_range(-4, 4)))
-			st.append_from(sm, 0, xf)
-		var puff := MeshInstance3D.new()
-		puff.mesh = st.commit()
-		puff.material_override = cm
-		puff.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
-		cloud.add_child(puff)
+			sm.radial_segments = 8
+			sm.rings = 5
+			var x := rng.randf_range(-11.0, 11.0)
+			var z := rng.randf_range(-5.0, 5.0)
+			var y := rng.randf_range(0.5, 2.5) if big else rng.randf_range(2.5, 5.0)
+			st.append_from(sm, 0, Transform3D(Basis().scaled(Vector3(1.15, 0.8, 1.0) * size), Vector3(x, y, z) * size))
+		st.generate_normals()
+		var mi := MeshInstance3D.new()
+		mi.mesh = st.commit()
+		mi.material_override = cloud_mat
+		mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+		cloud.add_child(mi)
 		add_child(cloud)
 		clouds.append(cloud)
 
@@ -2543,6 +2551,116 @@ func _merge_static(root: Node3D) -> void:
 		root.add_child(out)
 
 
+## A palm tree built in code: a curved, banded trunk, a few coconuts, and a
+## crown of drooping, serrated fronds - one mesh, one draw call, swaying in the
+## wind via its shader.
+var _palm_mat: ShaderMaterial
+
+func _make_palm(pos: Vector3, scl: float, yaw: float, bent: bool) -> void:
+	if _palm_mat == null:
+		_palm_mat = ShaderMaterial.new()
+		_palm_mat.shader = load("res://assets/palm.gdshader")
+	var rng := RandomNumberGenerator.new()
+	rng.seed = int(pos.x * 1000.0 + pos.z * 37.0)
+	var st := SurfaceTool.new()
+	st.begin(Mesh.PRIMITIVE_TRIANGLES)
+	var h := rng.randf_range(5.2, 6.4)
+	var lean := Vector3(cos(yaw), 0, sin(yaw)) * (1.8 if bent else 0.6)
+	var segs := 9
+	var sides := 7
+	var bark_a := Color(0.52, 0.37, 0.24)
+	var bark_b := Color(0.42, 0.29, 0.18)
+	var ring := func(t: float) -> Array:
+		var c := Vector3(0, h * t, 0) + lean * t * t
+		var r := 0.24 * (1.0 - 0.42 * t)
+		var pts: Array = []
+		for k in sides:
+			var a := TAU * float(k) / sides
+			pts.append(c + Vector3(cos(a) * r, 0, sin(a) * r))
+		return [c, pts]
+	for i in segs:
+		var t0 := float(i) / segs
+		var t1 := float(i + 1) / segs
+		var r0: Array = ring.call(t0)
+		var r1: Array = ring.call(t1)
+		var col := bark_a if i % 2 == 0 else bark_b
+		for k in sides:
+			var k2 := (k + 1) % sides
+			var p0: Vector3 = r0[1][k]
+			var p1: Vector3 = r0[1][k2]
+			var p2: Vector3 = r1[1][k2]
+			var p3: Vector3 = r1[1][k]
+			var q := [p0, p1, p2, p3]
+			var n: Vector3 = ((p1 - p0).cross(p3 - p0)).normalized()
+			for idx in [0, 1, 2, 0, 2, 3]:
+				var v: Vector3 = q[idx]
+				st.set_color(col.lightened(0.06 if idx in [2, 3] else 0.0))
+				st.set_normal(-n)
+				st.set_uv(Vector2(0.0, (t0 if idx < 2 else t1) * 0.35))
+				st.add_vertex(v)
+	var top: Vector3 = ring.call(1.0)[0]
+	# coconuts
+	for c in 3:
+		var a := TAU * c / 3.0 + 0.4
+		var cpos := top + Vector3(cos(a) * 0.22, -0.18, sin(a) * 0.22)
+		var cs := SphereMesh.new()
+		cs.radius = 0.13
+		cs.height = 0.26
+		cs.radial_segments = 6
+		cs.rings = 3
+		var arr := cs.get_mesh_arrays()
+		var verts: PackedVector3Array = arr[Mesh.ARRAY_VERTEX]
+		var norms: PackedVector3Array = arr[Mesh.ARRAY_NORMAL]
+		var ids: PackedInt32Array = arr[Mesh.ARRAY_INDEX]
+		for ii in ids:
+			st.set_color(Color(0.33, 0.22, 0.12))
+			st.set_normal(norms[ii])
+			st.set_uv(Vector2(0.0, 0.35))
+			st.add_vertex(verts[ii] + cpos)
+	# fronds
+	var fronds := 9
+	for f in fronds:
+		var a := TAU * float(f) / fronds + rng.randf_range(-0.15, 0.15)
+		var dir := Vector3(cos(a), 0, sin(a))
+		var side := Vector3(-dir.z, 0, dir.x)
+		var length := rng.randf_range(2.4, 3.1)
+		var lift := rng.randf_range(0.5, 0.9)
+		var steps := 9
+		var dark := Color(0.17, 0.44, 0.19)
+		var light := Color(0.40, 0.70, 0.27)
+		var prev_l := Vector3.ZERO
+		var prev_r := Vector3.ZERO
+		var prev_c := Vector3.ZERO
+		for j in steps + 1:
+			var u := float(j) / steps
+			var c := top + dir * length * u + Vector3(0, lift * length * u - 1.25 * length * u * u * 0.6, 0)
+			var w := 0.42 * sin(PI * minf(u * 1.15, 1.0)) * (1.0 - u * 0.35)
+			# serrated edge: leaflets alternate long/short
+			var jag := 1.0 if j % 2 == 0 else 0.62
+			var l := c + side * w * jag - Vector3(0, w * 0.25, 0)
+			var r := c - side * w * jag - Vector3(0, w * 0.25, 0)
+			if j > 0:
+				var u0 := float(j - 1) / steps
+				var col0 := dark.lerp(light, u0)
+				var col1 := dark.lerp(light, u)
+				for tri in [[prev_c, prev_l, l], [prev_c, l, c], [prev_c, c, r], [prev_c, r, prev_r]]:
+					for v in tri:
+						var uu: float = u if (v == l or v == c or v == r) else u0
+						st.set_color(col1 if (v == l or v == c or v == r) else col0)
+						st.set_normal(Vector3.UP)
+						st.set_uv(Vector2(uu, 0.35 + 0.65 * uu))
+						st.add_vertex(v)
+			prev_l = l
+			prev_r = r
+			prev_c = c
+	var mi := MeshInstance3D.new()
+	mi.mesh = st.commit()
+	mi.material_override = _palm_mat
+	mi.position = pos
+	mi.scale = Vector3.ONE * scl
+	add_child(mi)
+
+
 ## One pass over the built world to cut draw calls on phones:
 ## - only things big enough to matter cast shadows (not water, terrain or
 ##   small props), so the shadow passes stay short;
@@ -2574,11 +2692,31 @@ func _optimize_world() -> void:
 			g.visibility_range_end_margin = 2.0
 
 
-## Light weather: mostly clear, now and then a short drizzle that dims the sun
-## and thickens the haze a touch. Rain is a particle box that follows the camera.
+## Weather is a slow cycle of states, each lasting minutes, blending smoothly
+## into the next. It always starts clear, and rain is the exception, not the
+## rule: clear, cloudy, breezy, foggy, drizzle and (now and then) rain.
+const WEATHER := {
+	"clear":   {"rain": 0.0,  "over": 0.0,  "fog": 0.0085, "wind": 1.0, "dur": [180.0, 300.0]},
+	"cloudy":  {"rain": 0.0,  "over": 0.55, "fog": 0.011,  "wind": 1.2, "dur": [100.0, 170.0]},
+	"breezy":  {"rain": 0.0,  "over": 0.15, "fog": 0.008,  "wind": 2.3, "dur": [90.0, 150.0]},
+	"foggy":   {"rain": 0.0,  "over": 0.35, "fog": 0.030,  "wind": 0.6, "dur": [70.0, 120.0]},
+	"drizzle": {"rain": 0.45, "over": 0.70, "fog": 0.014,  "wind": 1.4, "dur": [45.0, 80.0]},
+	"rain":    {"rain": 1.0,  "over": 1.0,  "fog": 0.018,  "wind": 1.9, "dur": [40.0, 70.0]},
+}
+const WEATHER_NEXT := {
+	"clear":   {"cloudy": 40, "breezy": 30, "foggy": 15, "drizzle": 15},
+	"cloudy":  {"clear": 40, "drizzle": 35, "rain": 15, "breezy": 10},
+	"breezy":  {"clear": 60, "cloudy": 40},
+	"foggy":   {"clear": 70, "cloudy": 30},
+	"drizzle": {"cloudy": 60, "clear": 40},
+	"rain":    {"cloudy": 70, "drizzle": 30},
+}
+var weather_state := "clear"
+var _w := {"rain": 0.0, "over": 0.0, "fog": 0.0085, "wind": 1.0}
+
 func _build_weather() -> void:
 	rain = CPUParticles3D.new()
-	rain.amount = 400
+	rain.amount = 320
 	rain.lifetime = 0.9
 	rain.local_coords = false
 	rain.emission_shape = CPUParticles3D.EMISSION_SHAPE_BOX
@@ -2599,7 +2737,8 @@ func _build_weather() -> void:
 	rain.mesh = drop
 	rain.emitting = false
 	add_child(rain)
-	_weather_t = randf_range(40.0, 90.0)
+	weather_state = "clear"
+	_weather_t = randf_range(150.0, 240.0)      # a calm start every session
 
 
 func _update_weather(delta: float) -> void:
@@ -2607,35 +2746,66 @@ func _update_weather(delta: float) -> void:
 		return
 	# clouds drift and wrap around
 	for c in clouds:
-		c.position.x += delta * 1.2
-		if c.position.x > 160.0:
-			c.position.x = -160.0
+		var cn := c as Node3D
+		if not cn.visible:
+			continue
+		cn.position.x += delta * (0.9 + _w["wind"] * 0.6)
+		if cn.position.x > 240.0:
+			cn.position.x = -240.0
+	# next weather when this one's time is up
 	_weather_t -= delta
 	if test_rain:
-		_raining = true
-		_rain_amt = 1.0
+		weather_state = "rain"
 		_weather_t = 99.0
 	if _weather_t <= 0.0:
-		_raining = not _raining and weather_enabled
-		_weather_t = randf_range(25.0, 40.0) if _raining else randf_range(90.0, 160.0)
-	var want := 1.0 if (_raining and weather_enabled) else 0.0
-	_rain_amt = move_toward(_rain_amt, want, delta * 0.25)
-	rain.emitting = _rain_amt > 0.15
+		var opts: Dictionary = WEATHER_NEXT[weather_state]
+		var total := 0.0
+		for k in opts:
+			total += float(opts[k])
+		var r := randf() * total
+		for k in opts:
+			r -= float(opts[k])
+			if r <= 0.0:
+				weather_state = k
+				break
+		var dur: Array = WEATHER[weather_state]["dur"]
+		_weather_t = randf_range(float(dur[0]), float(dur[1]))
+	var target: Dictionary = WEATHER["clear"] if not weather_enabled else WEATHER[weather_state]
+	var k2 := clampf(delta / 18.0, 0.0, 1.0) if not test_rain else 1.0     # ~20 s blends
+	for key in ["rain", "over", "fog", "wind"]:
+		_w[key] = lerpf(float(_w[key]), float(target[key]), k2)
+	_rain_amt = float(_w["rain"])
+	var over := float(_w["over"])
+	rain.emitting = _rain_amt > 0.12
+	rain.speed_scale = 0.8 + _rain_amt * 0.4
 	rain.global_position = camera.global_position + Vector3(0, 11, 0)
 	if sun_light:
-		sun_light.light_energy = lerpf(1.02, 0.66, _rain_amt)
+		sun_light.light_energy = lerpf(1.02, 0.62, over)
 	if world_env:
-		world_env.fog_density = lerpf(0.0085, 0.016, _rain_amt)
-		world_env.ambient_light_energy = lerpf(0.42, 0.36, _rain_amt)
-	# Grey the sky a little in a shower (only when it changes: sky updates cost).
-	if sky_mat and absf(_rain_amt - _sky_rain) > 0.02:
-		_sky_rain = _rain_amt
-		sky_mat.sky_top_color = Color(0.13, 0.36, 0.78).lerp(Color(0.36, 0.44, 0.55), _rain_amt)
-		sky_mat.sky_horizon_color = Color(0.74, 0.88, 0.97).lerp(Color(0.66, 0.72, 0.78), _rain_amt)
+		world_env.fog_density = float(_w["fog"])
+		world_env.ambient_light_energy = lerpf(0.42, 0.36, over)
+		world_env.fog_light_color = Color(0.52, 0.61, 0.70).lerp(Color(0.60, 0.64, 0.68), over)
+	if cloud_mat:
+		cloud_mat.set_shader_parameter("top_color", Color(1, 1, 1).lerp(Color(0.80, 0.82, 0.86), over))
+		cloud_mat.set_shader_parameter("base_color", Color(0.74, 0.80, 0.90).lerp(Color(0.48, 0.52, 0.58), over))
+	if grass_mm and grass_mm.material_override:
+		(grass_mm.material_override as ShaderMaterial).set_shader_parameter("wind_strength", 0.07 * float(_w["wind"]))
+	if _palm_mat:
+		_palm_mat.set_shader_parameter("wind", float(_w["wind"]))
+	# Grey the sky with the clouds (only when it changes: sky updates cost).
+	if sky_mat and absf(over - _sky_rain) > 0.02:
+		_sky_rain = over
+		sky_mat.sky_top_color = Color(0.13, 0.36, 0.78).lerp(Color(0.40, 0.48, 0.58), over)
+		sky_mat.sky_horizon_color = Color(0.74, 0.88, 0.97).lerp(Color(0.68, 0.73, 0.78), over)
 
 
 ## Buoys ride the same waves the water shader draws.
 func _update_floaters() -> void:
+	if boat and water_mat:
+		# keep the sea out of the hull (the water shader cuts a boat-shaped hole)
+		var fwd := boat.global_basis.z
+		water_mat.set_shader_parameter("hole_center", Vector2(boat.global_position.x, boat.global_position.z))
+		water_mat.set_shader_parameter("hole_axis", Vector2(fwd.x, fwd.z).normalized())
 	if boat and play_mode != "sailing":
 		boat.position.y = boat.position.y * 0.0 + BOAT_MOOR.y + wave_height(boat.position.x, boat.position.z)
 		boat.rotation.z = sin(elapsed * 1.3) * 0.025
@@ -2746,32 +2916,68 @@ func _apply_settings() -> void:
 
 
 ## Graphics preset: trades shadows, water detail, fog and anti-aliasing.
+const Q_NAMES := ["Low", "Medium", "High", "Ultra"]
+const Q_SCALE := [0.5, 0.7, 0.85, 1.0]        # 3D resolution
+const Q_FAR := [150.0, 220.0, 280.0, 360.0]
+const Q_GRASS := [0.3, 0.6, 0.85, 1.0]
+const Q_CLOUDS := [8, 14, 20, 28]
+const Q_RAIN := [120, 220, 320, 450]
+const Q_SHADOW_MAP := [1024, 1024, 2048, 4096]
+const Q_WATER_NORMAL := [0.12, 0.26, 0.36, 0.44]
+const Q_FOAM := [0.0, 0.12, 0.16, 0.18]
+
+
+## Graphics level: 3D resolution, shadows, grass, clouds, rain, view
+## distance, water detail and edge smoothing. Every value is set every time,
+## so switching between any two levels (or back and forth) always lands in
+## the same state.
 func _apply_graphics() -> void:
 	if not menu_ui:
 		return
-	var q := str(menu_ui.settings.get("graphics", "High"))
-	var want_shadows: bool = bool(menu_ui.settings.get("shadows", true)) and q != "Low"
+	quality = Q_NAMES.find(str(menu_ui.settings.get("graphics", "Medium")))
+	if quality < 0:
+		quality = 1
+	var q := quality
+	if render_view:
+		render_view.set_quality(Q_SCALE[q], q >= 2)
+	get_viewport().msaa_3d = Viewport.MSAA_DISABLED
+	var want_shadows: bool = bool(menu_ui.settings.get("shadows", true)) and q > 0
 	if sun_light:
 		sun_light.shadow_enabled = want_shadows
+		match q:
+			1:
+				sun_light.directional_shadow_mode = DirectionalLight3D.SHADOW_ORTHOGONAL
+				sun_light.directional_shadow_max_distance = 30.0
+			2:
+				sun_light.directional_shadow_mode = DirectionalLight3D.SHADOW_PARALLEL_2_SPLITS
+				sun_light.directional_shadow_max_distance = 48.0
+			3:
+				sun_light.directional_shadow_mode = DirectionalLight3D.SHADOW_PARALLEL_4_SPLITS
+				sun_light.directional_shadow_max_distance = 75.0
+	RenderingServer.directional_shadow_atlas_set_size(Q_SHADOW_MAP[q], true)
 	if world_env:
 		world_env.fog_enabled = true
 	if water_mat:
-		water_mat.set_shader_parameter("normal_scale", 0.12 if q == "Low" else (0.28 if q == "Medium" else 0.38))
-		water_mat.set_shader_parameter("foam_width", 0.0 if q == "Low" else 0.16)
+		water_mat.set_shader_parameter("normal_scale", Q_WATER_NORMAL[q])
+		water_mat.set_shader_parameter("foam_width", Q_FOAM[q])
 	if grass_mm:
 		var n := grass_mm.multimesh.instance_count
-		grass_mm.multimesh.visible_instance_count = int(n * (0.35 if q == "Low" else (0.7 if q == "Medium" else 1.0)))
+		grass_mm.multimesh.visible_instance_count = int(n * Q_GRASS[q])
+	if flower_mm:
+		var fn := flower_mm.multimesh.instance_count
+		flower_mm.multimesh.visible_instance_count = int(fn * (0.5 if q == 0 else 1.0))
+	for i in clouds.size():
+		(clouds[i] as Node3D).visible = i < Q_CLOUDS[q]
+	if rain:
+		rain.amount = Q_RAIN[q]
 	weather_enabled = bool(menu_ui.settings.get("weather", true))
 	_hands_enabled = bool(menu_ui.settings.get("show_hands", true))
 	if status:
 		status.show_fps = bool(menu_ui.settings.get("show_fps", false))
-	var vp := get_viewport()
-	if vp:
-		vp.msaa_3d = Viewport.MSAA_DISABLED if q == "Low" else (Viewport.MSAA_2X if q == "Medium" else Viewport.MSAA_4X)
 	if camera:
-		camera.far = 170.0 if q == "Low" else 260.0
-	if shop_lamp and q == "Low":
-		shop_lamp.omni_range = 5.0
+		camera.far = Q_FAR[q]
+	if shop_lamp:
+		shop_lamp.omni_range = 5.0 if q == 0 else 7.5
 
 
 func _physics_process(delta: float) -> void:
@@ -3996,8 +4202,16 @@ func _autotest(_delta: float) -> void:
 	sim_action = false
 
 	if start_screen == "explore":
+		if frame == 2 and test_quality != "":
+			menu_ui.settings["graphics"] = test_quality
+			_apply_settings()
+		if frame == 3 and test_at != Vector3.INF:
+			player.global_position = Vector3(test_at.x, _ground_or_water(test_at) + 0.3, test_at.z)
+			player.velocity = Vector3.ZERO
 		if frame == 10:
 			cam_yaw = test_yaw
+			if test_pitch > -90.0:
+				cam_pitch = test_pitch
 		touch.sprint = test_sprint
 		_test_max_speed = maxf(_test_max_speed, Vector2(player.velocity.x, player.velocity.z).length())
 		if frame < 30:
@@ -4187,10 +4401,15 @@ func _autotest(_delta: float) -> void:
 			_select_slot(k if k < SLOTS else sel)
 			if k == SLOTS:
 				_select_slot(sel)
+		if frame % 45 == 1 and k == SLOTS + 1:
+			# a big catch: carried across both hands
+			inv[3]["data"]["weight"] = 3.8
+			inv[3]["data"]["name"] = "Bass "
+			_select_slot(3)
 		if frame % 45 == 40:
 			_test_shot("_%d_%s" % [k, held_id() if held_id() != "" else "bare"])
 			print("AUTOTEST held slot=%d id=%s hands=%s prompt='%s' secondary='%s'" % [sel, held_id(), hands.mode, touch.prompt, touch.secondary])
-		if k > SLOTS:
+		if k > SLOTS + 1:
 			get_tree().quit()
 		return
 
