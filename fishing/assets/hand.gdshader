@@ -4,9 +4,9 @@ shader_type spatial;
 // rolls every vertex past the knuckle line down toward the palm, a little more
 // the further out it is, which reads as fingers closing. The thumb (on the
 // `thumb_side` of the hand) closes less and sideways.
-render_mode cull_disabled, diffuse_burley, specular_schlick_ggx;
+render_mode cull_disabled, specular_schlick_ggx;
 
-uniform vec3 skin : source_color = vec3(0.93, 0.72, 0.58);
+uniform vec3 skin : source_color = vec3(0.90, 0.68, 0.54);
 uniform float curl : hint_range(0.0, 1.0) = 0.3;
 uniform float knuckle = 0.085;      // distance from the wrist to the knuckles (m)
 uniform float finger_len = 0.10;    // knuckles to fingertips (m)
@@ -44,5 +44,12 @@ void fragment() {
 	ALBEDO = skin;
 	ROUGHNESS = 0.72;
 	SPECULAR = 0.25;
-	EMISSION = skin * (0.12 + rim * 0.16);
+	EMISSION = skin * (0.05 + rim * 0.12);
+}
+
+// Soft wrap-around light so a hand turned away from the sun isn't black and
+// one facing it doesn't blow out.
+void light() {
+	float wrap = dot(NORMAL, LIGHT) * 0.5 + 0.5;
+	DIFFUSE_LIGHT += wrap * wrap * ATTENUATION * LIGHT_COLOR * 0.85;
 }

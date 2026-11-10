@@ -261,6 +261,13 @@ const SHOP_STOCK := [
 var owned_weapons: Array = []
 var journal := {}              # species name -> [times caught, best kg]
 var _new_species := false
+var streak := 0                # catches in a row without losing one
+var wanted := ""               # species the market buyer pays double for
+var wanted_sign: Label3D
+var _nibbles_left := 0
+var _nibble_t := 0.0
+var _nibble_anim := 0.0
+var _perfect := false
 var equipped_weapon := ""
 var has_boss_reel := false
 var island2_unlocked := false
@@ -341,6 +348,7 @@ func _load_save() -> void:
 		has_boss_reel = bool(cfg.get_value("save", "has_boss_reel", false))
 		island2_unlocked = bool(cfg.get_value("save", "island2_unlocked", false))
 		journal = cfg.get_value("save", "journal", {})
+		wanted = str(cfg.get_value("save", "wanted", ""))
 		if journal.is_empty() and catches > 0:
 			# Older save: start the journal from what we know you've caught.
 			if best_name != "":
@@ -374,6 +382,7 @@ func _save_game() -> void:
 	cfg.set_value("save", "has_boss_reel", has_boss_reel)
 	cfg.set_value("save", "island2_unlocked", island2_unlocked)
 	cfg.set_value("save", "journal", journal)
+	cfg.set_value("save", "wanted", wanted)
 	for key in upgrades:
 		cfg.set_value("upgrades", key, upgrades[key])
 	cfg.save(SAVE_PATH)
@@ -685,6 +694,8 @@ func _build_world() -> void:
 	_optimize_world()
 	fx = WorldFX.new()
 	fx.gull_centre = HOME
+	fx.wave_fn = wave_height
+	fx.shadow_area = Rect2(-15.0, -20.0, 30.0, 21.0)    # open water off the jetty tip
 	add_child(fx)
 
 
@@ -1181,14 +1192,33 @@ func _process(delta: float) -> void:
 		WAITING:
 			_update_bobber()
 			bite_timer -= delta
-			if bite_timer <= 0.0:
+			_nibble_anim = maxf(_nibble_anim - delta * 3.0, 0.0)
+			if _nibbles_left > 0:
+				_nibble_t -= delta
+				if _nibble_t <= 0.0 and bite_timer > 0.9:
+					_nibbles_left -= 1
+					_nibble_t = randf_range(0.7, 1.4)
+					_nibble_anim = 1.0
+					players["click"].pitch_scale = 0.6
+					_play("click")
+					if fx:
+						fx.splash(bobber.position, 0.35)
+			if tap:
+				# Too keen: the fish gets spooked and it's a longer wait.
+				bite_timer += 2.5
+				_nibbles_left = 0
+				hud.message = "Too early - you spooked it!\nWait for HOOK!"
+				_play("splash")
+			elif bite_timer <= 0.0:
 				_start_bite()
 		BITE:
 			_update_bobber()
 			bite_window -= delta
 			if tap:
+				_perfect = bite_window > 1.6 - 0.32
 				_hook_fish()
 			elif bite_window <= 0.0:
+				streak = 0
 				hud.message = "...it got away"
 				_play("splash")
 				await_then_idle(1.0)
@@ -1311,6 +1341,8 @@ func _update_explore(delta: float) -> void:
 			var rar := str(fd.get("rarity", "Common"))
 			touch.look_info = str(fd.get("name", "")).capitalize() if str(fd.get("name", "")).begins_with("a") else str(fd.get("name", ""))
 			touch.look_stat = "%s  ·  %.1f kg" % [rar, float(fd.get("weight", 0))]
+			if wanted != "" and str(fd.get("name", "")) == wanted:
+				touch.look_stat += "  ·  WANTED x2"
 			touch.look_cost = "%d" % int(fd.get("value", 0))
 			touch.prompt = "GRAB"
 		elif near_boat:
@@ -1457,7 +1489,9 @@ func _update_look() -> void:
 
 
 func _flash(text: String) -> void:
-	if touch:
+	if play_mode == "fishing" and hud:
+		hud.toast(text)
+	elif touch:
 		touch.flash(text)
 
 
@@ -1784,8 +1818,33 @@ func _build_market() -> void:
 	fm.outline_size = 14
 	fm.outline_modulate = Color(0.55, 0.18, 0.12)
 
+	# Today's request: one species the buyer pays double for.
+	wanted_sign = _sign("", Vector3(MARKET_POS.x - 0.2, g + 2.95, MARKET_POS.z), 24,
+		-PI * 0.5, Color(1.0, 0.86, 0.35))
+	wanted_sign.billboard = BaseMaterial3D.BILLBOARD_FIXED_Y
+	wanted_sign.outline_size = 10
+	wanted_sign.outline_modulate = Color(0.10, 0.07, 0.04)
+	if wanted == "":
+		_roll_wanted()
+	_refresh_wanted_sign()
+
 	fish_buyer = _spawn_character("res://assets/models/characters/Knight.glb",
 		Vector3(MARKET_POS.x + 1.15, g + 0.02, MARKET_POS.z), -PI * 0.5, "Idle")
+
+
+## Picks a new species for the market to want (something your reel can catch).
+func _roll_wanted() -> void:
+	var options: Array = []
+	for f in fish_table:
+		if not f.get("junk", false) and int(f.get("tier", 0)) <= reel_tier() and str(f["name"]) != wanted:
+			options.append(str(f["name"]))
+	wanted = options[randi() % options.size()] if not options.is_empty() else ""
+	_refresh_wanted_sign()
+
+
+func _refresh_wanted_sign() -> void:
+	if wanted_sign:
+		wanted_sign.text = "WANTED: %s  -  pays x2" % wanted if wanted != "" else ""
 
 
 func _sync_deck() -> void:
@@ -2479,6 +2538,7 @@ func _physics_process(_d: float) -> void:
 
 
 func _hud_sync() -> void:
+	hud.streak = streak
 	hud.distance = distance
 	hud.tension = tension
 
@@ -2520,6 +2580,9 @@ func _update_flight(delta: float) -> void:
 		# Bait upgrade shortens the wait.
 		var bait_factor: float = 1.0 - float(upgrades["bait"]) * 0.13
 		bite_timer = randf_range(2.5, 6.5) * bait_factor
+		# A nibble or two first: tap on one and you'll spook it.
+		_nibbles_left = randi_range(0, 2)
+		_nibble_t = bite_timer * randf_range(0.25, 0.55)
 		state = WAITING
 		hud.message = "Waiting for a bite..."
 
@@ -2527,7 +2590,7 @@ func _update_flight(delta: float) -> void:
 func _update_bobber() -> void:
 	var x := bobber.position.x
 	var z := bobber.position.z
-	bobber.position.y = wave_height(x, z)
+	bobber.position.y = wave_height(x, z) - sin(_nibble_anim * PI) * 0.10
 	# Gentle bob tilt.
 	bobber.rotation.z = sin(elapsed * 2.0 + x) * 0.15
 
@@ -2564,6 +2627,11 @@ func _hook_fish() -> void:
 	state = FIGHT
 	hud.mode = Hud.M_FIGHT
 	hud.message = ""
+	if _perfect:
+		# Lightning reflexes: the fish starts closer and the line slack.
+		distance = 0.78
+		tension = 0.18
+		_flash("PERFECT HOOK!")
 
 
 ## Reel level (the "Reel" upgrade) decides which fish can bite at all and makes
@@ -2607,6 +2675,7 @@ func _update_fight(delta: float, reeling: bool) -> void:
 		tension += delta * (0.42 * fish_strength) * line_factor
 		reel_click_t -= delta
 		if reel_click_t <= 0.0:
+			players["click"].pitch_scale = 1.0
 			_play("click")
 			reel_click_t = 0.09
 	else:
@@ -2631,6 +2700,9 @@ func _snap_line() -> void:
 	hud.mode = Hud.M_SNAP
 	var nm: String = pending_fish.get("name", "it")
 	hud.message = "SNAP!  %s got away\n(tap to try again)" % nm
+	if streak >= 2:
+		_flash("Streak lost")
+	streak = 0
 	_play("snap")
 	bobber.visible = false
 
@@ -2645,6 +2717,13 @@ func _land_fish() -> void:
 	_refresh_whack_tool()
 	paddle.visible = true
 	cam_pitch_target = -36.0
+	# Clear the whacking spot: earlier catches lying there get shoved back
+	# along the deck (toward land, never off the end).
+	for b in loose_fish:
+		if is_instance_valid(b) and b != holding and not b.freeze \
+				and _hdist(b.global_position, whack_spot) < 1.3 and absf(b.global_position.y - whack_spot.y) < 1.0:
+			b.sleeping = false
+			b.linear_velocity = Vector3(randf_range(-0.3, 0.3), 1.4, 2.6 if not on_boat else 1.2)
 
 	pending_weight = lerpf(pending_fish["min"], pending_fish["max"], randf())
 	catches += 1
@@ -2664,9 +2743,17 @@ func _land_fish() -> void:
 		pending_value = int(pending_fish["flat"]) + randi() % maxi(1, int(pending_fish["flat"]) / 2 + 1)
 	else:
 		pending_value = maxi(2, int(round(pending_weight * float(pending_fish.get("price", 14)))))
+	# A run of catches pays a little extra: +10% per fish in a row, up to +50%.
+	var notes: Array = []
+	if streak >= 1 and not pending_fish.get("junk", false):
+		var pct := mini(streak * 10, 50)
+		pending_value += int(round(pending_value * pct / 100.0))
+		notes.append("Streak +%d%%" % pct)
 	if _new_species:
 		pending_value += NEW_SPECIES_BONUS
-		_flash("New species for your journal!  +%d coins" % NEW_SPECIES_BONUS)
+		notes.append("New species +%d" % NEW_SPECIES_BONUS)
+	if not notes.is_empty():
+		_flash("   ·   ".join(notes))
 
 	# Heavier catches take more whacks.
 	whacks_left = clampi(1 + int(round(pending_weight * 0.9)) - weapon_power(), 1, 5)
@@ -2680,6 +2767,7 @@ func _land_fish() -> void:
 	_play("caught")
 	_show_catch(pending_fish)
 	_whack_message()
+	_save_game()      # phones kill apps without warning: keep the journal safe
 
 
 func _whack_message() -> void:
@@ -2712,6 +2800,7 @@ func _do_whack() -> void:
 
 
 func _finish_catch() -> void:
+	streak += 1
 	state = CAUGHT
 	hud.mode = Hud.M_CAUGHT
 	hud.clear_card()
@@ -2980,7 +3069,8 @@ func _update_hands(delta: float) -> void:
 					m = "whack"
 				elif rod.visible:
 					m = "rod"
-	hands.mode = m if _hands_enabled else "hidden"
+	hands.mode = m
+	hands.show_hands = _hands_enabled
 	hands.reeling = play_mode == "fishing" and state == FIGHT and (hud.action_down() or sim_action)
 	hands.charge = power if (play_mode == "fishing" and state == CHARGING) else 0.0
 	hands.tension = hud.tension if (play_mode == "fishing" and state == FIGHT) else 0.0
@@ -3017,6 +3107,9 @@ func _update_loose_fish() -> void:
 func _sell_body(b: RigidBody3D) -> void:
 	var d: Dictionary = b.get_meta("fish")
 	var value := int(d.get("value", 0))
+	var was_wanted := wanted != "" and str(d.get("name", "")) == wanted
+	if was_wanted:
+		value *= 2
 	coins += value
 	if b == holding:
 		holding = null
@@ -3026,7 +3119,11 @@ func _sell_body(b: RigidBody3D) -> void:
 	loose_fish.erase(b)
 	b.queue_free()
 	_play("coins")
-	_flash("Sold %s for %d coins" % [str(d.get("name", "it")), value])
+	if was_wanted:
+		_flash("WANTED! Double pay: %d coins" % value)
+		_roll_wanted()
+	else:
+		_flash("Sold %s for %d coins" % [str(d.get("name", "it")), value])
 	var ap = fish_buyer.get_meta("anim") if fish_buyer and fish_buyer.has_meta("anim") else null
 	if ap and ap.has_animation("Cheer"):
 		ap.play("Cheer")
@@ -3075,6 +3172,8 @@ func _refresh_held_view() -> void:
 	if holding and is_instance_valid(holding):
 		var d: Dictionary = holding.get_meta("fish")
 		touch.carry_info = "Holding %s  -  %d coins" % [str(d.get("name", "")), int(d.get("value", 0))]
+		if wanted != "" and str(d.get("name", "")) == wanted:
+			touch.carry_info += "  (WANTED x2)"
 	else:
 		touch.carry_info = ""
 

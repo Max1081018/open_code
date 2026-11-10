@@ -39,13 +39,38 @@ coins; you wake up on the jetty.
 Caught fish are real physics objects: grab them, carry them, throw them, or
 drop them on the market counter to sell.
 
+**Fishing feel:** the bobber nibbles before the real bite (tap too early and
+you spook the fish), a lightning-fast tap on **HOOK!** is a *Perfect Hook*
+that starts the fish closer with a slack line, and landing fish in a row
+builds a **streak** (+10% coins per fish, up to +50%) that a snapped line or
+a missed bite resets. Watch for fish shadows swimming off the jetty.
+
+**Wanted board:** the fish market always wants one species and pays double
+for it; sell one and a new request goes up.
+
+**Journal:** every species you've landed, how many and your best weight. The
+first catch of each species pays a +15 coin bonus.
+
 You see your own hands: they swing as you walk, reach for things you look at,
 grip the rod and turn the reel crank while you reel, hold your weapon for the
 whack, carry fish by the sides, and flinch up in front of your face when a
 fish winds up to jump.
 
 Settings let you change look sensitivity, HUD size and opacity, fixed or
-floating joystick, graphics preset (Low/Medium/High), shadows and more.
+floating joystick, graphics preset (Low/Medium/High), shadows, weather, your
+hands and body, an FPS counter and more.
+
+## Performance
+
+Built for phones on the GL Compatibility renderer:
+
+- multi-part models are batched into one mesh per material at load, so the
+  island view is ~270 draw calls instead of ~1700;
+- only large props cast shadows (2 cascades, 48 m); the shop interior only
+  draws when you're near it; clouds, seagulls, grass and fish shadows are
+  single meshes / MultiMeshes;
+- HUDs reuse their style boxes instead of allocating every frame;
+- Low preset: no shadows, no MSAA, a third of the grass, shorter view.
 
 ## Run it on a computer
 
@@ -89,6 +114,7 @@ GODOT=/path/to/Godot_v4.3-stable_linux.x86_64 fishing/tools/play.sh 1600 shot.pn
 | `status_ui.gd` | Health and breath bars, hit flash, underwater tint, death screen |
 | `ui_draw.gd` / `ui_theme.gd` | Shared HUD drawing kit (round buttons, pills, bars, vector icons) and colours |
 | `fp_hands.gd` / `assets/hand.gdshader` | First-person hands: pose blending, gestures, finger curl |
+| `world_fx.gd` | Splashes and ripples, seagulls, fish shadows |
 | `assets/grass.gdshader` | Wind-swayed grass tufts and wildflowers (MultiMesh) |
 | `water.gdshader` | Animated low-poly water (its wave formula is mirrored in `game.gd` so the bobber floats correctly) |
 | `sfx.gd` | Procedurally generated sound effects |

@@ -20,10 +20,18 @@ var _gulls: Array = []        # [centre, radius, height, speed, angle, bob phase
 var _t := 0.0
 var gull_centre := Vector3(0, 0, 30)
 
+# Fish shadows swimming under the surface in front of the jetty.
+const SHADOWS := 9
+var _shadow_mm: MultiMesh
+var _shadows: Array = []      # [pos (Vector2 xz), heading, speed, depth, scale, flee]
+var shadow_area := Rect2(-16, -22, 32, 22)   # x/z region they keep to
+var wave_fn: Callable                       # (x, z) -> surface height
+
 
 func _ready() -> void:
 	_build_splashes()
 	_build_gulls()
+	_build_shadows()
 
 
 # --- Splashes ----------------------------------------------------------------------
@@ -94,6 +102,12 @@ func splash(pos: Vector3, size := 1.0) -> void:
 	r.visible = true
 	_ring_t[i] = 0.0
 	_ring_size[i] = size
+	# Anything swimming close by darts away.
+	for f in _shadows:
+		var fp: Vector2 = f[0]
+		if fp.distance_to(Vector2(pos.x, pos.z)) < 3.5 * size + 1.0:
+			f[5] = 1.0
+			f[1] = atan2(fp.y - pos.z, fp.x - pos.x)
 
 
 func _update_rings(delta: float) -> void:
@@ -236,7 +250,74 @@ func nearest_gull(p: Vector3) -> Vector3:
 	return best
 
 
+# --- Fish shadows ------------------------------------------------------------------
+
+func _build_shadows() -> void:
+	var st := SurfaceTool.new()
+	st.begin(Mesh.PRIMITIVE_TRIANGLES)
+	# A flat fish silhouette in the XZ plane, nose toward +X.
+	var body: Array = []
+	for i in 14:
+		var a := TAU * float(i) / 14.0
+		body.append(Vector3(cos(a) * 0.30, 0, sin(a) * 0.095))
+	for i in 14:
+		st.add_vertex(Vector3.ZERO)
+		st.add_vertex(body[(i + 1) % 14])
+		st.add_vertex(body[i])
+	for v in [Vector3(-0.24, 0, 0), Vector3(-0.46, 0, 0.12), Vector3(-0.46, 0, -0.12)]:
+		st.add_vertex(v)
+	var mat := StandardMaterial3D.new()
+	mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	mat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+	mat.albedo_color = Color(0.01, 0.07, 0.12, 0.6)
+	mat.cull_mode = BaseMaterial3D.CULL_DISABLED
+	mat.render_priority = 1          # after the water, so it reads through it
+	_shadow_mm = MultiMesh.new()
+	_shadow_mm.transform_format = MultiMesh.TRANSFORM_3D
+	_shadow_mm.mesh = st.commit()
+	_shadow_mm.instance_count = SHADOWS
+	for i in SHADOWS:
+		_shadows.append([
+			Vector2(randf_range(shadow_area.position.x, shadow_area.end.x),
+				randf_range(shadow_area.position.y, shadow_area.end.y)),
+			randf() * TAU, randf_range(0.5, 1.1), randf_range(0.25, 0.55),
+			randf_range(1.2, 2.3), 0.0])
+	var mmi := MultiMeshInstance3D.new()
+	mmi.multimesh = _shadow_mm
+	mmi.material_override = mat
+	mmi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	mmi.custom_aabb = AABB(Vector3(shadow_area.position.x - 2, -3, shadow_area.position.y - 2),
+		Vector3(shadow_area.size.x + 4, 4, shadow_area.size.y + 4))
+	add_child(mmi)
+
+
+func _update_shadows(delta: float) -> void:
+	for i in SHADOWS:
+		var f: Array = _shadows[i]
+		var p: Vector2 = f[0]
+		var h: float = f[1]
+		var flee: float = f[5]
+		# Lazy wandering, turning back when they reach the edge of their patch.
+		h += sin(_t * 0.6 + i * 1.7) * 0.6 * delta
+		if not shadow_area.has_point(p):
+			var c := shadow_area.get_center()
+			h = lerp_angle(h, atan2(c.y - p.y, c.x - p.x), clampf(delta * 2.0, 0, 1))
+		var sp: float = float(f[2]) * (1.0 + flee * 3.5)
+		p += Vector2(cos(h), sin(h)) * sp * delta
+		flee = maxf(flee - delta * 0.8, 0.0)
+		f[0] = p
+		f[1] = h
+		f[5] = flee
+		var y := -float(f[3])
+		if wave_fn.is_valid():
+			y += float(wave_fn.call(p.x, p.y)) * 0.7
+		var wiggle := sin(_t * (5.0 + flee * 8.0) + i) * 0.18
+		var b := Basis(Vector3.UP, -h + wiggle).scaled(Vector3.ONE * float(f[4]))
+		_shadow_mm.set_instance_transform(i, Transform3D(b, Vector3(p.x, y, p.y)))
+
+
 func _process(delta: float) -> void:
 	_t += delta
 	_update_rings(delta)
 	_update_gulls(delta)
+	_update_shadows(delta)

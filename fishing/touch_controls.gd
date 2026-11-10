@@ -158,6 +158,9 @@ func _input(event: InputEvent) -> void:
 			if event.position.distance_to(_run_center) <= run_r() * 1.25:
 				sprint = not sprint
 				return
+			# Leave the pause button (top-left corner) to the menu.
+			if Rect2(0, 0, 140, 140).has_point(event.position):
+				return
 			var on_stick: bool = event.position.x < half
 			if fixed_joystick:
 				on_stick = event.position.distance_to(_joy_home) <= joy_r() * 1.6

@@ -18,6 +18,7 @@ const SLEEVE := Color(0.20, 0.36, 0.42)
 const CUFF := Color(0.86, 0.80, 0.66)
 
 var mode := "hidden"   # hidden, explore, carry, rod, whack, sail
+var show_hands := true # off: poses still drive the whack tool, hands not drawn
 
 # Live parameters, set by the game.
 var move_speed := 0.0          # horizontal m/s
@@ -214,6 +215,9 @@ func _process(delta: float) -> void:
 		_was_hidden = true
 		return
 	visible = true
+	for h in [left, right]:
+		h.visible = show_hands
+		(h.get_meta("arm") as Node3D).visible = show_hands
 
 	var pl := Transform3D()
 	var pr := Transform3D()

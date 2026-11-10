@@ -22,6 +22,9 @@ var card_sub := ""
 var card_color := Color.WHITE
 var card_hint := ""
 var windup := 0.0     # 0..1 while the fish is about to leap at you
+var streak := 0       # catches in a row (shown as a chip when 2+)
+var _toast := ""
+var _toast_t := 0.0
 
 var _view: Painter
 var _btn_center := Vector2.ZERO
@@ -74,7 +77,15 @@ func clear_card() -> void:
 	windup = 0.0
 
 
-func _process(_delta: float) -> void:
+## A short message that pops in under the top bar for a couple of seconds.
+func toast(text: String) -> void:
+	_toast = text
+	_toast_t = 2.6
+
+
+func _process(delta: float) -> void:
+	if _toast_t > 0.0:
+		_toast_t -= delta
 	if _view.visible:
 		_view.queue_redraw()
 
@@ -86,6 +97,9 @@ func _input(event: InputEvent) -> void:
 		if event.pressed:
 			if show_leave() and event.position.distance_to(_leave_center) <= leave_radius * 1.15:
 				_leave_pressed = true
+				return
+			# The pause button (top-left) isn't a fishing tap.
+			if Rect2(0, 0, 140, 140).has_point(event.position):
 				return
 			_tapped = true
 			if event.position.distance_to(_btn_center) <= btn_radius * 1.1 and _action_index == -1:
@@ -149,6 +163,14 @@ class Painter extends Control:
 		draw_string(font, crect.position + Vector2(48, 24 + 26 * 0.35), ct,
 			HORIZONTAL_ALIGNMENT_LEFT, -1, 26, UITheme.GOLD)
 
+		# ---- streak chip, top-left beside the coins (only when on a run) ----
+		if hud.streak >= 2:
+			var st := "STREAK x%d" % hud.streak
+			var sw := UIDraw.text_w(font, st, 20) + 36
+			var srect := Rect2(Vector2(vp.x - cw - 92 - sw - 12, 30), Vector2(sw, 40))
+			UIDraw.pill(self, srect, UITheme.ACCENT, 20, Color(1, 1, 1, 0.3))
+			UIDraw.text_c(self, font, st, srect.position + srect.size * 0.5, 20, UIDraw.INK)
+
 		var top := 96.0
 
 		# ---- fight meters ----
@@ -201,6 +223,14 @@ class Painter extends Control:
 			UIDraw.text_c(self, font, l1, Vector2(mid_x, r.position.y + 27), 28, UITheme.TEXT_WARM)
 			if l2 != "":
 				UIDraw.text_c(self, font, l2, Vector2(mid_x, r.position.y + 58), 21, UITheme.TEXT_DIM)
+
+		# ---- toast ----
+		if hud._toast_t > 0.0 and hud._toast != "":
+			var a := clampf(hud._toast_t / 0.4, 0.0, 1.0)
+			var tw2 := UIDraw.text_w(font, hud._toast, 24) + 48
+			var tr := Rect2(Vector2(mid_x - tw2 * 0.5, vp.y * 0.60), Vector2(tw2, 48))
+			UIDraw.pill(self, tr, Color(UITheme.GOLD.r, UITheme.GOLD.g, UITheme.GOLD.b, 0.92 * a), 24, Color(1, 1, 1, 0.35 * a))
+			UIDraw.text_c(self, font, hud._toast, tr.position + tr.size * 0.5, 24, Color(UIDraw.INK.r, UIDraw.INK.g, UIDraw.INK.b, a))
 
 		# ---- buttons ----
 		var op: float = hud.hud_opacity
