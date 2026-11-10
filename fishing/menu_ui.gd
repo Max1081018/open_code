@@ -18,6 +18,7 @@ signal first_help_done
 const CFG_PATH := "user://settings.cfg"
 
 const GRAPHICS_LEVELS := ["Low", "Medium", "High", "Ultra"]
+const RESOLUTIONS := ["Auto", "50%", "67%", "75%", "85%", "100%"]
 
 var settings := {
 	"sfx_volume": 0.8,
@@ -26,6 +27,7 @@ var settings := {
 	"camera_sway": true,
 	"look_sens": 1.0,
 	"graphics": "Medium",
+	"resolution": "Auto",
 	"shadows": true,
 	"crosshair": true,
 	"show_body": true,
@@ -294,6 +296,7 @@ func _build() -> void:
 	sv.custom_minimum_size = Vector2(700, 0)
 
 	var sscroll := ScrollContainer.new()
+	_settings_scroll = sscroll
 	sscroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
 	sscroll.custom_minimum_size = Vector2(700, 420)
 	var sbody := VBoxContainer.new()
@@ -318,8 +321,9 @@ func _build() -> void:
 
 	_group(sbody, "DISPLAY")
 	_cycle_row(sbody, "Graphics", "graphics", GRAPHICS_LEVELS)
+	_cycle_row(sbody, "Resolution", "resolution", RESOLUTIONS)
 	_settings_toggle(sbody, "Shadows", "shadows")
-	_settings_toggle(sbody, "Weather (light rain)", "weather")
+	_settings_toggle(sbody, "Changing weather", "weather")
 	_settings_toggle(sbody, "Crosshair", "crosshair")
 	_settings_toggle(sbody, "Show your body", "show_body")
 	_settings_toggle(sbody, "Show your hands", "show_hands")
@@ -646,8 +650,12 @@ func set_pause_button_visible(v: bool) -> void:
 		_pause_btn.visible = v
 
 
-func open_settings_for_test() -> void:
+var _settings_scroll: ScrollContainer
+
+func open_settings_for_test(scroll := 0) -> void:
 	_open_settings(_main)
+	if scroll > 0 and _settings_scroll:
+		_settings_scroll.set_deferred("scroll_vertical", scroll)
 
 
 func open_shop_for_test() -> void:

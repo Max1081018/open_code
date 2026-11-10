@@ -808,6 +808,7 @@ var test_rod := false
 var test_at := Vector3.INF
 var test_pitch := -99.0
 var test_quality := ""
+var test_res := ""
 var test_fresh := false          # autotest: ignore the save and don't write one
 var _tphase := 0
 var _tnext := 0
@@ -949,7 +950,7 @@ func _ready() -> void:
 			"legs":
 				_start_play()
 				cam_pitch = -1.30
-			"settings": _go_main_menu(); menu_ui.open_settings_for_test()
+			"settings": _go_main_menu(); menu_ui.open_settings_for_test(int(OS.get_environment("SCROLL")) if OS.get_environment("SCROLL") != "" else 0)
 			"pause": _start_play(); _pause()
 			"help": _go_main_menu(); menu_ui.open_help_for_test()
 			"journal":
@@ -990,6 +991,7 @@ func _parse_args() -> void:
 			test_at = Vector3(float(p[0]), 0.0, float(p[1]))
 		elif a.begins_with("--pitch="): test_pitch = float(a.get_slice("=", 1))
 		elif a.begins_with("--quality="): test_quality = a.get_slice("=", 1)
+		elif a.begins_with("--res="): test_res = a.get_slice("=", 1)
 
 
 # --- Wave height (mirror of the shader) --------------------------------------
@@ -3124,7 +3126,13 @@ func _apply_graphics() -> void:
 		quality = 1
 	var q := quality
 	if render_view:
-		render_view.set_quality(Q_SCALE[q], q >= 2, Q_ROWS[q])
+		# Resolution: Auto follows the graphics level (with a cap on rows for big
+		# phone screens); a fixed percentage renders exactly that much.
+		var res := str(menu_ui.settings.get("resolution", "Auto"))
+		if res == "Auto" or not res.ends_with("%"):
+			render_view.set_quality(Q_SCALE[q], q >= 2, Q_ROWS[q])
+		else:
+			render_view.set_quality(float(res.trim_suffix("%")) / 100.0, q >= 2)
 	get_viewport().msaa_3d = Viewport.MSAA_DISABLED
 	var want_shadows: bool = bool(menu_ui.settings.get("shadows", true)) and q > 0
 	if sun_light:
@@ -3723,6 +3731,8 @@ func _short_name(n: String) -> String:
 ## Render/physics counters for the perf checks (draw calls etc. carry over to
 ## phones even though headless frame times don't).
 func _print_perf() -> void:
+	if render_view and render_view.view:
+		print("PERF render3d=%s" % render_view.view.size)
 	print("PERF draw_calls=%d objects=%d primitives=%d nodes=%d physics_active=%d mem_static=%.1fMB vmem=%.1fMB" % [
 		Performance.get_monitor(Performance.RENDER_TOTAL_DRAW_CALLS_IN_FRAME),
 		Performance.get_monitor(Performance.RENDER_TOTAL_OBJECTS_IN_FRAME),
@@ -4419,8 +4429,11 @@ func _autotest(_delta: float) -> void:
 	sim_action = false
 
 	if start_screen == "explore":
-		if frame == 2 and test_quality != "":
-			menu_ui.settings["graphics"] = test_quality
+		if frame == 2 and (test_quality != "" or test_res != ""):
+			if test_quality != "":
+				menu_ui.settings["graphics"] = test_quality
+			if test_res != "":
+				menu_ui.settings["resolution"] = test_res
 			_apply_settings()
 		if frame == 3 and test_at != Vector3.INF:
 			player.global_position = Vector3(test_at.x, _ground_or_water(test_at) + 0.3, test_at.z)

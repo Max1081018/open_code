@@ -68,7 +68,8 @@ your fist, and a fish is held out by its tail. Only the boss shows a health
 bar; ordinary fish just fight until they're knocked out.
 
 Settings let you change look sensitivity, HUD size and opacity, fixed or
-floating joystick, graphics (Low / Medium / High / Ultra), shadows, weather,
+floating joystick, graphics (Low / Medium / High / Ultra), resolution (Auto, or a
+fixed 50-100% of the screen), shadows, weather,
 your hands and body, an FPS counter and more. Tap **JUMP** to hop; you also
 walk straight up steps and kerbs.
 
