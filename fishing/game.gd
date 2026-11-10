@@ -4018,7 +4018,7 @@ func _autotest(_delta: float) -> void:
 			get_tree().quit()
 		return
 
-	if frame > 40:
+	if frame > (75 if start_screen == "weaponshop" else 40):
 		_test_shot()
 		print("AUTOTEST(%s) frame=%d" % [start_screen, frame])
 		_print_perf()
