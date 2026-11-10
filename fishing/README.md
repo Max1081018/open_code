@@ -66,8 +66,12 @@ your fist, and a fish is held out by its tail. Only the boss shows a health
 bar; ordinary fish just fight until they're knocked out.
 
 Settings let you change look sensitivity, HUD size and opacity, fixed or
-floating joystick, graphics preset (Low/Medium/High), shadows, weather, your
-hands and body, an FPS counter and more.
+floating joystick, graphics (Low / Medium / High / Ultra), shadows, weather,
+your hands and body, an FPS counter and more. Tap **JUMP** to hop; you also
+walk straight up steps and kerbs.
+
+The weather changes every few minutes: clear, cloudy, breezy, foggy, a
+drizzle, and now and then proper rain; the wind moves the grass and palms.
 
 ## Performance
 
@@ -75,6 +79,10 @@ Built for phones on the GL Compatibility renderer:
 
 - multi-part models are batched into one mesh per material at load, so the
   island view is ~270 draw calls instead of ~1700;
+- the 3D world is drawn at a lower resolution than the screen and scaled up
+  behind a full-resolution HUD (Low ~480 rows, Medium ~620, High ~800, Ultra
+  native with edge smoothing), capped at 60 fps;
+- the HUD only redraws when something on it changes;
 - only large props cast shadows (2 cascades, 48 m); the shop interior only
   draws when you're near it; clouds, seagulls, grass and fish shadows are
   single meshes / MultiMeshes;

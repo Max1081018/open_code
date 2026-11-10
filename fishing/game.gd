@@ -1430,6 +1430,9 @@ func _process(delta: float) -> void:
 # --- Screen transitions -------------------------------------------------------
 
 var _camera_sway := true
+var _cam_ahead := 0.26
+var _test_y0 := 0.0
+var _test_jump := 0.0
 var _menu_cam_t := 0.0
 
 ## Walking around: drive the character and the first-person camera, run the
@@ -1474,7 +1477,18 @@ func _update_explore(delta: float) -> void:
 	# Sit the camera a little ahead of the chest so looking down shows your own
 	# body and legs rather than the inside of your shoulders.
 	var fwd := (Basis(Vector3.UP, cam_yaw) * Vector3(0, 0, -1)).normalized()
-	camera.global_position = player.global_position + Vector3(0, EYE_HEIGHT, 0) + fwd * 0.26
+	# Ahead of the chest (so you see your legs), but never into a wall: a short
+	# ray from the body's centre pulls the eye back when something is close.
+	var head := player.global_position + Vector3(0, EYE_HEIGHT, 0)
+	var ahead := 0.26
+	var wq := PhysicsRayQueryParameters3D.create(head, head + fwd * 0.48)
+	wq.collision_mask = 1
+	wq.exclude = [player.get_rid()]
+	var wh := get_world_3d().direct_space_state.intersect_ray(wq)
+	if not wh.is_empty():
+		ahead = clampf(head.distance_to(wh["position"]) - 0.22, -0.05, 0.26)
+	_cam_ahead = lerpf(_cam_ahead, ahead, clampf(delta * 14.0, 0.0, 1.0)) if ahead > _cam_ahead else ahead
+	camera.global_position = head + fwd * _cam_ahead
 	camera.rotation = Vector3(cam_pitch, cam_yaw, 0.0)
 
 	_update_rod(delta)
@@ -1598,6 +1612,9 @@ func _update_prompts() -> void:
 		touch.secondary = "DROP"
 	elif id == "fish":
 		p = "THROW"
+		touch.secondary = "DROP"
+	# Holding a fish or clam: you can always put it down, whatever you look at.
+	if (id == "fish" or id == "clam") and touch.secondary == "":
 		touch.secondary = "DROP"
 	if id == "fish" and touch.look_info == "":
 		var hd := held_fish()
@@ -2011,6 +2028,16 @@ func _build_shop() -> void:
 
 	# Tackle counter as the back-wall display (rods, shelves, aquarium).
 	shop_counter = _spawn("shop_counter", Vector3(cx, floor_y, z1 - 0.98), PI, COUNTER_SCALE)
+	# Solid counter (you walk up to it, not through it).
+	var cb := _node_aabb(shop_counter)
+	var cbody := StaticBody3D.new()
+	var ccol := CollisionShape3D.new()
+	var cbs := BoxShape3D.new()
+	cbs.size = Vector3(cb.size.x, minf(cb.size.y, 1.2), cb.size.z)
+	ccol.shape = cbs
+	cbody.add_child(ccol)
+	cbody.position = Vector3(cb.position.x + cb.size.x * 0.5, floor_y + cbs.size.y * 0.5, cb.position.z + cb.size.z * 0.5)
+	add_child(cbody)
 
 	# Shopkeeper in the back corner beside his counter, facing the door.
 	shopkeeper = _spawn_character("res://assets/models/characters/Barbarian.glb",
@@ -2917,7 +2944,8 @@ func _apply_settings() -> void:
 
 ## Graphics preset: trades shadows, water detail, fog and anti-aliasing.
 const Q_NAMES := ["Low", "Medium", "High", "Ultra"]
-const Q_SCALE := [0.5, 0.7, 0.85, 1.0]        # 3D resolution
+const Q_SCALE := [0.5, 0.7, 0.85, 1.0]        # 3D resolution (fraction of the screen)
+const Q_ROWS := [480, 620, 800, 100000]       # ...but never more rows than this
 const Q_FAR := [150.0, 220.0, 280.0, 360.0]
 const Q_GRASS := [0.3, 0.6, 0.85, 1.0]
 const Q_CLOUDS := [8, 14, 20, 28]
@@ -2939,7 +2967,7 @@ func _apply_graphics() -> void:
 		quality = 1
 	var q := quality
 	if render_view:
-		render_view.set_quality(Q_SCALE[q], q >= 2)
+		render_view.set_quality(Q_SCALE[q], q >= 2, Q_ROWS[q])
 	get_viewport().msaa_3d = Viewport.MSAA_DISABLED
 	var want_shadows: bool = bool(menu_ui.settings.get("shadows", true)) and q > 0
 	if sun_light:
@@ -4183,7 +4211,12 @@ func _update_line() -> void:
 		sag = 0.0
 	elif rs == R_REEL:
 		sag = 0.02           # tight while the fish pulls
-	var im := ImmediateMesh.new()
+	# one mesh, refilled each frame (no new resource per frame)
+	var im := line.mesh as ImmediateMesh
+	if im == null:
+		im = ImmediateMesh.new()
+		line.mesh = im
+	im.clear_surfaces()
 	im.surface_begin(Mesh.PRIMITIVE_LINE_STRIP)
 	var steps := 8
 	for i in steps + 1:
@@ -4192,7 +4225,6 @@ func _update_line() -> void:
 		p.y -= sin(PI * t) * sag
 		im.surface_add_vertex(p)
 	im.surface_end()
-	line.mesh = im
 
 
 # --- Autotest -----------------------------------------------------------------
@@ -4214,6 +4246,11 @@ func _autotest(_delta: float) -> void:
 				cam_pitch = test_pitch
 		touch.sprint = test_sprint
 		_test_max_speed = maxf(_test_max_speed, Vector2(player.velocity.x, player.velocity.z).length())
+		if frame == 25:
+			_test_y0 = player.global_position.y
+			player.jump()
+		if frame > 25 and frame < 75:
+			_test_jump = maxf(_test_jump, player.global_position.y - _test_y0)
 		if frame < 30:
 			touch.move = Vector2.ZERO
 		elif frame < 30 + test_walk:
@@ -4222,6 +4259,9 @@ func _autotest(_delta: float) -> void:
 			touch.move = Vector2.ZERO
 		if frame >= 30 + test_walk + 20:
 			_test_shot()
+			if start_screen == "explore" and OS.get_environment("SHOPDBG") != "":
+				print("AUTOTEST shop door_z=%.2f floor_y=%.2f" % [shop_door_z, shop_floor_y])
+			print("AUTOTEST jump height=%.2f" % _test_jump)
 			print("AUTOTEST(explore) pos=%s on_floor=%s prompt='%s' anim=%s max_speed=%.2f" % [
 				player.position.snapped(Vector3.ONE * 0.01), player.is_on_floor(),
 				touch.prompt, player._cur, _test_max_speed])

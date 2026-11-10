@@ -11,6 +11,7 @@ extends CanvasLayer
 ## moved it) and renders the same World3D.
 
 var scale_3d := 0.75
+var max_height := 100000      # cap on rendered 3D rows (keeps weak GPUs fast)
 var fxaa := false
 
 var view: SubViewport
@@ -42,8 +43,7 @@ void fragment() {
 		if (range < max(0.04, hi * 0.12)) {
 			COLOR = c;
 		} else {
-			vec2 dir = vec2(-((lN + lS) - (lE + lW) * 0.0) + (lN - lS) * 0.0, 0.0);
-			dir = vec2(lS - lN, lE - lW);
+			vec2 dir = vec2(lS - lN, lE - lW);
 			dir = normalize(dir + 1e-5) * texel * 1.2;
 			vec3 a = 0.5 * (texture(TEXTURE, UV + dir * -0.33).rgb + texture(TEXTURE, UV + dir * 0.33).rgb);
 			vec3 b = a * 0.5 + 0.25 * (texture(TEXTURE, UV + dir * -1.0).rgb + texture(TEXTURE, UV + dir).rgb);
@@ -89,8 +89,9 @@ func setup(source_camera: Camera3D, world: World3D) -> void:
 	_resize()
 
 
-func set_quality(p_scale: float, p_fxaa: bool) -> void:
+func set_quality(p_scale: float, p_fxaa: bool, p_max_height := 100000) -> void:
 	scale_3d = clampf(p_scale, 0.3, 1.0)
+	max_height = p_max_height
 	fxaa = p_fxaa
 	_resize()
 
@@ -103,7 +104,8 @@ func _resize() -> void:
 	var win := Vector2(DisplayServer.window_get_size()) if DisplayServer.get_name() != "headless" else s
 	if win.x < 2.0 or win.y < 2.0:
 		win = s
-	var px := Vector2i(maxi(int(win.x * scale_3d), 64), maxi(int(win.y * scale_3d), 64))
+	var k := minf(scale_3d, float(max_height) / maxf(win.y, 1.0))
+	var px := Vector2i(maxi(int(win.x * k), 64), maxi(int(win.y * k), 64))
 	view.size = px
 	_mat.set_shader_parameter("enabled", fxaa)
 	_mat.set_shader_parameter("texel", Vector2(1.0 / px.x, 1.0 / px.y))
