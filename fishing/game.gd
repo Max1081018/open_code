@@ -99,6 +99,8 @@ var held_view: Node3D             # unused; kept so old references stay valid
 const FISH_LAYER := 8
 var loose_fish: Array = []        # RigidBody3D, each with meta "fish" (its data)
 var holding: RigidBody3D = null   # the fish in your hands
+var hands: FPHands                # first-person hands (camera child)
+var _reach := 0.0
 var looked_fish: RigidBody3D = null
 var _pending_loose: Array = []    # from the save, spawned once the world exists
 var boat_deck: AnimatableBody3D
@@ -402,6 +404,7 @@ var test_yaw := PI
 var test_walk := 450
 var test_sprint := false
 var test_rain := false
+var _test_whack_f := 0
 var _test_max_speed := 0.0
 var _boss_logged := false
 var _flop_seen := false
@@ -928,7 +931,7 @@ func _build_player_view() -> void:
 	# First-person rod, held in the bottom-right, angled out over the water.
 	rod = Node3D.new()
 	camera.add_child(rod)
-	rod.position = Vector3(0.6, -0.5, -0.8)
+	rod.position = Vector3(0.40, -0.36, -0.70)
 	rod.rotation_degrees = Vector3(28, -8, -10)
 	var pole := MeshInstance3D.new()
 	var pm := CylinderMesh.new()
@@ -944,8 +947,8 @@ func _build_player_view() -> void:
 	# Handle grip.
 	var grip := MeshInstance3D.new()
 	var gm := CylinderMesh.new()
-	gm.top_radius = 0.05
-	gm.bottom_radius = 0.05
+	gm.top_radius = 0.03
+	gm.bottom_radius = 0.034
 	gm.height = 0.4
 	gm.material = _mat(Color(0.3, 0.2, 0.1), 0.7)
 	grip.mesh = gm
@@ -967,6 +970,12 @@ func _build_player_view() -> void:
 	for m in paddle.find_children("*", "MeshInstance3D", true):
 		m.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 	paddle.visible = false
+
+	# First-person hands, with a reel on the rod for the left hand to crank.
+	hands = FPHands.new()
+	camera.add_child(hands)
+	hands.attach_reel(rod)
+	hands.paddle = paddle
 
 	# The line (updated every frame).
 	line = MeshInstance3D.new()
@@ -1079,6 +1088,7 @@ func _process(delta: float) -> void:
 	_update_floaters()
 	_update_health(delta)
 	_update_weather(delta)
+	_update_hands(delta)
 
 	if app_state == "menu":
 		_menu_camera(delta)
@@ -1242,7 +1252,7 @@ func _update_explore(delta: float) -> void:
 			else:
 				touch.prompt = "DROP"
 				touch.secondary = "THROW"
-		elif looked_fish:
+		elif looked_fish and is_instance_valid(looked_fish):
 			var fd: Dictionary = looked_fish.get_meta("fish")
 			var rar := str(fd.get("rarity", "Common"))
 			touch.look_info = str(fd.get("name", "")).capitalize() if str(fd.get("name", "")).begins_with("a") else str(fd.get("name", ""))
@@ -1276,6 +1286,8 @@ func _on_interact() -> void:
 		return
 	if holding:
 		if near_market:
+			if hands:
+				hands.play_throw()
 			_sell_body(holding)
 		else:
 			_drop_holding()
@@ -1860,6 +1872,8 @@ func _take_damage(amount: float, cause: String, flash := true) -> void:
 		return
 	health = maxf(health - amount, 0.0)
 	_since_hit = 0.0
+	if hands:
+		hands.play_hit()
 	if flash:
 		status.hit(amount)
 	if health <= 0.0:
@@ -2342,6 +2356,8 @@ func _do_cast(p: float) -> void:
 	# Slight random spread so no two casts land the same.
 	fwd = fwd.rotated(Vector3.UP, randf_range(-0.12, 0.12))
 	cast_from = rod_tip.global_position
+	if hands:
+		hands.play_cast()
 	cast_to = fish_tip + fwd * dist
 	cast_to.y = 0.0
 	flight_t = 0.0
@@ -2647,6 +2663,8 @@ func _grab(b: RigidBody3D) -> void:
 	b.gravity_scale = 0.0
 	b.angular_damp = 4.0
 	b.add_collision_exception_with(player)
+	if hands:
+		hands.play_grab()
 	var d: Dictionary = b.get_meta("fish")
 	player.carry_slow = 0.6 if d.get("boss", false) else 0.9
 	_play("whoosh")
@@ -2661,6 +2679,8 @@ func _drop_holding(throw := false) -> void:
 	holding.gravity_scale = 1.0
 	holding.angular_damp = 1.2
 	if throw:
+		if hands:
+			hands.play_throw()
 		var fwd := -camera.global_transform.basis.z
 		holding.linear_velocity = fwd * 6.0 + Vector3(0, 2.5, 0)
 	holding = null
@@ -2675,7 +2695,8 @@ func _update_holding() -> void:
 		holding = null
 		return
 	var fwd := -camera.global_transform.basis.z
-	var target := camera.global_position + fwd * 1.25 + Vector3(0, -0.42, 0)
+	var half := _held_half()
+	var target := camera.global_position + fwd * (0.42 + half * 0.9) + Vector3(0, -0.24 - half * 0.2, 0)
 	var to := target - holding.global_position
 	# Only let go if it's been snagged far away for a moment (walls etc).
 	if to.length() > 3.2:
@@ -2692,6 +2713,53 @@ func _update_holding() -> void:
 	holding.global_rotation = Vector3(0.0, cam_yaw, -0.32 + sway)
 
 
+## Half the length of the held fish (its collider is sized to the model).
+func _held_half() -> float:
+	if holding == null or not is_instance_valid(holding):
+		return 0.2
+	for c in holding.get_children():
+		if c is CollisionShape3D and c.shape is BoxShape3D:
+			var sz: Vector3 = (c.shape as BoxShape3D).size
+			return clampf(maxf(sz.x, sz.z) * 0.5, 0.08, 0.9)
+	return 0.2
+
+
+## Drives the first-person hands from whatever you're doing right now.
+func _update_hands(delta: float) -> void:
+	if hands == null:
+		return
+	var m := "hidden"
+	if app_state == "playing" or app_state == "paused":
+		match play_mode:
+			"explore":
+				if holding and is_instance_valid(holding):
+					m = "carry"
+					var half := _held_half()
+					hands.carry_half = minf(half, 0.32)
+					hands.carry_heavy = (holding.get_meta("fish") as Dictionary).get("boss", false)
+					# hold near the middle of the fish (its origin sits on its belly)
+					hands.carry_point = camera.to_local(holding.global_position + Vector3(0, 0.05, 0))
+				else:
+					m = "explore"
+					var want := 1.0 if (looked_fish != null or looked_weapon != "") else 0.0
+					_reach = move_toward(_reach, want, delta * 4.0)
+					hands.reach = _reach
+					hands.move_speed = Vector2(player.velocity.x, player.velocity.z).length()
+					hands.sprint = player.sprint and hands.move_speed > 3.5
+			"sailing":
+				m = "sail"
+			"fishing":
+				if paddle.visible:
+					m = "whack"
+				elif rod.visible:
+					m = "rod"
+	hands.mode = m
+	hands.reeling = play_mode == "fishing" and state == FIGHT and (hud.action_down() or sim_action)
+	hands.charge = power if (play_mode == "fishing" and state == CHARGING) else 0.0
+	hands.tension = hud.tension if (play_mode == "fishing" and state == FIGHT) else 0.0
+	hands.windup = hud.windup if state == WHACK else 0.0
+
+
 ## Fish left in the sea slip away; fish dropped on the market counter sell.
 func _update_loose_fish() -> void:
 	for b in loose_fish.duplicate():
@@ -2704,6 +2772,8 @@ func _update_loose_fish() -> void:
 		if p.y < wave_height(p.x, p.z) - 0.35 and _cargo.find(b) == -1:
 			var d: Dictionary = b.get_meta("fish")
 			_flash("%s slipped back into the water!" % str(d.get("name", "It")).capitalize())
+			if b == looked_fish:
+				looked_fish = null
 			loose_fish.erase(b)
 			b.queue_free()
 			continue
@@ -2721,6 +2791,8 @@ func _sell_body(b: RigidBody3D) -> void:
 	if b == holding:
 		holding = null
 		player.carry_slow = 1.0
+	if b == looked_fish:
+		looked_fish = null
 	loose_fish.erase(b)
 	b.queue_free()
 	_play("caught")
@@ -2742,16 +2814,26 @@ func _sell_body(b: RigidBody3D) -> void:
 func _refresh_whack_tool() -> void:
 	for c in paddle.get_children():
 		c.queue_free()
+	# The tool node sits in the right fist (FPHands moves it): its origin is the
+	# grip and +Y runs up the blade.
 	var m: Node3D
+	var style := "chop"
 	if equipped_weapon != "" and ResourceLoader.exists(WEAPON_DIR + equipped_weapon + ".gltf"):
 		m = load(WEAPON_DIR + equipped_weapon + ".gltf").instantiate()
-		m.scale = Vector3.ONE * 0.62
-		m.rotation_degrees = Vector3(0, 90, -40)
+		if equipped_weapon.begins_with("fistweapon"):
+			style = "punch"
+			m.scale = Vector3.ONE * 0.55
+			m.rotation_degrees = Vector3(0, 90, 0)
+		else:
+			m.scale = Vector3.ONE * 0.42
 	else:
 		m = load(MDL["paddle"]).instantiate()
-		m.scale = Vector3.ONE * 0.40
-		m.rotation_degrees = Vector3(0, 0, -38)
+		m.scale = Vector3.ONE * 0.21
+		m.rotation_degrees = Vector3(0, 90, 180)      # blade up and facing you, handle in the fist
+		m.position = Vector3(0, 2.15 * 0.21, 0)
 	paddle.add_child(m)
+	if hands:
+		hands.whack_style = style
 	for mi in m.find_children("*", "MeshInstance3D", true):
 		mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 
@@ -2813,9 +2895,8 @@ func _update_whack(delta: float) -> void:
 	if catch_hop > 0.0:
 		catch_hop = maxf(catch_hop - delta * 3.0, 0.0)
 	# Paddle rests raised, snaps down on a whack.
-	var swing: float = sin(whack_anim * PI)
-	paddle.rotation_degrees.x = -12.0 + swing * 58.0
-	paddle.position.y = -0.50 - swing * 0.14
+	if hands:
+		hands.swing = sin(whack_anim * PI)
 	if _leap_t > 0.0:
 		_leap_t = maxf(_leap_t - delta, 0.0)
 	if caught_fish:
@@ -3061,10 +3142,18 @@ func _autotest(_delta: float) -> void:
 		CAUGHT, SNAP:
 			if frame % 40 == 0:
 				sim_tap = true
-	if shot_on == "whack" and state == WHACK and frame > 30 and whacks_left <= 2:
+	_test_whack_f = _test_whack_f + 1 if state == WHACK else 0
+	if shot_on == "whack" and state == WHACK and frame > 30 and _test_whack_f == 24:
 		if autotest_shot != "":
 			get_viewport().get_texture().get_image().save_png(autotest_shot)
-		print("AUTOTEST(whack) frames=%d whacks_left=%d" % [frame, whacks_left])
+		print("AUTOTEST(whack) frames=%d whacks_left=%d hands=%s paddle=%s rod=%s" % [frame, whacks_left,
+			hands.mode, paddle.visible, rod.visible])
+		get_tree().quit()
+	if (shot_on == "fight" and state == FIGHT and sim_action and distance < 0.6) \
+			or (shot_on == "charge" and state == CHARGING and power > 0.7):
+		if autotest_shot != "":
+			get_viewport().get_texture().get_image().save_png(autotest_shot)
+		print("AUTOTEST(%s) frames=%d" % [shot_on, frame])
 		get_tree().quit()
 	if shot_on == "caught" and state == CAUGHT and frame > 30:
 		if autotest_shot != "":

@@ -39,6 +39,11 @@ coins; you wake up on the jetty.
 Caught fish are real physics objects: grab them, carry them, throw them, or
 drop them on the market counter to sell.
 
+You see your own hands: they swing as you walk, reach for things you look at,
+grip the rod and turn the reel crank while you reel, hold your weapon for the
+whack, carry fish by the sides, and flinch up in front of your face when a
+fish winds up to jump.
+
 Settings let you change look sensitivity, HUD size and opacity, fixed or
 floating joystick, graphics preset (Low/Medium/High), shadows and more.
 
@@ -83,7 +88,17 @@ GODOT=/path/to/Godot_v4.3-stable_linux.x86_64 fishing/tools/play.sh 1600 shot.pn
 | `touch_controls.gd` | Walking HUD: joystick, RUN, action/secondary buttons, look info |
 | `status_ui.gd` | Health and breath bars, hit flash, underwater tint, death screen |
 | `ui_draw.gd` / `ui_theme.gd` | Shared HUD drawing kit (round buttons, pills, bars, vector icons) and colours |
+| `fp_hands.gd` / `assets/hand.gdshader` | First-person hands: pose blending, gestures, finger curl |
 | `assets/grass.gdshader` | Wind-swayed grass tufts and wildflowers (MultiMesh) |
 | `water.gdshader` | Animated low-poly water (its wave formula is mirrored in `game.gd` so the bobber floats correctly) |
 | `sfx.gd` | Procedurally generated sound effects |
 | `tools/play.sh` | Headless play-test + screenshot harness |
+
+## Credits
+
+- Hand model: ["Hand (low poly)"](https://sketchfab.com/3d-models/hand-low-poly-d6c802a74a174c8c805deb20186d1877)
+  by scribbletoad, licensed [CC-BY-4.0](http://creativecommons.org/licenses/by/4.0/)
+  (re-posed and mirrored in code).
+- 3D models from Kenney (Nature, Pirate, Watercraft kits) and KayKit
+  (Adventurers, Fantasy Weapons Bits), CC0.
+- Stylized water shader: see `assets/water/LICENSE.txt`.
