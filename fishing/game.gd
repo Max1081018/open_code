@@ -99,6 +99,7 @@ var held_view: Node3D             # unused; kept so old references stay valid
 
 # Physical catches: every landed fish is a RigidBody3D you can grab and carry.
 const FISH_LAYER := 8
+const MAX_LOOSE := 24
 var loose_fish: Array = []        # RigidBody3D, each with meta "fish" (its data)
 var holding: RigidBody3D = null   # the fish in your hands
 var shop_lamp: OmniLight3D
@@ -111,6 +112,7 @@ var _reach := 0.0
 var _hands_enabled := true
 var fx: WorldFX
 var render_view: RenderView
+var icons: IconBaker
 var quality := 1                 # 0 Low, 1 Medium, 2 High, 3 Ultra
 var _surf: AudioStreamPlayer
 var _step_dist := 0.0
@@ -262,8 +264,12 @@ const SHOP_STOCK := [
 	 "desc": "Knuckle guards for wrestling a slippery one.", "price": 130, "power": 2},
 	{"id": "axe_A", "name": "Bait Hatchet", "rarity": "Uncommon",
 	 "desc": "Chops bait. Chops most things, really.", "price": 210, "power": 2},
+	{"id": "boat_key", "name": "Boat Key", "rarity": "Uncommon", "kind": "gear",
+	 "desc": "Starts the motorboat at the jetty.", "price": 120, "power": 0, "proc": "key"},
+	{"id": "sea_map", "name": "Sea Chart", "rarity": "Uncommon", "kind": "gear",
+	 "desc": "Marks the way out to the deep water.", "price": 90, "power": 0, "proc": "map"},
 	{"id": "boss_reel", "name": "Boss Reel", "rarity": "Rare", "kind": "gear",
-	 "desc": "Heavy carbon reel. Lets you take the boat out after something big.",
+	 "desc": "Heavy carbon reel, strong enough for the Kraken.",
 	 "price": 360, "power": 0,
 	 "model": "res://assets/models/fishing/tiered-fishing-rods.glb", "node": "FishingRod_Carbon"},
 ]
@@ -327,6 +333,20 @@ func weapon_power() -> int:
 	return int(w.get("power", 0))
 
 
+## The boat needs both its key and the sea chart.
+func can_sail() -> bool:
+	return owned_weapons.has("boat_key") and owned_weapons.has("sea_map")
+
+
+func _sail_missing() -> String:
+	var m: Array = []
+	if not owned_weapons.has("boat_key"):
+		m.append("Boat Key")
+	if not owned_weapons.has("sea_map"):
+		m.append("Sea Chart")
+	return " and ".join(m)
+
+
 func held_id() -> String:
 	return str(inv[sel].get("id", "")) if sel >= 0 and sel < SLOTS else ""
 
@@ -383,6 +403,111 @@ static func _item_icon(id: String) -> String:
 		_: return "whack"
 
 
+## Hotbar picture key for a slot's item (fish share one per species).
+func _icon_key(it: Dictionary) -> String:
+	var id := str(it.get("id", ""))
+	if id == "fish":
+		return "fish:" + str((it.get("data", {}) as Dictionary).get("name", ""))
+	return id
+
+
+## A fresh model of an item, for its hotbar picture.
+func _item_model(it: Dictionary) -> Node3D:
+	var id := str(it.get("id", ""))
+	match id:
+		"clam":
+			return _clam_model()
+		"fish":
+			var d: Dictionary = it.get("data", {})
+			return _make_fish(d, 4.5 if d.get("boss", false) else float(d.get("weight", 1.0)))
+		"rod":
+			var w := weapon_by_id("rod")
+			var m := _pack_part(str(w.get("model", "")), str(w.get("node", "")))
+			if m:
+				return m
+			return rod.duplicate() as Node3D
+		_:
+			if ResourceLoader.exists(WEAPON_DIR + id + ".gltf"):
+				return load(WEAPON_DIR + id + ".gltf").instantiate()
+	return Node3D.new()
+
+
+## Small shop items built in code: a brass boat key on a cork float, and a
+## rolled sea chart tied with a red ribbon.
+func _proc_item(kind: String) -> Node3D:
+	var n := Node3D.new()
+	var add := func(mesh: Mesh, mat: Material, xf: Transform3D) -> void:
+		var mi := MeshInstance3D.new()
+		mi.mesh = mesh
+		mi.material_override = mat
+		mi.transform = xf
+		n.add_child(mi)
+	if kind == "key":
+		var brass := _mat(Color(0.86, 0.66, 0.24), 0.35)
+		brass.metallic = 0.7
+		var ring := TorusMesh.new()
+		ring.inner_radius = 0.022
+		ring.outer_radius = 0.036
+		ring.rings = 16
+		ring.ring_segments = 6
+		add.call(ring, brass, Transform3D(Basis(Vector3.RIGHT, PI * 0.5), Vector3(-0.07, 0.006, 0)))
+		var shaft := BoxMesh.new()
+		shaft.size = Vector3(0.11, 0.012, 0.014)
+		add.call(shaft, brass, Transform3D(Basis(), Vector3(0.0, 0.006, 0)))
+		for t in 3:
+			var tooth := BoxMesh.new()
+			tooth.size = Vector3(0.012, 0.012, 0.022 + 0.008 * (t % 2))
+			add.call(tooth, brass, Transform3D(Basis(), Vector3(0.025 + t * 0.016, 0.006, 0.016)))
+		var cork := CapsuleMesh.new()
+		cork.radius = 0.022
+		cork.height = 0.09
+		add.call(cork, _mat(Color(0.95, 0.45, 0.15), 0.8), Transform3D(Basis(Vector3(0, 0, 1), PI * 0.5), Vector3(-0.15, 0.022, 0)))
+	else:
+		var paper := _mat(Color(0.93, 0.86, 0.68), 0.9)
+		var roll := CylinderMesh.new()
+		roll.top_radius = 0.032
+		roll.bottom_radius = 0.032
+		roll.height = 0.26
+		roll.radial_segments = 12
+		roll.rings = 1
+		add.call(roll, paper, Transform3D(Basis(Vector3(0, 0, 1), PI * 0.5), Vector3(0, 0.032, 0)))
+		var sheet := BoxMesh.new()
+		sheet.size = Vector3(0.24, 0.004, 0.13)
+		add.call(sheet, paper, Transform3D(Basis(), Vector3(0, 0.002, 0.08)))
+		var ink := BoxMesh.new()
+		ink.size = Vector3(0.05, 0.005, 0.04)
+		add.call(ink, _mat(Color(0.3, 0.55, 0.45), 0.9), Transform3D(Basis(), Vector3(-0.04, 0.004, 0.08)))
+		var x := BoxMesh.new()
+		x.size = Vector3(0.03, 0.006, 0.006)
+		var red := _mat(Color(0.8, 0.15, 0.12), 0.7)
+		add.call(x, red, Transform3D(Basis(Vector3.UP, 0.8), Vector3(0.06, 0.005, 0.1)))
+		add.call(x, red, Transform3D(Basis(Vector3.UP, -0.8), Vector3(0.06, 0.005, 0.1)))
+		var ribbon := TorusMesh.new()
+		ribbon.inner_radius = 0.032
+		ribbon.outer_radius = 0.04
+		ribbon.rings = 16
+		ribbon.ring_segments = 4
+		add.call(ribbon, red, Transform3D(Basis(Vector3(0, 0, 1), PI * 0.5), Vector3(0.0, 0.032, 0)))
+	return n
+
+
+## Lifts one named node out of a multi-model pack.
+func _pack_part(path: String, node_name: String) -> Node3D:
+	if path == "" or not ResourceLoader.exists(path):
+		return null
+	var root: Node3D = load(path).instantiate()
+	var part := root.find_child(node_name, true, false)
+	if part == null:
+		root.free()
+		return null
+	part.get_parent().remove_child(part)
+	root.free()
+	var holder := Node3D.new()
+	holder.add_child(part)
+	(part as Node3D).transform = Transform3D.IDENTITY
+	return holder
+
+
 func _sync_hotbar() -> void:
 	if touch == null:
 		return
@@ -392,6 +517,9 @@ func _sync_hotbar() -> void:
 			arr.append({})
 		else:
 			var id := str(it["id"])
+			var ik := _icon_key(it)
+			if icons and not icons.has_icon(ik):
+				icons.request(ik, _item_model(it))
 			var tint := Color(1, 1, 1, 0.95)
 			if id == "clam":
 				tint = Color(1.0, 0.86, 0.76, 0.95)
@@ -400,7 +528,10 @@ func _sync_hotbar() -> void:
 				tint = UITheme.RARITY.get(rar, Color.WHITE)
 			elif id == "rod":
 				tint = Color(0.86, 0.96, 1.0, 0.95)
-			arr.append({"icon": _item_icon(id), "count": int(it.get("n", 1)), "tint": tint})
+			var entry := {"icon": _item_icon(id), "count": int(it.get("n", 1)), "tint": tint}
+			if icons and icons.has_icon(ik):
+				entry["tex"] = icons.get_icon(ik)
+			arr.append(entry)
 	touch.slots = arr
 	touch.selected = sel
 
@@ -493,10 +624,15 @@ func _buy_weapon(id: String) -> void:
 	owned_weapons.append(id)
 	_play("coins")
 	if gear:
-		has_boss_reel = true
+		if id == "boss_reel":
+			has_boss_reel = true
+			_flash("Boss Reel fitted - now you can land the Kraken")
+		elif can_sail():
+			_flash("Key and chart! The boat is ready - walk to it and SAIL")
+		else:
+			_flash("Bought %s  -  now get the %s" % [w["name"], "Sea Chart" if id == "boat_key" else "Boat Key"])
 		_save_game()
 		_update_info()
-		_flash("Boss Reel fitted to your rod!  Take the boat out")
 		return
 	var slot := _inv_add(id)
 	sel = slot
@@ -566,6 +702,10 @@ func _load_save() -> void:
 					owned_weapons.append("rod")
 			if equipped_weapon != "":
 				inv[1] = {"id": equipped_weapon}
+		if has_boss_reel:
+			for g in ["boat_key", "sea_map"]:
+				if not owned_weapons.has(g):
+					owned_weapons.append(g)
 		if sel >= SLOTS or (sel >= 0 and inv[sel].is_empty()):
 			sel = -1
 		if journal.is_empty() and catches > 0:
@@ -691,6 +831,9 @@ func _ready() -> void:
 	render_view.process_priority = 1000      # copy the camera after it has moved
 	add_child(render_view)
 	render_view.setup(camera, get_viewport().world_3d)
+	icons = IconBaker.new()
+	add_child(icons)
+	icons.baked.connect(func(_k): _sync_hotbar())
 	Engine.max_fps = 60                       # no point burning a 120 Hz phone's battery
 	hud = Hud.new()
 	add_child(hud)
@@ -721,6 +864,8 @@ func _ready() -> void:
 	touch.slot_pressed.connect(_select_slot)
 	touch.jump_pressed.connect(func():
 		if app_state == "playing" and play_mode == "explore":
+			if player.is_on_floor():
+				_play("jump")
 			player.jump())
 	touch.visible = false
 	hud.enabled = false
@@ -743,9 +888,11 @@ func _ready() -> void:
 				if test_rod:
 					_test_give("rod", true)
 			"boss":
-				coins = 500
+				coins = 700
 				_start_play()
 				_buy_weapon("boss_reel")
+				_buy_weapon("boat_key")
+				_buy_weapon("sea_map")
 				_test_give("rod", true)
 				player.position = Vector3(1.3, DECK_Y + 0.4, BOAT_MOOR.z)
 				cam_yaw = -PI * 0.5
@@ -1271,7 +1418,7 @@ func _build_player_view() -> void:
 	paddle_model.scale = Vector3.ONE * 0.40
 	paddle_model.rotation_degrees = Vector3(0, 0, -38)
 	paddle.add_child(paddle_model)
-	for m in paddle.find_children("*", "MeshInstance3D", true):
+	for m in paddle.find_children("*", "MeshInstance3D", true, false):
 		m.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 	paddle.visible = false
 
@@ -1316,6 +1463,7 @@ func _build_sounds() -> void:
 		"click": Sfx.click(), "caught": Sfx.caught(), "snap": Sfx.snap(),
 		"bonk": Sfx.bonk(), "hurt": Sfx.hurt(), "coins": Sfx.coins(),
 		"step_soft": Sfx.step_soft(), "step_wood": Sfx.step_wood(), "gull": Sfx.gull(),
+		"jump": Sfx.whoosh(),
 	}
 	for key in streams:
 		var p := AudioStreamPlayer.new()
@@ -1325,6 +1473,8 @@ func _build_sounds() -> void:
 	players["step_soft"].volume_db = -9.0
 	players["step_wood"].volume_db = -6.0
 	players["gull"].volume_db = -10.0
+	players["jump"].pitch_scale = 1.6
+	players["jump"].volume_db = -8.0
 	# The sea, always there in the background.
 	_surf = AudioStreamPlayer.new()
 	_surf.stream = Sfx.surf_loop()
@@ -1375,7 +1525,7 @@ func _update_info() -> void:
 			"Coins": coins,
 			"Catches": catches,
 			"Best catch": "%s %.1f kg" % [_short_name(best_name), best_weight] if best_name != "" else "-",
-			"Boss": "Landed!" if landed_boss else ("Hunting" if has_boss_reel else "Need Boss Reel"),
+			"Boss": "Landed!" if landed_boss else ("Hunting" if (has_boss_reel and can_sail()) else "Need gear"),
 			"Next island": "Unlocked" if island2_unlocked else "Locked",
 			"Where": "Island 1  -  Bait Bay",
 		})
@@ -1559,7 +1709,7 @@ func _update_prompts() -> void:
 		touch.look_info = str(w.get("name", "?"))
 		touch.look_stat = "+%d power" % int(w.get("power", 0))
 		if gear:
-			touch.look_stat = "unlocks the boat"
+			touch.look_stat = str(w.get("desc", ""))
 		elif str(w.get("kind", "")) == "tool":
 			touch.look_stat = str(w.get("desc", ""))
 		if owned:
@@ -1590,17 +1740,17 @@ func _update_prompts() -> void:
 			touch.look_cost = "" if fd.get("boss", false) else "ALIVE"
 			p = "HIT" if held_weapon() != "" else "PUNCH"
 		else:
-			touch.look_cost = "%d" % int(fd.get("value", 0))
+			touch.look_cost = ""
 			p = "GRAB"
 	elif not looked_clam.is_empty():
 		touch.look_info = "Clam"
-		touch.look_stat = "sells for %d at the market" % CLAM_PRICE
+		touch.look_stat = "sell it at the fish market"
 		p = "PICK UP" if not _inv_full_for("clam") else "FULL"
 	elif (id == "clam" or id == "fish") and near_market:
 		p = "SELL"
 		touch.secondary = "DROP"
 	elif near_boat and (on_boat or not holding):
-		var sail := "SAIL" if (has_boss_reel or on_boat) else "LOCKED"
+		var sail := "SAIL" if (can_sail() or on_boat) else "LOCKED"
 		if id == "rod" and rs == R_NONE:
 			p = "CAST"                       # fish from the boat; sail from the small button
 			touch.secondary = sail
@@ -1618,7 +1768,7 @@ func _update_prompts() -> void:
 		touch.secondary = "DROP"
 	if id == "fish" and touch.look_info == "":
 		var hd := held_fish()
-		touch.carry_info = "%s  -  %d coins%s" % [_nice_name(str(hd.get("name", ""))), int(hd.get("value", 0)),
+		touch.carry_info = "%s  ·  %.1f kg%s" % [_nice_name(str(hd.get("name", ""))), float(hd.get("weight", 0.0)),
 			"  (WANTED x2)" if wanted != "" and str(hd.get("name", "")) == wanted else ""]
 	touch.prompt = p
 
@@ -1687,10 +1837,10 @@ func _on_interact() -> void:
 		"SAIL":
 			if on_boat:
 				_start_sail(false)
-			elif has_boss_reel:
+			elif can_sail():
 				_start_sail(true)
 		"LOCKED":
-			_flash("You need the Boss Reel from Bait & Blade")
+			_flash("You need the %s from Bait & Blade" % _sail_missing())
 			_play("snap")
 
 
@@ -1704,7 +1854,10 @@ func _add_weapon_display(id: String, pos: Vector3, rot := Vector3.ZERO, scl := 0
 	add_child(holder)
 	var info := weapon_by_id(id)
 	var m: Node3D
-	if info.has("model"):
+	if info.has("proc"):
+		m = _proc_item(str(info["proc"]))
+		holder.add_child(m)
+	elif info.has("model"):
 		# Gear lives inside a multi-item pack: lift out just the one node.
 		var root: Node3D = load(str(info["model"])).instantiate()
 		var part := root.find_child(str(info.get("node", "")), true, false)
@@ -1736,7 +1889,7 @@ func _add_weapon_display(id: String, pos: Vector3, rot := Vector3.ZERO, scl := 0
 	om.grow = true
 	om.grow_amount = 0.05
 	var outlines: Array = []
-	for mi in m.find_children("*", "MeshInstance3D", true):
+	for mi in m.find_children("*", "MeshInstance3D", true, false):
 		if mi.mesh == null:
 			continue
 		var o := MeshInstance3D.new()
@@ -1818,10 +1971,10 @@ func _on_secondary() -> void:
 		"SAIL":
 			if on_boat:
 				_start_sail(false)
-			elif has_boss_reel:
+			elif can_sail():
 				_start_sail(true)
 		"LOCKED":
-			_flash("You need the Boss Reel from Bait & Blade")
+			_flash("You need the %s from Bait & Blade" % _sail_missing())
 			_play("snap")
 
 
@@ -1857,7 +2010,7 @@ func _greet_shopkeeper() -> void:
 func _node_aabb(node: Node) -> AABB:
 	var out := AABB()
 	var first := true
-	for n in node.find_children("*", "MeshInstance3D", true):
+	for n in node.find_children("*", "MeshInstance3D", true, false):
 		if n.mesh == null:
 			continue
 		var a: AABB = n.global_transform * n.mesh.get_aabb()
@@ -2002,7 +2155,7 @@ func _build_shop() -> void:
 	# The shack, door facing back toward the jetty (-Z).
 	shop_building = _spawn("shop_building", Vector3(SHOP_POS.x, ground, SHOP_POS.z), PI, SHOP_SCALE)
 	var walls := AABB()
-	for m in shop_building.find_children("*", "MeshInstance3D", true):
+	for m in shop_building.find_children("*", "MeshInstance3D", true, false):
 		var nm: String = m.name
 		if nm.begins_with("Door"):
 			m.visible = false
@@ -2053,6 +2206,10 @@ func _build_shop() -> void:
 	# The best of the lot, mounted on the side wall above the stands.
 	_add_weapon_display("axe_A", Vector3(x0 + 0.08, floor_y + 1.55, z0 + 1.05), Vector3(0, PI * 0.5, 0), 0.50)
 	_add_weapon_display("rod", Vector3(x1 - 0.14, floor_y + 1.05, z0 + 1.05), Vector3(0, PI * 0.5, 0), 0.38)
+	# Boat key and sea chart on a little table in the middle of the room.
+	var t5 := _pedestal(Vector3(cx, floor_y, z0 + 1.75))
+	_add_weapon_display("boat_key", Vector3(cx - 0.12, t5, z0 + 1.68), Vector3(0, 0.5, 0), 1.45)
+	_add_weapon_display("sea_map", Vector3(cx + 0.10, t5, z0 + 1.82), Vector3(0, -0.4, 0), 1.45)
 	var t4 := _pedestal(Vector3(x1 - 0.40, floor_y, z0 + 1.55))
 	_add_weapon_display("boss_reel", Vector3(x1 - 0.40, t4, z0 + 1.55), Vector3(0, 0, 0), 0.30)
 
@@ -2080,7 +2237,7 @@ func _build_market() -> void:
 	# Front of the stall faces -X, toward the path up from the jetty.
 	var stall := _spawn("market", Vector3(MARKET_POS.x, g, MARKET_POS.z), -PI * 0.5, MARKET_SCALE)
 	_static_props.append(stall)
-	for m in stall.find_children("*", "MeshInstance3D", true):
+	for m in stall.find_children("*", "MeshInstance3D", true, false):
 		if m.name.begins_with("Counter") or m.name.begins_with("Stand") or m.name.begins_with("Base"):
 			m.create_trimesh_collision()
 	# A solid box for the counter so you can't walk through the stall.
@@ -3157,7 +3314,7 @@ func _start_bite() -> void:
 ## bite for a Perfect Hook (fewer taps to land it).
 func _hook_fish() -> void:
 	_perfect = bite_window > 1.6 - 0.32
-	pending_fish = BOSS if on_boat else _roll_catch()
+	pending_fish = BOSS if (on_boat and has_boss_reel) else _roll_catch()
 	var need := {"Common": 4, "Uncommon": 6, "Rare": 8, "Epic": 10, "Legendary": 13}
 	reel_need = int(need.get(str(pending_fish.get("rarity", "Common")), 5))
 	if pending_fish.get("junk", false):
@@ -3224,10 +3381,10 @@ func _land_on_line() -> void:
 	if streak >= 1 and not pending_fish.get("junk", false):
 		var pct := mini(streak * 10, 50)
 		pending_value += int(round(pending_value * pct / 100.0))
-		notes.append("Streak +%d%%" % pct)
+		notes.append("Streak x%d" % (streak + 1))
 	if _new_species:
 		pending_value += NEW_SPECIES_BONUS
-		notes.append("New species +%d" % NEW_SPECIES_BONUS)
+		notes.append("New species!")
 	streak += 1
 
 	var junk: bool = pending_fish.get("junk", false)
@@ -3257,8 +3414,8 @@ func _land_on_line() -> void:
 		fx.splash(_hook_at.lerp(bobber.position, 0.5), 2.0)
 	_play("caught")
 	var rar := str(pending_fish.get("rarity", "Common"))
-	touch.show_card(_nice_name(jn), "%s%s   ·   %.2f kg   ·   %d coins" % ["NEW!  " if _new_species else "", rar,
-		pending_weight, pending_value], UITheme.RARITY.get(rar, Color.WHITE))
+	touch.show_card(_nice_name(jn), "%s%s   ·   %.2f kg" % ["NEW!  " if _new_species else "", rar,
+		pending_weight], UITheme.RARITY.get(rar, Color.WHITE))
 	if not notes.is_empty():
 		_flash("   ·   ".join(notes))
 	elif not junk:
@@ -3355,6 +3512,7 @@ func _spawn_loose_fish(data: Dictionary, pos: Vector3, yaw := 0.0) -> RigidBody3
 	body.linear_damp = 0.4
 	body.angular_damp = 1.2
 	body.continuous_cd = true
+	body.can_sleep = true
 	var pm := PhysicsMaterial.new()
 	pm.friction = 0.9
 	pm.bounce = 0.18
@@ -3381,7 +3539,7 @@ func _spawn_loose_fish(data: Dictionary, pos: Vector3, yaw := 0.0) -> RigidBody3
 	om.grow = true
 	om.grow_amount = 0.04 / maxf(model.scale.x, 0.01)
 	var outlines: Array = []
-	for mi in model.find_children("*", "MeshInstance3D", true):
+	for mi in model.find_children("*", "MeshInstance3D", true, false):
 		if mi.mesh == null:
 			continue
 		var o := MeshInstance3D.new()
@@ -3397,6 +3555,18 @@ func _spawn_loose_fish(data: Dictionary, pos: Vector3, yaw := 0.0) -> RigidBody3
 	body.rotation.y = yaw
 	add_child(body)
 	loose_fish.append(body)
+	# Too many lying about costs physics time: the oldest knocked-out catch
+	# (never the boss) washes away.
+	if loose_fish.size() > MAX_LOOSE:
+		for old in loose_fish:
+			if is_instance_valid(old) and old != body and old != holding:
+				var od: Dictionary = old.get_meta("fish")
+				if not od.get("alive", false) and not od.get("boss", false):
+					if old == looked_fish:
+						looked_fish = null
+					loose_fish.erase(old)
+					old.queue_free()
+					break
 	return body
 
 
@@ -3496,7 +3666,22 @@ func _held_half() -> float:
 
 ## Footsteps (wood on the jetty and boat, soft on sand and grass, sloshing in
 ## the shallows), the odd gull squawk, and the sea louder near the shore.
+var _air_t := 0.0
+
 func _update_ambience(delta: float, surface: float, depth: float) -> void:
+	# Landing after a jump or a drop: a thump and the arms dip.
+	if not player.is_on_floor():
+		_air_t += delta
+	else:
+		if _air_t > 0.35:
+			var pp := player.global_position
+			var wood := pp.y > DECK_Y - 0.25 and absf(pp.x) < 2.2 and pp.z < 20.0
+			var k := "step_wood" if wood else "step_soft"
+			players[k].pitch_scale = 0.7
+			_play(k)
+			if hands:
+				hands.play_land()
+		_air_t = 0.0
 	var v := Vector2(player.velocity.x, player.velocity.z).length()
 	if player.is_on_floor() and v > 0.6:
 		_step_dist += v * delta
@@ -3857,7 +4042,7 @@ func _refresh_whack_tool() -> void:
 	paddle.add_child(m)
 	if hands:
 		hands.whack_style = style
-	for mi in m.find_children("*", "MeshInstance3D", true):
+	for mi in m.find_children("*", "MeshInstance3D", true, false):
 		mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 
 

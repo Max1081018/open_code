@@ -22,6 +22,7 @@ const BASE_KNOB_R := 40.0
 const BASE_RUN_R := 44.0
 const BASE_ACT_R := 80.0
 const BASE_SEC_R := 50.0
+const BASE_JUMP_R := 60.0
 const LOOK_SENS := 0.0048
 
 var move := Vector2.ZERO       # -1..1, screen space
@@ -112,6 +113,10 @@ func sec_r() -> float:
 	return BASE_SEC_R * hud_scale
 
 
+func jump_r() -> float:
+	return BASE_JUMP_R * hud_scale
+
+
 ## Icon for whatever the action button says.
 static func icon_for(label: String) -> String:
 	var l := label.split(" ")[0]
@@ -146,9 +151,11 @@ func _recalc() -> void:
 	_joy_home = Vector2(m + joy_r() + 36.0, s.y - m - joy_r() - 20.0)
 	# Right-thumb cluster: big action, secondary above-left, RUN to the left.
 	_act_center = Vector2(s.x - m - act_r() - 10.0, s.y - m - act_r() - 10.0)
-	_sec_center = _act_center + Vector2(-act_r() * 0.55, -(act_r() + sec_r() + 22.0))
-	_run_center = _act_center + Vector2(-(act_r() + run_r() + 36.0), act_r() * 0.35)
-	_jump_center = _run_center + Vector2(-run_r() * 0.35, -(run_r() * 2.0 + 30.0))
+	# Right-thumb cluster: JUMP on the screen edge above the big action
+	# button; the secondary (DROP/THROW/...) and RUN to the action's left.
+	_jump_center = Vector2(s.x - m - jump_r() + 4.0, _act_center.y - act_r() - jump_r() - 26.0)
+	_sec_center = _act_center + Vector2(-(act_r() + sec_r() + 28.0), -(act_r() * 0.95))
+	_run_center = _act_center + Vector2(-(act_r() + run_r() + 30.0), act_r() * 0.42)
 	# Hotbar: centred along the bottom edge.
 	var sz := slot_size()
 	var gap := 10.0 * hud_scale
@@ -245,7 +252,7 @@ func _input(event: InputEvent) -> void:
 			if event.position.distance_to(_run_center) <= run_r() * 1.25:
 				sprint = not sprint
 				return
-			if event.position.distance_to(_jump_center) <= run_r() * 1.25:
+			if event.position.distance_to(_jump_center) <= jump_r() * 1.15:
 				_jump_held = true
 				jump_pressed.emit()
 				return
@@ -429,7 +436,16 @@ class Painter extends Control:
 			if not it.is_empty():
 				var ic: Color = it.get("tint", Color(1, 1, 1, 0.95))
 				ic.a *= op
-				UIDraw.icon(self, str(it.get("icon", "")), r.position + r.size * 0.5 + Vector2(0, 2), r.size.x * 0.32, ic)
+				var tex: Texture2D = it.get("tex")
+				if tex:
+					# the item's own 3D picture, with a soft rarity glow behind fish
+					if str(it.get("icon", "")) == "fish":
+						var g := ic
+						g.a = 0.22 * op
+						draw_circle(r.position + r.size * 0.5, r.size.x * 0.34, g)
+					draw_texture_rect(tex, r.grow(-5.0), false, Color(1, 1, 1, op))
+				else:
+					UIDraw.icon(self, str(it.get("icon", "")), r.position + r.size * 0.5 + Vector2(0, 2), r.size.x * 0.32, ic)
 				var n: int = int(it.get("count", 1))
 				if n > 1:
 					var ns := "x%d" % n
@@ -438,7 +454,7 @@ class Painter extends Control:
 
 		# ---- right cluster ----
 		UIDraw.round_button(self, font, ui._run_center, ui.run_r(), "RUN", "run", ui.sprint, false, op)
-		UIDraw.round_button(self, font, ui._jump_center, ui.run_r(), "JUMP", "jump", false, ui._jump_held, op)
+		UIDraw.round_button(self, font, ui._jump_center, ui.jump_r(), "JUMP", "jump", false, ui._jump_held, op)
 		if ui.secondary != "":
 			UIDraw.round_button(self, font, ui._sec_center, ui.sec_r(), ui.secondary,
 				ui.icon_for(ui.secondary), false, false, op)

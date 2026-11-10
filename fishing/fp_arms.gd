@@ -57,6 +57,7 @@ var _hook_t := 0.0
 var _reel_t := 0.0
 var _hit_t := 0.0
 var _swap_t := 0.0
+var _land_t := 0.0
 var _crank := 0.0
 var _reel: Node3D
 var _crank_arm: Node3D
@@ -321,6 +322,10 @@ func play_hit() -> void:
 	_combat = 2.0
 
 
+func play_land() -> void:
+	_land_t = 1.0
+
+
 func play_swap() -> void:
 	_swap_t = 1.0
 
@@ -416,6 +421,7 @@ func _process(delta: float) -> void:
 	_reel_t = maxf(_reel_t - delta / 0.22, 0.0)
 	_hit_t = maxf(_hit_t - delta / 0.4, 0.0)
 	_swap_t = maxf(_swap_t - delta / 0.36, 0.0)
+	_land_t = maxf(_land_t - delta / 0.3, 0.0)
 	if mode == "hidden":
 		visible = false
 		_mode_was = mode
@@ -443,6 +449,7 @@ func _process(delta: float) -> void:
 	var amp := walk * (1.6 if sprint else 1.0)
 	var off := Vector3(sin(_phase * 0.5) * 0.012 * amp, -absf(sin(_phase)) * 0.016 * amp, 0)
 	off.y -= _arc(_swap_t) * 0.22
+	off.y -= _arc(_land_t) * 0.05
 	if _hit_t > 0.0:
 		var g := _hit_t * _hit_t
 		off += Vector3(sin(_t * 61.0) * 0.015, -0.05 + cos(_t * 53.0) * 0.01, 0.04) * g

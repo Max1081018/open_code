@@ -386,7 +386,7 @@ func _build() -> void:
 		"With the rod: HOLD CAST, let go. On HOOK! tap it, then tap REEL until it's out.",
 		"DROP your catch, then PUNCH it out - quick, before it jumps at you!",
 		"GRAB the knocked-out fish and sell it. A better Reel brings rarer fish.",
-		"Deep water drowns you. Get the Boss Reel, SAIL out and catch the Kraken.",
+		"Boat Key + Sea Chart let you SAIL. The Boss Reel lands the Kraken out there.",
 	]:
 		var l := Label.new()
 		l.text = linetext

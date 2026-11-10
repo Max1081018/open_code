@@ -27,10 +27,12 @@ market and a moored motorboat.
 5. The catch hangs off your rod while you walk. **DROP** it (or put the rod away),
    then **PUNCH** it — or **HIT** it with a weapon — until it's knocked out. Be quick:
    live fish flop about and leap at you.
-6. **GRAB** it: it goes into a slot, so you can switch to the rod and back. Hold it
+6. **GRAB** it: it goes into a slot (each slot shows a little 3D picture of what's in it), so you can switch to the rod and back. Hold it
    at the market and **SELL** (or drop it on the counter).
-7. Buy the **Boss Reel**, **SAIL** out, catch **the Baby Kraken** from the deck, beat
-   it, sail home and sell it. The buyer hands you a map: **Island 2 unlocks**.
+7. Buy the **Boat Key** and the **Sea Chart** (both on the little table in the shop):
+   with both, the boat is yours to **SAIL**. Buy the **Boss Reel** too, catch **the
+   Baby Kraken** from the deck, beat it, sail home and sell it. The buyer hands you
+   a map: **Island 2 unlocks**.
 
 Real catches include Minnow, Perch, Sunfish, Trout, Bass, Carp, Catfish, Pike,
 a rare Golden Koi, and junk like an old boot, a message in a bottle and a sunken chest.
