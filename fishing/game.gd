@@ -280,7 +280,7 @@ const SAVE_PATH := "user://save.cfg"
 # Each upgrade: display name, blurb, number of levels, and base cost (cost grows
 # per level). Effects are applied in the gameplay formulas below.
 const UPGRADES := {
-	"rod":  {"name": "Reel", "desc": "Rarer fish bite, longer casts", "levels": 5, "cost": 60},
+	"rod":  {"name": "Reel", "desc": "A better rod: rarer fish, longer casts", "levels": 5, "cost": 60},
 	"line": {"name": "Line", "desc": "Hooked fish pull back less", "levels": 5, "cost": 55},
 	"bait": {"name": "Bait", "desc": "Fish bite sooner",     "levels": 5, "cost": 50},
 	"luck": {"name": "Luck", "desc": "Bigger, rarer catches", "levels": 5, "cost": 70},
@@ -855,6 +855,9 @@ var test_res := ""
 var test_rod_tier := -1
 var test_fresh := false          # autotest: ignore the save and don't write one
 var test_nohud := false          # autotest: hide the touch UI so shots show the world
+var _perf_acc := 0.0             # running totals for the averaged timings
+var _perf_phys := 0.0
+var _perf_n := 0
 var test_hold := false           # autotest: keep walking through the screenshot
 var _tphase := 0
 var _tnext := 0
@@ -1640,7 +1643,7 @@ func _update_info() -> void:
 			entries.append({"name": nm.substr(0, 1).to_upper() + nm.substr(1),
 				"rarity": str(f.get("rarity", "Common")), "count": int(e[0]), "best": float(e[1]),
 				"junk": f.get("junk", false), "price": int(f.get("price", f.get("flat", 0)))})
-		menu_ui.set_journal(entries)
+		menu_ui.set_journal(entries, NEW_SPECIES_BONUS)
 
 
 # --- Main loop ----------------------------------------------------------------
@@ -4261,6 +4264,12 @@ func _short_name(n: String) -> String:
 func _print_perf() -> void:
 	if render_view and render_view.view:
 		print("PERF render3d=%s" % render_view.view.size)
+	# Averaged over the run, not sampled on the last frame: that one also pays
+	# for the screenshot readback and reads ten times too slow.
+	if _perf_n > 0:
+		var wall: float = (float(Time.get_ticks_usec()) - _perf_acc) / 1000.0
+		print("PERF avg_frame_ms=%.2f avg_physics_ms=%.2f over=%d frames" % [
+			wall / float(_perf_n), _perf_phys / float(_perf_n) * 1000.0, _perf_n])
 	print("PERF draw_calls=%d objects=%d primitives=%d nodes=%d physics_active=%d mem_static=%.1fMB vmem=%.1fMB" % [
 		Performance.get_monitor(Performance.RENDER_TOTAL_DRAW_CALLS_IN_FRAME),
 		Performance.get_monitor(Performance.RENDER_TOTAL_OBJECTS_IN_FRAME),
@@ -5091,6 +5100,14 @@ func _update_line() -> void:
 
 func _autotest(_delta: float) -> void:
 	frame += 1
+	# Wall-clock cost of a frame, averaged. The engine's own TIME_PROCESS
+	# monitor lags and the last frame also pays for the screenshot readback,
+	# so neither is any use for judging this.
+	if frame == 21:
+		_perf_acc = float(Time.get_ticks_usec())
+	elif frame > 21:
+		_perf_phys += Performance.get_monitor(Performance.TIME_PHYSICS_PROCESS)
+		_perf_n += 1
 	sim_action = false
 	if test_nohud and frame > 1 and touch.visible:
 		touch.visible = false

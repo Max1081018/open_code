@@ -53,6 +53,7 @@ var _help: Control
 var _journal: Control
 var _journal_grid: JournalGrid
 var _journal_title: Label
+var _journal_hint: Label
 var _help_btn: Button
 var _help_return_to: Control
 var _help_firsttime := false
@@ -284,7 +285,7 @@ func _build() -> void:
 		_stat_rows[key] = v
 
 	var ver := Label.new()
-	ver.text = "v" + str(ProjectSettings.get_setting("application/config/version", "0.11"))
+	ver.text = "v" + str(ProjectSettings.get_setting("application/config/version", "0.12"))
 	ver.set_anchors_preset(Control.PRESET_BOTTOM_RIGHT)
 	ver.position = Vector2(-70, -40)
 	ver.add_theme_font_size_override("font_size", 18)
@@ -394,7 +395,9 @@ func _build() -> void:
 		"With the rod: HOLD CAST, let go. On HOOK! tap it, then tap REEL until it's out.",
 		"DROP your catch, then PUNCH it out - quick, before it jumps at you!",
 		"GRAB the knocked-out fish and sell it. A better Reel brings rarer fish.",
-		"Boat Key + Sea Chart let you SAIL. The Boss Reel lands the Kraken out there.",
+		"Push the stick to the edge to run. JUMP gets you up the shop steps.",
+		"Boat Key + Sea Chart get you aboard: DRIVE out past the buoys with the stick.",
+		"Out there the Boss Reel lands the Kraken. Drop a catch in the sea and it floats.",
 	]:
 		var l := Label.new()
 		l.text = linetext
@@ -420,7 +423,8 @@ func _build() -> void:
 	_journal_title.add_theme_color_override("font_color", UITheme.TEXT_WARM)
 	jv.add_child(_journal_title)
 	var jhint := Label.new()
-	jhint.text = "Catch every species. The first of each pays a %d coin bonus." % 15
+	_journal_hint = jhint
+	jhint.text = ""
 	jhint.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	jhint.add_theme_font_size_override("font_size", 19)
 	jhint.add_theme_color_override("font_color", UITheme.TEXT_DIM)
@@ -704,7 +708,7 @@ func open_journal_for_test() -> void:
 
 
 ## Fish journal entries from the game: [{name, rarity, count, best, junk}].
-func set_journal(entries: Array) -> void:
+func set_journal(entries: Array, bonus := 25) -> void:
 	if _journal_grid == null:
 		return
 	_journal_grid.entries = entries
@@ -714,6 +718,8 @@ func set_journal(entries: Array) -> void:
 		if int(e["count"]) > 0:
 			found += 1
 	_journal_title.text = "Journal   ·   %d / %d found" % [found, entries.size()]
+	if _journal_hint:
+		_journal_hint.text = "Catch every species. The first of each pays a %d coin bonus." % bonus
 
 
 ## The journal as a grid of cards drawn in one go: undiscovered ones show "???".
