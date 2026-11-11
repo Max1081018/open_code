@@ -280,14 +280,11 @@ var best_name := ""
 const SAVE_PATH := "user://save.cfg"
 # Each upgrade: display name, blurb, number of levels, and base cost (cost grows
 # per level). Effects are applied in the gameplay formulas below.
-const UPGRADES := {
-	"rod":  {"name": "Reel", "desc": "A better rod: rarer fish, longer casts", "levels": 5, "cost": 60},
-	"line": {"name": "Line", "desc": "Hooked fish pull back less", "levels": 5, "cost": 55},
-	"bait": {"name": "Bait", "desc": "Fish bite sooner",     "levels": 5, "cost": 50},
-	"luck": {"name": "Luck", "desc": "Bigger, rarer catches", "levels": 5, "cost": 70},
-}
+# There are no abstract upgrade tracks. You buy a better rod, you can see the
+# rod in your hands, and the rod is what casts further, hooks rarer fish, draws
+# a bite sooner and holds a fish that fights. One purchase, one visible thing.
 var coins := 0
-var upgrades := {"rod": 0, "line": 0, "bait": 0, "luck": 0}
+var rod_level := 0              # which of ROD_TIERS you own
 var seen_help := false
 
 # --- Weapons -------------------------------------------------------------------
@@ -297,6 +294,18 @@ const SHOP_STOCK := [
 	{"id": "rod", "name": "Fishing Rod", "rarity": "Common", "kind": "tool",
 	 "desc": "Cast it anywhere there's water.", "price": 25, "power": 0,
 	 "model": "res://assets/models/fishing/tiered-fishing-rods.glb", "node": "FishingRod_Bamboo"},
+	{"id": "rod_wood", "name": "Lakewood Rod", "rarity": "Common", "kind": "rod", "tier": 1,
+	 "desc": "Longer casts, and the fish come quicker.", "price": 120, "power": 0,
+	 "model": "res://assets/models/fishing/tiered-fishing-rods.glb", "node": "FishingRod_Wood"},
+	{"id": "rod_carbon", "name": "Carbon Rod", "rarity": "Uncommon", "kind": "rod", "tier": 2,
+	 "desc": "Light and stiff: rarer fish, and a line that holds.", "price": 300, "power": 0,
+	 "model": "res://assets/models/fishing/tiered-fishing-rods.glb", "node": "FishingRod_Carbon"},
+	{"id": "rod_gold", "name": "Gilded Rod", "rarity": "Rare", "kind": "rod", "tier": 3,
+	 "desc": "Gold fittings. The deep water starts to notice.", "price": 650, "power": 0,
+	 "model": "res://assets/models/fishing/tiered-fishing-rods.glb", "node": "FishingRod_Gold"},
+	{"id": "rod_crystal", "name": "Crystal Rod", "rarity": "Epic", "kind": "rod", "tier": 4,
+	 "desc": "The best on the island. Everything bites it.", "price": 1200, "power": 0,
+	 "model": "res://assets/models/fishing/tiered-fishing-rods.glb", "node": "FishingRod_Crystal"},
 	{"id": "dagger_A", "name": "Gutting Knife", "rarity": "Common",
 	 "desc": "A stubby blade for cleaning your catch.", "price": 45, "power": 1},
 	{"id": "fistweapon_A", "name": "Scaling Grips", "rarity": "Common",
@@ -657,6 +666,21 @@ func _buy_weapon(id: String) -> void:
 	var price := int(w["price"])
 	if coins < price:
 		return
+	if str(w.get("kind", "")) == "rod":
+		var tier := int(w.get("tier", 0))
+		if tier != rod_level + 1:
+			_flash("Buy the %s first" % str(ROD_TIERS[rod_level + 1]["name"]))
+			_play("snap")
+			return
+		coins -= price
+		owned_weapons.append(id)
+		rod_level = tier
+		_build_rod_visual()
+		_play("coins")
+		_flash("New rod: %s" % rod_tier_name())
+		_save_game()
+		_update_info()
+		return
 	var gear := str(w.get("kind", "")) == "gear"
 	if not gear and _inv_full_for(id):
 		_flash("Your 4 slots are full")
@@ -710,11 +734,6 @@ func _refresh_weapon_shop() -> void:
 	pass
 
 
-func upgrade_cost(key: String) -> int:
-	# Rising cost: base * (level+1), e.g. 40, 80, 120, ...
-	return int(UPGRADES[key]["cost"]) * (int(upgrades[key]) + 1)
-
-
 func _load_save() -> void:
 	var cfg := ConfigFile.new()
 	if cfg.load(SAVE_PATH) == OK:
@@ -759,8 +778,8 @@ func _load_save() -> void:
 				if nm != "":
 					var e: Array = journal.get(nm, [0, 0.0])
 					journal[nm] = [int(e[0]) + 1, maxf(float(e[1]), float(d.get("weight", 0.0)))]
-		for key in upgrades:
-			upgrades[key] = int(cfg.get_value("upgrades", key, 0))
+		# Older saves kept four upgrade tracks; the reel level became the rod.
+		rod_level = clampi(int(cfg.get_value("upgrades", "rod", 0)), 0, ROD_TIERS.size() - 1)
 
 
 func _save_game() -> void:
@@ -788,47 +807,9 @@ func _save_game() -> void:
 	cfg.set_value("save", "wanted", wanted)
 	cfg.set_value("save", "inv", inv)
 	cfg.set_value("save", "sel", sel)
-	for key in upgrades:
-		cfg.set_value("upgrades", key, upgrades[key])
+	cfg.set_value("upgrades", "rod", rod_level)
 	cfg.save(SAVE_PATH)
 
-
-func _refresh_shop() -> void:
-	var rows := []
-	for key in ["rod", "line", "bait", "luck"]:
-		var lvl: int = upgrades[key]
-		var maxed: bool = lvl >= int(UPGRADES[key]["levels"])
-		var cost := upgrade_cost(key)
-		rows.append({
-			"key": key,
-			"name": UPGRADES[key]["name"],
-			"desc": UPGRADES[key]["desc"],
-			"level": lvl,
-			"max": int(UPGRADES[key]["levels"]),
-			"cost": cost,
-			"maxed": maxed,
-			"afford": coins >= cost,
-		})
-	menu_ui.set_shop_model(coins, rows)
-
-
-func _buy_upgrade(key: String) -> void:
-	if not upgrades.has(key):
-		return
-	if upgrades[key] >= int(UPGRADES[key]["levels"]):
-		return
-	var cost := upgrade_cost(key)
-	if coins < cost:
-		return
-	coins -= cost
-	upgrades[key] += 1
-	if key == "rod":
-		_build_rod_visual()
-		_flash("New rod: %s" % rod_tier_name())
-	_play("caught")
-	_save_game()
-	_refresh_shop()
-	_update_info()
 
 # Autotest
 var autotest := false
@@ -878,7 +859,7 @@ func _ready() -> void:
 	if not test_fresh:
 		_load_save()
 	if test_rod_tier >= 0:
-		upgrades["rod"] = test_rod_tier
+		rod_level = test_rod_tier
 	_build_world()
 	_build_player_view()
 	_build_sounds()
@@ -900,8 +881,6 @@ func _ready() -> void:
 	menu_ui.resume_pressed.connect(_resume)
 	menu_ui.to_main_menu.connect(_go_main_menu)
 	menu_ui.settings_changed.connect(_apply_settings)
-	menu_ui.shop_opened.connect(_refresh_shop)
-	menu_ui.buy_pressed.connect(_buy_upgrade)
 	menu_ui.first_help_done.connect(_on_first_help_done)
 	menu_ui.set_coins(coins)
 
@@ -1045,10 +1024,6 @@ func _ready() -> void:
 				player.position = Vector3(SHOP_POS.x + 0.2, shop_floor_y + 0.3, SHOP_POS.z - 0.9)
 				cam_yaw = 1.68 if test_yaw == PI else test_yaw   # toward the first display stand
 				cam_pitch = -0.17
-			"shop":
-				coins = 500
-				_go_main_menu()
-				menu_ui.open_shop_for_test()
 			_: _go_main_menu()
 	else:
 		_go_main_menu()
@@ -1262,6 +1237,7 @@ const SHOP_TALK_SPOT := Vector3(-7.0, 0, 25.4)
 const WEAPON_DIR := "res://assets/models/weapons/"
 
 # Fish market (where you sell what you carry)
+const NPC_HEIGHT := 1.75        # the shopkeepers stand about this tall
 const MARKET_POS := Vector3(7.0, 0, 19.5)
 const MARKET_SCALE := 0.27
 const SELL_SPOT := Vector3(5.2, 0, 19.5)    # in front of the counter
@@ -1285,6 +1261,40 @@ func _spawn(key: String, pos: Vector3, rot_y := 0.0, scl := 1.0, parent: Node = 
 	if key in MERGE_KEYS:
 		_merge_me.append(n)
 	return n
+
+
+## Dev check: lists every visible prop near a point with how far its bottom
+## sits above or below the bare island surface there. Run it with
+## PLACEDBG="x,z,radius" and an autotest screen. This is how out-of-place
+## scenery gets found - by measuring, not by wandering around looking.
+func _check_placement(spec: String) -> void:
+	var parts := spec.split(",")
+	if parts.size() < 3:
+		return
+	var cx := float(parts[0])
+	var cz := float(parts[1])
+	var rad := float(parts[2])
+	var rows: Array = []
+	for n in find_children("*", "MeshInstance3D", true, false):
+		var m := n as MeshInstance3D
+		if m.mesh == null or not m.is_visible_in_tree():
+			continue
+		if (camera and camera.is_ancestor_of(m)) or (player and player.is_ancestor_of(m)):
+			continue
+		var box: AABB = m.global_transform * m.mesh.get_aabb()
+		if box.size.x > 16.0 or box.size.z > 16.0:
+			continue
+		var c := box.get_center()
+		if Vector2(c.x - cx, c.z - cz).length() > rad:
+			continue
+		var ground := _island_y(HOME, HOME_R, HOME_H, c.x, c.z)
+		rows.append([box.position.y - ground, "%-26s bottom=%6.2f ground=%6.2f gap=%+.2f at %s" % [
+			m.name, box.position.y, ground, box.position.y - ground,
+			c.snapped(Vector3.ONE * 0.1)]])
+	rows.sort_custom(func(a, b): return float(a[0]) < float(b[0]))
+	print("PLACEDBG %d props within %.1f m of (%.1f, %.1f)" % [rows.size(), rad, cx, cz])
+	for r in rows:
+		print("PLACEDBG   " + str(r[1]))
 
 
 ## A node lifted out of an imported scene still names that scene as its owner,
@@ -2190,11 +2200,36 @@ func _spawn_character(path: String, pos: Vector3, yaw := 0.0, anim_name := "Idle
 	add_child(root)
 	var m: Node3D = load(path).instantiate()
 	root.add_child(m)
-	var box := _local_aabb(m)
-	if box.size.y > 0.001:
-		var sc := 1.75 / box.size.y
+	# The character packs ship swords, shields and a quiver clipped to the
+	# hands and the back. A fishmonger needs none of it - and worse, the
+	# weapons stretch the model's bounds, which is what left these two scaled
+	# wrong and hovering over their own counters. Body parts are the meshes
+	# named after the character; everything else is weaponry.
+	var who := path.get_file().get_basename()
+	for mi in m.find_children("*", "MeshInstance3D", true, false):
+		if not (mi as MeshInstance3D).name.begins_with(who):
+			(mi as MeshInstance3D).visible = false
+	# Fit by the skeleton, not by the mesh bounds: Godot pads a skinned mesh's
+	# AABB generously (these models measure 3.4 units tall for a 1.8 unit
+	# character), and fitting to that box is what shrank both shopkeepers and
+	# left them hovering over their own counters.
+	var skels := m.find_children("*", "Skeleton3D", true, false)
+	var skel: Skeleton3D = (skels[0] as Skeleton3D) if not skels.is_empty() else null
+	if skel and skel.get_bone_count() > 0:
+		var lo := 1e9
+		var hi := -1e9
+		for i in skel.get_bone_count():
+			var y: float = skel.get_bone_global_rest(i).origin.y
+			lo = minf(lo, y)
+			hi = maxf(hi, y)
+		# The top bone is the head joint, which sits about this far below the
+		# crown on these packs.
+		var span: float = maxf(hi - lo, 0.001)
+		var sc: float = (NPC_HEIGHT * 0.74) / span
 		m.scale = Vector3.ONE * sc
-		m.position.y = -box.position.y * sc
+		m.position.y = -lo * sc
+	if OS.get_environment("PLACEDBG") != "":
+		print("PLACEDBG spawn %s scale=%.3f shift=%.3f" % [who, m.scale.y, m.position.y])
 	var ap: AnimationPlayer = m.find_child("AnimationPlayer", true, false)
 	if ap and ap.has_animation(anim_name):
 		var a := ap.get_animation(anim_name)
@@ -2341,6 +2376,12 @@ func _build_shop() -> void:
 	# The best of the lot, mounted on the side wall above the stands.
 	_add_weapon_display("axe_A", Vector3(x0 + 0.08, floor_y + 1.55, z0 + 1.05), Vector3(0, PI * 0.5, 0), 0.50)
 	_add_weapon_display("rod", Vector3(x1 - 0.14, floor_y + 1.05, z0 + 1.05), Vector3(0, PI * 0.5, 0), 0.38)
+	# The rod rack along the back wall: the four you work your way up to, in
+	# order, so you can see what you are saving for.
+	for i in 4:
+		_add_weapon_display(["rod_wood", "rod_carbon", "rod_gold", "rod_crystal"][i],
+			Vector3(cx - 0.72 + 0.48 * float(i), floor_y + 1.02, z1 - 0.16),
+			Vector3(0, PI, 0), 0.38)
 	# Boat key and sea chart on a little table in the middle of the room.
 	var t5 := _pedestal(Vector3(cx, floor_y, z0 + 1.75))
 	_add_weapon_display("boat_key", Vector3(cx - 0.12, t5, z0 + 1.68), Vector3(0, 0.5, 0), 1.45)
@@ -2372,6 +2413,15 @@ func _build_market() -> void:
 	# Front of the stall faces -X, toward the path up from the jetty.
 	var stall := _spawn("market", Vector3(MARKET_POS.x, g, MARKET_POS.z), -PI * 0.5, MARKET_SCALE)
 	_static_props.append(stall)
+	# The pack beds its display fish halfway into the ice slab. At this size
+	# that reads as fish sliced in half, not fish on ice, so lift each one to
+	# rest on top of it.
+	for mi in stall.find_children("Fish_*", "MeshInstance3D", true, false):
+		var fmesh := mi as MeshInstance3D
+		if fmesh.mesh == null:
+			continue
+		var lift: float = fmesh.mesh.get_aabb().size.y * fmesh.transform.basis.get_scale().y
+		fmesh.position.y += lift * 0.45
 	for m in stall.find_children("*", "MeshInstance3D", true, false):
 		if m.name.begins_with("Counter") or m.name.begins_with("Stand") or m.name.begins_with("Base"):
 			m.create_trimesh_collision()
@@ -3705,8 +3755,14 @@ const Q_ROWS := [480, 620, 800, 100000]       # ...but never more rows than this
 const Q_FAR := [150.0, 220.0, 280.0, 360.0]
 const Q_GRASS := [0.3, 0.6, 0.85, 1.0]
 const Q_CLOUDS := [8, 14, 20, 28]
-const Q_RAIN := [120, 220, 320, 450]
-const Q_SHADOW_MAP := [1024, 1024, 2048, 4096]
+# Rain is transparent, so every drop is overdraw, which is the one thing a
+# phone GPU really cannot take. Heavy rain still reads as heavy at 300.
+const Q_RAIN := [110, 190, 250, 300]
+# Shadow atlas per preset. Four splits over 75 m at 4096 was the single most
+# expensive thing in an Ultra frame on a phone - four passes over the whole
+# island - and at this art style it is indistinguishable from two splits over
+# 60 m, which is what Ultra uses now.
+const Q_SHADOW_MAP := [1024, 1024, 2048, 3072]
 const Q_WATER_NORMAL := [0.12, 0.26, 0.36, 0.44]
 # How far away small clutter (crates, rocks, bottles, flowers) keeps drawing.
 const Q_PROP := [55.0, 85.0, 120.0, 200.0]
@@ -3744,8 +3800,8 @@ func _apply_graphics() -> void:
 				sun_light.directional_shadow_mode = DirectionalLight3D.SHADOW_PARALLEL_2_SPLITS
 				sun_light.directional_shadow_max_distance = 48.0
 			3:
-				sun_light.directional_shadow_mode = DirectionalLight3D.SHADOW_PARALLEL_4_SPLITS
-				sun_light.directional_shadow_max_distance = 75.0
+				sun_light.directional_shadow_mode = DirectionalLight3D.SHADOW_PARALLEL_2_SPLITS
+				sun_light.directional_shadow_max_distance = 60.0
 	RenderingServer.directional_shadow_atlas_set_size(Q_SHADOW_MAP[q], true)
 	if world_env:
 		world_env.fog_enabled = true
@@ -3784,7 +3840,7 @@ func _physics_process(delta: float) -> void:
 # Casting: hold CAST to charge, let go to fling the bobber out. It has to land
 # on water: on sand or boards it just flops and comes back.
 func _do_cast(p: float) -> void:
-	var max_cast: float = 16.0 + float(upgrades["rod"]) * 2.5
+	var max_cast: float = 16.0 + float(rod_level) * 3.0
 	var dist: float = lerpf(4.0, max_cast, p)
 	var fwd := -camera.global_transform.basis.z
 	fwd.y = 0
@@ -3841,7 +3897,7 @@ func _update_flight(delta: float) -> void:
 	if fx:
 		fx.splash(Vector3(bobber.position.x, wave_height(bobber.position.x, bobber.position.z), bobber.position.z), 1.0)
 	# Bait upgrade shortens the wait.
-	var bait_factor: float = 1.0 - float(upgrades["bait"]) * 0.13
+	var bait_factor: float = 1.0 - float(rod_level) * 0.11
 	bite_timer = randf_range(2.5, 6.0) * bait_factor * float(_w.get("bite", 1.0))
 	# A nibble or two first: hook on one and you'll spook it.
 	_nibbles_left = randi_range(0, 2)
@@ -3895,7 +3951,7 @@ func _update_rod(delta: float) -> void:
 		R_REEL:
 			# The fish pulls back: stop tapping and the progress drains.
 			var pull := 0.05 + 0.04 * float(pending_fish.get("spd", 1.0))
-			pull *= 1.0 - float(upgrades["line"]) * 0.12
+			pull *= 1.0 - float(rod_level) * 0.11
 			reel_prog = maxf(reel_prog - delta * pull, 0.0)
 			_reel_idle += delta
 			if _reel_idle > 3.0:
@@ -4086,12 +4142,12 @@ func _line_fish_release() -> void:
 ## Reel level (the "Reel" upgrade) decides which fish can bite at all and makes
 ## the rare bands more likely; Luck nudges it further.
 func reel_tier() -> int:
-	return int(upgrades.get("rod", 0))
+	return rod_level
 
 
 func _roll_catch() -> Dictionary:
 	var tier := reel_tier()
-	var luck := int(upgrades.get("luck", 0))
+	var luck := tier
 	var pool: Array = []
 	var weights: Array = []
 	var total := 0.0
@@ -5222,6 +5278,8 @@ func _autotest(_delta: float) -> void:
 		_perf_phys += Performance.get_monitor(Performance.TIME_PHYSICS_PROCESS)
 		_perf_n += 1
 	sim_action = false
+	if frame == 30 and OS.get_environment("PLACEDBG") != "":
+		_check_placement(OS.get_environment("PLACEDBG"))
 	if test_nohud and frame > 1 and touch.visible:
 		touch.visible = false
 		hud.set_hud_visible(false)
@@ -5371,6 +5429,7 @@ func _autotest(_delta: float) -> void:
 
 	if start_screen == "sell":
 		if frame == 25:
+			print("AUTOTEST grips=%s" % [hands.grip_points()])
 			print("AUTOTEST near_market=%s prompt='%s' secondary='%s' held=%s" % [
 				near_market, touch.prompt, touch.secondary, held_id()])
 		if frame == 40:
@@ -5489,7 +5548,7 @@ func _autotest(_delta: float) -> void:
 		if frame == 5 and test_pitch > -90.0:
 			cam_pitch = test_pitch
 		if frame == 5 and test_rod_tier >= 0:
-			upgrades["rod"] = test_rod_tier
+			rod_level = test_rod_tier
 			_build_rod_visual()
 		var k := frame / 45
 		if frame % 45 == 1 and k <= SLOTS:

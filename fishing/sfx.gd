@@ -105,6 +105,26 @@ static func _soft(x: float) -> float:
 	return tanh(x * 1.3) * 0.92
 
 
+## Sets a buffer's loudest sample to `peak` and then runs the lot through the
+## soft clip. Doing it in that order matters for the hits, which are built by
+## whacking a resonant body with a burst of noise: how loud that burst comes out
+## depends on the dice, so left to itself the same sound arrives anywhere over a
+## 3:1 range from one launch to the next, and the loud draws get squashed flat
+## against the clipper. Setting the level first means every launch sounds the
+## same, and the clip is left doing what it is good at — adding a little warmth —
+## rather than catching overshoots.
+static func _voice(s: PackedFloat32Array, peak: float) -> PackedFloat32Array:
+	var m := 0.0
+	for v in s:
+		m = maxf(m, absf(v))
+	if m < 0.000001:
+		return s
+	var g := peak / m
+	for i in s.size():
+		s[i] = _soft(s[i] * g)
+	return s
+
+
 # --- water --------------------------------------------------------------------
 
 ## A bobber or a fish hitting water: a bright "plip", then a wet, darkening
@@ -161,18 +181,26 @@ static func whoosh() -> AudioStreamWAV:
 
 # --- gear ---------------------------------------------------------------------
 
-## One tooth of the reel's ratchet: a tick with a little metal body.
+## One tooth of the reel's ratchet: a soft wooden tick. This one plays over and
+## over while you reel, so it is deliberately blunt — the strike is rolled off
+## before it reaches the body, the bright resonance sits low and dies inside a
+## few milliseconds, and the whole thing is left well short of the clipper.
 static func click() -> AudioStreamWAV:
-	var n := int(RATE * 0.055)
+	var n := int(RATE * 0.075)
 	var s := PackedFloat32Array()
 	s.resize(n)
-	var body := Res.new(2300.0, 0.976)
-	var low := Res.new(640.0, 0.986)
+	var body := Res.new(1150.0, 0.962)
+	var low := Res.new(540.0, 0.983)
+	var mallet := LP.new(0.28)
 	for i in n:
 		var t := float(i) / RATE
-		var imp := (randf() * 2.0 - 1.0) * _hit(t, 0.0005, 0.004)
-		s[i] = _soft((body.run(imp) * 0.5 + low.run(imp) * 0.35) * 0.5)
-	return _from(s)
+		# a felt-tipped strike: ramped over ~2 ms and low-passed, so there is no
+		# instant edge for the ear to catch
+		var imp := mallet.run((randf() * 2.0 - 1.0) * _hit(t, 0.0018, 0.0065))
+		# weighted towards the low body, so it reads as wood rather than metal
+		var tick := body.run(imp) * 0.35 + low.run(imp) * 0.65
+		s[i] = tick * exp(-t * 32.0)
+	return _from(_voice(s, 0.70))
 
 
 ## Landed it: a warm bell phrase, each note ringing on under the next.
@@ -212,35 +240,42 @@ static func snap() -> AudioStreamWAV:
 	return _from(s)
 
 
-## A whack landing: a wooden thud with a wet edge.
+## A whack landing: a wooden thud with a wet edge. Rounded rather than sharp —
+## the strike is softened and the wood is given longer to ring out, so it reads
+## as a thump against a plank instead of a crack.
 static func bonk() -> AudioStreamWAV:
-	var n := int(RATE * 0.22)
+	var n := int(RATE * 0.20)
 	var s := PackedFloat32Array()
 	s.resize(n)
-	var wood := Res.new(190.0, 0.9935)
-	var knock := Res.new(430.0, 0.988)
-	var lp := LP.new(0.25)
+	var wood := Res.new(190.0, 0.9955)
+	var knock := Res.new(430.0, 0.986)
+	var lp := LP.new(0.16)
+	var mallet := LP.new(0.35)
 	for i in n:
 		var t := float(i) / RATE
-		var imp := (randf() * 2.0 - 1.0) * _hit(t, 0.001, 0.006)
-		var wet := lp.run(randf() * 2.0 - 1.0) * _hit(t, 0.004, 0.05) * 0.35
-		s[i] = _soft((wood.run(imp) * 0.55 + knock.run(imp) * 0.3 + wet) * 0.8)
-	return _from(s)
+		var imp := mallet.run((randf() * 2.0 - 1.0) * _hit(t, 0.0025, 0.008))
+		var wet := lp.run(randf() * 2.0 - 1.0) * _hit(t, 0.012, 0.08) * 0.16
+		s[i] = wood.run(imp) * 0.075 + knock.run(imp) * 0.05 + wet
+	return _from(_voice(s, 0.70))
 
 
-## Taking a hit: a low, dull thump.
+## Taking a hit: a low, dull thump. The old one drove its 105 Hz body so hard
+## that the soft clip squared it off into a buzz; now the body is struck gently
+## and dropped an octave's worth of brightness, so what is left is weight.
 static func hurt() -> AudioStreamWAV:
-	var n := int(RATE * 0.3)
+	var n := int(RATE * 0.34)
 	var s := PackedFloat32Array()
 	s.resize(n)
-	var low := Res.new(105.0, 0.996)
-	var lp := LP.new(0.12)
+	var low := Res.new(98.0, 0.9965)
+	var mallet := LP.new(0.22)
+	var muffle := LP.new(0.35)
+	var lp := LP.new(0.07)
 	for i in n:
 		var t := float(i) / RATE
-		var imp := (randf() * 2.0 - 1.0) * _hit(t, 0.002, 0.01)
-		var air := lp.run(randf() * 2.0 - 1.0) * _hit(t, 0.01, 0.12) * 0.4
-		s[i] = _soft((low.run(imp) * 0.8 + air) * 0.75)
-	return _from(s)
+		var imp := mallet.run((randf() * 2.0 - 1.0) * _hit(t, 0.004, 0.013))
+		var air := lp.run(randf() * 2.0 - 1.0) * _hit(t, 0.02, 0.1) * 0.10
+		s[i] = muffle.run(low.run(imp) * 0.055 + air)
+	return _from(_voice(s, 0.70))
 
 
 ## Paid: coins chinking, three bright strikes a moment apart. The inharmonic
@@ -294,17 +329,21 @@ static func step_soft() -> AudioStreamWAV:
 	return _from(s)
 
 
+## A footfall on the jetty: a soft knock on a hollow plank. Barefoot, not boots
+## — the strike is ramped and rolled off, and the plank is left to settle.
 static func step_wood() -> AudioStreamWAV:
-	var n := int(RATE * 0.14)
+	var n := int(RATE * 0.15)
 	var s := PackedFloat32Array()
 	s.resize(n)
-	var plank := Res.new(260.0, 0.991)
-	var hollow := Res.new(520.0, 0.985)
+	var plank := Res.new(250.0, 0.9925)
+	var hollow := Res.new(520.0, 0.982)
+	var sole := LP.new(0.3)
 	for i in n:
 		var t := float(i) / RATE
-		var imp := (randf() * 2.0 - 1.0) * _hit(t, 0.001, 0.005)
-		s[i] = _soft((plank.run(imp) * 0.6 + hollow.run(imp) * 0.3) * 0.55)
-	return _from(s)
+		var imp := sole.run((randf() * 2.0 - 1.0) * _hit(t, 0.002, 0.007))
+		var knock := plank.run(imp) * 0.075 + hollow.run(imp) * 0.055
+		s[i] = knock * exp(-t * 11.0)
+	return _from(_voice(s, 0.70))
 
 
 # --- wildlife and ambience ----------------------------------------------------
@@ -396,18 +435,28 @@ static func engine_loop() -> AudioStreamWAV:
 	var n := int(RATE * cycles / f)
 	var s := PackedFloat32Array()
 	s.resize(n)
-	var body := Res.new(150.0, 0.985)
-	var lp := LP.new(0.3)
-	var rough := LP.new(0.08)
+	var body := Res.new(150.0, 0.986)
+	var lp := LP.new(0.16)
+	var rough := LP.new(0.06)
+	var muffle := LP.new(0.3)
 	for i in n:
 		var t := float(i) / RATE
 		var phase := fmod(t * f, 1.0)
-		# each firing is a short thump, not a smooth wave
-		var fire: float = exp(-phase * 9.0) * (1.0 - phase * 0.3)
-		var grit := lp.run(randf() * 2.0 - 1.0) * 0.25 * fire
-		var wobble := rough.run(randf() * 2.0 - 1.0) * 0.1
-		s[i] = _soft((body.run(fire * 0.6 + grit) * 0.5 + wobble) * 0.5)
-	return _loop(_seam(s))
+		# Each firing is a short thump, not a smooth wave — but it swells into
+		# place over a couple of milliseconds instead of snapping on, so there
+		# is no hard edge 26 times a second.
+		var fire: float = (1.0 - exp(-phase * 13.0)) * exp(-phase * 10.0)
+		# The excitation has to swing both ways. A one-sided pulse train is
+		# almost all DC, and a 150 Hz body with a high q amplifies DC several
+		# hundred times over — that is what pinned the old loop against the
+		# soft clip and turned a chug into a wall of noise.
+		var pulse := (randf() * 2.0 - 1.0) * fire
+		var grit := lp.run(randf() * 2.0 - 1.0) * 0.4 * fire
+		var chug := body.run(pulse * 0.3 + grit * 0.3)
+		# a faint hum under it all, as if heard from the far end of the boat
+		var wobble := rough.run(randf() * 2.0 - 1.0) * 0.25
+		s[i] = muffle.run(chug + wobble)
+	return _loop(_seam(_voice(s, 0.58)))
 
 
 # --- music --------------------------------------------------------------------

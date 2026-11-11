@@ -71,6 +71,7 @@ const WEAPON_AIM := Vector3(-0.10, 1.0, -0.55) # blade up and forward, ready
 const HOLD_SHIFT := Vector3(-0.075, 0.035, 0)  # holding something: right hand clears the buttons
 var _shift := 0.0
 var _sail := 0.0                     # blend into the steering pose
+var _carry := 0.0                    # blend into the two-handed carry
 var _lag := Vector2.ZERO             # how far the hands are trailing the look
 var _look_was := Vector2.ZERO
 
@@ -239,7 +240,36 @@ func _ready() -> void:
 	_aim = GripAim.new()
 	_aim.bone = _skel.find_bone("hand.R")
 	_skel.add_child(_aim)
+	_dbg_dump()
 	visible = false
+
+
+func _dbg_dump() -> void:
+	print("DBG bones=%d" % _skel.get_bone_count())
+	for i in _skel.get_bone_count():
+		var n := _skel.get_bone_name(i)
+		if not n.ends_with(".R"):
+			continue
+		var r := _skel.get_bone_rest(i)
+		var e := r.basis.get_euler()
+		print("DBG bone %s parent=%s restpos=%s resteul=(%.1f,%.1f,%.1f) len=%.4f" % [
+			n, _skel.get_bone_name(_skel.get_bone_parent(i)), str(r.origin),
+			rad_to_deg(e.x), rad_to_deg(e.y), rad_to_deg(e.z), r.origin.length()])
+	for cn in ["relax", "guard_idle", "knife_idle"]:
+		var c := _clip(cn)
+		if c == "":
+			continue
+		var a := _ap.get_animation(c)
+		for i in a.get_track_count():
+			if a.track_get_type(i) != Animation.TYPE_ROTATION_3D:
+				continue
+			var bn := str(a.track_get_path(i).get_concatenated_subnames())
+			if not bn.ends_with(".R") or not (bn.begins_with("f_") or bn.begins_with("thumb") or bn.begins_with("hand")):
+				continue
+			var q: Quaternion = a.rotation_track_interpolate(i, 0.0)
+			var e2 := Basis(q).get_euler()
+			print("DBG clip %s %s eul=(%.1f,%.1f,%.1f) keys=%d" % [
+				cn, bn, rad_to_deg(e2.x), rad_to_deg(e2.y), rad_to_deg(e2.z), a.track_get_key_count(i)])
 
 
 # --- clip helpers ------------------------------------------------------------------
@@ -275,6 +305,11 @@ func _base_clip() -> String:
 			return "knife_idle"
 		"sail":
 			return "guard_idle"           # both fists closed, up on the wheel
+		"carry":
+			# Hauling something heavy: both hands out in front of you. The
+			# relaxed clip left them hanging in the same place, so the fingers
+			# of one hand ended up inside the other.
+			return "guard_idle"
 		"clam", "fish":
 			return "relax"                # open hands; the right arm is layered on top
 		"bare":
@@ -443,6 +478,10 @@ func _process(delta: float) -> void:
 	# view like a car's wheel instead of across your eyes.
 	_sail = move_toward(_sail, 1.0 if mode == "sail" else 0.0, delta * 3.5)
 	off += Vector3(0.0, -0.215, -0.045) * _sail
+	# Carrying: hands drop and spread a little, so they frame the load rather
+	# than meeting in the middle of the view.
+	_carry = move_toward(_carry, 1.0 if mode == "carry" else 0.0, delta * 4.0)
+	off += Vector3(0.0, -0.13, -0.03) * _carry
 	var rig_xf := Transform3D(
 		Basis(Vector3.RIGHT, pitch - _lag.y * 0.75) * Basis(Vector3.UP, -_lag.x * 0.75),
 		off) * _base

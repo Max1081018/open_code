@@ -11,14 +11,16 @@ signal play_pressed
 signal resume_pressed
 signal to_main_menu
 signal settings_changed
-signal shop_opened
-signal buy_pressed(key)
 signal first_help_done
 
 const CFG_PATH := "user://settings.cfg"
 
 const GRAPHICS_LEVELS := ["Low", "Medium", "High", "Ultra"]
 const RESOLUTIONS := ["Auto", "50%", "67%", "75%", "85%", "100%"]
+
+# Main-menu metrics: the brand column and the progress card.
+const COL_W := 560.0
+const CARD_W := 400.0
 
 var settings := {
 	"sfx_volume": 0.8,
@@ -45,10 +47,6 @@ var _root: Control
 var _main: Control
 var _settings: Control
 var _pause: Control
-var _shop: Control
-var _shop_rows: VBoxContainer
-var _shop_coins: Label
-var _shop_return_to: Control
 var _help: Control
 var _journal: Control
 var _journal_grid: JournalGrid
@@ -58,9 +56,11 @@ var _help_btn: Button
 var _help_return_to: Control
 var _help_firsttime := false
 var _pause_btn: Button
-var _title_node: Label
+var _title_node: Control
 var _where_lbl: Label
 var _stat_rows := {}
+var _species_lbl: Label
+var _species_bar: MiniBar
 var _title_pulse := 0.0
 
 
@@ -159,94 +159,105 @@ func _build() -> void:
 
 	var margin := MarginContainer.new()
 	margin.set_anchors_preset(Control.PRESET_FULL_RECT)
-	margin.add_theme_constant_override("margin_left", 70)
-	margin.add_theme_constant_override("margin_right", 56)
-	margin.add_theme_constant_override("margin_top", 44)
-	margin.add_theme_constant_override("margin_bottom", 40)
+	margin.add_theme_constant_override("margin_left", 64)
+	margin.add_theme_constant_override("margin_right", 44)
+	margin.add_theme_constant_override("margin_top", 36)
+	margin.add_theme_constant_override("margin_bottom", 32)
 	_main.add_child(margin)
 
 	var layout := HBoxContainer.new()
-	layout.add_theme_constant_override("separation", 40)
+	layout.add_theme_constant_override("separation", 36)
 	margin.add_child(layout)
 
 	# ---- left column: brand, play, tiles ----
 	var left := VBoxContainer.new()
-	left.custom_minimum_size = Vector2(540, 0)
+	left.custom_minimum_size = Vector2(COL_W, 0)
 	left.alignment = BoxContainer.ALIGNMENT_CENTER
-	left.add_theme_constant_override("separation", 14)
+	left.add_theme_constant_override("separation", 12)
 	layout.add_child(left)
 
-	var title := Label.new()
+	# The wordmark draws its own shadow, outline and underline flourish so the
+	# letters sit on the sea instead of floating flat over it.
+	var title := TitleBanner.new()
 	title.name = "Title"
-	title.text = "REEL TROUBLE"
-	title.add_theme_font_size_override("font_size", 92)
-	title.add_theme_color_override("font_color", UITheme.TEXT_WARM)
-	title.add_theme_color_override("font_outline_color", Color(0.02, 0.08, 0.15))
-	title.add_theme_constant_override("outline_size", 12)
 	left.add_child(title)
 	_title_node = title
-
-	var bar := ColorRect.new()
-	bar.color = UITheme.ACCENT
-	bar.custom_minimum_size = Vector2(130, 6)
-	bar.size_flags_horizontal = Control.SIZE_SHRINK_BEGIN
-	left.add_child(bar)
 
 	var tag := Label.new()
 	tag.text = "Catch it. Bonk it. Sell it. Sail further."
 	tag.add_theme_font_size_override("font_size", 26)
-	tag.add_theme_color_override("font_color", UITheme.TEXT_DIM)
+	tag.add_theme_color_override("font_color", UITheme.TEXT_WARM)
+	tag.modulate = Color(1, 1, 1, 0.72)
 	left.add_child(tag)
 
-	var gap := Control.new()
-	gap.custom_minimum_size = Vector2(0, 18)
-	left.add_child(gap)
+	left.add_child(_spacer(14))
 
-	var play := Button.new()
+	var play := PlayButton.new()
 	play.text = "PLAY"
-	play.custom_minimum_size = Vector2(540, 104)
-	play.add_theme_font_size_override("font_size", 50)
-	play.add_theme_stylebox_override("normal", UITheme.box(UITheme.ACCENT, 22))
-	play.add_theme_stylebox_override("hover", UITheme.box(UITheme.ACCENT_HI, 22))
-	play.add_theme_stylebox_override("pressed", UITheme.box(UITheme.ACCENT_LO, 22))
-	play.add_theme_stylebox_override("focus", UITheme.box(Color(0, 0, 0, 0), 22))
-	play.add_theme_color_override("font_color", Color(0.12, 0.07, 0.03))
-	play.add_theme_color_override("font_hover_color", Color(0.12, 0.07, 0.03))
-	play.add_theme_color_override("font_pressed_color", Color(0.12, 0.07, 0.03))
+	play.custom_minimum_size = Vector2(COL_W, 108)
+	play.add_theme_font_size_override("font_size", 52)
+	play.add_theme_stylebox_override("normal", _play_box(UITheme.ACCENT))
+	play.add_theme_stylebox_override("hover", _play_box(UITheme.ACCENT_HI))
+	play.add_theme_stylebox_override("pressed", _play_box(UITheme.ACCENT_LO))
+	play.add_theme_stylebox_override("focus", UITheme.box(Color(0, 0, 0, 0), 28))
+	play.add_theme_color_override("font_color", UIDraw.INK)
+	play.add_theme_color_override("font_hover_color", UIDraw.INK)
+	play.add_theme_color_override("font_pressed_color", UIDraw.INK)
 	play.pressed.connect(func(): play_pressed.emit())
 	left.add_child(play)
 
+	# Caption under PLAY: where this run picks up.
+	var wrow := HBoxContainer.new()
+	wrow.add_theme_constant_override("separation", 10)
+	wrow.add_child(IconBox.new("boat", Color(1, 1, 1, 0.55), 28, 13.0))
 	_where_lbl = Label.new()
 	_where_lbl.text = "Island 1  -  Bait Bay"
 	_where_lbl.add_theme_font_size_override("font_size", 22)
 	_where_lbl.add_theme_color_override("font_color", UITheme.TEXT_DIM)
-	left.add_child(_where_lbl)
+	_where_lbl.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+	wrow.add_child(_where_lbl)
+	left.add_child(wrow)
 
+	left.add_child(_spacer(6))
+
+	# Secondary row: every tile shares the width evenly, so the row still looks
+	# right whether it is given three buttons or four.
 	var tiles := HBoxContainer.new()
 	tiles.add_theme_constant_override("separation", 14)
+	tiles.alignment = BoxContainer.ALIGNMENT_CENTER
+	tiles.custom_minimum_size = Vector2(COL_W, 0)
 	left.add_child(tiles)
-	var shopb := _tile("UPGRADES")
-	shopb.pressed.connect(func(): _open_shop(_main))
 	var howb := _tile("GUIDE")
 	howb.pressed.connect(func(): _open_help(_main))
 	var sbtn := _tile("SETTINGS")
 	sbtn.pressed.connect(func(): _open_settings(_main))
 	var jbtn := _tile("JOURNAL")
 	jbtn.pressed.connect(func(): _open_journal(_main))
-	tiles.add_child(shopb)
 	tiles.add_child(jbtn)
 	tiles.add_child(howb)
 	tiles.add_child(sbtn)
 
+	left.add_child(_spacer(4))
+
+	var footer := HBoxContainer.new()
+	footer.add_theme_constant_override("separation", 18)
+	footer.custom_minimum_size = Vector2(COL_W, 0)
+	left.add_child(footer)
 	var qbtn := Button.new()
 	qbtn.text = "Quit"
 	qbtn.flat = true
-	qbtn.size_flags_horizontal = Control.SIZE_SHRINK_BEGIN
-	qbtn.add_theme_font_size_override("font_size", 24)
+	qbtn.custom_minimum_size = Vector2(130, 60)
+	qbtn.add_theme_font_size_override("font_size", 22)
 	qbtn.add_theme_color_override("font_color", UITheme.TEXT_DIM)
 	qbtn.add_theme_color_override("font_hover_color", UITheme.TEXT)
 	qbtn.pressed.connect(_on_quit)
-	left.add_child(qbtn)
+	footer.add_child(qbtn)
+	var ver := Label.new()
+	ver.text = "v" + str(ProjectSettings.get_setting("application/config/version", "0.13"))
+	ver.add_theme_font_size_override("font_size", 20)
+	ver.add_theme_color_override("font_color", Color(1, 1, 1, 0.30))
+	ver.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+	footer.add_child(ver)
 
 	# ---- right: progress card ----
 	var fill := Control.new()
@@ -254,43 +265,83 @@ func _build() -> void:
 	layout.add_child(fill)
 
 	var card := PanelContainer.new()
-	card.custom_minimum_size = Vector2(380, 0)
+	card.custom_minimum_size = Vector2(CARD_W, 0)
 	card.size_flags_vertical = Control.SIZE_SHRINK_END
-	card.add_theme_stylebox_override("panel", UITheme.box_edged(UITheme.PANEL, Color(1, 1, 1, 0.08), 22))
+	var cbox := UITheme.box(UITheme.PANEL, 24, 26, 22)
+	cbox.set_border_width_all(2)
+	cbox.border_color = Color(1, 1, 1, 0.09)
+	cbox.shadow_color = Color(0, 0, 0, 0.35)
+	cbox.shadow_size = 14
+	cbox.shadow_offset = Vector2(0, 6)
+	card.add_theme_stylebox_override("panel", cbox)
 	layout.add_child(card)
 	var cv := VBoxContainer.new()
-	cv.add_theme_constant_override("separation", 10)
+	cv.add_theme_constant_override("separation", 12)
 	card.add_child(cv)
+
+	# Header: accent tick + small caps label.
+	var hrow := HBoxContainer.new()
+	hrow.add_theme_constant_override("separation", 10)
+	var tick := ColorRect.new()
+	tick.color = UITheme.ACCENT
+	tick.custom_minimum_size = Vector2(5, 22)
+	tick.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	hrow.add_child(tick)
 	var ch := Label.new()
 	ch.text = "YOUR PROGRESS"
-	ch.add_theme_font_size_override("font_size", 20)
+	ch.add_theme_font_size_override("font_size", 21)
 	ch.add_theme_color_override("font_color", UITheme.PRIMARY_HI)
-	cv.add_child(ch)
-	_stat_rows = {}
-	for key in ["Coins", "Catches", "Best catch", "Boss", "Next island"]:
-		var row := HBoxContainer.new()
-		var k := Label.new()
-		k.text = key
-		k.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-		k.add_theme_font_size_override("font_size", 24)
-		k.add_theme_color_override("font_color", UITheme.TEXT_DIM)
-		var v := Label.new()
-		v.text = "-"
-		v.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
-		v.add_theme_font_size_override("font_size", 24)
-		v.add_theme_color_override("font_color", UITheme.GOLD if key == "Coins" else UITheme.TEXT)
-		row.add_child(k)
-		row.add_child(v)
-		cv.add_child(row)
-		_stat_rows[key] = v
+	ch.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+	hrow.add_child(ch)
+	cv.add_child(hrow)
 
-	var ver := Label.new()
-	ver.text = "v" + str(ProjectSettings.get_setting("application/config/version", "0.13"))
-	ver.set_anchors_preset(Control.PRESET_BOTTOM_RIGHT)
-	ver.position = Vector2(-70, -40)
-	ver.add_theme_font_size_override("font_size", 18)
-	ver.add_theme_color_override("font_color", Color(1, 1, 1, 0.35))
-	_main.add_child(ver)
+	_stat_rows = {}
+
+	# Coins get the hero treatment — it is the number players come back for.
+	var crow := HBoxContainer.new()
+	crow.add_theme_constant_override("separation", 12)
+	crow.add_child(IconBox.new("coin", UITheme.GOLD, 40, 17.0))
+	var coins_val := Label.new()
+	coins_val.text = "0"
+	coins_val.add_theme_font_size_override("font_size", 44)
+	coins_val.add_theme_color_override("font_color", UITheme.GOLD)
+	coins_val.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+	crow.add_child(coins_val)
+	_stat_rows["Coins"] = coins_val
+	var cw := Label.new()
+	cw.text = "coins"
+	cw.add_theme_font_size_override("font_size", 20)
+	cw.add_theme_color_override("font_color", UITheme.TEXT_DIM)
+	cw.vertical_alignment = VERTICAL_ALIGNMENT_BOTTOM
+	cw.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	crow.add_child(cw)
+	cv.add_child(crow)
+
+	_divider(cv)
+	_stat_row(cv, "Catches")
+	_stat_row(cv, "Best catch")
+	_divider(cv)
+	_stat_row(cv, "Boss")
+	_stat_row(cv, "Next island")
+	_divider(cv)
+
+	# Journal completion, filled in by set_journal().
+	var jrow := HBoxContainer.new()
+	var jl := Label.new()
+	jl.text = "Species found"
+	jl.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	jl.add_theme_font_size_override("font_size", 21)
+	jl.add_theme_color_override("font_color", UITheme.TEXT_DIM)
+	jrow.add_child(jl)
+	_species_lbl = Label.new()
+	_species_lbl.text = "0 / 0"
+	_species_lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
+	_species_lbl.add_theme_font_size_override("font_size", 21)
+	_species_lbl.add_theme_color_override("font_color", UITheme.PRIMARY_HI)
+	jrow.add_child(_species_lbl)
+	cv.add_child(jrow)
+	_species_bar = MiniBar.new()
+	cv.add_child(_species_bar)
 
 	# ---- Settings ----
 	var sres := _panel("Settings")
@@ -347,8 +398,6 @@ func _build() -> void:
 	pv.custom_minimum_size = Vector2(520, 0)
 	var resume := _button("RESUME")
 	resume.pressed.connect(func(): resume_pressed.emit())
-	var pshop := _button("SHOP")
-	pshop.pressed.connect(func(): _open_shop(_pause))
 	var phow := _button("HOW TO PLAY")
 	phow.pressed.connect(func(): _open_help(_pause))
 	var pset := _button("SETTINGS")
@@ -356,32 +405,11 @@ func _build() -> void:
 	var pmenu := _button("MAIN MENU")
 	pmenu.pressed.connect(func(): to_main_menu.emit())
 	pv.add_child(resume)
-	pv.add_child(pshop)
 	pv.add_child(phow)
 	pv.add_child(pset)
 	pv.add_child(pmenu)
 	_root.add_child(_pause)
 	_pause.visible = false
-
-	# ---- Shop ----
-	var shres := _panel("Shop")
-	_shop = shres[0]
-	var shv: VBoxContainer = shres[1]
-	shv.custom_minimum_size = Vector2(720, 0)
-	_shop_coins = Label.new()
-	_shop_coins.text = "Coins: 0"
-	_shop_coins.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	_shop_coins.add_theme_font_size_override("font_size", 36)
-	_shop_coins.add_theme_color_override("font_color", UITheme.GOLD)
-	shv.add_child(_shop_coins)
-	_shop_rows = VBoxContainer.new()
-	_shop_rows.add_theme_constant_override("separation", 14)
-	shv.add_child(_shop_rows)
-	var shback := _button("BACK")
-	shback.pressed.connect(_on_shop_back)
-	shv.add_child(shback)
-	_root.add_child(_shop)
-	_shop.visible = false
 
 	# ---- How to Play ----
 	var hres := _panel("How to Play")
@@ -453,17 +481,69 @@ func _build() -> void:
 	_settings_return_to = _main
 
 
-## A square-ish secondary tile for the main menu.
+## A fixed-height spacer for the main-menu column.
+func _spacer(h: float) -> Control:
+	var c := Control.new()
+	c.custom_minimum_size = Vector2(0, h)
+	c.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	return c
+
+
+## A hairline rule inside the progress card.
+func _divider(parent: VBoxContainer) -> void:
+	var d := ColorRect.new()
+	d.color = Color(1, 1, 1, 0.09)
+	d.custom_minimum_size = Vector2(0, 1)
+	d.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	parent.add_child(d)
+
+
+## One "label ....... value" line of the progress card.
+func _stat_row(parent: VBoxContainer, key: String) -> void:
+	var row := HBoxContainer.new()
+	row.add_theme_constant_override("separation", 12)
+	var k := Label.new()
+	k.text = key
+	k.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	k.add_theme_font_size_override("font_size", 22)
+	k.add_theme_color_override("font_color", UITheme.TEXT_DIM)
+	var v := Label.new()
+	v.text = "-"
+	v.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
+	v.add_theme_font_size_override("font_size", 22)
+	v.add_theme_color_override("font_color", UITheme.TEXT)
+	row.add_child(k)
+	row.add_child(v)
+	parent.add_child(row)
+	_stat_rows[key] = v
+
+
+## The PLAY button's background: coral, a darker lip along the bottom for a
+## pressable "keycap" look, and a soft drop shadow.
+func _play_box(color: Color) -> StyleBoxFlat:
+	var s := UITheme.box(color, 28, 26, 12)
+	s.border_width_bottom = 5
+	s.border_color = color.darkened(0.32)
+	s.shadow_color = Color(0, 0, 0, 0.38)
+	s.shadow_size = 12
+	s.shadow_offset = Vector2(0, 6)
+	return s
+
+
+## A square-ish secondary tile for the main menu: vector icon over a short
+## label. Tiles share the row's width evenly, so three or four both look right.
 func _tile(text: String) -> Button:
-	var b := Button.new()
-	b.text = text
-	b.custom_minimum_size = Vector2(126, 88)
-	b.add_theme_font_size_override("font_size", 20)
-	b.add_theme_stylebox_override("normal", UITheme.box_edged(UITheme.PANEL, Color(1, 1, 1, 0.10), 18))
-	b.add_theme_stylebox_override("hover", UITheme.box_edged(UITheme.RAISED, Color(1, 1, 1, 0.18), 18))
-	b.add_theme_stylebox_override("pressed", UITheme.box_edged(UITheme.PRIMARY_LO, Color(1, 1, 1, 0.18), 18))
-	b.add_theme_stylebox_override("focus", UITheme.box(Color(0, 0, 0, 0), 18))
-	b.add_theme_color_override("font_color", UITheme.TEXT)
+	var b := MenuTile.new()
+	b.label = text
+	b.icon_kind = {
+		"JOURNAL": "book", "GUIDE": "help", "SETTINGS": "gear",
+	}.get(text, "fish")
+	b.custom_minimum_size = Vector2(120, 94)
+	b.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	b.add_theme_stylebox_override("normal", UITheme.box_edged(UITheme.PANEL, Color(1, 1, 1, 0.10), 20))
+	b.add_theme_stylebox_override("hover", UITheme.box_edged(UITheme.RAISED, Color(1, 1, 1, 0.22), 20))
+	b.add_theme_stylebox_override("pressed", UITheme.box_edged(UITheme.PRIMARY_LO, Color(1, 1, 1, 0.22), 20))
+	b.add_theme_stylebox_override("focus", UITheme.box(Color(0, 0, 0, 0), 20))
 	return b
 
 
@@ -471,9 +551,27 @@ func _tile(text: String) -> Button:
 func set_menu_stats(st: Dictionary) -> void:
 	for key in st:
 		if _stat_rows.has(key):
-			(_stat_rows[key] as Label).text = str(st[key])
+			var lbl: Label = _stat_rows[key]
+			lbl.text = str(st[key])
+			lbl.add_theme_color_override("font_color", _stat_color(key, lbl.text))
 	if _where_lbl and st.has("Where"):
 		_where_lbl.text = str(st["Where"])
+
+
+## A touch of colour on the values: gold coins, green for what's done, coral for
+## what's in progress, dim for what hasn't happened yet.
+func _stat_color(key: String, value: String) -> Color:
+	match key:
+		"Coins":
+			return UITheme.GOLD
+		"Boss":
+			if value.begins_with("Landed"):
+				return UITheme.GOOD
+			return UITheme.ACCENT if value == "Hunting" else UITheme.TEXT_DIM
+		"Next island":
+			return UITheme.GOOD if value == "Unlocked" else UITheme.TEXT_DIM
+		_:
+			return UITheme.TEXT_DIM if value == "-" or value == "0" else UITheme.TEXT
 
 
 func _label(text: String) -> Label:
@@ -552,6 +650,130 @@ func _settings_toggle(parent: VBoxContainer, label: String, key: String) -> void
 	row.add_child(sw)
 
 
+## The game's wordmark: drop shadow, dark outline and an underline flourish
+## that runs out to a little fish. Shrinks itself to fit the column.
+class TitleBanner extends Control:
+	var text := "REEL TROUBLE"
+
+	func _init() -> void:
+		custom_minimum_size = Vector2(0, 150)
+		mouse_filter = Control.MOUSE_FILTER_IGNORE
+
+	func _draw() -> void:
+		var font := ThemeDB.fallback_font
+		var fs := 88
+		var avail := maxf(160.0, size.x - 6.0)
+		while fs > 40 and UIDraw.text_w(font, text, fs) > avail:
+			fs -= 2
+		var base := Vector2(2, 100)
+		draw_string(font, base + Vector2(5, 9), text, HORIZONTAL_ALIGNMENT_LEFT, -1, fs, Color(0, 0, 0, 0.40))
+		draw_string_outline(font, base, text, HORIZONTAL_ALIGNMENT_LEFT, -1, fs, 13, Color(0.016, 0.055, 0.110, 0.95))
+		draw_string(font, base, text, HORIZONTAL_ALIGNMENT_LEFT, -1, fs, UITheme.TEXT_WARM)
+		# Underline: a solid coral stub running into a hairline with a fish on the end.
+		var w := UIDraw.text_w(font, text, fs)
+		var y := base.y + 28.0
+		UIDraw.pill(self, Rect2(Vector2(2, y), Vector2(126, 7)), UITheme.ACCENT, 4, Color(0, 0, 0, 0), 0)
+		draw_line(Vector2(140, y + 3.5), Vector2(w - 32.0, y + 3.5), Color(1, 1, 1, 0.18), 2.0, true)
+		UIDraw.icon(self, "fish", Vector2(w - 15.0, y + 3.5), 13.0, UITheme.ACCENT * Color(1, 1, 1, 0.75))
+
+
+## PLAY: a glossy sheen across the top and a rod icon ahead of the word, over
+## the coral stylebox the theme gives it.
+class PlayButton extends Button:
+	func _draw() -> void:
+		var font := ThemeDB.fallback_font
+		var fs := get_theme_font_size("font_size")
+		var tw := UIDraw.text_w(font, text, fs)
+		var ink := UIDraw.INK
+		if get_draw_mode() == BaseButton.DRAW_PRESSED:
+			ink = Color(0.12, 0.07, 0.03, 0.85)
+		UIDraw.icon(self, "rod", Vector2(size.x * 0.5 - tw * 0.5 - 42.0, size.y * 0.5 - 2.0), 22.0, ink)
+
+
+## A secondary menu tile: icon above a short label, lit up on hover/press.
+class MenuTile extends Button:
+	var label := ""
+	var icon_kind := "fish"
+
+	func _draw() -> void:
+		var font := ThemeDB.fallback_font
+		var mode := get_draw_mode()
+		var hot := mode == BaseButton.DRAW_HOVER or mode == BaseButton.DRAW_PRESSED
+		var ic := UITheme.ACCENT if hot else UITheme.PRIMARY_HI
+		var tc := Color.WHITE if hot else UITheme.TEXT
+		MenuUIIcons.draw(self, icon_kind, Vector2(size.x * 0.5, size.y * 0.38), 16.0, ic)
+		# Never below 20px: these have to stay readable at arm's length on a phone.
+		var fs := 21
+		while fs > 20 and UIDraw.text_w(font, label, fs) > size.x - 18.0:
+			fs -= 1
+		UIDraw.text_c(self, font, label, Vector2(size.x * 0.5, size.y * 0.76), fs, tc)
+
+
+## A fixed-size box that just paints one vector icon, for use inside rows.
+class IconBox extends Control:
+	var kind := "coin"
+	var col := UITheme.GOLD
+	var isize := 14.0
+
+	func _init(k := "coin", c := UITheme.GOLD, box := 28, s := 12.0) -> void:
+		kind = k
+		col = c
+		isize = s
+		custom_minimum_size = Vector2(box, box)
+		size_flags_vertical = Control.SIZE_SHRINK_CENTER
+		mouse_filter = Control.MOUSE_FILTER_IGNORE
+
+	func _draw() -> void:
+		MenuUIIcons.draw(self, kind, size * 0.5, isize, col)
+
+
+## The thin completion bar at the foot of the progress card.
+class MiniBar extends Control:
+	var value := 0.0
+
+	func _init() -> void:
+		custom_minimum_size = Vector2(0, 10)
+		mouse_filter = Control.MOUSE_FILTER_IGNORE
+
+	func _draw() -> void:
+		UIDraw.bar(self, Rect2(Vector2.ZERO, size), value, UITheme.PRIMARY_HI)
+
+
+## The few menu-only icons UIDraw doesn't carry; everything else falls through.
+class MenuUIIcons extends RefCounted:
+	static func draw(ci: CanvasItem, kind: String, c: Vector2, s: float, col: Color) -> void:
+		var w := maxf(2.0, s * 0.17)
+		match kind:
+			"gear":
+				for i in 6:
+					var a := TAU * float(i) / 6.0
+					var d := Vector2(cos(a), sin(a))
+					ci.draw_line(c + d * s * 0.52, c + d * s * 0.95, col, w * 1.6, true)
+				ci.draw_arc(c, s * 0.58, 0, TAU, 30, col, w * 1.7, true)
+				ci.draw_arc(c, s * 0.24, 0, TAU, 16, col, w, true)
+			"book":   # closed book, spine to the left, ribbon marker on the right
+				ci.draw_rect(Rect2(c + Vector2(-s * 0.62, -s * 0.80), Vector2(s * 1.30, s * 1.60)), col, false, w * 1.2)
+				ci.draw_line(c + Vector2(-s * 0.34, -s * 0.80), c + Vector2(-s * 0.34, s * 0.80), col, w, true)
+				for i in 2:
+					var y := -s * 0.26 + i * s * 0.44
+					ci.draw_line(c + Vector2(-s * 0.12, y), c + Vector2(s * 0.44, y), col, w * 0.8, true)
+				ci.draw_colored_polygon(PackedVector2Array([
+					c + Vector2(s * 0.20, -s * 0.80), c + Vector2(s * 0.46, -s * 0.80),
+					c + Vector2(s * 0.46, -s * 0.26), c + Vector2(s * 0.33, -s * 0.42),
+					c + Vector2(s * 0.20, -s * 0.26)]), col)
+			"bag":    # shop bag: tapered body with the handle clear above it
+				ci.draw_arc(c + Vector2(0, -s * 0.06), s * 0.34, PI, TAU, 16, col, w, true)
+				ci.draw_colored_polygon(PackedVector2Array([
+					c + Vector2(-s * 0.54, -s * 0.06), c + Vector2(s * 0.54, -s * 0.06),
+					c + Vector2(s * 0.70, s * 0.80), c + Vector2(-s * 0.70, s * 0.80)]), col)
+			"help":
+				ci.draw_arc(c + Vector2(0, -s * 0.32), s * 0.40, PI, TAU + PI * 0.18, 22, col, w * 1.3, true)
+				ci.draw_line(c + Vector2(s * 0.30, -s * 0.10), c + Vector2(s * 0.02, s * 0.32), col, w * 1.3, true)
+				ci.draw_circle(c + Vector2(s * 0.02, s * 0.70), w * 0.9, col)
+			_:
+				UIDraw.icon(ci, kind, c, s, col)
+
+
 ## A big, obvious on/off switch: coral track and knob on the right when on,
 ## dark track and knob on the left when off. Tap anywhere on it.
 class Switch extends Control:
@@ -612,8 +834,6 @@ var _settings_return_to: Control
 
 func _hide_overlays() -> void:
 	_settings.visible = false
-	if _shop:
-		_shop.visible = false
 	if _help:
 		_help.visible = false
 	if _journal:
@@ -666,10 +886,6 @@ func open_settings_for_test(scroll := 0) -> void:
 		_settings_scroll.set_deferred("scroll_vertical", scroll)
 
 
-func open_shop_for_test() -> void:
-	_open_shop(_main)
-
-
 func open_help_for_test() -> void:
 	_open_help(_main)
 
@@ -682,8 +898,6 @@ func show_first_help() -> void:
 	_pause.visible = false
 	_pause_btn.visible = false
 	_settings.visible = false
-	if _shop:
-		_shop.visible = false
 	_help.visible = true
 	_root.mouse_filter = Control.MOUSE_FILTER_STOP
 
@@ -720,6 +934,12 @@ func set_journal(entries: Array, bonus := 25) -> void:
 	_journal_title.text = "Journal   ·   %d / %d found" % [found, entries.size()]
 	if _journal_hint:
 		_journal_hint.text = "Catch every species. The first of each pays a %d coin bonus." % bonus
+	# The same number drives the completion bar on the main menu's card.
+	if _species_lbl:
+		_species_lbl.text = "%d / %d" % [found, entries.size()]
+	if _species_bar:
+		_species_bar.value = float(found) / maxf(1.0, float(entries.size()))
+		_species_bar.queue_redraw()
 
 
 ## The journal as a grid of cards drawn in one go: undiscovered ones show "???".
@@ -782,61 +1002,10 @@ func _on_help_button() -> void:
 			_root.mouse_filter = Control.MOUSE_FILTER_STOP
 
 
-func _open_shop(from: Control) -> void:
-	_shop_return_to = from
-	from.visible = false
-	_shop.visible = true
-	_pause_btn.visible = false
-	_root.mouse_filter = Control.MOUSE_FILTER_STOP
-	shop_opened.emit()
-
-
-func _on_shop_back() -> void:
-	_shop.visible = false
-	_shop_return_to.visible = true
-	if _shop_return_to == _main:
-		_root.mouse_filter = Control.MOUSE_FILTER_STOP
-
-
-func set_coins(c: int) -> void:
-	if _shop_coins:
-		_shop_coins.text = "Coins: %d" % c
-
-
-## rows: Array of { key, name, desc, level, max, cost, maxed, afford }.
-func set_shop_model(coins: int, rows: Array) -> void:
-	set_coins(coins)
-	if not _shop_rows:
-		return
-	for c in _shop_rows.get_children():
-		c.queue_free()
-	for row in rows:
-		var hb := HBoxContainer.new()
-		hb.add_theme_constant_override("separation", 16)
-		var info := VBoxContainer.new()
-		info.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-		var name_lbl := Label.new()
-		name_lbl.text = "%s  (Lv %d/%d)" % [row["name"], row["level"], row["max"]]
-		name_lbl.add_theme_font_size_override("font_size", 32)
-		name_lbl.add_theme_color_override("font_color", UITheme.TEXT)
-		var desc_lbl := Label.new()
-		desc_lbl.text = row["desc"]
-		desc_lbl.add_theme_font_size_override("font_size", 24)
-		desc_lbl.add_theme_color_override("font_color", UITheme.TEXT_DIM)
-		info.add_child(name_lbl)
-		info.add_child(desc_lbl)
-		hb.add_child(info)
-		var buy := _button("", 240, 78)
-		if row["maxed"]:
-			buy.text = "MAX"
-			buy.disabled = true
-		else:
-			buy.text = "%d" % row["cost"]
-			buy.disabled = not row["afford"]
-			var key: String = row["key"]
-			buy.pressed.connect(func(): buy_pressed.emit(key))
-		hb.add_child(buy)
-		_shop_rows.add_child(hb)
+## Kept for the game to call; there is no menu store any more, so the only
+## coin counters are the HUD one and the progress card.
+func set_coins(_c: int) -> void:
+	pass
 
 
 func _on_settings_back() -> void:
@@ -851,11 +1020,12 @@ func _on_quit() -> void:
 
 
 func _process(delta: float) -> void:
-	# Gentle title bob on the main menu.
+	# Gentle title bob on the main menu — anchored at the left edge so the
+	# wordmark breathes in place instead of sliding about.
 	if _main.visible and _title_node:
 		_title_pulse += delta
-		_title_node.pivot_offset = Vector2(0, _title_node.size.y * 0.5)
-		_title_node.scale = Vector2.ONE * (1.0 + sin(_title_pulse * 1.5) * 0.015)
+		_title_node.pivot_offset = Vector2(0, _title_node.size.y * 0.62)
+		_title_node.scale = Vector2.ONE * (1.0 + sin(_title_pulse * 1.5) * 0.012)
 
 
 # --- Settings state -----------------------------------------------------------
