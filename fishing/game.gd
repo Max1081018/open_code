@@ -974,6 +974,21 @@ func _ready() -> void:
 				_spawn_loose_fish({"name": cf["name"], "weight": 3.2, "value": 58, "rarity": cf["rarity"],
 					"set": cf["set"], "node": cf["node"], "alive": true, "hp": 4, "hpmax": 4,
 					"atk": cf["atk"], "spd": cf["spd"]}, Vector3(0, DECK_Y + 0.6, 10.6), 0.0)
+			"float":
+				# Drop a dead catch and a live one into the sea off the jetty
+				# and watch what the water does with them.
+				_start_play()
+				sel = -1
+				_apply_held()
+				cam_yaw = PI * 0.5
+				cam_pitch = -0.45
+				player.position = Vector3(0, DECK_Y + 0.3, 8.0)
+				_spawn_loose_fish({"name": "an Old Boot", "weight": 1.0, "value": 20,
+					"rarity": "Common", "set": "junk", "node": "Boot_Old", "alive": false},
+					Vector3(-4.6, 2.0, 8.0), 0.3)
+				_spawn_loose_fish({"name": "Perch", "weight": 0.6, "value": 18, "rarity": "Common",
+					"set": "river", "node": "Fish_Perch", "alive": true, "hp": 3, "hpmax": 3,
+					"atk": 0, "spd": 1.0}, Vector3(-5.6, 2.0, 9.2), 0.0)
 			"held":
 				_start_play()
 				_test_give("rod", false)
@@ -4348,16 +4363,55 @@ func _update_loose_fish(delta: float) -> void:
 			b.linear_velocity = Vector3.ZERO
 			_flash("The Kraken flops back aboard!")
 			continue
-		if p.y < wave_height(p.x, p.z) - 0.35 and _cargo.find(b) == -1:
-			_flash("%s slipped back into the water!" % _nice_name(str(d.get("name", "It"))))
+		var surface := wave_height(p.x, p.z)
+		# Already slipping away: it dives and is gone in a moment, rather than
+		# blinking out of existence the instant it touches the water.
+		var flee := float(b.get_meta("fleeing", 0.0))
+		if flee > 0.0:
+			flee -= delta
+			b.set_meta("fleeing", flee)
+			var away: Vector3 = b.get_meta("flee_dir", Vector3.FORWARD)
+			b.linear_velocity = b.linear_velocity.lerp(away * 4.5 + Vector3(0, -1.4, 0),
+				clampf(delta * 3.0, 0.0, 1.0))
+			b.angular_velocity = Vector3(0, b.angular_velocity.y * 0.9, 0)
+			if flee <= 0.0:
+				loose_fish.erase(b)
+				b.queue_free()
+			continue
+		if p.y < surface - 0.35 and _cargo.find(b) == -1 and not b.freeze:
 			if b == looked_fish:
 				looked_fish = null
 			if fx:
-				fx.splash(Vector3(p.x, wave_height(p.x, p.z), p.z), 2.2)
+				fx.splash(Vector3(p.x, surface, p.z), 2.2)
 			_play("splash")
-			loose_fish.erase(b)
-			b.queue_free()
-			continue
+			if d.get("alive", false):
+				# A live one kicks once and is gone.
+				_flash("%s slipped back into the water!" % _nice_name(str(d.get("name", "It"))))
+				var dir2 := Vector3(p.x - player.global_position.x, 0.0,
+					p.z - player.global_position.z)
+				b.set_meta("flee_dir", dir2.normalized() if dir2.length() > 0.1 else Vector3.FORWARD)
+				b.set_meta("fleeing", 1.1)
+				continue
+			elif not b.get_meta("afloat", false):
+				# A dead one floats. Swim out and you can still get it back.
+				b.set_meta("afloat", true)
+				b.set_meta("adrift", 0.0)
+				_flash("%s is floating away!" % _nice_name(str(d.get("name", "It"))))
+		if b.get_meta("afloat", false) and not b.freeze:
+			if p.y > surface + 0.3:
+				b.set_meta("afloat", false)          # back on dry land
+			else:
+				_float_body(b, delta, surface)
+				var ad := float(b.get_meta("adrift", 0.0)) + delta
+				b.set_meta("adrift", ad)
+				if ad > 30.0:
+					if b == looked_fish:
+						looked_fish = null
+					if fx:
+						fx.splash(Vector3(p.x, surface, p.z), 1.2)
+					loose_fish.erase(b)
+					b.queue_free()
+					continue
 		if d.get("alive", false) and not b.freeze:
 			vis = maxf(vis, _update_live_fish(b, d, delta))
 		# Resting on the market counter: the buyer takes it.
@@ -4379,6 +4433,29 @@ func _update_loose_fish(delta: float) -> void:
 		bhp = 1.0
 		touch.boss_name = _nice_name(str(line_fish_data.get("name", "")))
 	touch.boss_hp = bhp
+
+
+## Buoyancy for anything bobbing in the sea: pushed up by how deep it is,
+## slowed by the water and carried along by the swell, so a dropped catch
+## rides the waves instead of sinking through the world. It settles about
+## half submerged, which is where the push balances its weight.
+func _float_body(b: RigidBody3D, delta: float, surface: float) -> void:
+	var depth: float = surface - b.global_position.y
+	var sub: float = clampf(depth / 0.25, 0.0, 1.0)
+	if sub <= 0.0:
+		return
+	# A damped spring to the waterline: it cancels gravity as it goes under,
+	# pulls back to the surface, and water drag stops it pogoing. Settles about
+	# 19 cm down, so the back of a fish shows and rides the swell.
+	b.linear_velocity.y += (9.8 * sub + (depth - 0.05) * 18.0
+		- b.linear_velocity.y * 9.0) * delta
+	# Carried along by the swell, and slowly stopped from spinning.
+	var damp: float = clampf(delta * 2.4 * sub, 0.0, 1.0)
+	var drift := Vector3(sin(elapsed * 0.6 + b.global_position.z * 0.15) * 0.3, 0.0,
+		cos(elapsed * 0.5 + b.global_position.x * 0.15) * 0.3)
+	b.linear_velocity.x = lerpf(b.linear_velocity.x, drift.x, damp)
+	b.linear_velocity.z = lerpf(b.linear_velocity.z, drift.z, damp)
+	b.angular_velocity = b.angular_velocity.lerp(Vector3.ZERO, damp)
 
 
 ## One live fish: flops, sometimes winds up and leaps at you. Returns how close
@@ -5173,6 +5250,25 @@ func _autotest(_delta: float) -> void:
 
 	# A live catfish on the jetty: it should flop, wind up, leap at you and hurt;
 	# then punches knock it out.
+	if start_screen == "float":
+		if frame % 45 == 0:
+			var line := "AUTOTEST float f=%d" % frame
+			for b in loose_fish:
+				if is_instance_valid(b):
+					var sf := wave_height(b.global_position.x, b.global_position.z)
+					line += "  %s depth=%+.2f vy=%+.2f afloat=%s" % [
+						str(b.get_meta("fish").get("name", "?")).substr(0, 8),
+						b.global_position.y - sf, b.linear_velocity.y,
+						b.get_meta("afloat", false)]
+			print(line)
+		if frame == 240:
+			_test_shot("_bob")
+		if frame > 600:
+			print("AUTOTEST float done loose=%d" % loose_fish.size())
+			_test_shot()
+			get_tree().quit()
+		return
+
 	if start_screen == "flop":
 		var fish: RigidBody3D = null
 		for b in loose_fish:
@@ -5255,6 +5351,11 @@ func _autotest(_delta: float) -> void:
 
 	if start_screen == "held":
 		# Hold each slot in turn (and bare hands), photographing each.
+		if frame == 5 and test_pitch > -90.0:
+			cam_pitch = test_pitch
+		if frame == 5 and test_rod_tier >= 0:
+			upgrades["rod"] = test_rod_tier
+			_build_rod_visual()
 		var k := frame / 45
 		if frame % 45 == 1 and k <= SLOTS:
 			_select_slot(k if k < SLOTS else sel)

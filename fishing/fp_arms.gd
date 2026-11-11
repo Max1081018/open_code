@@ -505,21 +505,31 @@ func _place_prop() -> void:
 		var dy := dz.cross(dx).normalized()
 		var bob := sin(_phase) * 0.008 * clampf(move_speed / 3.0, 0.0, 1.0)
 		var fwd := -cam.global_basis.z.normalized()
-		# resting on the fingers: a little forward of the grips and just above
-		prop.global_transform = Transform3D(Basis(dx, dy, dz).scaled(sc), mid + fwd * 0.07 - dy * (0.035 - bob))
+		# Head a little higher than the tail: holding a big fish dead level
+		# looks like it is floating rather than being carried.
+		var tip := deg_to_rad(8.0)
+		var dx2 := (dx * cos(tip) + dy * sin(tip)).normalized()
+		var dy2 := dz.cross(dx2).normalized()
+		# resting down on the fingers, not hovering over them
+		prop.global_transform = Transform3D(Basis(dx2, dy2, dz).scaled(sc),
+			mid + fwd * 0.06 - dy * (0.075 - bob))
 	elif mode == "fish" and cam:
 		# Held out by the tail: the body points from your fist toward the middle
 		# of the view, drooping a little and swaying as you walk.
 		var sway := sin(_t * 2.1) * 0.06 + sin(_phase) * 0.05 * clampf(move_speed / 3.0, 0.0, 1.0)
-		var d := (cam.global_basis * Vector3(-0.22 + sway, -1.0, -0.12)).normalized()
+		# Hangs almost straight down off the fist, so it isn't swinging across
+		# the middle of the screen while you walk around with it.
+		var d := (cam.global_basis * Vector3(-0.03 + sway, -1.0, -0.1)).normalized()
 		var z := d.cross(Vector3.UP).normalized()
 		if z.length() < 0.1:
 			z = cam.global_basis.x.normalized()
 		var y := z.cross(d).normalized()
 		var b := Basis(d, y, z)
-		# the tail fin sits between thumb and index, the body hangs from it
+		# Gripped at the narrow part in front of the tail fin, not at the very
+		# tip of the fin: fingers close on something, and the fin hangs clear.
 		var pinch_pt := _pinch_point(grip)
-		prop.global_transform = Transform3D(b.scaled(sc), pinch_pt + d * (prop_half - 0.02))
+		var hold: float = maxf(prop_half - 0.055, prop_half * 0.5)
+		prop.global_transform = Transform3D(b.scaled(sc), pinch_pt + d * hold)
 	else:
 		# the clam sits in the curl of the fingers, its edge peeking out on the
 		# thumb side, tilted to face you
