@@ -70,6 +70,7 @@ const ROD_AIM := Vector3(0.02, 0.50, -1.0)    # player view: forward and up
 const WEAPON_AIM := Vector3(-0.10, 1.0, -0.55) # blade up and forward, ready
 const HOLD_SHIFT := Vector3(-0.075, 0.035, 0)  # holding something: right hand clears the buttons
 var _shift := 0.0
+var _sail := 0.0                     # blend into the steering pose
 
 
 ## Layers one clip onto just the right arm (shoulder to fingertips) on top of
@@ -256,10 +257,22 @@ func _play_once(name: String, speed := 1.0, blend := 0.08) -> void:
 	_oneshot = _ap.get_animation(c).length / speed * 0.92
 
 
+## Where the two fists are right now, in this rig's own space (so, camera
+## space). The boat's wheel is placed on these rather than on a guess.
+func grip_points() -> Array:
+	var out: Array = []
+	for b in [_hand_l, _hand_r]:
+		if b:
+			out.append(to_local((b as Node3D).global_position))
+	return out
+
+
 func _base_clip() -> String:
 	match mode:
 		"rod", "weapon":
 			return "knife_idle"
+		"sail":
+			return "guard_idle"           # both fists closed, up on the wheel
 		"clam", "fish":
 			return "relax"                # open hands; the right arm is layered on top
 		"bare":
@@ -411,6 +424,10 @@ func _process(delta: float) -> void:
 		pitch += sin(_t * 37.0) * tension * 0.012
 	_shift = move_toward(_shift, 1.0 if mode in ["rod", "weapon", "clam", "fish"] else 0.0, delta * 4.0)
 	off += HOLD_SHIFT * _shift
+	# At the wheel the fists drop into your lap, so the helm sits low in the
+	# view like a car's wheel instead of across your eyes.
+	_sail = move_toward(_sail, 1.0 if mode == "sail" else 0.0, delta * 3.5)
+	off += Vector3(0.0, -0.215, -0.045) * _sail
 	var rig_xf := Transform3D(Basis(Vector3.RIGHT, pitch), off) * _base
 	_rig.transform = _rig.transform.interpolate_with(rig_xf, clampf(delta * 20.0, 0.0, 1.0))
 

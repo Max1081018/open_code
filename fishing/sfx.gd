@@ -368,3 +368,25 @@ static func rain_loop() -> AudioStreamWAV:
 		var patter := drop_lp.run(drop * (randf() * 2.0 - 1.0) * 6.0)
 		s[i] = _soft((hiss * 0.5 + patter * 0.5) * 0.42)
 	return _loop(s)
+
+
+## A small outboard motor idling: a low chug with a rough edge, built so the
+## loop point lands on a whole number of firing cycles.
+static func engine_loop() -> AudioStreamWAV:
+	var cycles := 40
+	var f := 26.0                       # firings per second at idle
+	var n := int(RATE * cycles / f)
+	var s := PackedFloat32Array()
+	s.resize(n)
+	var body := Res.new(150.0, 0.985)
+	var lp := LP.new(0.3)
+	var rough := LP.new(0.08)
+	for i in n:
+		var t := float(i) / RATE
+		var phase := fmod(t * f, 1.0)
+		# each firing is a short thump, not a smooth wave
+		var fire: float = exp(-phase * 9.0) * (1.0 - phase * 0.3)
+		var grit := lp.run(randf() * 2.0 - 1.0) * 0.25 * fire
+		var wobble := rough.run(randf() * 2.0 - 1.0) * 0.1
+		s[i] = _soft((body.run(fire * 0.6 + grit) * 0.5 + wobble) * 0.5)
+	return _loop(s)

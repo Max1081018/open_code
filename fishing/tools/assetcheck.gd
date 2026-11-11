@@ -13,7 +13,7 @@ const MODELS := [
 	"res://assets/models/fishing/rarity-fish-set.glb",
 	"res://assets/models/fishing/low-poly-ocean-fish-set.glb",
 	"res://assets/models/fishing/junk-catches-set.glb",
-	"res://assets/models/characters/Rogue.glb",
+	"res://assets/models/characters/Barbarian.glb",
 	"res://assets/models/characters/Knight.glb",
 	"res://assets/models/weapons/sword_A.gltf",
 	"res://assets/models/weapons/dagger_A.gltf",

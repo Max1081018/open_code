@@ -1,5 +1,5 @@
 extends CanvasLayer
-## Fishing HUD for Lazy Lake (shown while you're at the rod).
+## Fishing HUD for Reel Trouble (shown while you're at the rod).
 ##
 ## One big round action button (CAST / REEL / WHACK) under the right thumb, a
 ## smaller back button beside it, a compact message pill, a catch card for what

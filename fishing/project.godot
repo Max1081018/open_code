@@ -1,12 +1,12 @@
-; Lazy Lake — a calm, funny, low-poly first-person fishing game for mobile.
+; Reel Trouble — a calm, funny, low-poly first-person fishing game for mobile.
 ; Godot 4.3, GL Compatibility renderer (runs on most phones + headless on Linux).
 
 config_version=5
 
 [application]
 
-config/name="Lazy Lake"
-config/version="0.10"
+config/name="Reel Trouble"
+config/version="0.11"
 config/description="Cast off a little island, wait for a bite, and reel in goofy low-poly fish."
 run/main_scene="res://game.tscn"
 config/features=PackedStringArray("4.3", "GL Compatibility")

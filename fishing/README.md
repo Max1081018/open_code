@@ -1,4 +1,4 @@
-# Lazy Lake 🎣
+# Reel Trouble 🎣
 
 A calm, funny, low-poly **first-person fishing game** for mobile, made in
 **Godot 4.3**. Start with bare hands on a little island, sell clams for your
@@ -16,7 +16,9 @@ there are no art or audio files to manage.
 You play in first person on a little island with a jetty, a weapon shop, a fish
 market and a moored motorboat.
 
-1. **Walk** with the left stick, **look** by dragging the right half, tap **RUN** to sprint.
+1. **Walk** with the left stick, **look** by dragging the right half. Push the
+   stick to the edge to break into a run (the threshold is in Settings), and
+   tap **JUMP** to hop up the shop steps.
 2. You start with **bare hands**. **PICK UP** clams on the beach (they stack in one
    of your **4 slots**) and **SELL** them at the **FISH MARKET**.
 3. Buy a **Fishing Rod** at **BAIT & BLADE** (look at it: it outlines white, press **BUY**).
@@ -110,8 +112,8 @@ Godot's docs walk through the one-time Android SDK setup:
 
 **Automated (GitHub Actions):** the workflow at
 `.github/workflows/fishing-apk.yml` builds an APK you can download from the
-run's Artifacts. Trigger it from the repo's **Actions** tab → *Build Lazy Lake
-APK* → **Run workflow**.
+run's Artifacts. Trigger it from the repo's **Actions** tab → *Build Reel
+Trouble APK* → **Run workflow**.
 
 ## Play-test it headlessly (no screen)
 

@@ -1,4 +1,4 @@
-name: Build Lazy Lake APK
+name: Build Reel Trouble APK
 
 # Exports the Godot game in fishing/ to an installable Android APK and uploads it
 # as a run artifact. Trigger it from the Actions tab (Run workflow), or it runs
@@ -23,7 +23,7 @@ on:
 env:
   GODOT_VERSION: "4.3"
   PROJECT_PATH: fishing
-  EXPORT_NAME: LazyLake
+  EXPORT_NAME: ReelTrouble
 
 permissions:
   contents: write     # needed to publish a Release when asked
@@ -77,7 +77,7 @@ jobs:
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
-          name: LazyLake-Android
+          name: ReelTrouble-Android
           path: build/android/*.apk
           if-no-files-found: error
 
@@ -85,13 +85,13 @@ jobs:
         if: ${{ github.event_name == 'workflow_dispatch' && inputs.release }}
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: lazy-lake-v${{ inputs.version }}
+          tag_name: reel-trouble-v${{ inputs.version }}
           target_commitish: ${{ github.sha }}
-          name: Lazy Lake v${{ inputs.version }} (Android)
+          name: Reel Trouble v${{ inputs.version }} (Android)
           body: |
-            Lazy Lake for Android. Download **LazyLake.apk** below on your phone,
+            Reel Trouble for Android. Download **ReelTrouble.apk** below on your phone,
             open it and allow installing from this source.
 
             Built from ${{ github.sha }}.
-          files: build/android/LazyLake.apk
+          files: build/android/ReelTrouble.apk
           make_latest: true

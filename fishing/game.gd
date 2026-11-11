@@ -1,5 +1,5 @@
 extends Node3D
-## Lazy Lake — a calm, funny, low-poly first-person fishing game.
+## Reel Trouble — a calm, funny, low-poly first-person fishing game.
 ##
 ## Loop: you start with bare hands. Pick up clams on the beach and sell them for
 ## a rod. With the rod in hand, HOLD CAST to charge and let go; on HOOK! tap,
@@ -116,7 +116,7 @@ var icons: IconBaker
 var quality := 1                 # 0 Low, 1 Medium, 2 High, 3 Ultra
 var _surf: AudioStreamPlayer
 var _amb_todo: Array = []
-var _step_dist := 0.0
+var _step_n := 0                 # last foot-plant we played a sound for
 var _gull_t := 8.0
 var looked_fish: RigidBody3D = null
 var _pending_loose: Array = []    # from the save, spawned once the world exists
@@ -128,14 +128,40 @@ var _hold_far_t := 0.0
 const BOAT_MOOR := Vector3(4.3, -0.55, 9.5)
 const BOAT_YAW := PI                 # bow points out to sea (-Z)
 const BOSS_WATERS := Vector3(-6.0, -0.55, -46.0)
-const SAIL_TIME := 4.0
+const BOSS_ZONE_R := 20.0        # the Kraken's water, marked by a ring of buoys
+const SEA_R := 96.0              # how far out you can take the boat
+# Driving: arcade handling, no sideways slip. Steering needs way on, like a
+# real boat: the rudder does nothing when you're stopped.
+const BOAT_TOP_SPEED := 9.0
+const BOAT_REVERSE := 3.2
+const BOAT_ACCEL := 3.4
+const BOAT_DRAG := 1.1
+const BOAT_TURN := 1.35
+const BOAT_SCALE := 0.30
+const HELM_SEAT := Vector3(0.0, 5.4, -0.6)   # boat-local: where the driver's eye sits
+# Where the wheel's hub goes, measured from that eye: the fists in the "sail"
+# pose land at (+-0.222, 0, 0) from here, which is exactly the rim.
+const HELM_WHEEL := Vector3(0.005, -0.308, -0.305)
+const HELM_R := 0.221
 var boat: Node3D
+var helm: Node3D                 # the driver's eye point, riding the boat
+var helm_spin: Node3D            # the wheel; turns with the rudder
+var helm_grip: Node3D            # where the arms rig hangs while you steer
+var helm_lever: Node3D           # the throttle, pushed forward under power
 var on_boat := false
 var near_boat := false
 var _sail_t := 0.0
 var _sail_from := Vector3.ZERO
 var _sail_to := Vector3.ZERO
 var _sail_out := true
+var boat_speed := 0.0
+var boat_yaw := BOAT_YAW
+var at_helm := false             # sitting at the wheel
+var in_boss_zone := false
+var _boss_zone_seen := false
+var _helm_at := 0                # autotest: frame to take the helm shot on
+var _wake_t := 0.0
+var _boat_ring: Node3D
 var island2_marker: Node3D
 const WEAPON_LAYER := 4          # collision layer the crosshair ray looks for
 var weapon_bodies := {}          # weapon id -> StaticBody3D
@@ -172,6 +198,7 @@ const CATCH_SETS := {
 
 # Island 1's boss: only bites out at sea, from the boat, with the Boss Reel.
 const NEW_SPECIES_BONUS := 25
+const PB_BONUS := 20            # beating your own record is worth something
 const BOSS := {"name": "the Baby Kraken", "set": "mythic", "node": "BabyKraken",
 	"min": 18.0, "max": 26.0, "junk": false, "boss": true,
 	"rarity": "Legendary", "atk": 30, "spd": 1.6, "tier": 0}
@@ -815,6 +842,8 @@ var test_quality := ""
 var test_res := ""
 var test_rod_tier := -1
 var test_fresh := false          # autotest: ignore the save and don't write one
+var test_nohud := false          # autotest: hide the touch UI so shots show the world
+var test_hold := false           # autotest: keep walking through the screenshot
 var _tphase := 0
 var _tnext := 0
 var _tcycles := 0
@@ -1004,6 +1033,8 @@ func _parse_args() -> void:
 		elif a == "--rain": test_rain = true
 		elif a == "--rod": test_rod = true
 		elif a == "--fresh": test_fresh = true
+		elif a == "--nohud": test_nohud = true
+		elif a == "--hold": test_hold = true
 		elif a.begins_with("--at="):
 			var p := a.get_slice("=", 1).split(",")
 			test_at = Vector3(float(p[0]), 0.0, float(p[1]))
@@ -1304,7 +1335,8 @@ func _build_island() -> void:
 	_spawn("barrel", Vector3(-0.80, DECK_Y, 17.6), -0.2, 0.55)
 
 	# The motorboat, moored alongside the jetty. Buy the Boss Reel to take it out.
-	boat = _spawn("motorboat", BOAT_MOOR, BOAT_YAW, 0.30)
+	boat = _spawn("motorboat", BOAT_MOOR, BOAT_YAW, BOAT_SCALE)
+	_build_helm()
 	# A deck to stand catches on; moved with the boat.
 	boat_deck = AnimatableBody3D.new()
 	boat_deck.sync_to_physics = false   # we place it directly every frame
@@ -1368,6 +1400,7 @@ func _build_scenery() -> void:
 		var n := _spawn(b["k"], b["p"], randf() * TAU, b["s"])
 		floaters.append(n)
 
+	_build_boss_zone()
 	_build_shop()
 	_build_market()
 	_build_grass()
@@ -1479,13 +1512,13 @@ func _build_sounds() -> void:
 	# follows where you are and what the weather is doing. They take a moment
 	# to generate, so they are built one per frame after the game is up rather
 	# than holding the first screen.
-	for key in ["surf", "wind", "rain"]:
+	for key in ["surf", "wind", "rain", "engine"]:
 		var p := AudioStreamPlayer.new()
 		p.volume_db = -60.0
 		add_child(p)
 		players[key] = p
 	_surf = players["surf"]
-	_amb_todo = ["surf", "wind", "rain"]
+	_amb_todo = ["surf", "wind", "rain", "engine"]
 
 
 ## One ambience loop per frame until they are all made.
@@ -1498,7 +1531,9 @@ func _build_ambience_step() -> void:
 		"surf": p.stream = Sfx.surf_loop()
 		"wind": p.stream = Sfx.wind_loop()
 		"rain": p.stream = Sfx.rain_loop()
-	p.play()
+		"engine": p.stream = Sfx.engine_loop()
+	if key != "engine":
+		p.play()
 
 
 func _play(key: String) -> void:
@@ -1590,8 +1625,9 @@ func _process(delta: float) -> void:
 		_update_explore(delta)
 		_update_line()
 		return
-	if play_mode == "sailing":
-		_update_sail(delta)
+	if play_mode == "boat":
+		_update_boat(delta)
+		_update_line()
 		return
 	if play_mode == "dead":
 		_update_death(delta)
@@ -1771,9 +1807,9 @@ func _update_prompts() -> void:
 		p = "SELL"
 		touch.secondary = "DROP"
 	elif near_boat and (on_boat or not holding):
-		var sail := "SAIL" if (can_sail() or on_boat) else "LOCKED"
+		var sail := ("DRIVE" if on_boat else "BOARD") if can_sail() else "LOCKED"
 		if id == "rod" and rs == R_NONE:
-			p = "CAST"                       # fish from the boat; sail from the small button
+			p = "CAST"                       # fish from the boat; drive from the small button
 			touch.secondary = sail
 		else:
 			p = sail
@@ -1799,7 +1835,7 @@ static func _nice_name(n: String) -> String:
 
 
 func _on_interact() -> void:
-	if app_state != "playing" or play_mode != "explore":
+	if app_state != "playing" or not (play_mode == "explore" or play_mode == "boat"):
 		return
 	var p: String = touch.prompt
 	match p:
@@ -1855,11 +1891,11 @@ func _on_interact() -> void:
 			_pick_clam(looked_clam)
 		"FULL":
 			_flash("Your 4 slots are full")
-		"SAIL":
-			if on_boat:
-				_start_sail(false)
-			elif can_sail():
-				_start_sail(true)
+		"BOARD", "DRIVE":
+			if can_sail():
+				_board_boat()
+		"STAND", "DOCK":
+			_leave_helm()
 		"LOCKED":
 			_flash("You need the %s from Bait & Blade" % _sail_missing())
 			_play("snap")
@@ -1970,7 +2006,7 @@ func _flash(text: String) -> void:
 
 
 func _on_secondary() -> void:
-	if app_state != "playing" or play_mode != "explore":
+	if app_state != "playing" or not (play_mode == "explore" or play_mode == "boat"):
 		return
 	match str(touch.secondary):
 		"DROP":
@@ -1989,11 +2025,9 @@ func _on_secondary() -> void:
 		"CANCEL":
 			_reset_rod()
 			_play("whoosh")
-		"SAIL":
-			if on_boat:
-				_start_sail(false)
-			elif can_sail():
-				_start_sail(true)
+		"BOARD", "DRIVE":
+			if can_sail():
+				_board_boat()
 		"LOCKED":
 			_flash("You need the %s from Bait & Blade" % _sail_missing())
 			_play("snap")
@@ -2313,60 +2347,306 @@ func _sync_deck() -> void:
 		boat_deck.rotation = boat.rotation
 
 
-## Sets off in the boat: out to the boss waters, or back to the jetty.
-func _start_sail(out: bool) -> void:
-	play_mode = "sailing"
-	_sail_out = out
-	_sail_t = 0.0
-	_sail_from = boat.position
-	_sail_to = BOSS_WATERS if out else BOAT_MOOR
-	player.frozen = true
-	player.visible = false
-	touch.visible = false
-	touch.prompt = ""
-	if held_view:
-		held_view.queue_free()
-		held_view = null
-	_flash("Sailing out..." if out else "Heading home...")
+## Climb aboard and sit at the wheel.
+func _board_boat() -> void:
 	_line_fish_release()
 	_reset_rod()
 	_drop_holding()
 	rod.visible = false
 	paddle.visible = false
-	# Anything lying on the boat comes along for the ride.
+	play_mode = "boat"
+	at_helm = true
+	on_boat = true
+	player.frozen = true
+	player.visible = false
+	touch.visible = true
+	boat_yaw = boat.rotation.y
+	boat_speed = 0.0
+	_hold_cargo()
+	cam_yaw = boat_yaw
+	cam_pitch = -0.06
+	_play("pickup")
+	_flash("Push the stick forward to open the throttle")
+
+
+## Anything loose on the deck rides along instead of sliding off.
+func _hold_cargo() -> void:
+	# Stow the catch in the bottom of the boat rather than freezing each fish
+	# wherever it happened to be floating: one you were carrying is let go in
+	# mid-air, and a frozen body never falls, so it would ride along beside the
+	# hull like a balloon. Laid out in two rows down the cockpit floor.
 	_cargo.clear()
+	var slot := 0
 	for b in loose_fish:
-		if is_instance_valid(b) and _hdist(b.global_position, boat.global_position) < 4.0 \
-				and b.global_position.y > -0.3:
-			b.freeze = true
-			_cargo.append([b, boat.to_local(b.global_position)])
-	_play("whoosh")
+		if not is_instance_valid(b) or _hdist(b.global_position, boat.global_position) > 7.0:
+			continue
+		b.freeze = true
+		b.linear_velocity = Vector3.ZERO
+		b.angular_velocity = Vector3.ZERO
+		var spot := Vector3(-0.42 if slot % 2 == 0 else 0.42, 1.02, 0.75 + 0.62 * float(slot / 2))
+		var flat := Basis(Vector3.UP, b.global_rotation.y - boat.rotation.y)
+		_cargo.append([b, spot / BOAT_SCALE, flat])
+		slot += 1
 
 
-func _update_sail(delta: float) -> void:
-	_sail_t = minf(_sail_t + delta / SAIL_TIME, 1.0)
-	var k := _sail_t * _sail_t * (3.0 - 2.0 * _sail_t)   # ease in/out
-	var pos := _sail_from.lerp(_sail_to, k)
+## Stand up from the wheel: onto the jetty if you have pulled alongside it,
+## otherwise onto the boat's own deck, where you can fish.
+func _leave_helm() -> void:
+	at_helm = false
+	play_mode = "explore"
+	boat_speed = 0.0
+	hands.transform = Transform3D.IDENTITY     # let go of the wheel
+	helm_spin.rotation.z = 0.0
+	_release_cargo()
+	player.frozen = false
+	player.visible = true
+	player.set_first_person(true)
+	player.velocity = Vector3.ZERO
+	var docked := _hdist(boat.global_position, BOAT_MOOR) < 6.5
+	if docked:
+		on_boat = false
+		boat.position = BOAT_MOOR
+		boat.rotation = Vector3(0, BOAT_YAW, 0)
+		boat_yaw = BOAT_YAW
+		_sync_deck()
+		player.global_position = Vector3(1.3, DECK_Y + 0.4, BOAT_MOOR.z)
+		cam_yaw = PI
+		_flash("Tied up at the jetty")
+	else:
+		on_boat = true
+		player.global_position = boat.global_position + Vector3(0, 1.5, 0.0)
+		cam_yaw = boat_yaw
+	cam_pitch = -0.12
+	touch.visible = true
+	_apply_held()
+	_refresh_held_view()
+
+
+## Driving the boat: the stick is throttle and rudder, the right half of the
+## screen still looks around. The hull leans into turns and rides the swell.
+func _update_boat(delta: float) -> void:
+	var look: Vector2 = touch.consume_look()
+	cam_yaw -= look.x
+	cam_pitch = clampf(cam_pitch - look.y, -1.2, 0.5)
+
+	var throttle: float = -touch.move.y
+	var steer: float = touch.move.x
+	var want: float = throttle * (BOAT_TOP_SPEED if throttle > 0.0 else BOAT_REVERSE)
+	if absf(throttle) < 0.08:
+		boat_speed = move_toward(boat_speed, 0.0, BOAT_DRAG * delta)
+	else:
+		boat_speed = move_toward(boat_speed, want, BOAT_ACCEL * delta)
+	# A rudder bites hardest with way on, but an outboard can always kick the
+	# stern round — otherwise a boat nosed into the jetty could never get off.
+	var bite: float = clampf(absf(boat_speed) / 3.0, 0.28, 1.0)
+	boat_yaw -= steer * BOAT_TURN * delta * bite * signf(boat_speed if absf(boat_speed) > 0.01 else 1.0)
+
+	var fwd := Basis(Vector3.UP, boat_yaw) * Vector3(0, 0, -1)
+	var pos := boat.global_position + fwd * boat_speed * delta
+	# Keep her off the beach, off the jetty, and inside the bay. The limit is
+	# the waterline, not the island's full radius, or she would be stuck
+	# against an invisible wall at her own mooring.
+	# She slides along what she touches rather than sticking to it, and only
+	# loses way when she is actually driving into it.
+	const SHORE_R := 18.5
+	var heading := Vector2(fwd.x, fwd.z) * signf(boat_speed if absf(boat_speed) > 0.01 else 1.0)
+	# Glancing contact just slides; only a head-on bump takes the way off her.
+	var scrape := func(normal: Vector2) -> void:
+		var into := -heading.dot(normal)
+		if into > 0.3:
+			boat_speed = move_toward(boat_speed, 0.0, 14.0 * into * delta)
+	var from_home := Vector2(pos.x - HOME.x, pos.z - HOME.z)
+	if from_home.length() < SHORE_R:
+		var n := from_home.normalized()
+		pos.x = HOME.x + n.x * SHORE_R
+		pos.z = HOME.z + n.y * SHORE_R
+		scrape.call(n)
+	# The jetty: a strip she is nudged clear of, sideways.
+	if absf(pos.x) < 2.6 and pos.z > 0.5 and pos.z < 20.5:
+		var sx: float = signf(pos.x) if absf(pos.x) > 0.01 else 1.0
+		pos.x = sx * 2.6
+		scrape.call(Vector2(sx, 0.0))
+	var flat := Vector2(pos.x, pos.z)
+	if flat.length() > SEA_R:
+		var n2 := -flat.normalized()
+		flat = -n2 * SEA_R
+		pos.x = flat.x
+		pos.z = flat.y
+		scrape.call(n2)
 	pos.y = BOAT_MOOR.y + wave_height(pos.x, pos.z)
-	boat.position = pos
-	# Point the bow along the trip, then settle back to facing out to sea.
-	var dir := _sail_to - _sail_from
-	var travel_yaw := atan2(-dir.x, -dir.z) + PI
-	boat.rotation.y = lerp_angle(BOAT_YAW, travel_yaw, sin(k * PI))
-	boat.rotation.z = sin(elapsed * 1.7) * 0.03
+	boat.global_position = pos
+	# Lean into the turn, pitch up a little under power, roll on the swell.
+	var lean: float = -steer * bite * 0.16
+	boat.rotation = Vector3(
+		lerp_angle(boat.rotation.x, -boat_speed * 0.012 + sin(elapsed * 1.1) * 0.012, clampf(delta * 3.0, 0, 1)),
+		boat_yaw,
+		lerp_angle(boat.rotation.z, lean + sin(elapsed * 1.4) * 0.02, clampf(delta * 3.0, 0, 1)))
 	_sync_deck()
+	var hull := Basis.from_euler(boat.rotation)
 	for c in _cargo:
 		if is_instance_valid(c[0]):
-			(c[0] as RigidBody3D).global_position = boat.to_global(c[1])
-	# Ride in the boat, looking over the bow.
-	var seat := boat.global_transform * Vector3(0, 5.6, -1.2)
-	camera.global_position = seat
-	camera.rotation = Vector3(-0.10, boat.rotation.y + PI, 0.0)
-	if _sail_t >= 1.0:
-		if _sail_out:
-			_arrive_boss_waters()
-		else:
-			_arrive_home()
+			(c[0] as RigidBody3D).global_transform = Transform3D(
+				hull * (c[2] as Basis), boat.to_global(c[1]))
+
+	# Sit at the wheel, looking where you please. The wheel follows the rudder
+	# and the hands ride round with it.
+	helm_spin.rotation.z = lerp_angle(helm_spin.rotation.z, -steer * 0.72,
+		clampf(delta * 9.0, 0.0, 1.0))
+	helm_lever.rotation.x = lerp_angle(helm_lever.rotation.x,
+		clampf(boat_speed / BOAT_TOP_SPEED, -0.6, 1.0) * -0.62, clampf(delta * 5.0, 0.0, 1.0))
+	camera.global_position = helm.global_position
+	camera.rotation = Vector3(cam_pitch, cam_yaw, boat.rotation.z * 0.5)
+	hands.global_transform = helm_grip.global_transform
+
+	_boat_wake(delta)
+	_update_boss_zone()
+	_update_ambience(delta, wave_height(pos.x, pos.z), 0.0)
+	touch.prompt = "DOCK" if _hdist(pos, BOAT_MOOR) < 6.5 else "STAND"
+	touch.secondary = ""
+	touch.look_info = ""
+	touch.look_stat = ""
+	touch.look_cost = ""
+	touch.act_progress = -1.0
+
+
+## A wheel at the helm, placed on the hands rather than the other way round:
+## the fists in the steering pose sit at +-HELM_R either side of HELM_WHEEL, so
+## they land on the rim. `helm_grip` rides the wheel, and the arms hang off it
+## while you drive, which keeps your hands on the wheel as you look around and
+## rolls them with the rudder.
+func _build_helm() -> void:
+	helm = Node3D.new()
+	helm.position = HELM_SEAT
+	helm.scale = Vector3.ONE / BOAT_SCALE      # so the helm is built in metres
+	boat.add_child(helm)
+
+	var pivot := Node3D.new()
+	pivot.position = HELM_WHEEL
+	helm.add_child(pivot)
+	helm_spin = Node3D.new()
+	pivot.add_child(helm_spin)
+
+	var wood := _mat(Color(0.40, 0.25, 0.14))
+	var brass := _mat(Color(0.74, 0.58, 0.24), 0.35)
+	var rim := MeshInstance3D.new()
+	var torus := TorusMesh.new()
+	torus.inner_radius = HELM_R - 0.022
+	torus.outer_radius = HELM_R + 0.022
+	torus.rings = 18
+	torus.ring_segments = 6
+	torus.material = wood
+	rim.mesh = torus
+	rim.rotation.x = PI * 0.5                  # stand it up, axle toward the driver
+	helm_spin.add_child(rim)
+
+	var hub := MeshInstance3D.new()
+	var cyl := CylinderMesh.new()
+	cyl.top_radius = 0.045
+	cyl.bottom_radius = 0.052
+	cyl.height = 0.08
+	cyl.radial_segments = 8
+	cyl.rings = 0
+	cyl.material = brass
+	hub.mesh = cyl
+	hub.rotation.x = PI * 0.5
+	helm_spin.add_child(hub)
+
+	var spoke_len := HELM_R - 0.02
+	for i in 5:
+		var sp := MeshInstance3D.new()
+		var bm := BoxMesh.new()
+		bm.size = Vector3(0.021, spoke_len, 0.021)
+		bm.material = wood
+		sp.mesh = bm
+		var a := TAU * float(i) / 5.0
+		sp.position = Vector3(0, spoke_len * 0.5, 0).rotated(Vector3(0, 0, 1), a)
+		sp.rotation.z = a
+		helm_spin.add_child(sp)
+
+	# A post under the wheel so it isn't floating over the deck.
+	var post := MeshInstance3D.new()
+	var pm := CylinderMesh.new()
+	pm.top_radius = 0.05
+	pm.bottom_radius = 0.075
+	pm.height = 0.78
+	pm.radial_segments = 8
+	pm.rings = 0
+	pm.material = _mat(Color(0.30, 0.33, 0.36), 0.6)
+	post.mesh = pm
+	post.position = HELM_WHEEL + Vector3(0, -0.4, 0.02)
+	helm.add_child(post)
+
+	helm_grip = Node3D.new()
+	helm_grip.position = -HELM_WHEEL           # back at the eye when the wheel is centred
+	helm_spin.add_child(helm_grip)
+
+	# Throttle to starboard: pushed forward under power, hauled back astern.
+	var housing := MeshInstance3D.new()
+	var hm := BoxMesh.new()
+	hm.size = Vector3(0.1, 0.07, 0.16)
+	hm.material = _mat(Color(0.26, 0.29, 0.32), 0.6)
+	housing.mesh = hm
+	housing.position = HELM_WHEEL + Vector3(0.3, -0.07, 0.04)
+	helm.add_child(housing)
+	helm_lever = Node3D.new()
+	helm_lever.position = housing.position
+	helm.add_child(helm_lever)
+	var stick := MeshInstance3D.new()
+	var sm := CylinderMesh.new()
+	sm.top_radius = 0.013
+	sm.bottom_radius = 0.018
+	sm.height = 0.2
+	sm.radial_segments = 6
+	sm.rings = 0
+	sm.material = _mat(Color(0.22, 0.24, 0.26), 0.5)
+	stick.mesh = sm
+	stick.position = Vector3(0, 0.1, 0)
+	helm_lever.add_child(stick)
+	var knob := MeshInstance3D.new()
+	var km := SphereMesh.new()
+	km.radius = 0.032
+	km.height = 0.064
+	km.radial_segments = 8
+	km.rings = 4
+	km.material = _mat(Color(0.82, 0.2, 0.16))
+	knob.mesh = km
+	knob.position = Vector3(0, 0.2, 0)
+	helm_lever.add_child(knob)
+
+
+## White water off the stern, and a growl from the motor that rises with speed.
+func _boat_wake(delta: float) -> void:
+	var sp := absf(boat_speed)
+	if players.has("engine"):
+		var p: AudioStreamPlayer = players["engine"]
+		if p.stream:
+			if not p.playing:
+				p.play()
+			p.pitch_scale = 0.62 + sp / BOAT_TOP_SPEED * 0.75
+			p.volume_db = lerpf(-26.0, -9.0, clampf(sp / BOAT_TOP_SPEED, 0.0, 1.0))
+	if fx == null or sp < 1.2:
+		return
+	_wake_t -= delta * (0.6 + sp * 0.35)
+	if _wake_t <= 0.0:
+		_wake_t = 1.0
+		var back: Vector3 = boat.global_transform * Vector3(0.0, 1.2, 7.5)
+		back.y = wave_height(back.x, back.z)
+		fx.splash(back, clampf(sp / BOAT_TOP_SPEED, 0.3, 1.0) * 1.3)
+
+
+## The Kraken's water is a ring of buoys out past the headland.
+func _update_boss_zone() -> void:
+	var was := in_boss_zone
+	in_boss_zone = _hdist(boat.global_position, BOSS_WATERS) < BOSS_ZONE_R
+	if in_boss_zone and not was:
+		if not _boss_zone_seen:
+			_boss_zone_seen = true
+		_flash("Deep water. Something huge lives down there..." if has_boss_reel
+			else "Deep water - but you need the Boss Reel")
+		players["gull"].pitch_scale = 0.75
+		_play("gull")
+	elif was and not in_boss_zone:
+		_flash("Leaving the deep water")
 
 
 func _release_cargo() -> void:
@@ -2377,45 +2657,6 @@ func _release_cargo() -> void:
 			b.global_position = boat.to_global(c[1]) + Vector3(0, 0.15, 0)
 			b.freeze = false
 	_cargo.clear()
-
-
-## Out at sea you stand on the boat's deck: cast for the Kraken from here,
-## land it on the deck, beat it, then SAIL home with it aboard.
-func _arrive_boss_waters() -> void:
-	on_boat = true
-	boat.rotation = Vector3(0, BOAT_YAW, 0)
-	_sync_deck()
-	_release_cargo()
-	play_mode = "explore"
-	player.frozen = false
-	player.visible = true
-	player.set_first_person(true)
-	player.velocity = Vector3.ZERO
-	player.global_position = boat.global_position + Vector3(0, 1.4, 0.6)
-	cam_yaw = 0.0                      # over the bow, out to sea
-	cam_pitch = -0.15
-	touch.visible = true
-	_apply_held()
-	_flash("Something huge lives out here...  Cast!" if _inv_slot_of("rod") != -1 else "You forgot your rod!")
-
-
-func _arrive_home() -> void:
-	on_boat = false
-	boat.position = BOAT_MOOR
-	boat.rotation = Vector3(0, BOAT_YAW, 0)
-	_sync_deck()
-	_release_cargo()
-	play_mode = "explore"
-	player.frozen = false
-	player.visible = true
-	player.set_first_person(true)
-	player.velocity = Vector3.ZERO
-	player.position = Vector3(1.3, DECK_Y + 0.4, BOAT_MOOR.z)
-	cam_yaw = PI
-	cam_pitch = -0.12
-	touch.visible = true
-	_apply_held()
-	_refresh_held_view()
 
 
 ## After the boss is sold: a lit buoy and sign marking the way to island 2.
@@ -2515,9 +2756,15 @@ func _respawn() -> void:
 	status.underwater = false
 	if on_boat:
 		on_boat = false
+		at_helm = false
+		in_boss_zone = false
 		boat.position = BOAT_MOOR
 		boat.rotation = Vector3(0, BOAT_YAW, 0)
+		boat_yaw = BOAT_YAW
+		boat_speed = 0.0
 		_sync_deck()
+		if players.has("engine"):
+			players["engine"].stop()
 	_enter_idle()
 	play_mode = "explore"
 	player.frozen = false
@@ -2835,6 +3082,18 @@ func _merge_static(root: Node3D) -> void:
 		root.add_child(out)
 
 
+## The Kraken's water, marked by a ring of buoys so you can find it from the
+## wheel. They ride the swell like the others.
+func _build_boss_zone() -> void:
+	_boat_ring = Node3D.new()
+	add_child(_boat_ring)
+	for i in 8:
+		var a := TAU * float(i) / 8.0
+		var p := BOSS_WATERS + Vector3(cos(a) * BOSS_ZONE_R, 0, sin(a) * BOSS_ZONE_R)
+		var b := _spawn("buoy_flag" if i % 2 == 0 else "buoy", Vector3(p.x, 0, p.z), a, 1.1, _boat_ring)
+		floaters.append(b)
+
+
 ## A palm tree built in code: a curved, banded trunk, a few coconuts, and a
 ## crown of drooping, serrated fronds - one mesh, one draw call, swaying in the
 ## wind via its shader.
@@ -3095,7 +3354,7 @@ func _update_floaters() -> void:
 		var fwd := boat.global_basis.z
 		water_mat.set_shader_parameter("hole_center", Vector2(boat.global_position.x, boat.global_position.z))
 		water_mat.set_shader_parameter("hole_axis", Vector2(fwd.x, fwd.z).normalized())
-	if boat and play_mode != "sailing":
+	if boat and play_mode != "boat":
 		boat.position.y = boat.position.y * 0.0 + BOAT_MOOR.y + wave_height(boat.position.x, boat.position.z)
 		boat.rotation.z = sin(elapsed * 1.3) * 0.025
 		_sync_deck()
@@ -3428,7 +3687,7 @@ func _start_bite() -> void:
 ## bite for a Perfect Hook (fewer taps to land it).
 func _hook_fish() -> void:
 	_perfect = bite_window > 1.6 - 0.32
-	pending_fish = BOSS if (on_boat and has_boss_reel) else _roll_catch()
+	pending_fish = BOSS if (in_boss_zone and has_boss_reel) else _roll_catch()
 	var need := {"Common": 4, "Uncommon": 6, "Rare": 8, "Epic": 10, "Legendary": 13}
 	reel_need = int(need.get(str(pending_fish.get("rarity", "Common")), 5))
 	if pending_fish.get("junk", false):
@@ -3482,6 +3741,8 @@ func _land_on_line() -> void:
 	_new_species = not journal.has(jn)
 	var je: Array = journal.get(jn, [0, 0.0])
 	journal[jn] = [int(je[0]) + 1, maxf(float(je[1]), pending_weight)]
+	var pb: bool = pending_weight > best_weight and best_weight > 0.0 \
+		and not pending_fish.get("junk", false)
 	if pending_weight > best_weight:
 		best_weight = pending_weight
 		best_name = pending_fish["name"]
@@ -3499,6 +3760,9 @@ func _land_on_line() -> void:
 	if _new_species:
 		pending_value += NEW_SPECIES_BONUS
 		notes.append("New species!")
+	if pb:
+		pending_value += PB_BONUS
+		notes.append("Personal best!")
 	streak += 1
 
 	var junk: bool = pending_fish.get("junk", false)
@@ -3801,12 +4065,12 @@ func _update_ambience(delta: float, surface: float, depth: float) -> void:
 				elif not wood:
 					fx.dust(pp + Vector3(0, 0.05, 0), clampf(_air_t * 1.6, 0.6, 1.6))
 		_air_t = 0.0
+	# Footsteps fire when a foot actually comes down, so what you hear lines up
+	# with the legs you can see when you look down.
 	var v := Vector2(player.velocity.x, player.velocity.z).length()
-	if player.is_on_floor() and v > 0.6:
-		_step_dist += v * delta
-		var stride := 1.05 if v > 4.0 else 0.78
-		if _step_dist >= stride:
-			_step_dist = 0.0
+	var planted: int = player.steps()
+	if planted != _step_n:
+		if player.is_on_floor() and v > 0.6:
 			var pp := player.global_position
 			if depth > 0.15:
 				players["splash"].pitch_scale = randf_range(1.3, 1.6)
@@ -3817,8 +4081,7 @@ func _update_ambience(delta: float, surface: float, depth: float) -> void:
 			else:
 				players["step_soft"].pitch_scale = randf_range(0.85, 1.15)
 				_play("step_soft")
-	else:
-		_step_dist = 0.6
+		_step_n = planted
 	players["splash"].pitch_scale = 1.0 if depth <= 0.15 else players["splash"].pitch_scale
 	_gull_t -= delta
 	if _gull_t <= 0.0 and fx:
@@ -3902,7 +4165,7 @@ func _update_hands(delta: float) -> void:
 					m = "weapon"
 				else:
 					m = "bare"
-			"sailing":
+			"boat":
 				m = "sail"
 	var want := 1.0 if (looked_fish != null or looked_weapon != "" or not looked_clam.is_empty()) else 0.0
 	_reach = move_toward(_reach, want, delta * 4.0)
@@ -4597,6 +4860,9 @@ func _update_line() -> void:
 func _autotest(_delta: float) -> void:
 	frame += 1
 	sim_action = false
+	if test_nohud and frame > 1 and touch.visible:
+		touch.visible = false
+		hud.set_hud_visible(false)
 
 	if start_screen == "explore":
 		if frame == 2 and (test_quality != "" or test_res != ""):
@@ -4621,7 +4887,7 @@ func _autotest(_delta: float) -> void:
 			_test_jump = maxf(_test_jump, player.global_position.y - _test_y0)
 		if frame < 30:
 			touch.move = Vector2.ZERO
-		elif frame < 30 + test_walk:
+		elif frame < 30 + test_walk or test_hold:
 			touch.move = Vector2(0, -1)
 		else:
 			touch.move = Vector2.ZERO
@@ -4630,9 +4896,9 @@ func _autotest(_delta: float) -> void:
 			if start_screen == "explore" and OS.get_environment("SHOPDBG") != "":
 				print("AUTOTEST shop door_z=%.2f floor_y=%.2f" % [shop_door_z, shop_floor_y])
 			print("AUTOTEST jump height=%.2f" % _test_jump)
-			print("AUTOTEST(explore) pos=%s on_floor=%s prompt='%s' anim=%s max_speed=%.2f" % [
+			print("AUTOTEST(explore) pos=%s on_floor=%s prompt='%s' gait=%s max_speed=%.2f" % [
 				player.position.snapped(Vector3.ONE * 0.01), player.is_on_floor(),
-				touch.prompt, player._cur, _test_max_speed])
+				touch.prompt, player.gait(), _test_max_speed])
 			_print_perf()
 			get_tree().quit()
 		return
@@ -4646,48 +4912,77 @@ func _autotest(_delta: float) -> void:
 			get_tree().quit()
 		return
 
-	# Full boss chain: sail -> fish from the deck -> beat it -> sail home -> sell.
+	# Full boss chain: board, drive out to the deep water, fish from the deck,
+	# beat the Kraken, drive home, dock and sell it.
 	if start_screen == "boss":
 		if frame == 20:
 			print("AUTOTEST reel=%s coins=%d near_boat=%s prompt='%s' secondary='%s'" % [has_boss_reel, coins, near_boat, touch.prompt, touch.secondary])
-			if touch.secondary == "SAIL":
+			if touch.secondary == "BOARD":
 				_on_secondary()
 			else:
 				_on_interact()
-		if play_mode == "explore" and on_boat and not _boss_logged:
+			_tphase = 0
+		# Steer for the deep water, then for home once the Kraken is aboard.
+		if play_mode == "boat":
+			var goal: Vector3 = BOAT_MOOR if _boss_logged else BOSS_WATERS
+			var to := Vector3(goal.x - boat.global_position.x, 0, goal.z - boat.global_position.z)
+			var want_yaw := atan2(-to.x, -to.z)
+			var off := wrapf(want_yaw - boat_yaw, -PI, PI)
+			touch.move = Vector2(clampf(-off * 1.6, -1.0, 1.0),
+				-clampf(to.length() / 14.0, 0.22, 1.0))
+			if frame % 150 == 0:
+				print("AUTOTEST boat f=%d pos=%s spd=%.1f dist=%.1f zone=%s" % [frame,
+					boat.global_position.snapped(Vector3.ONE * 0.1), boat_speed, to.length(), in_boss_zone])
+			var arrived: bool = (in_boss_zone and not _boss_logged) or (_boss_logged and to.length() < 4.5)
+			if arrived:
+				touch.move = Vector2.ZERO
+				# Settle, aim the view over the wheel, let it render, then shoot.
+				if absf(boat_speed) < 0.6 and _helm_at == 0:
+					_helm_at = frame + 5
+					cam_yaw = boat_yaw
+					cam_pitch = -0.16
+					touch.move = Vector2(0.55, 0.0)     # wheel over to starboard
+				elif _helm_at > 0 and frame >= _helm_at:
+					_helm_at = 0
+					print("AUTOTEST boat arrived f=%d prompt='%s' zone=%s grips=%s wheel=%s" % [
+						frame, touch.prompt, in_boss_zone, hands.grip_points(),
+						camera.to_local(helm_spin.global_position).snapped(Vector3.ONE * 0.001)])
+					for lb in loose_fish:
+						if is_instance_valid(lb) and lb.get_meta("fish").get("boss", false):
+							print("AUTOTEST bossfish pos=%s frozen=%s cargo=%d boat=%s" % [
+								lb.global_position.snapped(Vector3.ONE * 0.1), lb.freeze,
+								_cargo.size(), boat.global_position.snapped(Vector3.ONE * 0.1)])
+					_test_shot("_helm" if not _boss_logged else "_helm2")
+					_on_interact()                      # stand up / dock
+					_tphase = 0
+					_tnext = frame + 20
+		elif play_mode == "explore" and on_boat and not _boss_logged:
 			_test_fish_cycle(true)
-			if _tphase == 5 and frame % 90 == 0:
-				var kb: RigidBody3D = loose_fish.back() if not loose_fish.is_empty() else null
-				if kb:
-					print("AUTOTEST boss dbg f=%d fish=%s pos=%s boat=%s alive=%s hp=%s prompt='%s' looked=%s dist=%.2f" % [frame,
-						kb.get_meta("fish").get("name"), kb.global_position.snapped(Vector3.ONE * 0.1),
-						boat.global_position.snapped(Vector3.ONE * 0.1), kb.get_meta("fish").get("alive"),
-						kb.get_meta("fish").get("hp"), touch.prompt, looked_fish != null,
-						kb.global_position.distance_to(player.global_position)])
 		if _boss_logged and on_boat and frame == _tnext:
-			cam_yaw += PI                          # turn away from the fish so SAIL shows
-			cam_pitch = 0.2
+			cam_yaw = boat_yaw + PI                     # turn back toward the wheel
+			cam_pitch = 0.1
 		if _boss_logged and on_boat and frame == _tnext + 6:
-			print("AUTOTEST boss KO'd: prompt='%s' loose=%s health=%.0f" % [touch.prompt,
-				loose_fish.map(func(b): return b.get_meta("fish")["name"]), health])
+			print("AUTOTEST boss KO'd: prompt='%s' secondary='%s' loose=%s" % [touch.prompt, touch.secondary,
+				loose_fish.map(func(b): return b.get_meta("fish")["name"])])
 			_test_shot("_landed")
-			if touch.secondary == "SAIL":
+			if touch.secondary in ["DRIVE", "BOARD"]:
 				_on_secondary()
-			else:
+			elif touch.prompt in ["DRIVE", "BOARD"]:
 				_on_interact()
+			else:
+				_board_boat()
 		if play_mode == "explore" and _boss_logged and not on_boat and not _boss_sold:
 			for b in loose_fish:
 				if is_instance_valid(b) and b.get_meta("fish").get("boss", false):
 					print("AUTOTEST kraken home at %s" % [b.global_position.snapped(Vector3.ONE * 0.1)])
 					player.position = Vector3(SELL_SPOT.x - 1.0, market_ground + 0.3, SELL_SPOT.z)
 					_grab(b)
-					b.global_position = player.global_position + Vector3(0.8, 1.2, 0)
 			_boss_sold = true
 			_boss_sell_frame = frame + 25
 		if _boss_sold and frame == _boss_sell_frame:
 			_update_explore(0.016)
 			_on_interact()
-			print("AUTOTEST sold -> coins=%d island2=%s loose=%d prompt_was=SELL" % [coins, island2_unlocked, loose_fish.size()])
+			print("AUTOTEST sold -> coins=%d island2=%s loose=%d" % [coins, island2_unlocked, loose_fish.size()])
 			cam_yaw = PI
 			cam_pitch = 0.05
 			player.position = Vector3(0, DECK_Y + 0.4, 4.0)
@@ -4695,9 +4990,10 @@ func _autotest(_delta: float) -> void:
 			_test_shot()
 			get_tree().quit()
 		if frame > autotest_frames:
-			print("AUTOTEST boss TIMEOUT mode=%s rs=%d on_boat=%s phase=%d" % [play_mode, rs, on_boat, _tphase])
+			print("AUTOTEST boss TIMEOUT mode=%s rs=%d on_boat=%s phase=%d zone=%s" % [play_mode, rs, on_boat, _tphase, in_boss_zone])
 			get_tree().quit()
 		return
+
 
 	if start_screen == "weaponshop":
 		if frame == 20:

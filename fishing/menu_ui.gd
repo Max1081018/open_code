@@ -1,5 +1,5 @@
 extends CanvasLayer
-## Front-end UI for Lazy Lake: main menu, settings, and pause — all drawn over
+## Front-end UI for Reel Trouble: main menu, settings, and pause — all drawn over
 ## the live 3D lake. Big, thumb-friendly buttons and a consistent dark-glass
 ## theme. Settings persist to user://settings.cfg.
 ##
@@ -176,7 +176,7 @@ func _build() -> void:
 
 	var title := Label.new()
 	title.name = "Title"
-	title.text = "LAZY LAKE"
+	title.text = "REEL TROUBLE"
 	title.add_theme_font_size_override("font_size", 92)
 	title.add_theme_color_override("font_color", UITheme.TEXT_WARM)
 	title.add_theme_color_override("font_outline_color", Color(0.02, 0.08, 0.15))
@@ -283,7 +283,7 @@ func _build() -> void:
 		_stat_rows[key] = v
 
 	var ver := Label.new()
-	ver.text = "v" + str(ProjectSettings.get_setting("application/config/version", "0.10"))
+	ver.text = "v" + str(ProjectSettings.get_setting("application/config/version", "0.11"))
 	ver.set_anchors_preset(Control.PRESET_BOTTOM_RIGHT)
 	ver.position = Vector2(-70, -40)
 	ver.add_theme_font_size_override("font_size", 18)
