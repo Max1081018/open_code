@@ -285,6 +285,8 @@ const SAVE_PATH := "user://save.cfg"
 # a bite sooner and holds a fish that fights. One purchase, one visible thing.
 var coins := 0
 var rod_level := 0              # which of ROD_TIERS you own
+const ROD_IDS := ["", "rod_wood", "rod_carbon", "rod_gold", "rod_crystal"]
+var rod_rack: StaticBody3D      # the shop's wall rack, where rods are bought
 var seen_help := false
 
 # --- Weapons -------------------------------------------------------------------
@@ -675,6 +677,7 @@ func _buy_weapon(id: String) -> void:
 		coins -= price
 		owned_weapons.append(id)
 		rod_level = tier
+		_sync_rod_rack()
 		_build_rod_visual()
 		_play("coins")
 		_flash("New rod: %s" % rod_tier_name())
@@ -1023,7 +1026,7 @@ func _ready() -> void:
 				# Stand at the counter looking at the stock.
 				player.position = Vector3(SHOP_POS.x + 0.2, shop_floor_y + 0.3, SHOP_POS.z - 0.9)
 				cam_yaw = 1.68 if test_yaw == PI else test_yaw   # toward the first display stand
-				cam_pitch = -0.17
+				cam_pitch = -0.17 if test_pitch <= -90.0 else test_pitch
 			_: _go_main_menu()
 	else:
 		_go_main_menu()
@@ -2289,6 +2292,20 @@ func _sign(text: String, pos: Vector3, size := 72, yaw := PI, color := Color(0.1
 	return l
 
 
+## Point the shop's rod rack at whichever rod you could buy next, or switch it
+## off once you own the best one.
+func _sync_rod_rack() -> void:
+	if rod_rack == null:
+		return
+	var nxt := rod_level + 1
+	if nxt >= ROD_IDS.size() or str(ROD_IDS[nxt]) == "":
+		rod_rack.collision_layer = 0
+		rod_rack.set_meta("weapon_id", "")
+		return
+	rod_rack.collision_layer = WEAPON_LAYER
+	rod_rack.set_meta("weapon_id", str(ROD_IDS[nxt]))
+
+
 ## A wooden display stand with collision; returns the height of its top.
 func _pedestal(pos: Vector3) -> float:
 	var b := MeshInstance3D.new()
@@ -2346,6 +2363,8 @@ func _build_shop() -> void:
 	var z0 := walls.position.z + 0.30
 	var z1 := walls.end.z - 0.30
 	var cx := (x0 + x1) * 0.5
+	if OS.get_environment("PLACEDBG") != "":
+		print("PLACEDBG shop x=%.2f..%.2f z=%.2f..%.2f floor=%.2f" % [x0, x1, z0, z1, floor_y])
 	shop_floor_y = floor_y
 	shop_door_z = walls.position.z
 
@@ -2376,12 +2395,26 @@ func _build_shop() -> void:
 	# The best of the lot, mounted on the side wall above the stands.
 	_add_weapon_display("axe_A", Vector3(x0 + 0.08, floor_y + 1.55, z0 + 1.05), Vector3(0, PI * 0.5, 0), 0.50)
 	_add_weapon_display("rod", Vector3(x1 - 0.14, floor_y + 1.05, z0 + 1.05), Vector3(0, PI * 0.5, 0), 0.38)
-	# The rod rack along the back wall: the four you work your way up to, in
-	# order, so you can see what you are saving for.
-	for i in 4:
-		_add_weapon_display(["rod_wood", "rod_carbon", "rod_gold", "rod_crystal"][i],
-			Vector3(cx - 0.72 + 0.48 * float(i), floor_y + 1.02, z1 - 0.16),
-			Vector3(0, PI, 0), 0.38)
+	# The shop already has a wall rack of rods in it, so that is what you buy
+	# from: one pick box over the rack, offering whichever rod is next. Adding
+	# four more rod models to a room this full only made a mess of it.
+	var rack := shop_building.find_children("RodRack", "MeshInstance3D", true, false)
+	if not rack.is_empty():
+		var rm := rack[0] as MeshInstance3D
+		var rbox: AABB = rm.global_transform * rm.mesh.get_aabb()
+		rod_rack = StaticBody3D.new()
+		rod_rack.collision_layer = WEAPON_LAYER
+		rod_rack.collision_mask = 0
+		var rcol := CollisionShape3D.new()
+		var rshape := BoxShape3D.new()
+		rshape.size = rbox.size + Vector3(0.12, 0.12, 0.30)
+		rcol.shape = rshape
+		rod_rack.add_child(rcol)
+		rod_rack.position = rbox.get_center()
+		add_child(rod_rack)
+		_sync_rod_rack()
+		if OS.get_environment("PLACEDBG") != "":
+			print("PLACEDBG rack at %s size %s" % [rbox.get_center(), rbox.size])
 	# Boat key and sea chart on a little table in the middle of the room.
 	var t5 := _pedestal(Vector3(cx, floor_y, z0 + 1.75))
 	_add_weapon_display("boat_key", Vector3(cx - 0.12, t5, z0 + 1.68), Vector3(0, 0.5, 0), 1.45)

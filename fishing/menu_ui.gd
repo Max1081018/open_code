@@ -144,9 +144,9 @@ func _build() -> void:
 	shade.set_anchors_preset(Control.PRESET_FULL_RECT)
 	shade.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	var grad := Gradient.new()
-	grad.set_color(0, Color(0.02, 0.06, 0.13, 0.86))
+	grad.set_color(0, Color(0.02, 0.06, 0.13, 0.62))
 	grad.set_color(1, Color(0.02, 0.06, 0.13, 0.0))
-	grad.add_point(0.42, Color(0.02, 0.06, 0.13, 0.62))
+	grad.add_point(0.42, Color(0.02, 0.06, 0.13, 0.34))
 	var gt := GradientTexture2D.new()
 	gt.gradient = grad
 	gt.fill_from = Vector2(0, 0)
