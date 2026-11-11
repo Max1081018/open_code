@@ -201,6 +201,7 @@ const CATCH_SETS := {
 }
 
 # Island 1's boss: only bites out at sea, from the boat, with the Boss Reel.
+const STEAL_PILE := 12          # catches left lying about before gulls swarm
 const NEW_SPECIES_BONUS := 25
 const PB_BONUS := 20            # beating your own record is worth something
 # The buyer says something when the catch is worth a comment. Selling should
@@ -540,6 +541,7 @@ func _pack_part(path: String, node_name: String) -> Node3D:
 	if part == null:
 		root.free()
 		return null
+	_disown(part)
 	part.get_parent().remove_child(part)
 	root.free()
 	var holder := Node3D.new()
@@ -840,7 +842,7 @@ var start_screen := "menu"  # autotest can jump straight to a screen
 var test_yaw := PI
 var test_walk := 450
 var test_sprint := false
-var test_rain := false
+var test_weather := ""           # autotest: pin the weather to one state
 var _test_whack_f := 0
 var _test_max_speed := 0.0
 var _boss_logged := false
@@ -859,6 +861,8 @@ var _perf_acc := 0.0             # running totals for the averaged timings
 var _perf_phys := 0.0
 var _perf_n := 0
 var test_hold := false           # autotest: keep walking through the screenshot
+var test_spin := 0.0             # autotest: keep turning, to see the hands trail
+var test_shoo := false           # autotest: drive the thieving gull off
 var _tphase := 0
 var _tnext := 0
 var _tcycles := 0
@@ -1060,11 +1064,14 @@ func _parse_args() -> void:
 		elif a.begins_with("--yaw="): test_yaw = float(a.get_slice("=", 1))
 		elif a.begins_with("--walk="): test_walk = int(a.get_slice("=", 1))
 		elif a == "--sprint": test_sprint = true
-		elif a == "--rain": test_rain = true
+		elif a == "--rain": test_weather = "rain"
+		elif a.begins_with("--weather="): test_weather = a.get_slice("=", 1)
 		elif a == "--rod": test_rod = true
 		elif a == "--fresh": test_fresh = true
 		elif a == "--nohud": test_nohud = true
 		elif a == "--hold": test_hold = true
+		elif a.begins_with("--spin="): test_spin = float(a.get_slice("=", 1))
+		elif a == "--shoo": test_shoo = true
 		elif a.begins_with("--at="):
 			var p := a.get_slice("=", 1).split(",")
 			test_at = Vector3(float(p[0]), 0.0, float(p[1]))
@@ -1084,7 +1091,7 @@ func wave_height(x: float, z: float) -> float:
 	for i in 4:
 		var k: float = TAU / (WAVE_LENGTH * float(WAVE_LEN_MUL[i]))
 		var phase: float = k * (WAVE_DIR[i] as Vector2).dot(p) - PI * float(WAVE_HALF_TURNS[i]) * t
-		h += WAVE_HEIGHT * float(WAVE_SHARE[i]) * sin(phase)
+		h += wave_amp * float(WAVE_SHARE[i]) * sin(phase)
 	return h
 
 
@@ -1278,6 +1285,15 @@ func _spawn(key: String, pos: Vector3, rot_y := 0.0, scl := 1.0, parent: Node = 
 	if key in MERGE_KEYS:
 		_merge_me.append(n)
 	return n
+
+
+## A node lifted out of an imported scene still names that scene as its owner,
+## which Godot warns about the moment it is re-parented. Clearing the owner on
+## the node and everything under it keeps the log clean.
+func _disown(n: Node) -> void:
+	n.owner = null
+	for c in n.find_children("*", "", true, false):
+		c.owner = null
 
 
 ## Height of an island at a world x/z. The profile is a smooth bump,
@@ -1536,6 +1552,7 @@ func _build_sounds() -> void:
 		"click": Sfx.click(), "caught": Sfx.caught(), "snap": Sfx.snap(),
 		"bonk": Sfx.bonk(), "hurt": Sfx.hurt(), "coins": Sfx.coins(),
 		"step_soft": Sfx.step_soft(), "step_wood": Sfx.step_wood(), "gull": Sfx.gull(),
+		"thunder": Sfx.thunder(),
 		"jump": Sfx.whoosh(), "pickup": Sfx.pickup(),
 	}
 	for key in streams:
@@ -1549,6 +1566,7 @@ func _build_sounds() -> void:
 	players["jump"].pitch_scale = 1.6
 	players["jump"].volume_db = -8.0
 	players["pickup"].volume_db = -7.0
+	players["thunder"].volume_db = -5.0
 	# Ambience: the sea, the wind and the rain, each a long loop whose volume
 	# follows where you are and what the weather is doing. They take a moment
 	# to generate, so they are built one per frame after the game is up rather
@@ -1839,6 +1857,11 @@ func _update_prompts() -> void:
 		else:
 			p = "DROP"
 			touch.secondary = "THROW"
+	elif _gull_in_reach():
+		touch.look_info = "Seagull!"
+		touch.look_stat = "after your catch"
+		touch.look_cost = ""
+		p = "SHOO"
 	elif looked_fish and is_instance_valid(looked_fish):
 		var fd: Dictionary = looked_fish.get_meta("fish")
 		var rar := str(fd.get("rarity", "Common"))
@@ -1934,6 +1957,8 @@ func _on_interact() -> void:
 		"GRAB":
 			if looked_fish:
 				_grab(looked_fish)
+		"SHOO":
+			_shoo_gull()
 		"PUNCH", "HIT":
 			if looked_fish:
 				# Rod, clam or fish in hand: put it away and use both fists.
@@ -1973,6 +1998,7 @@ func _add_weapon_display(id: String, pos: Vector3, rot := Vector3.ZERO, scl := 0
 		var root: Node3D = load(str(info["model"])).instantiate()
 		var part := root.find_child(str(info.get("node", "")), true, false)
 		if part:
+			_disown(part)
 			part.get_parent().remove_child(part)
 			root.queue_free()
 			m = Node3D.new()
@@ -2905,6 +2931,7 @@ func _build_rod_visual() -> void:
 		part.add_child(pivot)
 		for mi in crank_bits:
 			var keep: Transform3D = (mi as Node3D).transform
+			_disown(mi)
 			(mi as Node3D).get_parent().remove_child(mi)
 			pivot.add_child(mi)
 			(mi as Node3D).transform = Transform3D(keep.basis, keep.origin - hub)
@@ -3391,24 +3418,43 @@ func _apply_prop_range() -> void:
 ## Weather is a slow cycle of states, each lasting minutes, blending smoothly
 ## into the next. It always starts clear, and rain is the exception, not the
 ## rule: clear, cloudy, breezy, foggy, drizzle and (now and then) rain.
+# Weather is not just weather: "swell" is how high the sea runs, "bite" how
+# quickly fish come to the bait, and "rare" how much it tilts the odds toward
+# the good stuff. Flat calm is pretty and slow; the worse it looks out there,
+# the better the fishing - which is the whole reason to go out in it.
 const WEATHER := {
-	"clear":   {"rain": 0.0,  "over": 0.0,  "fog": 0.0085, "wind": 1.0, "dur": [180.0, 300.0]},
-	"cloudy":  {"rain": 0.0,  "over": 0.55, "fog": 0.011,  "wind": 1.2, "dur": [100.0, 170.0]},
-	"breezy":  {"rain": 0.0,  "over": 0.15, "fog": 0.008,  "wind": 2.3, "dur": [90.0, 150.0]},
-	"foggy":   {"rain": 0.0,  "over": 0.35, "fog": 0.030,  "wind": 0.6, "dur": [70.0, 120.0]},
-	"drizzle": {"rain": 0.45, "over": 0.70, "fog": 0.014,  "wind": 1.4, "dur": [45.0, 80.0]},
-	"rain":    {"rain": 1.0,  "over": 1.0,  "fog": 0.018,  "wind": 1.9, "dur": [40.0, 70.0]},
+	"clear":   {"dark": 0.00, "rain": 0.0,  "over": 0.0,  "fog": 0.0085, "wind": 1.0, "swell": 0.85,
+		"bite": 1.15, "rare": 1.0,  "dur": [180.0, 300.0], "say": "Flat calm. Pretty, but the fish are sleepy."},
+	"cloudy":  {"dark": 0.50, "rain": 0.0,  "over": 0.55, "fog": 0.011,  "wind": 1.2, "swell": 1.0,
+		"bite": 0.92, "rare": 1.08, "dur": [100.0, 170.0], "say": "Cloud coming over - they're starting to bite."},
+	"breezy":  {"dark": 0.15, "rain": 0.0,  "over": 0.15, "fog": 0.008,  "wind": 2.3, "swell": 1.35,
+		"bite": 1.0,  "rare": 1.05, "dur": [90.0, 150.0],  "say": "A good breeze, and a bit of a sea running."},
+	"foggy":   {"dark": 0.45, "rain": 0.0,  "over": 0.35, "fog": 0.030,  "wind": 0.6, "swell": 0.7,
+		"bite": 0.88, "rare": 1.15, "dur": [70.0, 120.0],  "say": "Fog. Can't see a thing - but something big is out there."},
+	"drizzle": {"dark": 0.68, "rain": 0.45, "over": 0.70, "fog": 0.014,  "wind": 1.4, "swell": 1.1,
+		"bite": 0.8,  "rare": 1.18, "dur": [45.0, 80.0],   "say": "Drizzle. Perfect fishing weather."},
+	"rain":    {"dark": 0.85, "rain": 1.0,  "over": 1.0,  "fog": 0.018,  "wind": 1.9, "swell": 1.5,
+		"bite": 0.72, "rare": 1.3,  "dur": [40.0, 70.0],   "say": "Proper rain. They're going mad down there."},
+	"storm":   {"dark": 1.00, "rain": 1.0,  "over": 1.0,  "fog": 0.024,  "wind": 3.2, "swell": 2.1,
+		"bite": 0.62, "rare": 1.5,  "dur": [35.0, 60.0],   "say": "Storm. Mind the boat - and bring something huge back."},
 }
 const WEATHER_NEXT := {
 	"clear":   {"cloudy": 40, "breezy": 30, "foggy": 15, "drizzle": 15},
 	"cloudy":  {"clear": 40, "drizzle": 35, "rain": 15, "breezy": 10},
-	"breezy":  {"clear": 60, "cloudy": 40},
+	"breezy":  {"clear": 50, "cloudy": 35, "rain": 15},
 	"foggy":   {"clear": 70, "cloudy": 30},
 	"drizzle": {"cloudy": 60, "clear": 40},
-	"rain":    {"cloudy": 70, "drizzle": 30},
+	"rain":    {"cloudy": 55, "drizzle": 25, "storm": 20},
+	"storm":   {"rain": 60, "cloudy": 40},
 }
 var weather_state := "clear"
-var _w := {"rain": 0.0, "over": 0.0, "fog": 0.0085, "wind": 1.0}
+var _w := {"rain": 0.0, "over": 0.0, "fog": 0.0085, "wind": 1.0, "swell": 0.85,
+	"bite": 1.15, "rare": 1.0, "dark": 0.0}
+var wave_amp := WAVE_HEIGHT * 0.85     # how high the sea is running right now
+var _wave_sent := -1.0                 # last swell pushed to the water shader
+var _bolt_t := 0.0                     # seconds until the next lightning flash
+var _thunder_t := -1.0                 # seconds until the thunder catches up
+var _flash_amt := 0.0
 
 func _build_weather() -> void:
 	rain = CPUParticles3D.new()
@@ -3450,8 +3496,8 @@ func _update_weather(delta: float) -> void:
 			cn.position.x = -240.0
 	# next weather when this one's time is up
 	_weather_t -= delta
-	if test_rain:
-		weather_state = "rain"
+	if test_weather != "" and WEATHER.has(test_weather):
+		weather_state = test_weather
 		_weather_t = 99.0
 	if _weather_t <= 0.0:
 		var opts: Dictionary = WEATHER_NEXT[weather_state]
@@ -3466,10 +3512,19 @@ func _update_weather(delta: float) -> void:
 				break
 		var dur: Array = WEATHER[weather_state]["dur"]
 		_weather_t = randf_range(float(dur[0]), float(dur[1]))
+		if weather_enabled and app_state == "playing":
+			_flash(str(WEATHER[weather_state].get("say", "")))
 	var target: Dictionary = WEATHER["clear"] if not weather_enabled else WEATHER[weather_state]
-	var k2 := clampf(delta / 18.0, 0.0, 1.0) if not test_rain else 1.0     # ~20 s blends
-	for key in ["rain", "over", "fog", "wind"]:
+	var k2 := clampf(delta / 18.0, 0.0, 1.0) if test_weather == "" else 1.0  # ~20 s blends
+	for key in ["rain", "over", "fog", "wind", "swell", "bite", "rare", "dark"]:
 		_w[key] = lerpf(float(_w[key]), float(target[key]), k2)
+	# The sea runs higher in bad weather. Both the shader and the script-side
+	# wave_height() read this, so the boat and the bobber ride the same swell
+	# you can see.
+	wave_amp = WAVE_HEIGHT * float(_w["swell"])
+	if water_mat and absf(wave_amp - _wave_sent) > 0.004:
+		_wave_sent = wave_amp
+		water_mat.set_shader_parameter("wave_height", wave_amp)
 	_rain_amt = float(_w["rain"])
 	var over := float(_w["over"])
 	rain.emitting = _rain_amt > 0.12
@@ -3480,24 +3535,48 @@ func _update_weather(delta: float) -> void:
 		players["wind"].volume_db = lerpf(-60.0, -19.0, w)
 	if players.has("rain") and players["rain"].stream:
 		players["rain"].volume_db = lerpf(-60.0, -13.0, clampf(_rain_amt * 1.2, 0.0, 1.0))
+	var dark := float(_w.get("dark", 0.0))
 	if sun_light:
-		sun_light.light_energy = lerpf(1.02, 0.62, over)
+		sun_light.light_energy = lerpf(1.02, 0.42, dark)
 	if world_env:
 		world_env.fog_density = float(_w["fog"])
-		world_env.ambient_light_energy = lerpf(0.42, 0.36, over)
+		world_env.ambient_light_energy = lerpf(0.42, 0.30, dark)
 		world_env.fog_light_color = Color(0.52, 0.61, 0.70).lerp(Color(0.60, 0.64, 0.68), over)
 	if cloud_mat:
-		cloud_mat.set_shader_parameter("top_color", Color(1, 1, 1).lerp(Color(0.80, 0.82, 0.86), over))
-		cloud_mat.set_shader_parameter("base_color", Color(0.74, 0.80, 0.90).lerp(Color(0.48, 0.52, 0.58), over))
+		cloud_mat.set_shader_parameter("top_color", Color(1, 1, 1).lerp(Color(0.40, 0.42, 0.47), dark))
+		cloud_mat.set_shader_parameter("base_color", Color(0.74, 0.80, 0.90).lerp(Color(0.19, 0.21, 0.25), dark))
 	if grass_mm and grass_mm.material_override:
 		(grass_mm.material_override as ShaderMaterial).set_shader_parameter("wind_strength", 0.07 * float(_w["wind"]))
 	if _palm_mat:
 		_palm_mat.set_shader_parameter("wind", float(_w["wind"]))
 	# Grey the sky with the clouds (only when it changes: sky updates cost).
-	if sky_mat and absf(over - _sky_rain) > 0.02:
-		_sky_rain = over
-		sky_mat.sky_top_color = Color(0.13, 0.36, 0.78).lerp(Color(0.40, 0.48, 0.58), over)
-		sky_mat.sky_horizon_color = Color(0.74, 0.88, 0.97).lerp(Color(0.68, 0.73, 0.78), over)
+	# Lightning: a flash on the light and the sky, then thunder a beat later,
+	# the gap depending on how far off the strike was.
+	if weather_state == "storm" and weather_enabled:
+		_bolt_t -= delta
+		if _bolt_t <= 0.0:
+			_bolt_t = randf_range(6.0, 16.0)
+			_flash_amt = randf_range(0.7, 1.0)
+			_thunder_t = randf_range(0.4, 2.6)
+	else:
+		_bolt_t = randf_range(3.0, 9.0)
+	if _thunder_t > 0.0:
+		_thunder_t -= delta
+		if _thunder_t <= 0.0:
+			_thunder_t = -1.0
+			if players.has("thunder"):
+				players["thunder"].pitch_scale = randf_range(0.85, 1.1)
+				_play("thunder")
+	if _flash_amt > 0.0:
+		_flash_amt = maxf(_flash_amt - delta * 3.2, 0.0)
+		if sun_light:
+			sun_light.light_energy += _flash_amt * 2.6
+		if world_env:
+			world_env.ambient_light_energy += _flash_amt * 0.5
+	if sky_mat and absf(dark - _sky_rain) > 0.02:
+		_sky_rain = dark
+		sky_mat.sky_top_color = Color(0.13, 0.36, 0.78).lerp(Color(0.20, 0.23, 0.28), dark)
+		sky_mat.sky_horizon_color = Color(0.74, 0.88, 0.97).lerp(Color(0.44, 0.47, 0.52), dark)
 
 
 ## Buoys ride the same waves the water shader draws.
@@ -3763,7 +3842,7 @@ func _update_flight(delta: float) -> void:
 		fx.splash(Vector3(bobber.position.x, wave_height(bobber.position.x, bobber.position.z), bobber.position.z), 1.0)
 	# Bait upgrade shortens the wait.
 	var bait_factor: float = 1.0 - float(upgrades["bait"]) * 0.13
-	bite_timer = randf_range(2.5, 6.0) * bait_factor
+	bite_timer = randf_range(2.5, 6.0) * bait_factor * float(_w.get("bite", 1.0))
 	# A nibble or two first: hook on one and you'll spook it.
 	_nibbles_left = randi_range(0, 2)
 	_nibble_t = bite_timer * randf_range(0.25, 0.55)
@@ -4022,6 +4101,9 @@ func _roll_catch() -> Dictionary:
 		var rar := str(f.get("rarity", "Common"))
 		var w: float = RARITY_WEIGHT.get(rar, 10.0)
 		w *= pow(float(RARITY_REEL_BOOST.get(rar, 1.0)), tier + luck * 0.5)
+		# Rough weather brings the good fish up.
+		if rar != "Common" and not f.get("junk", false):
+			w *= float(_w.get("rare", 1.0))
 		if f.get("junk", false):
 			w *= 0.45
 		pool.append(f)
@@ -4558,9 +4640,11 @@ func _update_thieves(delta: float) -> void:
 	if fx == null or play_mode != "explore" or not fx.can_steal():
 		return
 	_steal_t -= delta
-	if _steal_t > 0.0:
+	# Leave a big pile of catches lying about and the gulls get bolder: this
+	# also stops a hoarder slowly filling the island with physics bodies.
+	if _steal_t > 0.0 and loose_fish.size() <= STEAL_PILE:
 		return
-	_steal_t = randf_range(22.0, 40.0)
+	_steal_t = randf_range(22.0, 40.0) if loose_fish.size() <= STEAL_PILE else 4.0
 	# Only dead catches lying in the open, not ones on you or on the counter.
 	var best: RigidBody3D = null
 	for b in loose_fish:
@@ -4605,6 +4689,34 @@ func _on_gull_stole(body: Node3D) -> void:
 		fx.hit_burst(rb.global_position + Vector3(0, 0.2, 0), false)
 	_flash("The seagull made off with your %s!" % _nice_name(str(d.get("name", "catch"))))
 	_save_game()
+
+
+## A gull diving for your catch, close enough to swing at.
+func _gull_in_reach() -> bool:
+	if fx == null or player == null:
+		return false
+	var at := fx.thief_dive_pos()
+	return at != Vector3.ZERO and at.distance_to(player.global_position + Vector3(0, 1.1, 0)) < 4.2
+
+
+## Drive it off before it gets its claws in. It leaves with a squawk and a
+## couple of feathers, and your fish stays where it is.
+func _shoo_gull() -> void:
+	if _hit_cd > 0.0:
+		return
+	_hit_cd = 0.36
+	if hands:
+		hands.play_punch()
+	players["whoosh"].pitch_scale = 1.35
+	_play("whoosh")
+	var at: Vector3 = fx.scare_thief()
+	if at == Vector3.ZERO:
+		return
+	players["gull"].pitch_scale = 1.45
+	_play("gull")
+	fx.hit_burst(at, false)
+	fx.dust(at, 0.7)
+	_flash("Shooed it off!")
 
 
 ## Punch (or chop) a live fish. The blow lands with the swing.
@@ -5037,6 +5149,7 @@ func _make_fish(info: Dictionary, weight: float) -> Node3D:
 		root.queue_free()
 		return holder
 	# Lift just this species out of the set and throw the rest away.
+	_disown(target)
 	target.get_parent().remove_child(target)
 	holder.add_child(target)
 	root.queue_free()
@@ -5128,6 +5241,8 @@ func _autotest(_delta: float) -> void:
 			if test_pitch > -90.0:
 				cam_pitch = test_pitch
 		touch.sprint = test_sprint
+		if test_spin != 0.0 and frame > 10:
+			cam_yaw += test_spin * 0.016
 		_test_max_speed = maxf(_test_max_speed, Vector2(player.velocity.x, player.velocity.z).length())
 		if frame == 25:
 			_test_y0 = player.global_position.y
@@ -5148,6 +5263,8 @@ func _autotest(_delta: float) -> void:
 			print("AUTOTEST(explore) pos=%s on_floor=%s prompt='%s' gait=%s max_speed=%.2f" % [
 				player.position.snapped(Vector3.ONE * 0.01), player.is_on_floor(),
 				touch.prompt, player.gait(), _test_max_speed])
+			print("AUTOTEST weather=%s swell=%.2f dark=%.2f bite=%.2f rare=%.2f" % [
+				weather_state, wave_amp, float(_w["dark"]), float(_w["bite"]), float(_w["rare"])])
 			_print_perf()
 			get_tree().quit()
 		return
@@ -5158,6 +5275,7 @@ func _autotest(_delta: float) -> void:
 			_test_shot()
 			print("AUTOTEST frames=%d cycles=%d catches=%d best=%.2f rs=%d health=%.0f loose=%d inv=%s" % [
 				frame, _tcycles, catches, best_weight, rs, health, loose_fish.size(), inv])
+			_print_perf()
 			get_tree().quit()
 		return
 
@@ -5398,6 +5516,17 @@ func _autotest(_delta: float) -> void:
 			_flop_seen = true
 			print("AUTOTEST gull diving at f=%d" % frame)
 			_test_shot("_dive")
+		# Swing at it on the way down and it leaves empty-clawed.
+		if test_shoo and _gull_in_reach():
+			test_shoo = false
+			_shoo_gull()
+			_tnext = frame + 300
+			print("AUTOTEST gull shooed at f=%d loose=%d" % [frame, loose_fish.size()])
+			_test_shot("_shoo")
+		if _tnext > 0 and frame == _tnext:
+			print("AUTOTEST shoo saved the catch: loose=%d can_steal=%s" % [
+				loose_fish.size(), fx.can_steal()])
+			get_tree().quit()
 		if _flop_seen and loose_fish.is_empty():
 			print("AUTOTEST gull stole it at f=%d" % frame)
 			_test_shot()

@@ -34,6 +34,8 @@ var _yaw := 0.0
 var _blend := 0.0           # 0 standing, 1 full stride
 var _air := 0.0
 var _bob := 0.0
+var _land := 0.0            # landing dip, counts down
+var _was_air := false
 var _acc := 0.0             # unwrapped stride phase, for counting steps
 var _step_k := 0
 var _t := 0.0
@@ -98,7 +100,6 @@ func pose(delta: float, vel: Vector3, body_yaw: float, on_floor: bool, frozen: b
 		else:
 			want_yaw = mv
 	_yaw = lerp_angle(_yaw, want_yaw, clampf(delta * 10.0, 0.0, 1.0))
-	rotation.y = _yaw
 
 	# Stride length grows with speed: a walk is short steps, a run is long ones.
 	if moving:
@@ -115,6 +116,13 @@ func pose(delta: float, vel: Vector3, body_yaw: float, on_floor: bool, frozen: b
 		_phase = lerp_angle(_phase, 0.0, clampf(delta * 7.0, 0.0, 1.0))
 	_blend = lerpf(_blend, 1.0 if moving else 0.0, clampf(delta * 9.0, 0.0, 1.0))
 	_air = lerpf(_air, 0.0 if on_floor else 1.0, clampf(delta * 9.0, 0.0, 1.0))
+
+	# Land from a jump and the knees take it: a quick dip, then back up.
+	if on_floor and _was_air:
+		_land = 0.22
+	_was_air = not on_floor
+	_land = maxf(_land - delta, 0.0)
+	var crouch: float = sin(PI * clampf(_land / 0.22, 0.0, 1.0))
 
 	var amp: float = clampf(0.2 + speed * 0.072, 0.2, 0.62) * _blend
 	var bend: float = clampf(0.5 + speed * 0.13, 0.5, 1.2) * _blend
@@ -133,7 +141,11 @@ func pose(delta: float, vel: Vector3, body_yaw: float, on_floor: bool, frozen: b
 		# Mid-air both legs tuck, the trailing one a little more.
 		th = lerpf(th, 0.52 - 0.22 * float(i), _air)
 		kn = lerpf(kn, -0.95 - 0.2 * float(i), _air)
-		var an: float = clampf(-(th + kn) * 0.8, -0.45, 0.5)
+		kn -= crouch * 0.55
+		# Heel first on the way down, push off the toes on the way back: a
+		# foot held flat through the whole cycle is what makes walk cycles
+		# look like a doll being slid along the floor.
+		var an: float = clampf(-(th + kn) * 0.8 + sin(p) * 0.26 * _blend, -0.5, 0.55)
 		an = lerpf(an, -0.3, _air)
 		_hip[i].rotation.x = th
 		_knee[i].rotation.x = kn
@@ -144,7 +156,10 @@ func pose(delta: float, vel: Vector3, body_yaw: float, on_floor: bool, frozen: b
 	# A spread stride is shorter than a straight leg, so the hips have to drop
 	# or the back foot hovers. This is the bob you feel when you walk.
 	_bob = lerpf(_bob, -low * (1.0 - _air), clampf(delta * 20.0, 0.0, 1.0))
-	position.y = _bob
+	# Breathing when you stand still, and the hips rolling toward whichever
+	# leg has the weight as you walk.
+	position.y = _bob + sin(_t * 0.9) * 0.006 * (1.0 - _blend)
+	rotation = Vector3(0.0, _yaw, sin(_phase) * 0.04 * _blend)
 
 	if _air > 0.5:
 		gait = "air"

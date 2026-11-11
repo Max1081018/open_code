@@ -285,7 +285,7 @@ func _build() -> void:
 		_stat_rows[key] = v
 
 	var ver := Label.new()
-	ver.text = "v" + str(ProjectSettings.get_setting("application/config/version", "0.12"))
+	ver.text = "v" + str(ProjectSettings.get_setting("application/config/version", "0.13"))
 	ver.set_anchors_preset(Control.PRESET_BOTTOM_RIGHT)
 	ver.position = Vector2(-70, -40)
 	ver.add_theme_font_size_override("font_size", 18)

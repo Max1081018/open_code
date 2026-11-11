@@ -483,3 +483,29 @@ static func music_loop() -> AudioStreamWAV:
 	for i in n:
 		s[i] = _soft(warm.run(s[i]) * 0.95)
 	return _loop(s, rate)
+
+
+## Thunder: a crack that rolls away into a long, low rumble. Built at a low
+## rate because there is nothing up high in it worth the samples.
+static func thunder() -> AudioStreamWAV:
+	var rate := RATE / 2
+	var n := int(float(rate) * 3.4)
+	var s := PackedFloat32Array()
+	s.resize(n)
+	var low := LP.new(0.05)
+	var body := LP.new(0.13)
+	var crack := HP.new(0.5)
+	var boom := Res.new(48.0, 0.9992)
+	for i in n:
+		var t := float(i) / float(rate)
+		var noise := randf() * 2.0 - 1.0
+		# the initial crack, only in the first fraction of a second
+		var snap: float = crack.run(noise) * exp(-t * 11.0) * 0.5
+		# the rumble: noise dragged through two slow filters, swelling and
+		# fading in waves as it bounces around the sky
+		var roll: float = low.run(body.run(noise))
+		var swell: float = 0.55 + 0.45 * sin(t * 2.3) * sin(t * 0.9 + 1.1)
+		var tail: float = roll * swell * exp(-t * 0.75) * 6.0
+		var deep: float = boom.run(noise * 0.02 * exp(-t * 2.0)) * 0.5
+		s[i] = _soft((snap + tail + deep) * 0.8)
+	return _from(s, rate)

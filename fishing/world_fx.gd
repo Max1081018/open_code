@@ -385,6 +385,24 @@ func try_steal(body: Node3D) -> bool:
 	return true
 
 
+## Where the diving gull is right now, or ZERO if none is on its way down.
+## The game uses this to offer you the chance to drive it off.
+func thief_dive_pos() -> Vector3:
+	return _thief_pos if _thief_state == "dive" else Vector3.ZERO
+
+
+## Scare the diving gull off empty-clawed. Returns where it was, so the game
+## can put a puff of feathers there.
+func scare_thief() -> Vector3:
+	if _thief_state != "dive":
+		return Vector3.ZERO
+	var at := _thief_pos
+	_thief_target = null
+	_thief_state = "rise"
+	_thief_t = 0.0
+	return at
+
+
 var _thief_dir := Vector3.FORWARD
 
 func _update_thief(delta: float) -> Vector3:
@@ -403,6 +421,7 @@ func _update_thief(delta: float) -> Vector3:
 	if _thief_state == "rise":
 		want = _thief_pos + (_thief_pos - gull_centre).normalized() * 30.0 + Vector3(0, 22.0, 0)
 		if _thief_t > 4.5:
+			# A gull that was driven off has no catch to make away with.
 			if _thief_target and is_instance_valid(_thief_target):
 				_thief_target.queue_free()
 			_thief_target = null

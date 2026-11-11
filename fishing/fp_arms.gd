@@ -71,6 +71,8 @@ const WEAPON_AIM := Vector3(-0.10, 1.0, -0.55) # blade up and forward, ready
 const HOLD_SHIFT := Vector3(-0.075, 0.035, 0)  # holding something: right hand clears the buttons
 var _shift := 0.0
 var _sail := 0.0                     # blend into the steering pose
+var _lag := Vector2.ZERO             # how far the hands are trailing the look
+var _look_was := Vector2.ZERO
 
 
 ## Layers one clip onto just the right arm (shoulder to fingertips) on top of
@@ -419,6 +421,19 @@ func _process(delta: float) -> void:
 	if _hit_t > 0.0:
 		var g := _hit_t * _hit_t
 		off += Vector3(sin(_t * 61.0) * 0.015, -0.05 + cos(_t * 53.0) * 0.01, 0.04) * g
+	# Hands trail a quick look and swing back: welded to the camera, they read
+	# as part of the HUD rather than as arms on the end of a body.
+	var cam3 := get_parent() as Node3D
+	if cam3:
+		var cy := cam3.global_rotation.y
+		var cp := cam3.global_rotation.x
+		if _look_was != Vector2.ZERO:
+			_lag.x = clampf(_lag.x + wrapf(cy - _look_was.x, -PI, PI) * 0.55, -0.17, 0.17)
+			_lag.y = clampf(_lag.y + (cp - _look_was.y) * 0.45, -0.13, 0.13)
+		_look_was = Vector2(cy, cp)
+	_lag = _lag.lerp(Vector2.ZERO, clampf(delta * 6.5, 0.0, 1.0))
+	off += Vector3(_lag.x * 0.11, -_lag.y * 0.09, 0.0)
+
 	var pitch := deg_to_rad(10.0 * charge * charge - 14.0 * _arc(_cast_t) + 6.0 * _arc(_hook_t))
 	if mode == "rod":
 		pitch += sin(_t * 37.0) * tension * 0.012
@@ -428,7 +443,9 @@ func _process(delta: float) -> void:
 	# view like a car's wheel instead of across your eyes.
 	_sail = move_toward(_sail, 1.0 if mode == "sail" else 0.0, delta * 3.5)
 	off += Vector3(0.0, -0.215, -0.045) * _sail
-	var rig_xf := Transform3D(Basis(Vector3.RIGHT, pitch), off) * _base
+	var rig_xf := Transform3D(
+		Basis(Vector3.RIGHT, pitch - _lag.y * 0.75) * Basis(Vector3.UP, -_lag.x * 0.75),
+		off) * _base
 	_rig.transform = _rig.transform.interpolate_with(rig_xf, clampf(delta * 20.0, 0.0, 1.0))
 
 	# Holding a small fish or a clam: only the right arm lifts and grips.
