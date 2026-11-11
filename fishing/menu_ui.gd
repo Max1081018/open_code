@@ -22,6 +22,7 @@ const RESOLUTIONS := ["Auto", "50%", "67%", "75%", "85%", "100%"]
 
 var settings := {
 	"sfx_volume": 0.8,
+	"music_vol": 0.5,
 	"sfx_enabled": true,
 	"left_handed": false,
 	"camera_sway": true,
@@ -308,6 +309,7 @@ func _build() -> void:
 
 	_group(sbody, "AUDIO")
 	_slider_row(sbody, "Sound volume", "sfx_volume", 0.0, 1.0, 0.05)
+	_slider_row(sbody, "Music", "music_vol", 0.0, 1.0, 0.05)
 	_settings_toggle(sbody, "Sound effects", "sfx_enabled")
 
 	_group(sbody, "CONTROLS")

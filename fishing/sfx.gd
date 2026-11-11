@@ -54,21 +54,39 @@ class Res:
 		return y
 
 
-static func _from(samples: PackedFloat32Array) -> AudioStreamWAV:
+static func _from(samples: PackedFloat32Array, rate := RATE) -> AudioStreamWAV:
 	var data := PackedByteArray()
 	data.resize(samples.size() * 2)
 	for i in samples.size():
 		data.encode_s16(i * 2, int(clampf(samples[i], -1.0, 1.0) * 32767.0))
 	var w := AudioStreamWAV.new()
 	w.format = AudioStreamWAV.FORMAT_16_BITS
-	w.mix_rate = RATE
+	w.mix_rate = rate
 	w.stereo = false
 	w.data = data
 	return w
 
 
-static func _loop(samples: PackedFloat32Array) -> AudioStreamWAV:
-	var w := _from(samples)
+## Crossfades the end of a loop back over its start and trims it, so the join
+## is continuous. Without this, a filter that started from silence but is still
+## ringing at the end leaves an audible tick every time round.
+static func _seam(s: PackedFloat32Array, fade := 1600) -> PackedFloat32Array:
+	var n := s.size()
+	var f: int = mini(fade, n / 4)
+	if f < 8:
+		return s
+	var out := PackedFloat32Array()
+	out.resize(n - f)
+	for i in n - f:
+		out[i] = s[i]
+	for i in f:
+		var a := float(i) / float(f)
+		out[i] = s[i] * a + s[n - f + i] * (1.0 - a)
+	return out
+
+
+static func _loop(samples: PackedFloat32Array, rate := RATE) -> AudioStreamWAV:
+	var w := _from(samples, rate)
 	w.loop_mode = AudioStreamWAV.LOOP_FORWARD
 	w.loop_begin = 0
 	w.loop_end = samples.size()
@@ -332,7 +350,7 @@ static func surf_loop() -> AudioStreamWAV:
 		var body := mid.run(noise) * (0.5 + swell)
 		var hiss := foam_lp.run(foam.run(noise)) * swell * swell * 0.5
 		s[i] = _soft((low * 0.5 + body * 0.6 + hiss * 0.5) * 0.5)
-	return _loop(s)
+	return _loop(_seam(s))
 
 
 ## Wind through the palms: a soft hiss that breathes in and out.
@@ -349,7 +367,7 @@ static func wind_loop() -> AudioStreamWAV:
 		var noise := randf() * 2.0 - 1.0
 		var air := lp2.run(hp.run(noise)) * 0.45 + lp.run(noise) * 0.9
 		s[i] = _soft(air * gust * 0.4)
-	return _loop(s)
+	return _loop(_seam(s))
 
 
 ## Rain on the water and the boards: a steady hiss with fatter drops on top.
@@ -367,7 +385,7 @@ static func rain_loop() -> AudioStreamWAV:
 		var drop := 1.0 if randf() < 0.0016 else 0.0
 		var patter := drop_lp.run(drop * (randf() * 2.0 - 1.0) * 6.0)
 		s[i] = _soft((hiss * 0.5 + patter * 0.5) * 0.42)
-	return _loop(s)
+	return _loop(_seam(s))
 
 
 ## A small outboard motor idling: a low chug with a rough edge, built so the
@@ -389,4 +407,79 @@ static func engine_loop() -> AudioStreamWAV:
 		var grit := lp.run(randf() * 2.0 - 1.0) * 0.25 * fire
 		var wobble := rough.run(randf() * 2.0 - 1.0) * 0.1
 		s[i] = _soft((body.run(fire * 0.6 + grit) * 0.5 + wobble) * 0.5)
-	return _loop(s)
+	return _loop(_seam(s))
+
+
+# --- music --------------------------------------------------------------------
+
+## A slow, warm loop to sit under the surf: a plucked arpeggio over a soft pad,
+## four friendly chords in F, no drums and no melody to get stuck in your head.
+## Everything wraps around the loop point so there's no seam.
+static func music_loop() -> AudioStreamWAV:
+	# Nothing here goes above about 1.6 kHz, so it is built at half rate: the
+	# same loop for half the work, which matters because this is generated on
+	# the player's phone while the game starts.
+	var rate := RATE / 2
+	var bar := 2.6                                   # seconds per chord
+	var n := int(float(rate) * bar * 4.0)
+	var s := PackedFloat32Array()
+	s.resize(n)
+	# F - C - Dm - Bb, the friendliest four chords there are.
+	var chords := [
+		[174.61, 220.00, 261.63],
+		[130.81, 164.81, 196.00],
+		[146.83, 174.61, 220.00],
+		[116.54, 174.61, 233.08]]
+	var order := [0, 1, 2, 1, 0, 2]
+
+	# One ringing note per pitch, rendered once and then stamped wherever it
+	# is needed - far cheaper than running the oscillators 24 times over.
+	var ring := int(float(rate) * 1.6)
+	var voices := {}
+	for c in 4:
+		for step in order.size():
+			var f: float = float((chords[c] as Array)[int(order[step])])
+			if step == 2 or step == 5:
+				f *= 2.0
+			var key := int(round(f * 100.0))
+			if voices.has(key):
+				continue
+			var v := PackedFloat32Array()
+			v.resize(ring)
+			for i in ring:
+				var t := float(i) / float(rate)
+				var env: float = exp(-t * 2.4) * (1.0 - exp(-t * 150.0))
+				v[i] = (sin(TAU * f * t) * 0.6 + sin(TAU * f * 2.0 * t) * 0.17
+					+ sin(TAU * f * 3.01 * t + 0.4) * 0.06) * env * 0.3
+			voices[key] = v
+
+	for c in 4:
+		var notes: Array = chords[c]
+		var base := int(float(rate) * bar * float(c))
+		# Plucks: a little ukulele figure, each note ringing into the next and
+		# wrapping round the loop point so there is no seam.
+		for step in order.size():
+			var f: float = float(notes[int(order[step])])
+			if step == 2 or step == 5:
+				f *= 2.0
+			var v: PackedFloat32Array = voices[int(round(f * 100.0))]
+			var at := base + int(float(rate) * 0.42 * float(step))
+			for i in ring:
+				s[(at + i) % n] += v[i]
+		# Pad: the same chord an octave down, swelling in and out so the chord
+		# change never clicks.
+		var padn := int(float(rate) * bar)
+		for i in padn:
+			var k := base + i
+			if k >= n:
+				break
+			var tt := float(k) / float(rate)
+			var swell: float = sin(PI * float(i) / float(padn))
+			var pad := 0.0
+			for f2 in notes:
+				pad += sin(TAU * (float(f2) * 0.5) * tt)
+			s[k] += pad * 0.05 * swell * swell
+	var warm := LP.new(0.5)
+	for i in n:
+		s[i] = _soft(warm.run(s[i]) * 0.95)
+	return _loop(s, rate)

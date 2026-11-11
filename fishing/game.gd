@@ -1535,13 +1535,13 @@ func _build_sounds() -> void:
 	# follows where you are and what the weather is doing. They take a moment
 	# to generate, so they are built one per frame after the game is up rather
 	# than holding the first screen.
-	for key in ["surf", "wind", "rain", "engine"]:
+	for key in ["surf", "wind", "rain", "engine", "music"]:
 		var p := AudioStreamPlayer.new()
 		p.volume_db = -60.0
 		add_child(p)
 		players[key] = p
 	_surf = players["surf"]
-	_amb_todo = ["surf", "wind", "rain", "engine"]
+	_amb_todo = ["surf", "wind", "rain", "engine", "music"]
 
 
 ## One ambience loop per frame until they are all made.
@@ -1555,8 +1555,21 @@ func _build_ambience_step() -> void:
 		"wind": p.stream = Sfx.wind_loop()
 		"rain": p.stream = Sfx.rain_loop()
 		"engine": p.stream = Sfx.engine_loop()
+		"music":
+			p.stream = Sfx.music_loop()
+			_apply_music_volume()
 	if key != "engine":
 		p.play()
+
+
+## The background loop sits well under everything else; the slider in Settings
+## runs from off to "clearly there but still background".
+func _apply_music_volume() -> void:
+	if not players.has("music"):
+		return
+	var v: float = float(menu_ui.settings.get("music_vol", 0.5)) if menu_ui else 0.5
+	var p: AudioStreamPlayer = players["music"]
+	p.volume_db = -60.0 if v <= 0.01 else lerpf(-32.0, -13.0, clampf(v, 0.0, 1.0))
 
 
 func _play(key: String) -> void:
@@ -3661,6 +3674,7 @@ func _apply_graphics() -> void:
 	_apply_prop_range()
 	if shop_lamp:
 		shop_lamp.omni_range = 5.0 if q == 0 else 7.5
+	_apply_music_volume()
 
 
 func _physics_process(delta: float) -> void:
