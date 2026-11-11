@@ -6,10 +6,11 @@ config_version=5
 [application]
 
 config/name="Lazy Lake"
+config/version="0.10"
 config/description="Cast off a little island, wait for a bite, and reel in goofy low-poly fish."
 run/main_scene="res://game.tscn"
 config/features=PackedStringArray("4.3", "GL Compatibility")
-config/icon="res://icon.svg"
+config/icon="res://assets/icon/icon.png"
 
 [display]
 

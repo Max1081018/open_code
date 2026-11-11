@@ -115,6 +115,7 @@ var render_view: RenderView
 var icons: IconBaker
 var quality := 1                 # 0 Low, 1 Medium, 2 High, 3 Ultra
 var _surf: AudioStreamPlayer
+var _amb_todo: Array = []
 var _step_dist := 0.0
 var _gull_t := 8.0
 var looked_fish: RigidBody3D = null
@@ -170,7 +171,7 @@ const CATCH_SETS := {
 }
 
 # Island 1's boss: only bites out at sea, from the boat, with the Boss Reel.
-const NEW_SPECIES_BONUS := 15
+const NEW_SPECIES_BONUS := 25
 const BOSS := {"name": "the Baby Kraken", "set": "mythic", "node": "BabyKraken",
 	"min": 18.0, "max": 26.0, "junk": false, "boss": true,
 	"rarity": "Legendary", "atk": 30, "spd": 1.6, "tier": 0}
@@ -181,23 +182,23 @@ const BOSS_VALUE := 650
 # fights and how often it flops, tier = reel level needed before it can bite.
 var fish_table := [
 	{"name": "Minnow", "set": "rarity", "node": "Fish_Minnow", "min": 0.05, "max": 0.30,
-	 "rarity": "Common", "price": 30, "atk": 3, "spd": 0.8, "tier": 0},
+	 "rarity": "Common", "price": 34, "atk": 3, "spd": 0.8, "tier": 0},
 	{"name": "Perch", "set": "rarity", "node": "Fish_Perch", "min": 0.25, "max": 1.10,
-	 "rarity": "Common", "price": 14, "atk": 5, "spd": 0.9, "tier": 0},
+	 "rarity": "Common", "price": 18, "atk": 5, "spd": 0.9, "tier": 0},
 	{"name": "Sunfish", "set": "river", "node": "Fish_Sunfish", "min": 0.30, "max": 1.40,
-	 "rarity": "Common", "price": 13, "atk": 5, "spd": 0.85, "tier": 0},
+	 "rarity": "Common", "price": 17, "atk": 5, "spd": 0.85, "tier": 0},
 	{"name": "Trout", "set": "rarity", "node": "Fish_Trout", "min": 0.50, "max": 2.20,
-	 "rarity": "Uncommon", "price": 17, "atk": 8, "spd": 1.1, "tier": 0},
+	 "rarity": "Uncommon", "price": 22, "atk": 8, "spd": 1.1, "tier": 0},
 	{"name": "Bass", "set": "river", "node": "Fish_Bass", "min": 0.80, "max": 3.20,
-	 "rarity": "Uncommon", "price": 16, "atk": 10, "spd": 1.15, "tier": 0},
+	 "rarity": "Uncommon", "price": 20, "atk": 10, "spd": 1.15, "tier": 0},
 	{"name": "Carp", "set": "river", "node": "Fish_Carp", "min": 1.20, "max": 4.50,
-	 "rarity": "Rare", "price": 19, "atk": 13, "spd": 1.2, "tier": 1},
+	 "rarity": "Rare", "price": 24, "atk": 13, "spd": 1.2, "tier": 1},
 	{"name": "Catfish", "set": "rarity", "node": "Fish_Catfish", "min": 1.80, "max": 6.00,
-	 "rarity": "Rare", "price": 18, "atk": 15, "spd": 1.3, "tier": 1},
+	 "rarity": "Rare", "price": 22, "atk": 15, "spd": 1.3, "tier": 1},
 	{"name": "Pike", "set": "river", "node": "Fish_Pike", "min": 2.00, "max": 7.50,
-	 "rarity": "Epic", "price": 26, "atk": 21, "spd": 1.55, "tier": 2},
+	 "rarity": "Epic", "price": 30, "atk": 21, "spd": 1.55, "tier": 2},
 	{"name": "Golden Koi", "set": "rarity", "node": "Fish_Golden", "min": 3.00, "max": 9.00,
-	 "rarity": "Legendary", "price": 62, "atk": 28, "spd": 1.8, "tier": 3},
+	 "rarity": "Legendary", "price": 40, "atk": 28, "spd": 1.8, "tier": 3},
 	{"name": "an Old Boot", "set": "junk", "node": "Boot_Old", "min": 0.60, "max": 1.20,
 	 "rarity": "Common", "junk": true, "flat": 3, "atk": 0, "spd": 0.5, "tier": 0},
 	{"name": "a Rusty Tin", "set": "junk", "node": "TinCan_Rusty", "min": 0.20, "max": 0.50,
@@ -207,7 +208,7 @@ var fish_table := [
 	{"name": "a Message in a Bottle", "set": "junk", "node": "Bottle_Message", "min": 0.30, "max": 0.60,
 	 "rarity": "Uncommon", "junk": true, "flat": 25, "atk": 0, "spd": 0.4, "tier": 0},
 	{"name": "a Sunken Chest", "set": "junk", "node": "Chest_Barnacle", "min": 2.50, "max": 5.00,
-	 "rarity": "Rare", "junk": true, "treasure": true, "flat": 120, "atk": 0, "spd": 1.0, "tier": 1},
+	 "rarity": "Rare", "junk": true, "treasure": true, "flat": 140, "atk": 0, "spd": 1.0, "tier": 1},
 ]
 const RARITY_WEIGHT := {"Common": 58.0, "Uncommon": 27.0, "Rare": 10.0, "Epic": 4.0, "Legendary": 1.0}
 # Each reel level makes the rarer bands bite more often.
@@ -257,13 +258,13 @@ const SHOP_STOCK := [
 	 "desc": "Cast it anywhere there's water.", "price": 25, "power": 0,
 	 "model": "res://assets/models/fishing/tiered-fishing-rods.glb", "node": "FishingRod_Bamboo"},
 	{"id": "dagger_A", "name": "Gutting Knife", "rarity": "Common",
-	 "desc": "A stubby blade for cleaning your catch.", "price": 40, "power": 1},
-	{"id": "dagger_B", "name": "Fisherman's Dirk", "rarity": "Common",
-	 "desc": "Holds an edge in salt air. Just about.", "price": 85, "power": 1},
+	 "desc": "A stubby blade for cleaning your catch.", "price": 45, "power": 1},
 	{"id": "fistweapon_A", "name": "Scaling Grips", "rarity": "Common",
-	 "desc": "Knuckle guards for wrestling a slippery one.", "price": 130, "power": 2},
-	{"id": "axe_A", "name": "Bait Hatchet", "rarity": "Uncommon",
-	 "desc": "Chops bait. Chops most things, really.", "price": 210, "power": 2},
+	 "desc": "Knuckle guards for wrestling a slippery one.", "price": 110, "power": 2},
+	{"id": "dagger_B", "name": "Fisherman's Dirk", "rarity": "Uncommon",
+	 "desc": "Long, sharp, and it keeps its edge in salt air.", "price": 190, "power": 3},
+	{"id": "axe_A", "name": "Bait Hatchet", "rarity": "Rare",
+	 "desc": "Chops bait. Chops most things, really.", "price": 320, "power": 4},
 	{"id": "boat_key", "name": "Boat Key", "rarity": "Uncommon", "kind": "gear",
 	 "desc": "Starts the motorboat at the jetty.", "price": 120, "power": 0, "proc": "key"},
 	{"id": "sea_map", "name": "Sea Chart", "rarity": "Uncommon", "kind": "gear",
@@ -780,6 +781,9 @@ func _buy_upgrade(key: String) -> void:
 		return
 	coins -= cost
 	upgrades[key] += 1
+	if key == "rod":
+		_build_rod_visual()
+		_flash("New rod: %s" % rod_tier_name())
 	_play("caught")
 	_save_game()
 	_refresh_shop()
@@ -809,6 +813,7 @@ var test_at := Vector3.INF
 var test_pitch := -99.0
 var test_quality := ""
 var test_res := ""
+var test_rod_tier := -1
 var test_fresh := false          # autotest: ignore the save and don't write one
 var _tphase := 0
 var _tnext := 0
@@ -824,6 +829,8 @@ func _ready() -> void:
 		randomize()
 	if not test_fresh:
 		_load_save()
+	if test_rod_tier >= 0:
+		upgrades["rod"] = test_rod_tier
 	_build_world()
 	_build_player_view()
 	_build_sounds()
@@ -937,6 +944,17 @@ func _ready() -> void:
 				_sync_hotbar()
 				cam_yaw = PI
 				cam_pitch = -0.1
+			"gull":
+				_start_play()
+				sel = -1
+				_apply_held()
+				player.position = Vector3(0, DECK_Y + 0.3, 12.0)
+				cam_yaw = PI
+				var gf: Dictionary = fish_table[4]      # Bass
+				_spawn_loose_fish({"name": gf["name"], "weight": 2.0, "value": 40, "rarity": gf["rarity"],
+					"set": gf["set"], "node": gf["node"], "alive": false, "hp": 0, "hpmax": 3,
+					"atk": gf["atk"], "spd": gf["spd"]}, Vector3(0, DECK_Y + 0.5, 10.0), 0.0)
+				_steal_t = 1.5
 			"clams":
 				coins = 0
 				_start_play()
@@ -992,6 +1010,7 @@ func _parse_args() -> void:
 		elif a.begins_with("--pitch="): test_pitch = float(a.get_slice("=", 1))
 		elif a.begins_with("--quality="): test_quality = a.get_slice("=", 1)
 		elif a.begins_with("--res="): test_res = a.get_slice("=", 1)
+		elif a.begins_with("--rodtier="): test_rod_tier = int(a.get_slice("=", 1))
 
 
 # --- Wave height (mirror of the shader) --------------------------------------
@@ -1126,6 +1145,8 @@ func _build_world() -> void:
 	fx = WorldFX.new()
 	fx.gull_centre = HOME
 	fx.wave_fn = wave_height
+	fx.steal_started.connect(_on_gull_dive)
+	fx.stole.connect(_on_gull_stole)
 	fx.shadow_area = Rect2(-15.0, -20.0, 30.0, 21.0)    # open water off the jetty tip
 	add_child(fx)
 
@@ -1381,36 +1402,12 @@ func _build_player_view() -> void:
 	camera.rotation_degrees = Vector3(-10, 0, 0)  # look slightly down at the water
 	add_child(camera)
 
-	# First-person rod, held in the bottom-right, angled out over the water.
+	# First-person rod: a real model, swapped as your Reel upgrade improves.
 	rod = Node3D.new()
 	camera.add_child(rod)
-	rod.position = Vector3(0.40, -0.36, -0.70)
-	rod.rotation_degrees = Vector3(28, -8, -10)
-	var pole := MeshInstance3D.new()
-	var pm := CylinderMesh.new()
-	pm.top_radius = 0.012
-	pm.bottom_radius = 0.045
-	pm.height = 2.6
-	pm.material = _mat(Color(0.15, 0.12, 0.12), 0.5)
-	pole.mesh = pm
-	pole.position = Vector3(0, 0, -1.3)
-	pole.rotation_degrees = Vector3(90, 0, 0)  # lay it along -Z
-	pole.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF  # no weird line on the water
-	rod.add_child(pole)
-	# Handle grip.
-	var grip := MeshInstance3D.new()
-	var gm := CylinderMesh.new()
-	gm.top_radius = 0.03
-	gm.bottom_radius = 0.034
-	gm.height = 0.4
-	gm.material = _mat(Color(0.3, 0.2, 0.1), 0.7)
-	grip.mesh = gm
-	grip.rotation_degrees = Vector3(90, 0, 0)
-	grip.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
-	rod.add_child(grip)
 	rod_tip = Marker3D.new()
-	rod_tip.position = Vector3(0, 0, -2.6)
 	rod.add_child(rod_tip)
+	_build_rod_visual()
 
 	# Paddle used to whack the catch on the deck (hidden until needed).
 	paddle = Node3D.new()
@@ -1465,7 +1462,7 @@ func _build_sounds() -> void:
 		"click": Sfx.click(), "caught": Sfx.caught(), "snap": Sfx.snap(),
 		"bonk": Sfx.bonk(), "hurt": Sfx.hurt(), "coins": Sfx.coins(),
 		"step_soft": Sfx.step_soft(), "step_wood": Sfx.step_wood(), "gull": Sfx.gull(),
-		"jump": Sfx.whoosh(),
+		"jump": Sfx.whoosh(), "pickup": Sfx.pickup(),
 	}
 	for key in streams:
 		var p := AudioStreamPlayer.new()
@@ -1477,12 +1474,31 @@ func _build_sounds() -> void:
 	players["gull"].volume_db = -10.0
 	players["jump"].pitch_scale = 1.6
 	players["jump"].volume_db = -8.0
-	# The sea, always there in the background.
-	_surf = AudioStreamPlayer.new()
-	_surf.stream = Sfx.surf_loop()
-	_surf.volume_db = -16.0
-	_surf.autoplay = true
-	add_child(_surf)
+	players["pickup"].volume_db = -7.0
+	# Ambience: the sea, the wind and the rain, each a long loop whose volume
+	# follows where you are and what the weather is doing. They take a moment
+	# to generate, so they are built one per frame after the game is up rather
+	# than holding the first screen.
+	for key in ["surf", "wind", "rain"]:
+		var p := AudioStreamPlayer.new()
+		p.volume_db = -60.0
+		add_child(p)
+		players[key] = p
+	_surf = players["surf"]
+	_amb_todo = ["surf", "wind", "rain"]
+
+
+## One ambience loop per frame until they are all made.
+func _build_ambience_step() -> void:
+	if _amb_todo.is_empty():
+		return
+	var key: String = _amb_todo.pop_front()
+	var p: AudioStreamPlayer = players[key]
+	match key:
+		"surf": p.stream = Sfx.surf_loop()
+		"wind": p.stream = Sfx.wind_loop()
+		"rain": p.stream = Sfx.rain_loop()
+	p.play()
 
 
 func _play(key: String) -> void:
@@ -1557,6 +1573,9 @@ func _process(delta: float) -> void:
 	_update_weather(delta)
 	_update_hands(delta)
 	_update_clams(delta)
+	_update_thieves(delta)
+	if not _amb_todo.is_empty():
+		_build_ambience_step()
 	if touch:
 		touch.coins = coins
 
@@ -2043,7 +2062,7 @@ func _collect_aabb(node: Node, xform: Transform3D, acc: Array[AABB]) -> void:
 	var t := xform
 	if node is Node3D:
 		t = xform * (node as Node3D).transform
-	if node is MeshInstance3D and (node as MeshInstance3D).mesh:
+	if node is MeshInstance3D and (node as MeshInstance3D).mesh and (node as Node3D).visible:
 		acc.append(t * (node as MeshInstance3D).mesh.get_aabb())
 	for c in node.get_children():
 		_collect_aabb(c, t, acc)
@@ -2514,6 +2533,85 @@ func _respawn() -> void:
 	_refresh_held_view()
 
 
+# Rods you fish with, one per Reel upgrade level. Each is a real model from the
+# tiered-rod pack: longer, lighter and prettier as you go up.
+const ROD_TIERS := [
+	{"node": "FishingRod_Bamboo", "name": "Bamboo Rod", "len": 1.5},
+	{"node": "FishingRod_Wood", "name": "Lakewood Rod", "len": 1.62},
+	{"node": "FishingRod_Carbon", "name": "Carbon Rod", "len": 1.74},
+	{"node": "FishingRod_Gold", "name": "Gilded Rod", "len": 1.86},
+	{"node": "FishingRod_Crystal", "name": "Crystal Rod", "len": 1.98},
+]
+const ROD_PACK := "res://assets/models/fishing/tiered-fishing-rods.glb"
+var _rod_built := -1
+
+
+func rod_tier_name() -> String:
+	return str(ROD_TIERS[clampi(reel_tier(), 0, ROD_TIERS.size() - 1)]["name"])
+
+
+## Builds (or swaps) the rod you hold: the model for your Reel level, with its
+## own line, bobber and hook hidden (the game draws those), and its crank arm
+## on a pivot so it really turns when you reel.
+func _build_rod_visual() -> void:
+	var tier := clampi(reel_tier(), 0, ROD_TIERS.size() - 1)
+	if tier == _rod_built:
+		return
+	_rod_built = tier
+	for c in rod.get_children():
+		if c != rod_tip:
+			c.queue_free()
+	var info: Dictionary = ROD_TIERS[tier]
+	var part := _pack_part(ROD_PACK, str(info["node"]))
+	if part == null:
+		return
+	rod.add_child(part)
+	# The model carries its own slack line, float and hook: hide them.
+	var tip_x := 0.0
+	var hub := Vector3.ZERO
+	var crank_bits: Array = []
+	for mi in part.find_children("*", "MeshInstance3D", true, false):
+		var nm := str(mi.name)
+		if nm.ends_with("_Line") or nm.contains("Bobber") or nm.ends_with("_Hook") \
+				or nm.ends_with("_Leader") or nm.ends_with("_ReelLine"):
+			mi.visible = false
+			continue
+		mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+		var c: Vector3 = (mi.transform * mi.mesh.get_aabb()).get_center()
+		if nm.ends_with("_TipCap"):
+			tip_x = c.x
+		elif nm.ends_with("_ReelHub"):
+			hub = c
+		elif nm.ends_with("_ReelCrankArm") or nm.ends_with("_ReelKnob"):
+			crank_bits.append(mi)
+	# Crank arm and knob turn together about the hub.
+	if hub != Vector3.ZERO and not crank_bits.is_empty():
+		var pivot := Node3D.new()
+		pivot.position = hub
+		part.add_child(pivot)
+		for mi in crank_bits:
+			var keep: Transform3D = (mi as Node3D).transform
+			(mi as Node3D).get_parent().remove_child(mi)
+			pivot.add_child(mi)
+			(mi as Node3D).transform = Transform3D(keep.basis, keep.origin - hub)
+		if hands:
+			hands.set_crank(pivot)
+	if autotest:
+		print("AUTOTEST rod tier=%d %s crank=%d tip=%.2f" % [tier, info["node"], crank_bits.size(), tip_x])
+	elif hands:
+		hands.set_crank(null)
+	# Model +X is the pole; turn it to run along -Z, scale to the tier's length,
+	# and sit the grip in the hand.
+	var box := _local_aabb(part)
+	var scl: float = float(info["len"]) / maxf(box.size.x, 0.01)
+	var grip_x := 0.85
+	# ...then roll it so the reel hangs under the pole instead of out sideways.
+	var b := Basis(Vector3(0, 0, -1), PI * 0.5) * Basis(Vector3.UP, PI * 0.5)
+	part.transform = Transform3D(b.scaled(Vector3.ONE * scl),
+		Vector3(0.0, -0.26 * scl, grip_x * scl))
+	rod_tip.position = Vector3(0.0, -0.26 * scl, (grip_x - maxf(tip_x, 1.0)) * scl)
+
+
 ## Grass tufts and wildflowers scattered over the green part of the home
 ## island, drawn as two MultiMeshes with a wind shader. Kept off the shop and
 ## market pads and the path up from the jetty.
@@ -2965,6 +3063,11 @@ func _update_weather(delta: float) -> void:
 	rain.emitting = _rain_amt > 0.12
 	rain.speed_scale = 0.8 + _rain_amt * 0.4
 	rain.global_position = camera.global_position + Vector3(0, 11, 0)
+	if players.has("wind") and players["wind"].stream:
+		var w: float = clampf((float(_w["wind"]) - 0.6) / 1.8, 0.0, 1.0)
+		players["wind"].volume_db = lerpf(-60.0, -19.0, w)
+	if players.has("rain") and players["rain"].stream:
+		players["rain"].volume_db = lerpf(-60.0, -13.0, clampf(_rain_amt * 1.2, 0.0, 1.0))
 	if sun_light:
 		sun_light.light_energy = lerpf(1.02, 0.62, over)
 	if world_env:
@@ -3091,6 +3194,9 @@ func _apply_settings() -> void:
 		touch.hud_scale = float(st.get("hud_scale", 1.0))
 		touch.hud_opacity = float(st.get("hud_opacity", 1.0))
 		touch.fixed_joystick = bool(st.get("fixed_joystick", false))
+		touch.auto_run = bool(st.get("auto_run", true))
+		if touch.auto_run:
+			touch.sprint = false
 		touch.apply_layout()
 	hud.hud_scale = float(st.get("hud_scale", 1.0))
 	hud.hud_opacity = float(st.get("hud_opacity", 1.0))
@@ -3612,9 +3718,9 @@ func _grab(b: RigidBody3D) -> void:
 	_sync_hotbar()
 	if hands:
 		hands.play_pickup()
-	players["whoosh"].pitch_scale = 1.3
-	_play("whoosh")
-	players["whoosh"].pitch_scale = 1.0
+	players["pickup"].pitch_scale = 0.85
+	_play("pickup")
+	players["pickup"].pitch_scale = 1.0
 	_save_game()
 
 
@@ -3689,6 +3795,11 @@ func _update_ambience(delta: float, surface: float, depth: float) -> void:
 			_play(k)
 			if hands:
 				hands.play_land()
+			if fx:
+				if depth > 0.05:
+					fx.splash(Vector3(pp.x, surface, pp.z), 1.6)
+				elif not wood:
+					fx.dust(pp + Vector3(0, 0.05, 0), clampf(_air_t * 1.6, 0.6, 1.6))
 		_air_t = 0.0
 	var v := Vector2(player.velocity.x, player.velocity.z).length()
 	if player.is_on_floor() and v > 0.6:
@@ -3946,6 +4057,66 @@ func _safe_dir(p: Vector3) -> Vector3:
 		to = HOME - p
 	to.y = 0
 	return to.normalized() if to.length() > 0.05 else Vector3.ZERO
+
+
+# --- Seagull thieves ----------------------------------------------------------
+# Leave a knocked-out catch lying on the island and a gull will come down for
+# it. You get a squawk and a couple of seconds' warning, so grabbing it in time
+# is on you.
+const STEAL_LOOK := 9.0        # a gull only bothers with a catch this near the island
+var _steal_t := 25.0
+
+func _update_thieves(delta: float) -> void:
+	if fx == null or play_mode != "explore" or not fx.can_steal():
+		return
+	_steal_t -= delta
+	if _steal_t > 0.0:
+		return
+	_steal_t = randf_range(22.0, 40.0)
+	# Only dead catches lying in the open, not ones on you or on the counter.
+	var best: RigidBody3D = null
+	for b in loose_fish:
+		if not is_instance_valid(b) or b == holding:
+			continue
+		var d: Dictionary = b.get_meta("fish")
+		if d.get("alive", false) or d.get("boss", false):
+			continue
+		if b.global_position.y < wave_height(b.global_position.x, b.global_position.z) + 0.1:
+			continue
+		if _hdist(b.global_position, Vector3(MARKET_POS.x, 0, MARKET_POS.z)) < 3.0:
+			continue
+		if b.global_position.distance_to(player.global_position) > 26.0:
+			continue
+		best = b
+		break
+	if best:
+		fx.try_steal(best)
+
+
+func _on_gull_dive(pos: Vector3) -> void:
+	players["gull"].pitch_scale = randf_range(1.05, 1.2)
+	_play("gull")
+	if player and pos.distance_to(player.global_position) < 30.0:
+		_flash("A seagull is going for your catch!")
+
+
+func _on_gull_stole(body: Node3D) -> void:
+	var rb := body as RigidBody3D
+	if rb == null:
+		return
+	var d: Dictionary = rb.get_meta("fish") if rb.has_meta("fish") else {}
+	if rb == looked_fish:
+		looked_fish = null
+	loose_fish.erase(rb)
+	rb.freeze = true
+	rb.collision_layer = 0
+	rb.collision_mask = 0
+	players["gull"].pitch_scale = 0.92
+	_play("gull")
+	if fx:
+		fx.hit_burst(rb.global_position + Vector3(0, 0.2, 0), false)
+	_flash("The seagull made off with your %s!" % _nice_name(str(d.get("name", "catch"))))
+	_save_game()
 
 
 ## Punch (or chop) a live fish. The blow lands with the swing.
@@ -4214,8 +4385,7 @@ func _pick_clam(c: Dictionary) -> void:
 	(c["body"] as StaticBody3D).collision_layer = 0
 	c["t"] = randf_range(70.0, 130.0) if not c.get("dropped", false) else -1.0
 	looked_clam = {}
-	players["click"].pitch_scale = 1.8
-	_play("click")
+	_play("pickup")
 	var n := 0
 	for it in inv:
 		if str(it.get("id", "")) == "clam":
@@ -4648,6 +4818,23 @@ func _autotest(_delta: float) -> void:
 			_test_shot("_%d_%s" % [k, held_id() if held_id() != "" else "bare"])
 			print("AUTOTEST held slot=%d id=%s hands=%s prompt='%s' secondary='%s'" % [sel, held_id(), hands.mode, touch.prompt, touch.secondary])
 		if k > SLOTS + 1:
+			get_tree().quit()
+		return
+
+	# A gull should spot the catch on the jetty, dive, and carry it off.
+	if start_screen == "gull":
+		if frame % 60 == 0:
+			print("AUTOTEST gull f=%d loose=%d can_steal=%s" % [frame, loose_fish.size(), fx.can_steal()])
+		if not fx.can_steal() and not _flop_seen:
+			_flop_seen = true
+			print("AUTOTEST gull diving at f=%d" % frame)
+			_test_shot("_dive")
+		if _flop_seen and loose_fish.is_empty():
+			print("AUTOTEST gull stole it at f=%d" % frame)
+			_test_shot()
+			get_tree().quit()
+		if frame > 900:
+			print("AUTOTEST gull TIMEOUT loose=%d can_steal=%s" % [loose_fish.size(), fx.can_steal()])
 			get_tree().quit()
 		return
 

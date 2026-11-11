@@ -59,7 +59,6 @@ var _hit_t := 0.0
 var _swap_t := 0.0
 var _land_t := 0.0
 var _crank := 0.0
-var _reel: Node3D
 var _crank_arm: Node3D
 var _rod_mount: Node3D
 var _aim: GripAim
@@ -67,7 +66,6 @@ var _layer: ArmLayer
 var _tips: Array = []               # thumb and index fingertip attachments
 var _hand_l: BoneAttachment3D
 var _grip_l: Node3D
-const ROD_SCALE := 0.62
 const ROD_AIM := Vector3(0.02, 0.50, -1.0)    # player view: forward and up
 const WEAPON_AIM := Vector3(-0.10, 1.0, -0.55) # blade up and forward, ready
 const HOLD_SHIFT := Vector3(-0.075, 0.035, 0)  # holding something: right hand clears the buttons
@@ -338,62 +336,17 @@ func busy() -> bool:
 
 func attach_reel(r: Node3D) -> void:
 	rod = r
-	# Into the fist: rod -Z (its pole) along the grip's +Y, reel hanging below.
+	# Into the fist: the rod's -Z (its pole) runs along the grip's +Y.
 	if r.get_parent():
 		r.get_parent().remove_child(r)
 	_rod_mount.add_child(r)
-	r.transform = Transform3D(Basis(Vector3.RIGHT, PI * 0.5) * Basis.IDENTITY.scaled(Vector3.ONE * ROD_SCALE),
-		Vector3(0, 0, 0))
-	_reel = Node3D.new()
-	_reel.position = Vector3(0, -0.075, -0.16)
-	r.add_child(_reel)
-	var m := StandardMaterial3D.new()
-	m.albedo_color = Color(0.78, 0.80, 0.84)
-	m.metallic = 0.6
-	m.roughness = 0.35
-	var body := MeshInstance3D.new()
-	var cm := CylinderMesh.new()
-	cm.top_radius = 0.045
-	cm.bottom_radius = 0.045
-	cm.height = 0.05
-	cm.radial_segments = 14
-	cm.rings = 1
-	cm.material = m
-	body.mesh = cm
-	body.rotation_degrees = Vector3(0, 0, 90)
-	body.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
-	_reel.add_child(body)
-	var foot := MeshInstance3D.new()
-	var fb := BoxMesh.new()
-	fb.size = Vector3(0.016, 0.06, 0.03)
-	fb.material = m
-	foot.mesh = fb
-	foot.position = Vector3(0, 0.04, 0)
-	_reel.add_child(foot)
-	_crank_arm = Node3D.new()
-	_crank_arm.position = Vector3(-0.032, 0, 0)
-	_reel.add_child(_crank_arm)
-	var arm := MeshInstance3D.new()
-	var ab := BoxMesh.new()
-	ab.size = Vector3(0.008, 0.012, 0.075)
-	ab.material = m
-	arm.mesh = ab
-	arm.position = Vector3(0, 0, 0.032)
-	_crank_arm.add_child(arm)
-	var knob := MeshInstance3D.new()
-	var kb := CylinderMesh.new()
-	kb.top_radius = 0.011
-	kb.bottom_radius = 0.011
-	kb.height = 0.03
-	kb.radial_segments = 8
-	kb.rings = 1
-	var km := StandardMaterial3D.new()
-	km.albedo_color = Color(0.14, 0.12, 0.12)
-	kb.material = km
-	knob.mesh = kb
-	knob.rotation_degrees = Vector3(0, 0, 90)
-	knob.position = Vector3(-0.016, 0, 0.066)
-	_crank_arm.add_child(knob)
+	r.transform = Transform3D(Basis(Vector3.RIGHT, PI * 0.5), Vector3.ZERO)
+
+
+## The rod model's own reel crank, spun on every reel tap.
+func set_crank(pivot: Node3D) -> void:
+	_crank_arm = pivot
+	_crank = 0.0
 
 
 ## Puts the weapon model holder into the right fist (bone-attached, so it
@@ -507,8 +460,8 @@ func _place_rod(delta: float) -> void:
 		return
 	if _reel_t > 0.0:
 		_crank -= delta * 16.0
-	if _crank_arm:
-		_crank_arm.rotation.x = _crank
+	if _crank_arm and is_instance_valid(_crank_arm):
+		_crank_arm.rotation.y = _crank
 
 
 ## A fish hangs by its tail from the right fist; a clam sits in it.

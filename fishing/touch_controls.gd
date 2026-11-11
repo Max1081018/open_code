@@ -27,7 +27,9 @@ const LOOK_SENS := 0.0048
 
 var move := Vector2.ZERO       # -1..1, screen space
 var look := Vector2.ZERO       # consumed each frame by the camera
-var sprint := false            # RUN toggle
+var sprint := false            # running (auto from the stick, or the RUN toggle)
+var auto_run := true           # push the stick nearly all the way to run
+const AUTO_RUN_AT := 0.86
 var prompt := ""               # main action label; empty hides it
 var secondary := ""            # second action (e.g. DROP / THROW); empty hides it
 var look_info := ""            # name of whatever the crosshair is on
@@ -249,7 +251,7 @@ func _input(event: InputEvent) -> void:
 			if secondary != "" and event.position.distance_to(_sec_center) <= sec_r() * 1.15:
 				secondary_pressed.emit()
 				return
-			if event.position.distance_to(_run_center) <= run_r() * 1.25:
+			if not auto_run and event.position.distance_to(_run_center) <= run_r() * 1.25:
 				sprint = not sprint
 				return
 			if event.position.distance_to(_jump_center) <= jump_r() * 1.15:
@@ -284,6 +286,8 @@ func _input(event: InputEvent) -> void:
 		if event.index == _joy_index:
 			_joy_knob = (event.position - _joy_origin).limit_length(joy_r())
 			move = _joy_knob / joy_r()
+			if auto_run:
+				sprint = move.length() >= AUTO_RUN_AT
 		elif event.index == _look_index:
 			look += (event.position - _look_last) * LOOK_SENS * sens_scale
 			_look_last = event.position
@@ -407,7 +411,16 @@ class Painter extends Control:
 		var active: bool = ui._joy_index != -1
 		var centre: Vector2 = ui._joy_origin if active else ui._joy_home
 		draw_circle(centre, jr, Color(0.03, 0.07, 0.13, (0.40 if active else 0.26) * op))
-		draw_arc(centre, jr - 1.5, 0, TAU, 64, Color(1, 1, 1, (0.45 if active else 0.25) * op), 3.0, true)
+		var ring_col := Color(1, 1, 1, (0.45 if active else 0.25) * op)
+		if ui.auto_run and active:
+			# the outer band is the run zone; it lights up while you're running
+			var band := UITheme.ACCENT
+			band.a = (0.55 if ui.sprint else 0.14) * op
+			draw_arc(centre, jr * (ui.AUTO_RUN_AT + 1.0) * 0.5, 0, TAU, 64, band, jr * (1.0 - ui.AUTO_RUN_AT), true)
+			if ui.sprint:
+				ring_col = UITheme.ACCENT
+				ring_col.a = 0.9 * op
+		draw_arc(centre, jr - 1.5, 0, TAU, 64, ring_col, 3.0, true)
 		# direction ticks
 		for i in 4:
 			var a := i * PI * 0.5
@@ -453,7 +466,8 @@ class Painter extends Control:
 					draw_string(font, r.end - Vector2(nw + 8, 8), ns, HORIZONTAL_ALIGNMENT_LEFT, -1, 16, Color(1, 1, 1, 0.9 * op))
 
 		# ---- right cluster ----
-		UIDraw.round_button(self, font, ui._run_center, ui.run_r(), "RUN", "run", ui.sprint, false, op)
+		if not ui.auto_run:
+			UIDraw.round_button(self, font, ui._run_center, ui.run_r(), "RUN", "run", ui.sprint, false, op)
 		UIDraw.round_button(self, font, ui._jump_center, ui.jump_r(), "JUMP", "jump", false, ui._jump_held, op)
 		if ui.secondary != "":
 			UIDraw.round_button(self, font, ui._sec_center, ui.sec_r(), ui.secondary,

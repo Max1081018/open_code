@@ -8,6 +8,10 @@ extends Node3D
 
 const POOL := 5
 const GULLS := 6
+## A gull spotted a catch lying about and is coming down for it.
+signal steal_started(pos: Vector3)
+## It has it: the game should stop treating this body as its own.
+signal stole(body: Node3D)
 
 var _bursts: Array[CPUParticles3D] = []
 var _rings: Array[MeshInstance3D] = []
@@ -16,9 +20,17 @@ var _ring_size: Array[float] = []
 var _next := 0
 var _hits: Array[CPUParticles3D] = []
 var _hit_next := 0
+var _dusts: Array[CPUParticles3D] = []
+var _dust_next := 0
 
 var _gull_mm: MultiMesh
 var _gulls: Array = []        # [centre, radius, height, speed, angle, bob phase]
+# Thieving: one gull at a time can break off, dive on a catch and carry it away.
+var _thief := -1              # which gull, -1 for none
+var _thief_state := ""        # "dive", "rise"
+var _thief_pos := Vector3.ZERO
+var _thief_target: Node3D
+var _thief_t := 0.0
 var _t := 0.0
 var gull_centre := Vector3(0, 0, 30)
 
@@ -32,6 +44,7 @@ var wave_fn: Callable                       # (x, z) -> surface height
 
 func _ready() -> void:
 	_build_hits()
+	_build_dust()
 	_build_splashes()
 	_build_gulls()
 	_build_shadows()
@@ -161,6 +174,63 @@ func _build_hits() -> void:
 		_hits.append(p)
 
 
+## Soft puffs of sand or dust kicked up by boots and flopping fish.
+func _build_dust() -> void:
+	var puff := SphereMesh.new()
+	puff.radius = 0.07
+	puff.height = 0.14
+	puff.radial_segments = 6
+	puff.rings = 3
+	var m := StandardMaterial3D.new()
+	m.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	m.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+	m.albedo_color = Color(0.93, 0.86, 0.70, 0.5)
+	m.vertex_color_use_as_albedo = false
+	puff.material = m
+	for i in 2:
+		var p := CPUParticles3D.new()
+		p.emitting = false
+		p.one_shot = true
+		p.amount = 10
+		p.lifetime = 0.7
+		p.explosiveness = 0.9
+		p.mesh = puff
+		p.direction = Vector3.UP
+		p.spread = 70.0
+		p.initial_velocity_min = 0.5
+		p.initial_velocity_max = 1.4
+		p.gravity = Vector3(0, -1.2, 0)
+		p.damping_min = 1.0
+		p.damping_max = 2.0
+		p.scale_amount_min = 0.6
+		p.scale_amount_max = 1.5
+		p.scale_amount_curve = _fade_curve()
+		p.local_coords = false
+		p.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+		add_child(p)
+		_dusts.append(p)
+
+
+## Particles start small, swell, then shrink away.
+func _fade_curve() -> Curve:
+	var c := Curve.new()
+	c.add_point(Vector2(0.0, 0.3))
+	c.add_point(Vector2(0.3, 1.0))
+	c.add_point(Vector2(1.0, 0.0))
+	return c
+
+
+## A puff of sand where something lands.
+func dust(pos: Vector3, size := 1.0) -> void:
+	var p := _dusts[_dust_next]
+	_dust_next = (_dust_next + 1) % _dusts.size()
+	p.global_position = pos
+	p.amount = int(clampf(8.0 * size, 5, 20))
+	p.initial_velocity_max = 1.2 * size
+	p.restart()
+	p.emitting = true
+
+
 ## A burst of little stars where a blow lands; gold and bigger for a knockout.
 func hit_burst(pos: Vector3, ko := false) -> void:
 	var p := _hits[_hit_next]
@@ -269,19 +339,84 @@ void fragment() {
 func _update_gulls(delta: float) -> void:
 	for i in GULLS:
 		var g: Array = _gulls[i]
-		g[4] = float(g[4]) + float(g[3]) * delta
-		var a: float = g[4]
-		var c: Vector2 = g[0]
-		var r: float = g[1]
-		var pos := gull_centre + Vector3(c.x + cos(a) * r, float(g[2]) + sin(_t * 0.4 + i) * 1.2, c.y + sin(a) * r)
-		# Face along the circle and bank into the turn.
-		var dir := Vector3(-sin(a), 0, cos(a)) * signf(float(g[3]))
+		var pos := Vector3.ZERO
+		var dir := Vector3.FORWARD
+		var flapping := true
+		if i == _thief:
+			pos = _update_thief(delta)
+			dir = _thief_dir
+		else:
+			g[4] = float(g[4]) + float(g[3]) * delta
+			var a: float = g[4]
+			var c: Vector2 = g[0]
+			var r: float = g[1]
+			pos = gull_centre + Vector3(c.x + cos(a) * r, float(g[2]) + sin(_t * 0.4 + i) * 1.2, c.y + sin(a) * r)
+			dir = Vector3(-sin(a), 0, cos(a)) * signf(float(g[3]))
+			flapping = false
 		var basis := Basis.looking_at(dir, Vector3.UP)
-		basis = basis * Basis(Vector3(0, 0, 1), -0.35 * signf(float(g[3])))
+		if i != _thief:
+			basis = basis * Basis(Vector3(0, 0, 1), -0.35 * signf(float(g[3])))
 		_gull_mm.set_instance_transform(i, Transform3D(basis.scaled(Vector3.ONE * 1.25), pos))
-		# Flap for a few seconds, glide for a few.
-		var glide := clampf(sin(_t * 0.35 + float(g[5]) * 9.0) * 2.0, 0.0, 1.0)
+		# Flap for a few seconds, glide for a few — but a thief always flaps.
+		var glide := 0.0 if flapping else clampf(sin(_t * 0.35 + float(g[5]) * 9.0) * 2.0, 0.0, 1.0)
 		_gull_mm.set_instance_custom_data(i, Color(float(g[5]), glide, 0, 0))
+
+
+## True if a gull is free to go after something.
+func can_steal() -> bool:
+	return _thief == -1
+
+
+## Sends a gull down after a catch lying on the ground. It takes a couple of
+## seconds to arrive, so you can beat it to the fish by picking it up.
+func try_steal(body: Node3D) -> bool:
+	if _thief != -1 or body == null or not is_instance_valid(body):
+		return false
+	_thief = randi() % GULLS
+	_thief_state = "dive"
+	_thief_target = body
+	_thief_t = 0.0
+	var g: Array = _gulls[_thief]
+	var a: float = g[4]
+	var c: Vector2 = g[0]
+	var r: float = g[1]
+	_thief_pos = gull_centre + Vector3(c.x + cos(a) * r, float(g[2]), c.y + sin(a) * r)
+	steal_started.emit(body.global_position)
+	return true
+
+
+var _thief_dir := Vector3.FORWARD
+
+func _update_thief(delta: float) -> Vector3:
+	_thief_t += delta
+	var want := _thief_pos
+	if _thief_state == "dive":
+		if _thief_target == null or not is_instance_valid(_thief_target):
+			_thief_state = "rise"
+		else:
+			want = _thief_target.global_position + Vector3(0, 0.35, 0)
+			if _thief_pos.distance_to(want) < 0.45:
+				# got it: the catch is the gull's now
+				stole.emit(_thief_target)
+				_thief_state = "rise"
+				_thief_t = 0.0
+	if _thief_state == "rise":
+		want = _thief_pos + (_thief_pos - gull_centre).normalized() * 30.0 + Vector3(0, 22.0, 0)
+		if _thief_t > 4.5:
+			if _thief_target and is_instance_valid(_thief_target):
+				_thief_target.queue_free()
+			_thief_target = null
+			_thief = -1
+			_thief_state = ""
+	var speed := 11.0 if _thief_state == "dive" else 9.0
+	var step := (want - _thief_pos)
+	if step.length() > 0.001:
+		_thief_dir = step.normalized()
+		_thief_pos += _thief_dir * minf(speed * delta, step.length())
+	# carry the catch slung under the bird
+	if _thief_state == "rise" and _thief_target and is_instance_valid(_thief_target):
+		(_thief_target as Node3D).global_position = _thief_pos - Vector3(0, 0.3, 0)
+	return _thief_pos
 
 
 ## Position of the gull nearest to `p` (for the occasional squawk).

@@ -28,6 +28,7 @@ var settings := {
 	"look_sens": 1.0,
 	"graphics": "Medium",
 	"resolution": "Auto",
+	"auto_run": true,
 	"shadows": true,
 	"crosshair": true,
 	"show_body": true,
@@ -282,7 +283,7 @@ func _build() -> void:
 		_stat_rows[key] = v
 
 	var ver := Label.new()
-	ver.text = "v0.4"
+	ver.text = "v" + str(ProjectSettings.get_setting("application/config/version", "0.10"))
 	ver.set_anchors_preset(Control.PRESET_BOTTOM_RIGHT)
 	ver.position = Vector2(-70, -40)
 	ver.add_theme_font_size_override("font_size", 18)
@@ -318,6 +319,7 @@ func _build() -> void:
 	_slider_row(sbody, "HUD size", "hud_scale", 0.8, 1.35, 0.05)
 	_slider_row(sbody, "HUD opacity", "hud_opacity", 0.4, 1.0, 0.05)
 	_settings_toggle(sbody, "Fixed joystick", "fixed_joystick")
+	_settings_toggle(sbody, "Auto-run (push stick to the edge)", "auto_run")
 
 	_group(sbody, "DISPLAY")
 	_cycle_row(sbody, "Graphics", "graphics", GRAPHICS_LEVELS)
