@@ -103,7 +103,9 @@ const MAX_LOOSE := 24
 var loose_fish: Array = []        # RigidBody3D, each with meta "fish" (its data)
 var holding: RigidBody3D = null   # the fish in your hands
 var shop_lamp: OmniLight3D
-var _static_props: Array = []    # multi-part models to batch into few draws
+var _static_props: Array = []
+var _small_props: Array = []   # distant clutter we stop drawing
+var _merge_me: Array = []      # scenery waiting to be merged into few draw calls    # multi-part models to batch into few draws
 var _shop_box := AABB()
 var hands: FPArms                 # first-person arms (camera child)
 var _held_prop: Node3D            # clam / fish model shown in your hand
@@ -161,6 +163,8 @@ var in_boss_zone := false
 var _boss_zone_seen := false
 var _helm_at := 0                # autotest: frame to take the helm shot on
 var _wake_t := 0.0
+var _hull_y := 0.0
+var _hull_t := 0.0
 var _boat_ring: Node3D
 var island2_marker: Node3D
 const WEAPON_LAYER := 4          # collision layer the crosshair ray looks for
@@ -199,6 +203,14 @@ const CATCH_SETS := {
 # Island 1's boss: only bites out at sea, from the boat, with the Boss Reel.
 const NEW_SPECIES_BONUS := 25
 const PB_BONUS := 20            # beating your own record is worth something
+# The buyer says something when the catch is worth a comment. Selling should
+# feel like handing a fish to a person, not posting it through a slot.
+const QUIP_SMALL := ["\"That's bait, not supper.\"", "\"Small. Full of character.\"",
+	"\"I'll get a very small plate.\"", "\"One bite. Maybe half.\""]
+const QUIP_BIG := ["\"Now THAT'S a fish!\"", "\"Half the island eats tonight.\"",
+	"\"Where did you hook that?!\"", "\"I'll need both hands.\""]
+const QUIP_JUNK := ["\"...this is not a fish.\"", "\"Someone collects these. Not me.\"",
+	"\"The sea gave you rubbish again.\""]
 const BOSS := {"name": "the Baby Kraken", "set": "mythic", "node": "BabyKraken",
 	"min": 18.0, "max": 26.0, "junk": false, "boss": true,
 	"rarity": "Legendary", "atk": 30, "spd": 1.6, "tier": 0}
@@ -1207,6 +1219,15 @@ const MDL := {
 	"market": "res://assets/models/fishing/fish-market-stand.glb",
 }
 
+# Scenery that never moves a part of itself, so each one can be merged down
+# into a draw call or two. Anything you can pick up, buy, or that animates a
+# piece of itself stays out of this list.
+# Scenery that never moves and never animates a part of itself, so the whole
+# lot can be welded into one mesh per material. Buoys ride the swell and palms
+# sway per tree (the shader keys off each one's origin), so they stay out.
+const MERGE_KEYS := ["dock", "dock_small", "rocks", "rocks_sand", "barrel", "crate",
+	"grass", "tower", "wreck", "market"]
+
 # Island 1 shop placement
 const SHOP_POS := Vector3(-7.0, 0, 25.0)
 const SHOP_SCALE := 0.34
@@ -1236,6 +1257,8 @@ func _spawn(key: String, pos: Vector3, rot_y := 0.0, scl := 1.0, parent: Node = 
 		add_child(n)
 	else:
 		parent.add_child(n)
+	if key in MERGE_KEYS:
+		_merge_me.append(n)
 	return n
 
 
@@ -2516,6 +2539,7 @@ func _update_boat(delta: float) -> void:
 ## rolls them with the rudder.
 func _build_helm() -> void:
 	helm = Node3D.new()
+	helm.set_meta("nomerge", true)         # the wheel has to keep turning
 	helm.position = HELM_SEAT
 	helm.scale = Vector3.ONE / BOAT_SCALE      # so the helm is built in metres
 	boat.add_child(helm)
@@ -2624,6 +2648,18 @@ func _boat_wake(delta: float) -> void:
 				p.play()
 			p.pitch_scale = 0.62 + sp / BOAT_TOP_SPEED * 0.75
 			p.volume_db = lerpf(-26.0, -9.0, clampf(sp / BOAT_TOP_SPEED, 0.0, 1.0))
+	# Thump and spray when the bow drops off the back of a wave.
+	_hull_t = maxf(_hull_t - delta, 0.0)
+	var drop: float = (boat.global_position.y - _hull_y) / maxf(delta, 0.001)
+	_hull_y = boat.global_position.y
+	if sp > 3.5 and drop < -1.1 and _hull_t <= 0.0:
+		_hull_t = 0.5
+		players["splash"].pitch_scale = randf_range(0.55, 0.72)
+		_play("splash")
+		if fx:
+			var bow: Vector3 = boat.global_transform * Vector3(0.0, 1.2, -7.0)
+			bow.y = wave_height(bow.x, bow.z)
+			fx.splash(bow, 0.9)
 	if fx == null or sp < 1.2:
 		return
 	_wake_t -= delta * (0.6 + sp * 0.35)
@@ -3047,6 +3083,67 @@ func _build_clouds() -> void:
 ## Static batching: bakes every visible mesh under `root` into one mesh per
 ## material (the originals are hidden, so collision bodies under them keep
 ## working). A 50-piece market stall becomes a handful of draw calls.
+## Welds all the scattered scenery into one mesh per material: thirty crates,
+## barrels, rocks and dock sections around the island stop being thirty times
+## however many materials they each use, and become a handful of draw calls.
+## Anything riding the swell, or inside the shop (which fades as you walk away),
+## is left alone.
+func _merge_group(roots: Array) -> void:
+	var holder := Node3D.new()
+	holder.name = "Scenery"
+	add_child(holder)
+	var by_key := {}
+	var mats := {}
+	var casts := {}
+	for r in roots:
+		if r == null or not is_instance_valid(r) or floaters.has(r):
+			continue
+		var root := r as Node3D
+		var list: Array = [root] if root is MeshInstance3D else []
+		list.append_array(root.find_children("*", "MeshInstance3D", true, false))
+		for mi in list:
+			var m := mi as MeshInstance3D
+			if m.mesh == null or not m.is_visible_in_tree() or m.skin != null:
+				continue
+			var box: AABB = m.global_transform * m.mesh.get_aabb()
+			if _shop_box.has_volume() and box.has_volume() and _shop_box.encloses(box):
+				continue
+			# Only things big enough to matter keep their shadow.
+			var big: bool = box.size.x > 0.9 or box.size.y > 0.9 or box.size.z > 0.9
+			for si in m.mesh.get_surface_count():
+				var mat := m.get_active_material(si)
+				var key := "%d_%s" % [mat.get_instance_id() if mat else 0, big]
+				if not by_key.has(key):
+					var st := SurfaceTool.new()
+					st.begin(Mesh.PRIMITIVE_TRIANGLES)
+					by_key[key] = st
+					mats[key] = mat
+					casts[key] = big
+				(by_key[key] as SurfaceTool).append_from(m.mesh, si, m.global_transform)
+			m.visible = false
+	for key in by_key:
+		var out := MeshInstance3D.new()
+		out.mesh = (by_key[key] as SurfaceTool).commit()
+		out.material_override = mats[key]
+		out.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_ON if bool(casts[key]) \
+			else GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+		holder.add_child(out)
+	if autotest:
+		print("PERF scenery merged=%d into=%d" % [roots.size(), by_key.size()])
+
+
+## True when a mesh sits under something that still has to move by itself -
+## the wheel at the helm, the throttle lever - so it must not be baked into
+## the hull.
+func _no_merge(m: Node, root: Node) -> bool:
+	var n: Node = m
+	while n != null and n != root:
+		if n.has_meta("nomerge"):
+			return true
+		n = n.get_parent()
+	return false
+
+
 func _merge_static(root: Node3D) -> void:
 	if root == null:
 		return
@@ -3058,6 +3155,8 @@ func _merge_static(root: Node3D) -> void:
 		var m := mi as MeshInstance3D
 		if m.mesh == null or not m.is_visible_in_tree() or m.skin != null \
 				or m.get_node_or_null(m.skeleton) is Skeleton3D:
+			continue
+		if _no_merge(m, root):
 			continue
 		var xf := inv * m.global_transform
 		for si in m.mesh.get_surface_count():
@@ -3214,6 +3313,8 @@ func _optimize_world() -> void:
 	for n in _static_props + [shop_building, shop_counter, boat]:
 		if n and is_instance_valid(n):
 			_merge_static(n)
+	_merge_group(_merge_me)
+	_merge_me.clear()
 	if autotest:
 		print("PERF merge_ms=%.1f" % ((Time.get_ticks_usec() - t0) / 1000.0))
 	for gi in find_children("*", "GeometryInstance3D", true, false):
@@ -3228,11 +3329,32 @@ func _optimize_world() -> void:
 			big = false                       # water, seabed, islands
 		if not big:
 			g.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+			# Small clutter stops drawing in the distance. Not the buoys that
+			# mark the deep water or the signpost to island 2: those are how
+			# you find your way.
+			if not (_boat_ring and _boat_ring.is_ancestor_of(g)) \
+					and not (island2_marker and island2_marker.is_ancestor_of(g)):
+				_small_props.append(g)
 		if _shop_box.has_volume() and box.has_volume() and _shop_box.encloses(box) \
 				and not shop_building.is_ancestor_of(g):
 			g.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 			g.visibility_range_end = 26.0
 			g.visibility_range_end_margin = 2.0
+	_apply_prop_range()
+
+
+## Stop drawing small clutter past the preset's range. Called when the world
+## is built and again whenever the graphics setting changes.
+func _apply_prop_range() -> void:
+	var q: int = clampi(quality, 0, Q_PROP.size() - 1)
+	for sp in _small_props:
+		if not is_instance_valid(sp):
+			continue
+		var g := sp as GeometryInstance3D
+		if g.visibility_range_end == 26.0:
+			continue                      # shop interior: already handled
+		g.visibility_range_end = Q_PROP[q]
+		g.visibility_range_end_margin = 6.0
 
 
 ## Weather is a slow cycle of states, each lasting minutes, blending smoothly
@@ -3476,6 +3598,8 @@ const Q_CLOUDS := [8, 14, 20, 28]
 const Q_RAIN := [120, 220, 320, 450]
 const Q_SHADOW_MAP := [1024, 1024, 2048, 4096]
 const Q_WATER_NORMAL := [0.12, 0.26, 0.36, 0.44]
+# How far away small clutter (crates, rocks, bottles, flowers) keeps drawing.
+const Q_PROP := [55.0, 85.0, 120.0, 200.0]
 const Q_FOAM := [0.0, 0.12, 0.16, 0.18]
 
 
@@ -3534,6 +3658,7 @@ func _apply_graphics() -> void:
 		status.show_fps = bool(menu_ui.settings.get("show_fps", false))
 	if camera:
 		camera.far = Q_FAR[q]
+	_apply_prop_range()
 	if shop_lamp:
 		shop_lamp.omni_range = 5.0 if q == 0 else 7.5
 
@@ -4430,6 +4555,18 @@ func _apply_hit(b: RigidBody3D) -> void:
 	players["whoosh"].pitch_scale = 1.0
 
 
+## A line from the buyer when the catch deserves one, else an empty string.
+func _sell_quip(d: Dictionary) -> String:
+	if str(d.get("set", "")) == "junk" or bool(d.get("junk", false)):
+		return QUIP_JUNK.pick_random()
+	var w := float(d.get("weight", 0.0))
+	if w >= 3.0:
+		return QUIP_BIG.pick_random()
+	if w > 0.0 and w <= 0.4:
+		return QUIP_SMALL.pick_random()
+	return ""
+
+
 func _sell_body(b: RigidBody3D) -> void:
 	var d: Dictionary = b.get_meta("fish")
 	var value := int(d.get("value", 0))
@@ -4449,7 +4586,9 @@ func _sell_body(b: RigidBody3D) -> void:
 		_flash("WANTED! Double pay: %d coins" % value)
 		_roll_wanted()
 	else:
-		_flash("Sold %s for %d coins" % [str(d.get("name", "it")), value])
+		var quip := _sell_quip(d)
+		_flash("%s   +%d coins" % [quip, value] if quip != ""
+			else "Sold %s for %d coins" % [str(d.get("name", "it")), value])
 	var ap = fish_buyer.get_meta("anim") if fish_buyer and fish_buyer.has_meta("anim") else null
 	if ap and ap.has_animation("Cheer"):
 		ap.play("Cheer")
@@ -4727,7 +4866,9 @@ func _sell_held_fish() -> void:
 		_flash("WANTED! Double pay: %d coins" % value)
 		_roll_wanted()
 	else:
-		_flash("Sold %s for %d coins" % [_nice_name(str(d.get("name", "it"))), value])
+		var quip := _sell_quip(d)
+		_flash("%s   +%d coins" % [quip, value] if quip != ""
+			else "Sold %s for %d coins" % [_nice_name(str(d.get("name", "it"))), value])
 	var ap = fish_buyer.get_meta("anim") if fish_buyer and fish_buyer.has_meta("anim") else null
 	if ap and ap.has_animation("Cheer"):
 		ap.play("Cheer")
