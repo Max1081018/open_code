@@ -69,7 +69,31 @@ var _grip_l: Node3D
 const ROD_AIM := Vector3(0.02, 0.50, -1.0)    # player view: forward and up
 const WEAPON_AIM := Vector3(-0.10, 1.0, -0.55) # blade up and forward, ready
 const HOLD_SHIFT := Vector3(-0.075, 0.035, 0)  # holding something: right hand clears the buttons
+
+# --- grips -------------------------------------------------------------------
+# [index, middle, ring, pinky curl, thumb curl, thumb swing (deg), draw-together (deg)]
+# Curl 0 is a flat open hand, 1 is fully closed. Measured against the rig: a
+# curl of ~0.85 wraps the fingers round a circle about 29mm across, which is a
+# rod or knife handle; the fingertips stay 20mm apart so they never cross.
+const GRIP_RELAX := [0.26, 0.30, 0.32, 0.34, 0.22, 10.0, 10.0]   # hands at rest, softly curled
+const GRIP_FIST := [0.82, 0.84, 0.86, 0.88, 0.45, 18.0, 12.0]    # round a handle
+const GRIP_TIGHT := [0.95, 0.97, 0.97, 0.95, 0.55, 20.0, 12.0]   # punching fist
+const GRIP_TAIL := [0.90, 0.92, 0.92, 0.90, 0.52, 20.0, 12.0]    # clamped on a fish tail
+const GRIP_PINCH := [0.52, 0.72, 0.86, 0.90, 0.45, 20.0, 14.0]   # thumb-and-index on a clam
+const GRIP_CRADLE := [0.30, 0.32, 0.34, 0.36, 0.15, 5.0, 6.0]    # open palms under a big fish
+const GRIP_HOOK := [0.62, 0.66, 0.68, 0.70, 0.35, 14.0, 10.0]    # fingers hooked under a load
+const GRIP_OPEN := [0.10, 0.12, 0.14, 0.16, 0.10, 0.0, 4.0]      # letting go / taking hold
+
+# Where a handle actually sits inside a closed fist: the fingers wrap a circle
+# centred here in hand-bone space (measured off the rig, not guessed), so the
+# rod and the knife run through the middle of the grip rather than past it.
+const GRIP_CENTRE := Vector3(-0.015, 0.100, 0.0)
+const DRAW_TIME := 0.25                       # seconds to bring a new item up
 var _shift := 0.0
+var _fingers: FingerPose
+var _grip_now := {"R": GRIP_RELAX.duplicate(), "L": GRIP_RELAX.duplicate()}
+var _punch_side := 0                 # which fist is mid-punch (1 right, -1 left)
+var _open_t := 0.0                   # hand spreading open to take or let go of something
 var _sail := 0.0                     # blend into the steering pose
 var _carry := 0.0                    # blend into the two-handed carry
 var _lag := Vector2.ZERO             # how far the hands are trailing the look
@@ -77,43 +101,14 @@ var _look_was := Vector2.ZERO
 
 
 ## Layers one clip onto just the right arm (shoulder to fingertips) on top of
-## whatever the AnimationPlayer posed: the body stays relaxed with an open left
-## hand while the right hand closes its grip and lifts what it holds.
+## whatever the AnimationPlayer posed: the body stays relaxed while the right
+## arm lifts what it holds. The fingers are not its business any more --
+## FingerPose runs after it and owns every finger joint.
 class ArmLayer extends SkeletonModifier3D:
 	var clip: Animation
 	var time := 0.0
 	var weight := 0.0
 	var _tracks: Array = []        # [track index, bone index, type]
-	# Open-hand fingers (from the relax clip) with a thumb-index pinch:
-	# `pinch` 0 = all fingers open, 1 = thumb and index closed together.
-	var open_clip: Animation
-	var pinch := 0.0
-	var finger_weight := 0.0
-	var _fingers: Array = []       # [open track, bone index, curl 0..1 for the pinch]
-
-	func set_open_clip(a: Animation, sk: Skeleton3D) -> void:
-		open_clip = a
-		_fingers.clear()
-		if a == null:
-			return
-		for i in a.get_track_count():
-			if a.track_get_type(i) != Animation.TYPE_ROTATION_3D:
-				continue
-			var bn := str(a.track_get_path(i).get_concatenated_subnames())
-			if not bn.ends_with(".R") or not (bn.begins_with("f_") or bn.begins_with("thumb")):
-				continue
-			var bi := sk.find_bone(bn)
-			if bi < 0:
-				continue
-			# index and thumb close into the pinch; the rest stay relaxed open
-			var curl := 0.0
-			if bn.begins_with("f_index"):
-				curl = 0.8
-			elif bn.begins_with("thumb"):
-				curl = 1.0
-			elif bn.begins_with("f_middle"):
-				curl = 0.3
-			_fingers.append([i, bi, curl])
 
 	func set_clip(a: Animation, sk: Skeleton3D) -> void:
 		clip = a
@@ -146,15 +141,89 @@ class ArmLayer extends SkeletonModifier3D:
 			else:
 				var pv: Vector3 = clip.position_track_interpolate(i, t)
 				sk.set_bone_pose_position(bi, sk.get_bone_pose_position(bi).lerp(pv, w))
-		# Fingers: open hand, with thumb and index pinched together.
-		if open_clip and finger_weight > 0.001:
-			var fw := clampf(finger_weight, 0.0, 1.0)
-			for fr in _fingers:
-				var bi2: int = fr[1]
-				var fist: Quaternion = sk.get_bone_pose_rotation(bi2)       # what the arm clip posed
-				var open: Quaternion = open_clip.rotation_track_interpolate(int(fr[0]), 0.0)
-				var want: Quaternion = open.slerp(fist, float(fr[2]) * pinch)
-				sk.set_bone_pose_rotation(bi2, fist.slerp(want, fw))
+
+
+## Poses the fingers of both hands directly, instead of leaving them in
+## whatever splayed shape the clip baked.
+##
+## The rig has real finger chains -- f_index/f_middle/f_ring/f_pinky .01/.02/.03
+## plus thumb .01/.02/.03 and four palm bones per hand, each joint carrying
+## about twenty skinned vertices -- so the fingers genuinely deform. Every
+## finger bone runs along its own local +Y, which makes closing a finger a
+## single rotation about its local X (measured: +X closes, on both hands).
+##
+## A grip is seven numbers: four finger curls (0 open .. 1 fully closed), the
+## thumb's curl, how far the thumb swings across the palm, and how much the
+## fingers draw together out of the rig's fanned-out rest pose.
+class FingerPose extends SkeletonModifier3D:
+	const FINGERS := ["index", "middle", "ring", "pinky"]
+	const MAX := [75.0, 95.0, 70.0]        # degrees at curl 1.0, per joint
+	const TMAX := [28.0, 45.0, 35.0]       # the same for the thumb
+	# The rig's rest pose fans the fingertips about 100mm apart; these weights
+	# swing the outer fingers in and leave the middle pair almost still.
+	const SPREAD_W := [1.0, 0.33, -0.33, -1.0]
+
+	var grip := {"R": [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0],
+			"L": [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0]}
+	var weight := {"R": 0.0, "L": 0.0}
+	var life := 0.0                        # phase for the idle finger drift
+	var life_amt := 0.0
+	var _bones := {}                       # side -> [[idx x3] x4 fingers, [idx x3] thumb]
+	var _rest := {}                        # bone index -> rest rotation
+
+	func bind(sk: Skeleton3D) -> void:
+		_bones.clear()
+		_rest.clear()
+		for side in ["R", "L"]:
+			var chains: Array = []
+			for f in FINGERS:
+				chains.append(_chain(sk, ["f_%s.01.%s" % [f, side],
+						"f_%s.02.%s" % [f, side], "f_%s.03.%s" % [f, side]]))
+			chains.append(_chain(sk, ["thumb.01.%s" % side, "thumb.02.%s" % side,
+					"thumb.03.%s" % side]))
+			_bones[side] = chains
+
+	func _chain(sk: Skeleton3D, names: Array) -> Array:
+		var out: Array = []
+		for n in names:
+			var bi: int = sk.find_bone(n)
+			out.append(bi)
+			if bi >= 0:
+				_rest[bi] = sk.get_bone_rest(bi).basis.get_rotation_quaternion()
+		return out
+
+	func _process_modification() -> void:
+		var sk := get_skeleton()
+		if sk == null or _bones.is_empty():
+			return
+		for side in ["R", "L"]:
+			var w := clampf(float(weight[side]), 0.0, 1.0)
+			if w <= 0.001:
+				continue
+			var g: Array = grip[side]
+			var chains: Array = _bones[side]
+			var flip := 1.0 if side == "R" else -1.0
+			for fi in FINGERS.size():
+				# A hand that never twitches reads as a mannequin; each finger
+				# drifts on its own phase, by well under a degree.
+				var drift: float = sin(life * 0.9 + float(fi) * 1.7) * 0.013 * life_amt
+				var curl: float = clampf(float(g[fi]) + drift, 0.0, 1.2)
+				var spread: float = float(g[6]) * SPREAD_W[fi] * flip
+				_pose(sk, chains[fi], curl, MAX, spread, w)
+			_pose(sk, chains[4], float(g[4]), TMAX, float(g[5]) * flip, w)
+
+	func _pose(sk: Skeleton3D, chain: Array, curl: float, maxd: Array,
+			spread: float, w: float) -> void:
+		for k in 3:
+			var bi: int = chain[k]
+			if bi < 0:
+				continue
+			var q := Quaternion(Vector3.RIGHT, deg_to_rad(float(maxd[k]) * curl))
+			if k == 0 and absf(spread) > 0.01:
+				# sideways swing lives at the knuckle only
+				q = Quaternion(Vector3.BACK, deg_to_rad(spread)) * q
+			var want: Quaternion = (_rest[bi] as Quaternion) * q
+			sk.set_bone_pose_rotation(bi, sk.get_bone_pose_rotation(bi).slerp(want, w))
 
 
 ## Turns the right wrist (after the animation has posed it) so whatever the
@@ -214,8 +283,9 @@ func _ready() -> void:
 	_skel.add_child(_hand_r)
 	_tool_mount = Node3D.new()
 	_hand_r.add_child(_tool_mount)
-	# tool +Y (blade/handle axis) runs across the palm, out of the thumb side
-	_tool_mount.transform = Transform3D(Basis(Vector3.RIGHT, PI * 0.5), Vector3(0.0, 0.085, 0.0))
+	# tool +Y (blade/handle axis) runs across the palm, out of the thumb side,
+	# through the centre of the circle the curled fingers make
+	_tool_mount.transform = Transform3D(Basis(Vector3.RIGHT, PI * 0.5), GRIP_CENTRE)
 	# The rod rides in the same grip: its pole runs along the grip axis.
 	_rod_mount = Node3D.new()
 	_tool_mount.add_child(_rod_mount)
@@ -225,12 +295,16 @@ func _ready() -> void:
 	_skel.add_child(_hand_l)
 	_grip_l = Node3D.new()
 	_hand_l.add_child(_grip_l)
-	_grip_l.position = Vector3(0.0, 0.085, 0.0)
-	# Right-arm layer first, then the wrist aim on top of it.
+	_grip_l.position = Vector3(-GRIP_CENTRE.x, GRIP_CENTRE.y, GRIP_CENTRE.z)
+	# Right-arm layer first, then the fingers, then the wrist aim on top: the
+	# clip poses the arm, the fingers close on whatever is held, and the wrist
+	# finally turns so the grip points where it should.
 	_layer = ArmLayer.new()
 	_skel.add_child(_layer)
 	_layer.set_clip(_ap.get_animation(_clip("guard_idle")), _skel)
-	_layer.set_open_clip(_ap.get_animation(_clip("relax")), _skel)
+	_fingers = FingerPose.new()
+	_fingers.bind(_skel)
+	_skel.add_child(_fingers)
 	# Fingertips we pinch with (the tail sits between them).
 	for bn in ["thumb.03.R", "f_index.03.R"]:
 		var ba := BoneAttachment3D.new()
@@ -326,6 +400,7 @@ func play_punch() -> void:
 		side = -1                          # right hand is busy: left jab
 	_next_side = -side
 	_combat = 2.5
+	_punch_side = side
 	_play_once("jab.R" if side > 0 else "jab.L", 1.9, 0.05)
 
 
@@ -338,6 +413,7 @@ func play_swing() -> void:
 
 
 func play_pickup() -> void:
+	_open_t = 1.0                          # fingers spread, then close on it
 	_play_once("grab.R", 1.3)
 
 
@@ -346,10 +422,12 @@ func play_grab() -> void:
 
 
 func play_drop() -> void:
+	_open_t = 1.0
 	_play_once("push.R", 1.5)
 
 
 func play_throw() -> void:
+	_open_t = 1.0
 	_play_once("push.R", 1.7)
 
 
@@ -415,6 +493,32 @@ static func _arc(t: float) -> float:
 	return sin((1.0 - t) * PI) if t > 0.0 else 0.0
 
 
+## The draw: how far the hand is dipped out of the hold pose, 0 at either end
+## of the swap and 1 at the bottom. It drops fast over the first third and
+## comes back up over the rest, overshooting a touch so the new item settles
+## into place instead of stopping dead.
+static func _dip(t: float) -> float:
+	if t <= 0.0:
+		return 0.0
+	var u := 1.0 - clampf(t, 0.0, 1.0)        # 0 at the start of the draw, 1 at the end
+	if u < 0.34:
+		var a := u / 0.34
+		return a * a * (3.0 - 2.0 * a)        # smooth drop
+	var b := (u - 0.34) / 0.66
+	var e := 1.0 - b
+	return e * e * (3.0 - 2.0 * e) - sin(b * PI) * 0.1   # rise, with a small settle
+
+
+## How much of the new item is still below the hands: 1 while the hand is on
+## its way down, falling to 0 as it comes back up. The item rides this, so it
+## is lifted into view rather than appearing fully formed.
+static func _draw_rise(t: float) -> float:
+	if t <= 0.0:
+		return 0.0
+	var u := 1.0 - clampf(t, 0.0, 1.0)
+	return clampf(1.0 - u / 0.62, 0.0, 1.0)
+
+
 func _process(delta: float) -> void:
 	_t += delta
 	_oneshot = maxf(_oneshot - delta, 0.0)
@@ -423,7 +527,10 @@ func _process(delta: float) -> void:
 	_hook_t = maxf(_hook_t - delta / 0.32, 0.0)
 	_reel_t = maxf(_reel_t - delta / 0.22, 0.0)
 	_hit_t = maxf(_hit_t - delta / 0.4, 0.0)
-	_swap_t = maxf(_swap_t - delta / 0.36, 0.0)
+	_swap_t = maxf(_swap_t - delta / DRAW_TIME, 0.0)
+	_open_t = maxf(_open_t - delta / 0.45, 0.0)
+	if _oneshot <= 0.0:
+		_punch_side = 0
 	_land_t = maxf(_land_t - delta / 0.3, 0.0)
 	if mode == "hidden":
 		visible = false
@@ -451,7 +558,18 @@ func _process(delta: float) -> void:
 	_phase += delta * (2.0 + move_speed * 2.1)
 	var amp := walk * (1.6 if sprint else 1.0)
 	var off := Vector3(sin(_phase * 0.5) * 0.012 * amp, -absf(sin(_phase)) * 0.016 * amp, 0)
-	off.y -= _arc(_swap_t) * 0.22
+	# Breathing and a slow, never-quite-repeating drift. Hands welded to the
+	# camera look like a cardboard cut-out without it; it is small enough that
+	# you only notice it when it is missing.
+	var still := 1.0 - walk * 0.7
+	off.y += sin(_t * 1.15) * 0.0065 * still
+	off.z += sin(_t * 1.15 + 0.5) * 0.0030 * still
+	off.x += (sin(_t * 0.73) * 0.0035 + sin(_t * 1.91) * 0.0014) * still
+	off.y += sin(_t * 0.61 + 1.3) * 0.0030 * still
+	# The draw: dip down and back toward the chest, then lift the new item up.
+	var dip := _dip(_swap_t)
+	off.y -= dip * 0.26
+	off.z += dip * 0.10
 	off.y -= _arc(_land_t) * 0.05
 	if _hit_t > 0.0:
 		var g := _hit_t * _hit_t
@@ -470,6 +588,8 @@ func _process(delta: float) -> void:
 	off += Vector3(_lag.x * 0.11, -_lag.y * 0.09, 0.0)
 
 	var pitch := deg_to_rad(10.0 * charge * charge - 14.0 * _arc(_cast_t) + 6.0 * _arc(_hook_t))
+	pitch += deg_to_rad(-20.0 * dip)          # wrist rolls down through the draw
+	pitch += sin(_t * 0.83) * deg_to_rad(0.6) * still
 	if mode == "rod":
 		pitch += sin(_t * 37.0) * tension * 0.012
 	_shift = move_toward(_shift, 1.0 if mode in ["rod", "weapon", "clam", "fish"] else 0.0, delta * 4.0)
@@ -490,14 +610,76 @@ func _process(delta: float) -> void:
 	# Holding a small fish or a clam: only the right arm lifts and grips.
 	var lift := (mode == "clam" or (mode == "fish" and not prop_two_hands)) and _oneshot <= 0.0
 	_layer.weight = move_toward(_layer.weight, 1.0 if lift else 0.0, delta * 5.0)
-	_layer.finger_weight = _layer.weight
-	_layer.pinch = 1.0
 	_layer.time += delta
+	_update_grips(delta, dip)
 	_aim_wrist(delta)
 	_place_rod(delta)
 	_place_prop()
 	if paddle:
 		paddle.visible = mode == "weapon"
+
+
+## Picks what each hand should be holding on to and eases the fingers into it,
+## so a grip changes over a few frames rather than snapping shut.
+func _update_grips(delta: float, dip: float) -> void:
+	if _fingers == null:
+		return
+	# Opening up: at the bottom of a draw, and through a grab or a throw.
+	var open_amt := maxf(dip, _arc(_open_t))
+	for side in ["R", "L"]:
+		var want: Array = _grip_target(side)
+		if open_amt > 0.001:
+			want = _grip_mix(want, GRIP_OPEN, clampf(open_amt, 0.0, 1.0))
+		var cur: Array = _grip_now[side]
+		var k := clampf(delta * 13.0, 0.0, 1.0)
+		for i in cur.size():
+			cur[i] = lerpf(float(cur[i]), float(want[i]), k)
+		_fingers.grip[side] = cur
+		_fingers.weight[side] = 1.0
+	_fingers.life += delta
+	_fingers.life_amt = 1.0 - clampf(move_speed / 3.0, 0.0, 1.0) * 0.7
+
+
+static func _grip_mix(a: Array, b: Array, t: float) -> Array:
+	var out: Array = []
+	for i in a.size():
+		out.append(lerpf(float(a[i]), float(b[i]), t))
+	return out
+
+
+## What this hand is doing with its fingers right now.
+func _grip_target(side: String) -> Array:
+	# Mid-punch, the striking fist is clenched whatever else is going on.
+	if _oneshot > 0.0 and _punch_side != 0:
+		if (side == "R") == (_punch_side > 0):
+			return GRIP_TIGHT
+	match mode:
+		"rod":
+			if side == "L":
+				return GRIP_RELAX
+			# squeeze harder as you wind up and while a fish is pulling
+			var sq: float = clampf(charge * 0.10 + tension * 0.06, 0.0, 0.13)
+			return _grip_mix(GRIP_FIST, GRIP_TIGHT, sq / 0.13 * 0.6) if sq > 0.001 else GRIP_FIST
+		"weapon":
+			if side == "L":
+				return GRIP_RELAX
+			return GRIP_TIGHT if whack_style == "punch" else GRIP_FIST
+		"clam":
+			return GRIP_PINCH if side == "R" else GRIP_RELAX
+		"fish":
+			if prop_two_hands:
+				return GRIP_CRADLE          # a big fish lies across both palms
+			return GRIP_TAIL if side == "R" else GRIP_RELAX
+		"carry":
+			return GRIP_HOOK                # fingers hooked under the load
+		"sail":
+			return GRIP_FIST                # both fists round the wheel
+		"bare":
+			if windup > 0.0 or _combat > 0.0:
+				return GRIP_TIGHT
+			return GRIP_RELAX
+		_:
+			return GRIP_RELAX
 
 
 ## In rod mode the wrist points the gripped rod forward and up; charging pulls
@@ -582,10 +764,10 @@ func _place_prop() -> void:
 		var y := z.cross(d).normalized()
 		var b := Basis(d, y, z)
 		# Gripped at the narrow part in front of the tail fin, not at the very
-		# tip of the fin: fingers close on something, and the fin hangs clear.
-		var pinch_pt := _pinch_point(grip)
+		# tip of the fin: the fist is closed round the tail, so the tail runs
+		# through the middle of the grip and the fin hangs clear below it.
 		var hold: float = maxf(prop_half - 0.055, prop_half * 0.5)
-		prop.global_transform = Transform3D(b.scaled(sc), pinch_pt + d * hold)
+		prop.global_transform = Transform3D(b.scaled(sc), grip + d * hold)
 	else:
 		# the clam sits in the curl of the fingers, its edge peeking out on the
 		# thumb side, tilted to face you
@@ -594,6 +776,11 @@ func _place_prop() -> void:
 		var cb := cam.global_basis if cam else Basis()
 		var b2 := cb * Basis(Vector3.RIGHT, 1.25)
 		prop.global_transform = Transform3D(b2.scaled(sc), pp + cb.y * -0.012 + cb.z * 0.01)
+	# Mid-draw the item is still on its way up out of the pack: it rides below
+	# the hand and rises into the grip as the hand comes back up.
+	var rise := _draw_rise(_swap_t)
+	if rise > 0.001 and cam:
+		prop.global_position += cam.global_basis * Vector3(0.0, -0.36 * rise, 0.12 * rise)
 
 
 ## Where thumb and index fingertips meet (each bone's origin is its last
