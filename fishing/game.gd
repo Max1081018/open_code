@@ -126,6 +126,7 @@ var _pending_loose: Array = []    # from the save, spawned once the world exists
 var boat_deck: AnimatableBody3D
 var _cargo: Array = []            # [body, local offset] riding the boat
 var _hold_far_t := 0.0
+var _gift_t := 0.0               # a beat after the key arrives, before the shout
 
 # Boat
 const BOAT_MOOR := Vector3(4.3, -0.55, 9.5)
@@ -1710,6 +1711,11 @@ func _process(delta: float) -> void:
 
 	_update_floaters()
 	_update_health(delta)
+	if _gift_t > 0.0:
+		_gift_t -= delta
+		if _gift_t <= 0.0:
+			_flash("The harbourmaster leaves you the Boat Key and the Sea Chart")
+			_play("coins")
 	_update_weather(delta)
 	_update_hands(delta)
 	_update_clams(delta)
@@ -2022,7 +2028,7 @@ func _on_interact() -> void:
 		"STAND", "DOCK":
 			_leave_helm()
 		"LOCKED":
-			_flash("You need the %s from Bait & Blade" % _sail_missing())
+			_flash("Land something rare and the boat is yours")
 			_play("snap")
 
 
@@ -2155,7 +2161,7 @@ func _on_secondary() -> void:
 			if can_sail():
 				_board_boat()
 		"LOCKED":
-			_flash("You need the %s from Bait & Blade" % _sail_missing())
+			_flash("Land something rare and the boat is yours")
 			_play("snap")
 
 
@@ -2470,8 +2476,8 @@ func _build_shop() -> void:
 			print("PLACEDBG rack at %s size %s" % [rbox.get_center(), rbox.size])
 	# Boat key and sea chart on a little table in the middle of the room.
 	var t5 := _pedestal(Vector3(cx, floor_y, z0 + 1.75))
-	_add_weapon_display("boat_key", Vector3(cx - 0.12, t5, z0 + 1.68), Vector3(0, 0.5, 0), 1.45)
-	_add_weapon_display("sea_map", Vector3(cx + 0.10, t5, z0 + 1.82), Vector3(0, -0.4, 0), 1.45)
+	# The key and the chart are not for sale any more - they are earned, so
+	# the table they used to sit on is bare.
 	var t4 := _pedestal(Vector3(x1 - 0.40, floor_y, z0 + 1.55))
 	_add_weapon_display("boss_reel", Vector3(x1 - 0.40, t4, z0 + 1.55), Vector3(0, 0, 0), 0.30)
 
@@ -3759,6 +3765,7 @@ func _menu_camera(delta: float) -> void:
 func _start_play() -> void:
 	app_state = "playing"
 	play_mode = "explore"
+	_apply_settings()                 # back to full resolution for play
 	_enter_idle()
 	player.visible = true
 	player.set_first_person(true)
@@ -3806,6 +3813,7 @@ func _resume() -> void:
 func _go_main_menu() -> void:
 	app_state = "menu"
 	play_mode = "explore"
+	_apply_settings()                 # the backdrop can be cheaper than play
 	_line_fish_release()
 	_enter_idle()
 	if touch:
@@ -3885,10 +3893,14 @@ func _apply_graphics() -> void:
 		# Resolution: Auto follows the graphics level (with a cap on rows for big
 		# phone screens); a fixed percentage renders exactly that much.
 		var res := str(menu_ui.settings.get("resolution", "Auto"))
+		# The menus draw the whole island behind them at full cost just to be
+		# a backdrop, and a panel sits over most of it. Two thirds of the
+		# resolution there buys a menu that scrolls and taps smoothly.
+		var menu_cut := 1.0 if app_state == "playing" else 0.66
 		if res == "Auto" or not res.ends_with("%"):
-			render_view.set_quality(Q_SCALE[q], q >= 2, Q_ROWS[q])
+			render_view.set_quality(Q_SCALE[q] * menu_cut, q >= 2, Q_ROWS[q])
 		else:
-			render_view.set_quality(float(res.trim_suffix("%")) / 100.0, q >= 2)
+			render_view.set_quality(float(res.trim_suffix("%")) / 100.0 * menu_cut, q >= 2)
 	get_viewport().msaa_3d = Viewport.MSAA_DISABLED
 	var want_shadows: bool = bool(menu_ui.settings.get("shadows", true)) and q > 0
 	if sun_light:
@@ -4145,6 +4157,7 @@ func _land_on_line() -> void:
 		pending_value = int(pending_fish["flat"]) + randi() % maxi(1, int(pending_fish["flat"]) / 2 + 1)
 	else:
 		pending_value = maxi(2, int(round(pending_weight * float(pending_fish.get("price", 14)))))
+	var rar_now := str(pending_fish.get("rarity", "Common"))
 	var notes: Array = []
 	if streak >= 1 and not pending_fish.get("junk", false):
 		var pct := mini(streak * 10, 50)
@@ -4153,6 +4166,16 @@ func _land_on_line() -> void:
 	if _new_species:
 		pending_value += NEW_SPECIES_BONUS
 		notes.append("New species!")
+	# Land something rare and the harbourmaster decides you are ready for the
+	# open water: the boat key and the chart come together, free. They used to
+	# be bought, which made the best thing in the game a shopping errand.
+	if not can_sail() and rar_now in ["Rare", "Epic", "Legendary"]:
+		if not owned_weapons.has("boat_key"):
+			owned_weapons.append("boat_key")
+		if not owned_weapons.has("sea_map"):
+			owned_weapons.append("sea_map")
+		notes.append("Boat Key + Sea Chart!")
+		_gift_t = 2.4
 	if pb:
 		pending_value += PB_BONUS
 		notes.append("Personal best!")
@@ -4182,9 +4205,17 @@ func _land_on_line() -> void:
 	rs = R_HOOKED
 	player.carry_slow = 0.6 if pending_fish.get("boss", false) else 0.92
 	if fx:
-		fx.splash(_hook_at.lerp(bobber.position, 0.5), 2.0)
+		var show: float = {"Common": 1.0, "Uncommon": 1.4, "Rare": 1.9,
+			"Epic": 2.4, "Legendary": 3.0}.get(rar_now, 1.0)
+		fx.splash(_hook_at.lerp(bobber.position, 0.5), 2.0 * show)
+		# Something rare comes up in a shower of spray and a burst of light.
+		if show > 1.5:
+			var up := bobber.position + Vector3(0, 0.6, 0)
+			fx.hit_burst(up, show > 2.2)
+			fx.splash(up, show * 0.8)
+			fx.dust(up, show * 0.5)
 	_play("caught")
-	var rar := str(pending_fish.get("rarity", "Common"))
+	var rar := rar_now
 	touch.show_card(_nice_name(jn), "%s%s   ·   %.2f kg" % ["NEW!  " if _new_species else "", rar,
 		pending_weight], UITheme.RARITY.get(rar, Color.WHITE))
 	if not notes.is_empty():

@@ -139,7 +139,10 @@ void fragment() {
 	float threshold = clamp(0.5 + 0.35 * (ripple_a.x + ripple_b.y), 0.05, 0.95);
 	float foam = smoothstep(threshold - 0.06, threshold + 0.06, edge);
 
-	ALBEDO = mix(water.rgb, foam_color.rgb, foam);
+	// A scatter of sun glints on the crests. This reuses the ripple values
+	// already sampled, so it costs three instructions and no texture read.
+	float glint = smoothstep(0.80, 0.99, ripple_a.x * 0.5 + ripple_b.y * 0.5 + 0.5);
+	ALBEDO = mix(water.rgb, foam_color.rgb, foam) + vec3(glint * 0.30 * (1.0 - foam));
 	ALPHA = mix(water.a, foam_color.a, foam) * (1.0 - hull);
 	ROUGHNESS = mix(roughness, 0.9, foam);
 	SPECULAR = 0.5;
