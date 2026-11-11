@@ -4,7 +4,9 @@ extends CanvasLayer
 ## Left: a joystick (floating under your thumb, or fixed in place).
 ## Above it: a RUN toggle. Releasing the stick drops back to walking.
 ## Right half: drag to look.
-## Bottom right: a context action pill (FISH / BUY / SELL 3 ...).
+## Bottom right: the big action button. It is always on screen: with nothing in
+## reach it reads PUNCH, and it swaps to whatever the game offers (BUY / SELL /
+## GRAB / HOOK ...) with a quick fade and dip so the change reads as deliberate.
 ## Centre: a crosshair with a compact info pill for whatever it's on.
 ##
 ## Multi-touch: stick, look, RUN and the action pill each track their own
@@ -31,6 +33,12 @@ var sprint := false            # running (auto from the stick, or the RUN toggle
 var auto_run := true           # push the stick nearly all the way to run
 const AUTO_RUN_AT := 0.86
 var prompt := ""               # main action label; empty hides it
+## The action button is never empty: with nothing in reach it reads PUNCH, and
+## it swaps to whatever the game offers (SELL, BUY, GRAB, CAST...) the moment
+## you look at something. `shown_prompt()` is what actually gets drawn and
+## tapped, so the game's own dispatch sees "PUNCH" and throws one.
+func shown_prompt() -> String:
+	return prompt if prompt != "" else "PUNCH"
 var secondary := ""            # second action (e.g. DROP / THROW); empty hides it
 var look_info := ""            # name of whatever the crosshair is on
 var look_stat := ""            # small grey stat line, e.g. "+1 power"
@@ -239,7 +247,7 @@ func _input(event: InputEvent) -> void:
 
 	if event is InputEventScreenTouch:
 		if event.pressed:
-			if prompt != "" and event.position.distance_to(_act_center) <= act_r() * 1.08:
+			if event.position.distance_to(_act_center) <= act_r() * 1.08:
 				_btn_held = true
 				_act_index = event.index
 				interact_pressed.emit()
@@ -472,13 +480,14 @@ class Painter extends Control:
 		if ui.secondary != "":
 			UIDraw.round_button(self, font, ui._sec_center, ui.sec_r(), ui.secondary,
 				ui.icon_for(ui.secondary), false, false, op)
-		if ui.prompt != "":
-			var dim: bool = ui.act_dim or ui.prompt == "LOCKED" or ui.prompt == "TOO DEAR"
+		var shown: String = ui.shown_prompt()
+		if shown != "":
+			var dim: bool = ui.act_dim or shown == "LOCKED" or shown == "TOO DEAR"
 			var ar: float = ui.act_r()
 			if ui.act_pulse:
 				ar *= 1.0 + sin(Time.get_ticks_msec() / 1000.0 * 14.0) * 0.06
-			UIDraw.round_button(self, font, ui._act_center, ar, ui.prompt,
-				ui.icon_for(ui.prompt), not dim, ui._btn_held, op)
+			UIDraw.round_button(self, font, ui._act_center, ar, shown,
+				ui.icon_for(shown), not dim, ui._btn_held, op)
 			if ui.act_progress >= 0.0:
 				draw_arc(ui._act_center, ar + 9.0, 0, TAU, 64, Color(0, 0, 0, 0.35 * op), 7.0, true)
 				if ui.act_progress > 0.001:

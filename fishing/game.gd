@@ -85,6 +85,7 @@ var world_env: Environment
 var sky_mat: ProceduralSkyMaterial
 var _sky_rain := -1.0
 var water_mat: ShaderMaterial
+var water_plane: PlaneMesh       # re-cut when the graphics preset changes
 var shop_building: Node3D
 var shop_counter: Node3D
 var shopkeeper: Node3D
@@ -1119,7 +1120,7 @@ func _build_world() -> void:
 	env.fog_enabled = true
 	env.fog_light_color = Color(0.52, 0.61, 0.70)
 	env.fog_light_energy = 1.0
-	env.fog_density = 0.0085
+	env.fog_density = 0.0125
 	env.fog_sky_affect = 0.55
 	env.fog_height = -1.5
 	env.fog_height_density = 0.05
@@ -1159,10 +1160,15 @@ func _build_world() -> void:
 
 	# Water: a big subdivided plane running the stylized water shader.
 	var water := MeshInstance3D.new()
-	var plane := PlaneMesh.new()
+	# The sea was a flat 300 m plane cut into 110x110 quads - 24,000 triangles,
+	# every one of them running the four-wave vertex shader, every frame, with
+	# most of them out past the horizon where no wave is visible. The grid is
+	# now set by the graphics preset.
+	water_plane = PlaneMesh.new()
+	var plane := water_plane
 	plane.size = Vector2(300, 300)
-	plane.subdivide_width = 110       # ~2.7 m quads: plenty for 9 m waves
-	plane.subdivide_depth = 110
+	plane.subdivide_width = Q_SEA[1]
+	plane.subdivide_depth = Q_SEA[1]
 	var smat := ShaderMaterial.new()
 	smat.shader = load("res://assets/water/stylized_water.gdshader")
 	smat.set_shader_parameter("shallow_color", Color(0.30, 0.86, 0.82, 0.38))
@@ -1400,9 +1406,8 @@ func _build_island() -> void:
 		_spawn("dock", Vector3(0, -0.59, 19.0 - i * 2.5))
 
 	# Dockside clutter.
-	_spawn("barrel", Vector3(-0.78, DECK_Y, 18.4), 0.3, 0.62)
-	_spawn("crate", Vector3(0.80, DECK_Y, 18.9), -0.4, 0.66)
-	_spawn("barrel", Vector3(-0.80, DECK_Y, 17.6), -0.2, 0.55)
+	# The barrels and crate that used to sit at the head of the jetty are gone:
+	# they hovered a finger's width above the sand and did nothing.
 
 	# The motorboat, moored alongside the jetty. Buy the Boss Reel to take it out.
 	boat = _spawn("motorboat", BOAT_MOOR, BOAT_YAW, BOAT_SCALE)
@@ -1454,12 +1459,26 @@ func _build_scenery() -> void:
 		var y := _island_y(HOME, HOME_R, HOME_H, x, z)
 		if str(pr["k"]).begins_with("palm"):
 			_make_palm(Vector3(x, y - 0.12, z), float(pr["s"]), float(pr["r"]), str(pr["k"]) == "palm_bend")
+			# A trunk you walk into rather than through.
+			var trunk := StaticBody3D.new()
+			var tcol := CollisionShape3D.new()
+			var tcyl := CylinderShape3D.new()
+			tcyl.radius = 0.32 * float(pr["s"])
+			tcyl.height = 5.0 * float(pr["s"])
+			tcol.shape = tcyl
+			trunk.add_child(tcol)
+			trunk.position = Vector3(x, y + tcyl.height * 0.5 - 0.3, z)
+			add_child(trunk)
 		else:
-			_spawn(pr["k"], Vector3(x, y - 0.15, z), pr["r"], pr["s"])
+			var prop := _spawn(pr["k"], Vector3(x, y - 0.15, z), pr["r"], pr["s"])
+			if str(pr["k"]).begins_with("rocks"):
+				_solidify(prop)
 
 	# A watchtower landmark set back on the island.
 	var ty := _island_y(HOME, HOME_R, HOME_H, 3.0, 42.0)
-	_static_props.append(_spawn("tower", Vector3(3.0, ty - 0.2, 42.0), -0.5, 1.2))
+	var tower := _spawn("tower", Vector3(3.0, ty - 0.2, 42.0), -0.5, 1.2)
+	_static_props.append(tower)
+	_solidify(tower, 0.55)
 
 	# Buoys bobbing on the open water (they float at their origin).
 	for b in [
@@ -1469,6 +1488,7 @@ func _build_scenery() -> void:
 	]:
 		var n := _spawn(b["k"], b["p"], randf() * TAU, b["s"])
 		floaters.append(n)
+		_solidify(n, 0.7)
 
 	_build_boss_zone()
 	_build_shop()
@@ -1490,8 +1510,8 @@ func _build_scenery() -> void:
 	held = []
 	_pending_loose = []
 
-	# A wrecked ship on the horizon for silhouette.
-	_static_props.append(_spawn("wreck", Vector3(-38, -1.0, -60), 0.7, 1.3))
+	# No wreck on the horizon any more: from the beach it read as another
+	# island sitting out at sea.
 
 
 
@@ -1732,7 +1752,7 @@ var _menu_cam_t := 0.0
 func _update_explore(delta: float) -> void:
 	var look: Vector2 = touch.consume_look()
 	cam_yaw -= look.x
-	cam_pitch = clampf(cam_pitch - look.y, -1.40, 0.45)
+	cam_pitch = clampf(cam_pitch - look.y, -1.40, 1.05)
 
 	player.move_input = touch.move
 	player.sprint = touch.sprint
@@ -1927,7 +1947,9 @@ static func _nice_name(n: String) -> String:
 func _on_interact() -> void:
 	if app_state != "playing" or not (play_mode == "explore" or play_mode == "boat"):
 		return
-	var p: String = touch.prompt
+	# The action button is never blank: with nothing in reach it reads PUNCH
+	# and throws one at the air.
+	var p: String = touch.shown_prompt()
 	match p:
 		"CAST":
 			if rs == R_NONE and held_id() == "rod" and line_fish == null:
@@ -1973,6 +1995,17 @@ func _on_interact() -> void:
 		"SHOO":
 			_shoo_gull()
 		"PUNCH", "HIT":
+			if looked_fish == null or not is_instance_valid(looked_fish):
+				# Swinging at nothing: you still swing.
+				if _hit_cd <= 0.0:
+					_hit_cd = 0.34
+					if hands:
+						if held_weapon() != "":
+							hands.play_swing()
+						else:
+							hands.play_punch()
+					players["whoosh"].pitch_scale = randf_range(1.45, 1.7)
+					_play("whoosh")
 			if looked_fish:
 				# Rod, clam or fish in hand: put it away and use both fists.
 				if held_id() in ["rod", "clam", "fish"]:
@@ -2306,6 +2339,26 @@ func _sync_rod_rack() -> void:
 	rod_rack.set_meta("weapon_id", str(ROD_IDS[nxt]))
 
 
+## Wraps a prop in a solid box so you cannot walk through it. Scenery without
+## collision is the thing that most gives a world away as a painting, and the
+## rocks, palms and buoys all used to be walk-through.
+func _solidify(n: Node3D, shrink := 0.82, tall := 1.0) -> void:
+	if n == null or not is_instance_valid(n):
+		return
+	var box := _node_aabb(n)
+	if not box.has_volume():
+		return
+	var body := StaticBody3D.new()
+	var col := CollisionShape3D.new()
+	var shape := BoxShape3D.new()
+	shape.size = Vector3(maxf(box.size.x * shrink, 0.25),
+		maxf(box.size.y * tall, 0.4), maxf(box.size.z * shrink, 0.25))
+	col.shape = shape
+	body.add_child(col)
+	body.position = box.get_center() + Vector3(0, box.size.y * (tall - 1.0) * 0.5, 0)
+	add_child(body)
+
+
 ## A wooden display stand with collision; returns the height of its top.
 func _pedestal(pos: Vector3) -> float:
 	var b := MeshInstance3D.new()
@@ -2455,6 +2508,16 @@ func _build_market() -> void:
 			continue
 		var lift: float = fmesh.mesh.get_aabb().size.y * fmesh.transform.basis.get_scale().y
 		fmesh.position.y += lift * 0.45
+	# The pack also stands two buckets and an ice crate on the ground beside
+	# the stall, each with fish poking out. At eye level those read as fish
+	# dropped in the sand, so the ground-level fish go.
+	for mi2 in stall.find_children("*", "MeshInstance3D", true, false):
+		var fm2 := mi2 as MeshInstance3D
+		if fm2.mesh == null or not ("Fish" in fm2.name):
+			continue
+		var fb: AABB = fm2.global_transform * fm2.mesh.get_aabb()
+		if fb.position.y < g + 0.80:
+			fm2.visible = false
 	for m in stall.find_children("*", "MeshInstance3D", true, false):
 		if m.name.begins_with("Counter") or m.name.begins_with("Stand") or m.name.begins_with("Base"):
 			m.create_trimesh_collision()
@@ -3488,6 +3551,9 @@ func _optimize_world() -> void:
 ## is built and again whenever the graphics setting changes.
 func _apply_prop_range() -> void:
 	var q: int = clampi(quality, 0, Q_PROP.size() - 1)
+	if water_plane and water_plane.subdivide_width != Q_SEA[q]:
+		water_plane.subdivide_width = Q_SEA[q]
+		water_plane.subdivide_depth = Q_SEA[q]
 	for sp in _small_props:
 		if not is_instance_valid(sp):
 			continue
@@ -3506,11 +3572,11 @@ func _apply_prop_range() -> void:
 # the good stuff. Flat calm is pretty and slow; the worse it looks out there,
 # the better the fishing - which is the whole reason to go out in it.
 const WEATHER := {
-	"clear":   {"dark": 0.00, "rain": 0.0,  "over": 0.0,  "fog": 0.0085, "wind": 1.0, "swell": 0.85,
+	"clear":   {"dark": 0.00, "rain": 0.0,  "over": 0.0,  "fog": 0.0125, "wind": 1.0, "swell": 0.85,
 		"bite": 1.15, "rare": 1.0,  "dur": [180.0, 300.0], "say": "Flat calm. Pretty, but the fish are sleepy."},
 	"cloudy":  {"dark": 0.50, "rain": 0.0,  "over": 0.55, "fog": 0.011,  "wind": 1.2, "swell": 1.0,
 		"bite": 0.92, "rare": 1.08, "dur": [100.0, 170.0], "say": "Cloud coming over - they're starting to bite."},
-	"breezy":  {"dark": 0.15, "rain": 0.0,  "over": 0.15, "fog": 0.008,  "wind": 2.3, "swell": 1.35,
+	"breezy":  {"dark": 0.15, "rain": 0.0,  "over": 0.15, "fog": 0.012,  "wind": 2.3, "swell": 1.35,
 		"bite": 1.0,  "rare": 1.05, "dur": [90.0, 150.0],  "say": "A good breeze, and a bit of a sea running."},
 	"foggy":   {"dark": 0.45, "rain": 0.0,  "over": 0.35, "fog": 0.030,  "wind": 0.6, "swell": 0.7,
 		"bite": 0.88, "rare": 1.15, "dur": [70.0, 120.0],  "say": "Fog. Can't see a thing - but something big is out there."},
@@ -3791,6 +3857,8 @@ const Q_CLOUDS := [8, 14, 20, 28]
 # Rain is transparent, so every drop is overdraw, which is the one thing a
 # phone GPU really cannot take. Heavy rain still reads as heavy at 300.
 const Q_RAIN := [110, 190, 250, 300]
+# How finely the sea is cut up, per preset.
+const Q_SEA := [44, 64, 88, 104]
 # Shadow atlas per preset. Four splits over 75 m at 4096 was the single most
 # expensive thing in an Ultra frame on a phone - four passes over the whole
 # island - and at this art style it is indistinguishable from two splits over

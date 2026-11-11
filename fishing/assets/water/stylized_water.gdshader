@@ -90,14 +90,17 @@ void vertex() {
 }
 
 void fragment() {
+	// The hull cut-out. This used to call discard, which costs a mobile GPU
+	// dearly on a surface that fills the screen: it loses early fragment
+	// rejection for the whole material. The water writes no depth, so fading
+	// the pixel to nothing looks identical and costs nothing.
+	float hull = 0.0;
 	if (hole_half.x > 0.0) {
 		vec2 d = world_xz - hole_center;
 		vec2 side = vec2(-hole_axis.y, hole_axis.x);
 		vec2 l = vec2(dot(d, side) / hole_half.x, dot(d, hole_axis) / hole_half.y);
 		// rounded-bow ellipse-ish footprint
-		if (l.x * l.x + pow(abs(l.y), 3.0) < 1.0) {
-			discard;
-		}
+		hull = 1.0 - step(1.0, l.x * l.x + pow(abs(l.y), 3.0));
 	}
 	float t = TIME * wave_speed;
 
@@ -137,7 +140,7 @@ void fragment() {
 	float foam = smoothstep(threshold - 0.06, threshold + 0.06, edge);
 
 	ALBEDO = mix(water.rgb, foam_color.rgb, foam);
-	ALPHA = mix(water.a, foam_color.a, foam);
+	ALPHA = mix(water.a, foam_color.a, foam) * (1.0 - hull);
 	ROUGHNESS = mix(roughness, 0.9, foam);
 	SPECULAR = 0.5;
 	NORMAL_MAP = vec3(ripple * 0.5 + 0.5, 1.0);
