@@ -253,7 +253,7 @@ func _build() -> void:
 	qbtn.pressed.connect(_on_quit)
 	footer.add_child(qbtn)
 	var ver := Label.new()
-	ver.text = "v" + str(ProjectSettings.get_setting("application/config/version", "0.14"))
+	ver.text = "v" + str(ProjectSettings.get_setting("application/config/version", "0.15"))
 	ver.add_theme_font_size_override("font_size", 20)
 	ver.add_theme_color_override("font_color", Color(1, 1, 1, 0.30))
 	ver.vertical_alignment = VERTICAL_ALIGNMENT_CENTER

@@ -94,6 +94,8 @@ var _fingers: FingerPose
 var _grip_now := {"R": GRIP_RELAX.duplicate(), "L": GRIP_RELAX.duplicate()}
 var _punch_side := 0                 # which fist is mid-punch (1 right, -1 left)
 var _open_t := 0.0                   # hand spreading open to take or let go of something
+var _prop_seen: Node3D               # what _prop_r was measured from
+var _prop_r := 0.03
 var _sail := 0.0                     # blend into the steering pose
 var _carry := 0.0                    # blend into the two-handed carry
 var _lag := Vector2.ZERO             # how far the hands are trailing the look
@@ -272,7 +274,9 @@ func _ready() -> void:
 				sm.emission_enabled = true
 				sm.emission = Color(1, 1, 1)
 				sm.emission_texture = sm.albedo_texture
-				sm.emission_energy_multiplier = 0.12
+				# Curled fingers turn the palm away from the sun, and without a
+				# little self-light the inside of a grip goes almost black.
+				sm.emission_energy_multiplier = 0.28
 				sm.roughness = 0.8
 				m.set_surface_override_material(si, sm)
 	for a in ["relax", "guard_idle", "knife_idle"]:
@@ -506,7 +510,7 @@ static func _dip(t: float) -> float:
 		return a * a * (3.0 - 2.0 * a)        # smooth drop
 	var b := (u - 0.34) / 0.66
 	var e := 1.0 - b
-	return e * e * (3.0 - 2.0 * e) - sin(b * PI) * 0.1   # rise, with a small settle
+	return e * e * (3.0 - 2.0 * e) - sin(b * PI) * 0.16  # rise, with a small settle
 
 
 ## How much of the new item is still below the hands: 1 while the hand is on
@@ -750,7 +754,7 @@ func _place_prop() -> void:
 		var dy2 := dz.cross(dx2).normalized()
 		# resting down on the fingers, not hovering over them
 		prop.global_transform = Transform3D(Basis(dx2, dy2, dz).scaled(sc),
-			mid + fwd * 0.06 - dy * (0.075 - bob))
+			mid + fwd * 0.06 - dy * (0.090 - bob))
 	elif mode == "fish" and cam:
 		# Held out by the tail: the body points from your fist toward the middle
 		# of the view, drooping a little and swaying as you walk.
@@ -775,12 +779,39 @@ func _place_prop() -> void:
 		var pp := _pinch_point(grip)
 		var cb := cam.global_basis if cam else Basis()
 		var b2 := cb * Basis(Vector3.RIGHT, 1.25)
-		prop.global_transform = Transform3D(b2.scaled(sc), pp + cb.y * -0.012 + cb.z * 0.01)
+		# The shell is far wider than the gap between the fingertips, so it is
+		# held by its rim: push it out of the hand by most of its radius, or
+		# the thumb and finger end up buried in the middle of it.
+		var away := pp - grip
+		away = away.normalized() if away.length() > 0.0001 else -cb.x
+		prop.global_transform = Transform3D(b2.scaled(sc),
+			pp + away * _prop_radius() * 0.70 + cb.y * -0.012 + cb.z * 0.01)
 	# Mid-draw the item is still on its way up out of the pack: it rides below
 	# the hand and rises into the grip as the hand comes back up.
 	var rise := _draw_rise(_swap_t)
 	if rise > 0.001 and cam:
 		prop.global_position += cam.global_basis * Vector3(0.0, -0.36 * rise, 0.12 * rise)
+
+
+## Half the width of whatever is being held, in world units, measured off the
+## model itself and cached until the held thing changes.
+func _prop_radius() -> float:
+	if prop != _prop_seen:
+		_prop_seen = prop
+		_prop_r = 0.03
+		if prop and is_instance_valid(prop):
+			var box := AABB()
+			var got := false
+			var inv := prop.global_transform.affine_inverse()
+			for n in prop.find_children("*", "VisualInstance3D", true, false):
+				var v := n as VisualInstance3D
+				var b: AABB = (inv * v.global_transform) * v.get_aabb()
+				box = b if not got else box.merge(b)
+				got = true
+			if got:
+				var s: Vector3 = box.size * prop.scale
+				_prop_r = maxf(maxf(s.x, s.y), s.z) * 0.5
+	return _prop_r
 
 
 ## Where thumb and index fingertips meet (each bone's origin is its last

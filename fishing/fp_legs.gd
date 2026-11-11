@@ -62,15 +62,18 @@ func _build() -> void:
 		knee.position = Vector3(0, -THIGH, 0)
 		hip.add_child(knee)
 		_ball(knee, 0.068, SKIN)
-		_tube(knee, 0.068, 0.052, SHIN, SKIN).position = Vector3(0, -SHIN * 0.5, 0)
+		_tube(knee, 0.068, 0.050, SHIN, SKIN).position = Vector3(0, -SHIN * 0.5, 0)
 
 		var ankle := Node3D.new()
 		ankle.position = Vector3(0, -SHIN, 0)
 		knee.add_child(ankle)
+		_ball(ankle, 0.050, SKIN)            # the ankle, so the leg meets the shoe
 		# Deck shoe: a canvas upper on a pale sole, toes forward (-Z). The sole
 		# is inset so from above you only see shoe.
 		_box(ankle, Vector3(0.115, 0.075, 0.25), SHOE).position = Vector3(0, -0.03, -0.055)
-		_box(ankle, Vector3(0.12, 0.045, 0.255), SOLE).position = Vector3(0, -0.08, -0.055)
+		# The sole is inset on every side: when it was wider than the shoe the
+		# two surfaces sat 2 mm apart and shimmered against each other.
+		_box(ankle, Vector3(0.10, 0.05, 0.228), SOLE).position = Vector3(0, -0.082, -0.055)
 
 		_hip.append(hip)
 		_knee.append(knee)
@@ -185,8 +188,10 @@ func _tube(parent: Node3D, top: float, bottom: float, h: float, c: Color) -> Mes
 	m.top_radius = top
 	m.bottom_radius = bottom
 	m.height = h
-	m.radial_segments = 8
-	m.rings = 0
+	# Twelve sides instead of eight: a leg you look straight down at reads as
+	# round rather than as a stop sign, and it costs a few dozen triangles.
+	m.radial_segments = 12
+	m.rings = 1
 	m.material = _mat(c)
 	return _put(parent, m)
 
@@ -195,8 +200,8 @@ func _ball(parent: Node3D, r: float, c: Color) -> MeshInstance3D:
 	var m := SphereMesh.new()
 	m.radius = r
 	m.height = r * 2.0
-	m.radial_segments = 8
-	m.rings = 4
+	m.radial_segments = 12
+	m.rings = 6
 	m.material = _mat(c)
 	return _put(parent, m)
 
