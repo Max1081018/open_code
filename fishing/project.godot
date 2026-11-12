@@ -6,7 +6,7 @@ config_version=5
 [application]
 
 config/name="Reel Trouble"
-config/version="0.15"
+config/version="0.16"
 config/description="Cast off a little island, wait for a bite, and reel in goofy low-poly fish."
 run/main_scene="res://game.tscn"
 config/features=PackedStringArray("4.3", "GL Compatibility")
