@@ -82,6 +82,8 @@ const GRIP_TAIL := [0.90, 0.92, 0.92, 0.90, 0.52, 20.0, 12.0]    # clamped on a 
 const GRIP_PINCH := [0.52, 0.72, 0.86, 0.90, 0.45, 20.0, 14.0]   # thumb-and-index on a clam
 const GRIP_CRADLE := [0.30, 0.32, 0.34, 0.36, 0.15, 5.0, 6.0]    # open palms under a big fish
 const GRIP_HOOK := [0.62, 0.66, 0.68, 0.70, 0.35, 14.0, 10.0]    # fingers hooked under a load
+const GRIP_CUP := [0.36, 0.42, 0.46, 0.52, 0.30, 12.0, 9.0]       # palm up, fingers cupped under a clam
+const GRIP_GUN := [0.34, 0.86, 0.88, 0.90, 0.62, 24.0, 12.0]     # pistol: three fingers round the grip, index on the trigger
 const GRIP_OPEN := [0.10, 0.12, 0.14, 0.16, 0.10, 0.0, 4.0]      # letting go / taking hold
 
 # Where a handle actually sits inside a closed fist: the fingers wrap a circle
@@ -100,6 +102,33 @@ var _sail := 0.0                     # blend into the steering pose
 var _carry := 0.0                    # blend into the two-handed carry
 var _lag := Vector2.ZERO             # how far the hands are trailing the look
 var _look_was := Vector2.ZERO
+
+# --- pistol -----------------------------------------------------------------
+const CLAM_PALM_UP := Vector3(-0.22, 1.0, 0.38)     # camera space: which way the palm faces
+const CLAM_FINGERS := Vector3(-0.62, 0.0, -0.78)    # and where the fingers point
+const CLAM_SEAT := Vector3(-0.028, 0.094, 0.0)    # hand space: the middle of the palm, just above the skin
+const GUN_RAKE := 0.20                # the grip leans back off the barrel (radians)
+const GUN_MUZZLE := Vector3(0.0, 0.048, -0.199)   # end of the barrel, gun space
+const GUN_PORT := Vector3(0.014, 0.058, -0.07)    # where the spent case leaves
+const GUN_SHIFT := Vector3(-0.075, -0.005, 0.07)     # brings the sights nearer the middle
+const SLIDE_TRAVEL := 0.0019          # in the model's own tiny units (18 mm)
+var gun_empty := false                # slide stays locked back on an empty magazine
+var _gun: Node3D
+var _slide: Node3D
+var _slide_rest := Vector3.ZERO
+var _hammer: Node3D
+var _hammer_rest := Basis()
+var _trigger: Node3D
+var _trigger_rest := Vector3.ZERO
+var _flash: Node3D
+var _flash_t := 0.0
+var _fire_t := 0.0                    # 1 at the shot, 0 once the hand has settled
+var _fire_side := 0.0
+var _reload_t := 0.0                  # 1 at the start of a reload, 0 when done
+var _reload_len := 1.0
+var _kick_was := Vector3.ZERO
+var _gun_amt := 0.0
+var _shells: Array = []               # [mesh, velocity, spin, life]
 
 
 ## Layers one clip onto just the right arm (shoulder to fingertips) on top of
@@ -235,12 +264,22 @@ class GripAim extends SkeletonModifier3D:
 	var bone := -1
 	var want := Vector3.FORWARD
 	var weight := 0.0
+	var full := false               # pin the whole hand, not just the grip axis
+	var want_basis := Basis()       # skeleton space, used when `full`
 
 	func _process_modification() -> void:
 		var sk := get_skeleton()
 		if sk == null or bone < 0 or weight <= 0.001:
 			return
 		var gp := sk.get_bone_global_pose(bone)
+		if full:
+			# A pistol has a front and a top: one axis is not enough, so the
+			# hand takes the whole orientation the gun needs.
+			var a0 := gp.basis.get_rotation_quaternion()
+			var a1 := want_basis.get_rotation_quaternion()
+			var fb := Basis(a0.slerp(a1, clampf(weight, 0.0, 1.0)))
+			sk.set_bone_global_pose(bone, Transform3D(fb.scaled(gp.basis.get_scale()), gp.origin))
+			return
 		var cur := (gp.basis * Vector3(0, 0, 1)).normalized()
 		var w := want.normalized()
 		if cur.dot(w) > 0.9999:
@@ -416,6 +455,171 @@ func play_swing() -> void:
 		_play_once("knife_hit_01" if _swing_alt else "knife_hit_02", 1.35, 0.05)
 
 
+## The pistol goes off: the hand snaps back and up, the slide cycles, a case
+## spins out and the muzzle flashes for a couple of frames.
+func play_fire() -> void:
+	_fire_t = 1.0
+	_fire_side = randf_range(-1.0, 1.0)
+	_flash_t = 0.055
+	if _flash:
+		_flash.visible = true
+		_flash.rotation.z = randf() * TAU
+		var fs := randf_range(0.85, 1.25)
+		_flash.scale = Vector3(fs, fs, fs)
+	_eject_shell()
+
+
+func play_reload(seconds: float) -> void:
+	_reload_len = maxf(seconds, 0.2)
+	_reload_t = 1.0
+
+
+func reloading() -> bool:
+	return _reload_t > 0.0
+
+
+## The end of the barrel, in world space: where the tracer starts.
+func muzzle_world() -> Vector3:
+	if _gun and is_instance_valid(_gun):
+		return _gun.global_transform * GUN_MUZZLE
+	var cam := get_parent() as Node3D
+	return cam.global_transform * Vector3(0.14, -0.12, -0.6) if cam else global_position
+
+
+## Seats a pistol model in the tool mount and finds its moving parts. The
+## model comes in with its grip on the origin, barrel along -Z, sights up.
+func fit_gun(g: Node3D) -> void:
+	_gun = g
+	g.transform = Transform3D(Basis(Vector3.RIGHT, GUN_RAKE), Vector3.ZERO)
+	_slide = g.find_child("Slide", true, false) as Node3D
+	_hammer = g.find_child("Hammer", true, false) as Node3D
+	_trigger = g.find_child("Trigger", true, false) as Node3D
+	if _slide:
+		_slide_rest = _slide.position
+	if _hammer:
+		_hammer_rest = _hammer.transform.basis
+	if _trigger:
+		_trigger_rest = _trigger.position
+	# Muzzle flash: a soft hot core facing you and a streak along the barrel.
+	_flash = Node3D.new()
+	_flash.position = GUN_MUZZLE + Vector3(0, 0, -0.03)
+	_flash.visible = false
+	g.add_child(_flash)
+	var grad := Gradient.new()
+	grad.offsets = PackedFloat32Array([0.0, 0.25, 0.6, 1.0])
+	grad.colors = PackedColorArray([Color(1, 1, 0.9, 1), Color(1, 0.85, 0.4, 0.9),
+		Color(1, 0.5, 0.1, 0.35), Color(1, 0.3, 0.0, 0.0)])
+	var tex := GradientTexture2D.new()
+	tex.gradient = grad
+	tex.fill = GradientTexture2D.FILL_RADIAL
+	tex.fill_from = Vector2(0.5, 0.5)
+	tex.fill_to = Vector2(1.0, 0.5)
+	tex.width = 64
+	tex.height = 64
+	var fm := StandardMaterial3D.new()
+	fm.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	fm.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+	fm.blend_mode = BaseMaterial3D.BLEND_MODE_ADD
+	fm.albedo_texture = tex
+	fm.cull_mode = BaseMaterial3D.CULL_DISABLED
+	fm.no_depth_test = true
+	for k in 3:
+		var q := QuadMesh.new()
+		q.size = Vector2(0.085, 0.085) if k == 0 else Vector2(0.04, 0.15)
+		q.material = fm
+		var mi := MeshInstance3D.new()
+		mi.mesh = q
+		mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+		if k == 1:
+			mi.rotation = Vector3(PI * 0.5, 0, 0)          # streaks lying along the bore
+			mi.position = Vector3(0, 0, -0.05)
+		elif k == 2:
+			mi.rotation = Vector3(PI * 0.5, 0, PI * 0.5)
+			mi.position = Vector3(0, 0, -0.07)
+		_flash.add_child(mi)
+
+
+func _eject_shell() -> void:
+	if _gun == null or not is_instance_valid(_gun):
+		return
+	var slot: Array = []
+	for sh in _shells:
+		if float(sh[3]) <= 0.0:
+			slot = sh
+			break
+	if slot.is_empty():
+		if _shells.size() >= 4:
+			slot = _shells[0]
+		else:
+			var cm := CylinderMesh.new()
+			cm.top_radius = 0.0045
+			cm.bottom_radius = 0.0048
+			cm.height = 0.017
+			cm.radial_segments = 6
+			cm.rings = 1
+			var bm := StandardMaterial3D.new()
+			bm.albedo_color = Color(0.86, 0.66, 0.26)
+			bm.metallic = 0.8
+			bm.roughness = 0.35
+			cm.material = bm
+			var mi := MeshInstance3D.new()
+			mi.mesh = cm
+			mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+			add_child(mi)
+			slot = [mi, Vector3.ZERO, Vector3.ZERO, 0.0]
+			_shells.append(slot)
+	var m := slot[0] as MeshInstance3D
+	m.visible = true
+	m.position = to_local(_gun.global_transform * GUN_PORT)
+	slot[1] = Vector3(randf_range(0.9, 1.4), randf_range(1.5, 2.1), randf_range(0.1, 0.5))
+	slot[2] = Vector3(randf_range(-20, 20), randf_range(-8, 8), randf_range(10, 28))
+	slot[3] = 0.7
+
+
+## How hard the shot is still pushing the hand: a sharp rise over the first
+## couple of frames, then a longer ease back down.
+func _kick() -> float:
+	if _fire_t <= 0.0:
+		return 0.0
+	var u := 1.0 - _fire_t
+	if u < 0.14:
+		return u / 0.14
+	var e := 1.0 - (u - 0.14) / 0.86
+	return e * e * (3.0 - 2.0 * e)
+
+
+func _update_gun(delta: float) -> void:
+	_flash_t = maxf(_flash_t - delta, 0.0)
+	if _flash and _flash_t <= 0.0:
+		_flash.visible = false
+	if _slide:
+		# Back with the shot and home again inside a tenth of a second; an
+		# empty magazine leaves it locked open.
+		var u := 1.0 - _fire_t
+		var back := 0.0
+		if _fire_t > 0.0 and u < 0.5:
+			back = sin(u / 0.5 * PI)
+		if gun_empty:
+			back = maxf(back, 1.0 if (_fire_t <= 0.0 or u > 0.25) else back)
+		_slide.position = _slide_rest + Vector3(0, SLIDE_TRAVEL * back, 0)
+	if _trigger:
+		_trigger.position = _trigger_rest + Vector3(0, 0.00035 * clampf(_fire_t * 1.6, 0.0, 1.0), 0)
+	for sh in _shells:
+		var life: float = sh[3]
+		if life <= 0.0:
+			continue
+		life -= delta
+		sh[3] = life
+		var m := sh[0] as MeshInstance3D
+		var v: Vector3 = sh[1]
+		v.y -= 9.0 * delta
+		sh[1] = v
+		m.position += v * delta
+		m.rotation += (sh[2] as Vector3) * delta
+		if life <= 0.0:
+			m.visible = false
+
+
 func play_pickup() -> void:
 	_open_t = 1.0                          # fingers spread, then close on it
 	_play_once("grab.R", 1.3)
@@ -533,6 +737,9 @@ func _process(delta: float) -> void:
 	_hit_t = maxf(_hit_t - delta / 0.4, 0.0)
 	_swap_t = maxf(_swap_t - delta / DRAW_TIME, 0.0)
 	_open_t = maxf(_open_t - delta / 0.45, 0.0)
+	_fire_t = maxf(_fire_t - delta / 0.26, 0.0)
+	_reload_t = maxf(_reload_t - delta / _reload_len, 0.0)
+	_update_gun(delta)
 	if _oneshot <= 0.0:
 		_punch_side = 0
 	_land_t = maxf(_land_t - delta / 0.3, 0.0)
@@ -606,10 +813,27 @@ func _process(delta: float) -> void:
 	# than meeting in the middle of the view.
 	_carry = move_toward(_carry, 1.0 if mode == "carry" else 0.0, delta * 4.0)
 	off += Vector3(0.0, -0.13, -0.03) * _carry
+	# Pistol: held a little nearer the middle, dropped out of view to reload.
+	var gun_on := mode == "weapon" and whack_style == "gun"
+	_gun_amt = move_toward(_gun_amt, 1.0 if gun_on else 0.0, delta * 4.0)
+	off += GUN_SHIFT * _gun_amt
+	var rl := sin(clampf(1.0 - _reload_t, 0.0, 1.0) * PI) if _reload_t > 0.0 else 0.0
+	rl = minf(rl * 1.6, 1.0)                  # down quickly, held, up quickly
+	off += Vector3(0.01, -0.12, 0.04) * rl * _gun_amt
 	var rig_xf := Transform3D(
 		Basis(Vector3.RIGHT, pitch - _lag.y * 0.75) * Basis(Vector3.UP, -_lag.x * 0.75),
 		off) * _base
-	_rig.transform = _rig.transform.interpolate_with(rig_xf, clampf(delta * 20.0, 0.0, 1.0))
+	# Recoil is laid on top of the smoothed pose, not fed through it: eased
+	# like everything else it arrives late and soft, and a shot has to land
+	# on the frame you pressed.
+	var kick := _kick() * _gun_amt
+	var kick_off := Vector3(_fire_side * 0.004, 0.014, 0.052) * kick
+	var settled := _rig.transform
+	settled.origin -= _kick_was
+	settled = settled.interpolate_with(rig_xf, clampf(delta * 20.0, 0.0, 1.0))
+	settled.origin += kick_off
+	_kick_was = kick_off
+	_rig.transform = settled
 
 	# Holding a small fish or a clam: only the right arm lifts and grips.
 	var lift := (mode == "clam" or (mode == "fish" and not prop_two_hands)) and _oneshot <= 0.0
@@ -667,9 +891,14 @@ func _grip_target(side: String) -> Array:
 		"weapon":
 			if side == "L":
 				return GRIP_RELAX
+			if whack_style == "gun":
+				# the trigger finger squeezes with the shot and lets off again
+				var g: Array = GRIP_GUN.duplicate()
+				g[0] = lerpf(0.34, 0.52, clampf(_fire_t * 1.6, 0.0, 1.0))
+				return g
 			return GRIP_TIGHT if whack_style == "punch" else GRIP_FIST
 		"clam":
-			return GRIP_PINCH if side == "R" else GRIP_RELAX
+			return GRIP_CUP if side == "R" else GRIP_RELAX
 		"fish":
 			if prop_two_hands:
 				return GRIP_CRADLE          # a big fish lies across both palms
@@ -690,11 +919,44 @@ func _grip_target(side: String) -> Array:
 ## it back, the cast flicks it forward, the hook jerks it up, a fighting fish
 ## shakes it and a heavy catch bows it down.
 func _aim_wrist(delta: float) -> void:
-	var on := mode == "rod" or (mode == "weapon" and whack_style != "punch")
+	var on := mode == "rod" or mode == "clam" or (mode == "weapon" and whack_style != "punch")
 	_aim.weight = move_toward(_aim.weight, 1.0 if (on and _oneshot <= 0.0) else 0.0, delta * 6.0)
+	_aim.full = false
 	if not on:
 		return
 	var cam0 := get_parent() as Node3D
+	if mode == "clam":
+		if cam0 == null:
+			return
+		# Palm up, fingers pointing away and a little inward, tipped toward
+		# you so the shell shows: the clam lies in the hand like something
+		# you picked up, rather than hovering next to a fist.
+		var n := CLAM_PALM_UP.normalized()
+		var f := CLAM_FINGERS - n * CLAM_FINGERS.dot(n)
+		f = f.normalized()
+		var hx := -n                           # the hand's +X is the back of the hand
+		var hb := cam0.global_basis.orthonormalized() * Basis(hx, f, hx.cross(f))
+		_aim.full = true
+		_aim.want_basis = _skel.global_basis.orthonormalized().inverse() * hb
+		return
+	if mode == "weapon" and whack_style == "gun":
+		if cam0 == null:
+			return
+		# Barrel on the crosshair, toed in a little because the gun sits to
+		# the right of your eye; the shot flips the muzzle up, and a reload
+		# rolls the gun over while it is down out of view.
+		var kick := _kick()
+		var rl := sin(clampf(1.0 - _reload_t, 0.0, 1.0) * PI) if _reload_t > 0.0 else 0.0
+		var sway := sin(_t * 0.9) * 0.006
+		var gb := cam0.global_basis.orthonormalized() \
+			* Basis(Vector3.UP, 0.07 + _fire_side * 0.012 * kick + sway) \
+			* Basis(Vector3.RIGHT, 0.035 + 0.24 * kick - 0.42 * rl) \
+			* Basis(Vector3.BACK, -0.05 - 0.5 * rl)
+		var in_hand := _tool_mount.transform.basis * Basis(Vector3.RIGHT, GUN_RAKE)
+		var hand_world := gb * in_hand.inverse()
+		_aim.full = true
+		_aim.want_basis = _skel.global_basis.orthonormalized().inverse() * hand_world
+		return
 	if mode == "weapon":
 		if cam0:
 			_aim.want = (_skel.global_basis.inverse() * (cam0.global_basis * WEAPON_AIM.normalized())).normalized()
@@ -777,19 +1039,13 @@ func _place_prop() -> void:
 		var hold: float = maxf(prop_half - 0.055, prop_half * 0.5)
 		prop.global_transform = Transform3D(b.scaled(sc), grip + d * hold)
 	else:
-		# the clam sits in the curl of the fingers, its edge peeking out on the
-		# thumb side, tilted to face you
-		# pinched between thumb and index, its face turned toward you
-		var pp := _pinch_point(grip)
-		var cb := cam.global_basis if cam else Basis()
-		var b2 := cb * Basis(Vector3.RIGHT, 1.25)
-		# The shell is far wider than the gap between the fingertips, so it is
-		# held by its rim: push it out of the hand by most of its radius, or
-		# the thumb and finger end up buried in the middle of it.
-		var away := pp - grip
-		away = away.normalized() if away.length() > 0.0001 else -cb.x
-		prop.global_transform = Transform3D(b2.scaled(sc),
-			pp + away * _prop_radius() * 0.70 + cb.y * -0.012 + cb.z * 0.01)
+		# The clam rests in the upturned palm: hinge toward the wrist, lip
+		# toward the fingertips, sitting on the skin with the fingers cupped
+		# up round its rim.
+		var hand := _hand_r.global_transform.orthonormalized()
+		var hb := hand.basis
+		var seat := hand * (CLAM_SEAT + Vector3(-_prop_radius() * 0.18, 0, 0))
+		prop.global_transform = Transform3D(Basis(hb.z, -hb.x, -hb.y).scaled(sc), seat)
 	# Mid-draw the item is still on its way up out of the pack: it rides below
 	# the hand and rises into the grip as the hand comes back up.
 	var rise := _draw_rise(_swap_t)

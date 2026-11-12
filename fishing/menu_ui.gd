@@ -253,7 +253,7 @@ func _build() -> void:
 	qbtn.pressed.connect(_on_quit)
 	footer.add_child(qbtn)
 	var ver := Label.new()
-	ver.text = "v" + str(ProjectSettings.get_setting("application/config/version", "0.16"))
+	ver.text = "v" + str(ProjectSettings.get_setting("application/config/version", "0.17"))
 	ver.add_theme_font_size_override("font_size", 20)
 	ver.add_theme_color_override("font_color", Color(1, 1, 1, 0.30))
 	ver.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
@@ -422,9 +422,10 @@ func _build() -> void:
 		"Buy a FISHING ROD at BAIT & BLADE. Tap a slot to hold what's in it.",
 		"With the rod: HOLD CAST, let go. On HOOK! tap it, then tap REEL until it's out.",
 		"DROP your catch, then PUNCH it out - quick, before it jumps at you!",
-		"GRAB the knocked-out fish and sell it. A better Reel brings rarer fish.",
+		"GRAB the knocked-out fish and sell it. A better rod brings rarer fish.",
 		"Push the stick to the edge to run. JUMP gets you up the shop steps.",
-		"Boat Key + Sea Chart get you aboard: DRIVE out past the buoys with the stick.",
+		"Land something Rare and the Boat Key and Sea Chart are yours: DRIVE out past the buoys.",
+		"The PISTOL shoots cans off the rail, bottles off the sea, and scares the gull.",
 		"Out there the Boss Reel lands the Kraken. Drop a catch in the sea and it floats.",
 	]:
 		var l := Label.new()

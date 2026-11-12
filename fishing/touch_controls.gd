@@ -136,6 +136,7 @@ static func icon_for(label: String) -> String:
 		"REEL": return "reel"
 		"PUNCH": return "fist"
 		"HIT": return "whack"
+		"SHOOT", "RELOAD": return "aim"
 		"PICK": return "clam"
 		"CANCEL": return "back"
 		"WAIT": return "bubble"

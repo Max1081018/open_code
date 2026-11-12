@@ -102,6 +102,11 @@ static func icon(ci: CanvasItem, kind: String, c: Vector2, s: float, col: Color)
 			var head := Rect2(c + Vector2(-s * 0.75, -s * 0.72), Vector2(s * 1.0, s * 0.55))
 			ci.draw_rect(head, col)
 			ci.draw_line(c + Vector2(-s * 0.25, -s * 0.2), c + Vector2(s * 0.55, s * 0.75), col, w * 1.2, true)
+		"aim":    # crosshair
+			ci.draw_arc(c, s * 0.55, 0.0, TAU, 28, col, w, true)
+			for d in [Vector2.UP, Vector2.DOWN, Vector2.LEFT, Vector2.RIGHT]:
+				ci.draw_line(c + d * s * 0.28, c + d * s * 0.85, col, w, true)
+			ci.draw_circle(c, s * 0.09, col)
 		"hand":   # grab
 			ci.draw_circle(c + Vector2(0, s * 0.18), s * 0.42, col)
 			for i in 4:

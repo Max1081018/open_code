@@ -8,7 +8,7 @@ extends SceneTree
 const Sfx := preload("res://sfx.gd")
 
 const ONESHOTS := ["splash", "bite", "whoosh", "click", "caught", "snap", "bonk",
-	"hurt", "coins", "pickup", "step_soft", "step_wood", "gull"]
+	"hurt", "coins", "pickup", "step_soft", "step_wood", "gull", "gunshot", "reload"]
 const LOOPS := ["surf_loop", "wind_loop", "rain_loop", "engine_loop", "music_loop"]
 
 

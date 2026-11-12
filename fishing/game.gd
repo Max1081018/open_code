@@ -319,6 +319,8 @@ const SHOP_STOCK := [
 	 "desc": "Long, sharp, and it keeps its edge in salt air.", "price": 190, "power": 3},
 	{"id": "axe_A", "name": "Bait Hatchet", "rarity": "Rare",
 	 "desc": "Chops bait. Chops most things, really.", "price": 320, "power": 4},
+	{"id": "pistol", "name": "Harbour Pistol", "rarity": "Rare", "kind": "gun",
+	 "desc": "Seven rounds. Drops a fish, a gull or a tin can at any range.", "price": 260, "power": 2},
 	{"id": "boat_key", "name": "Boat Key", "rarity": "Uncommon", "kind": "gear",
 	 "desc": "Starts the motorboat at the jetty.", "price": 120, "power": 0, "proc": "key"},
 	{"id": "sea_map", "name": "Sea Chart", "rarity": "Uncommon", "kind": "gear",
@@ -454,6 +456,7 @@ static func _item_icon(id: String) -> String:
 		"dagger_A", "dagger_B": return "dagger"
 		"axe_A": return "axe"
 		"fistweapon_A": return "grips"
+		"pistol": return "gun"
 		"fish": return "fish"
 		_: return "whack"
 
@@ -481,10 +484,58 @@ func _item_model(it: Dictionary) -> Node3D:
 			if m:
 				return m
 			return rod.duplicate() as Node3D
+		"pistol":
+			return _gun_model()
 		_:
 			if ResourceLoader.exists(WEAPON_DIR + id + ".gltf"):
 				return load(WEAPON_DIR + id + ".gltf").instantiate()
 	return Node3D.new()
+
+
+const GUN_SCENE := "res://assets/models/guns/pistol_1911.fbx"
+const GUN_TEX := "res://assets/models/guns/1911.png"
+const GUN_MAG := 7
+const GUN_QUIPS := ["\"Oi! Not in my shop!\"", "\"Point that at the fish!\"",
+	"\"You'll pay for that hat.\"", "\"Missed. Don't try again.\""]
+const GUN_RELOAD := 1.15
+const GUN_RANGE := 90.0
+var gun_ammo := GUN_MAG
+var _gun_cd := 0.0
+var _gun_reload := 0.0
+var _recoil := 0.0              # camera kick still to come back down from
+var _tracers: Array = []        # [mesh, seconds left]
+var _cans: Array = []           # the tin cans on the rail: [body, home transform]
+var _cans_down := 0
+var _cans_reset := 0.0
+var _gun_mat: StandardMaterial3D
+
+## The pistol, turned so the grip sits on the origin with the barrel along -Z
+## and the sights up: the pack ships it barrel +Z, with the magazine and two
+## loose rounds laid out beside it like a parts diagram.
+func _gun_model() -> Node3D:
+	var holder := Node3D.new()
+	if not ResourceLoader.exists(GUN_SCENE):
+		return holder
+	var m: Node3D = (load(GUN_SCENE) as PackedScene).instantiate()
+	for extra in ["Mag", "45 ACP", "45 ACP Blank"]:
+		var e := m.find_child(extra, true, false)
+		if e:
+			e.get_parent().remove_child(e)
+			e.queue_free()
+	if _gun_mat == null:
+		_gun_mat = StandardMaterial3D.new()
+		_gun_mat.albedo_texture = load(GUN_TEX)
+		_gun_mat.metallic = 0.55
+		_gun_mat.roughness = 0.42
+		_gun_mat.texture_filter = BaseMaterial3D.TEXTURE_FILTER_LINEAR_WITH_MIPMAPS_ANISOTROPIC
+	for mi in m.find_children("*", "MeshInstance3D", true, false):
+		(mi as MeshInstance3D).material_override = _gun_mat
+		(mi as MeshInstance3D).cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	# grip centre in the model's own space, then spun to face -Z
+	var grip := Vector3(-0.0124, 0.062, -0.034)
+	m.transform = Transform3D(Basis(Vector3.UP, PI), Basis(Vector3.UP, PI) * -grip)
+	holder.add_child(m)
+	return holder
 
 
 ## Small shop items built in code: a brass boat key on a cork float, and a
@@ -749,6 +800,7 @@ func _load_save() -> void:
 		best_name = str(cfg.get_value("save", "best_name", ""))
 		seen_help = bool(cfg.get_value("save", "seen_help", false))
 		owned_weapons = cfg.get_value("save", "owned_weapons", [])
+		can_best = float(cfg.get_value("save", "can_best", 0.0))
 		equipped_weapon = str(cfg.get_value("save", "equipped_weapon", ""))
 		held = cfg.get_value("save", "held", [])
 		_pending_loose = cfg.get_value("save", "loose", [])
@@ -798,6 +850,7 @@ func _save_game() -> void:
 	cfg.set_value("save", "best_name", best_name)
 	cfg.set_value("save", "seen_help", seen_help)
 	cfg.set_value("save", "owned_weapons", owned_weapons)
+	cfg.set_value("save", "can_best", can_best)
 	cfg.set_value("save", "equipped_weapon", equipped_weapon)
 	cfg.set_value("save", "held", [])
 	var loose_out: Array = []
@@ -992,6 +1045,15 @@ func _ready() -> void:
 				_sync_hotbar()
 				cam_yaw = PI
 				cam_pitch = -0.1
+			"gun":
+				_start_play()
+				_test_give("pistol", true)
+				var cc: Vector3 = (_cans[2][1] as Transform3D).origin
+				var inward := (HOME - cc)
+				inward.y = 0
+				inward = inward.normalized()
+				var stand := cc + inward * 5.0
+				player.position = Vector3(stand.x, _island_y(HOME, HOME_R, HOME_H, stand.x, stand.z) + 0.3, stand.z)
 			"gull":
 				_start_play()
 				sel = -1
@@ -1422,11 +1484,20 @@ func _build_island() -> void:
 	boat_deck.sync_to_physics = false   # we place it directly every frame
 	var dcol := CollisionShape3D.new()
 	var dbox := BoxShape3D.new()
-	dbox.size = Vector3(2.0, 0.4, 5.0)
+	# The floor you stand on sits inside the hull; the hull itself, the motor,
+	# the dash and the screen are their real shapes, so the boat is boat-shaped
+	# to walk into, to bump along the jetty and to shoot at.
+	dbox.size = Vector3(1.7, 0.4, 4.2)
 	dcol.shape = dbox
+	dcol.position = Vector3(0, 0, -0.35)
 	boat_deck.add_child(dcol)
 	add_child(boat_deck)
 	_sync_deck()
+	var n_before := boat_deck.get_child_count()
+	for part in ["Hull", "Dash", "Windshield_Frame"]:
+		_solid_shape(boat.find_child(part, true, false) as Node3D, true, [], boat_deck)
+	_solid_shape(boat.find_child("Motor", true, false) as Node3D, false, ["Propeller", "Tiller"], boat_deck)
+	print("boat collider: %d shapes" % (boat_deck.get_child_count() - n_before))
 
 	# Walkable surface for the jetty: one flat box rather than trimeshing every
 	# plank, so the player glides along it.
@@ -1464,26 +1535,16 @@ func _build_scenery() -> void:
 		var y := _island_y(HOME, HOME_R, HOME_H, x, z)
 		if str(pr["k"]).begins_with("palm"):
 			_make_palm(Vector3(x, y - 0.12, z), float(pr["s"]), float(pr["r"]), str(pr["k"]) == "palm_bend")
-			# A trunk you walk into rather than through.
-			var trunk := StaticBody3D.new()
-			var tcol := CollisionShape3D.new()
-			var tcyl := CylinderShape3D.new()
-			tcyl.radius = 0.32 * float(pr["s"])
-			tcyl.height = 5.0 * float(pr["s"])
-			tcol.shape = tcyl
-			trunk.add_child(tcol)
-			trunk.position = Vector3(x, y + tcyl.height * 0.5 - 0.3, z)
-			add_child(trunk)
 		else:
 			var prop := _spawn(pr["k"], Vector3(x, y - 0.15, z), pr["r"], pr["s"])
 			if str(pr["k"]).begins_with("rocks"):
-				_solidify(prop)
+				_solid_shape(prop)
 
 	# A watchtower landmark set back on the island.
 	var ty := _island_y(HOME, HOME_R, HOME_H, 3.0, 42.0)
 	var tower := _spawn("tower", Vector3(3.0, ty - 0.2, 42.0), -0.5, 1.2)
 	_static_props.append(tower)
-	_solidify(tower, 0.85)
+	_solid_shape(tower)
 
 	# Buoys bobbing on the open water (they float at their origin).
 	for b in [
@@ -1493,13 +1554,15 @@ func _build_scenery() -> void:
 	]:
 		var n := _spawn(b["k"], b["p"], randf() * TAU, b["s"])
 		floaters.append(n)
-		_solidify(n, 0.7)
+		_solid_shape(n, false)
 
 	_build_boss_zone()
 	_build_shop()
 	_build_market()
 	_build_grass()
 	_build_clams()
+	_build_cans()
+	_build_bottles()
 	_build_clouds()
 	_build_weather()
 	if island2_unlocked:
@@ -1590,7 +1653,7 @@ func _build_sounds() -> void:
 		"click": _sfx("click"), "caught": _sfx("caught"), "snap": _sfx("snap"),
 		"bonk": _sfx("bonk"), "hurt": _sfx("hurt"), "coins": _sfx("coins"),
 		"step_soft": _sfx("step_soft"), "step_wood": _sfx("step_wood"), "gull": _sfx("gull"),
-		"thunder": _sfx("thunder"),
+		"thunder": _sfx("thunder"), "gunshot": _sfx("gunshot"), "reload": _sfx("reload"),
 		"jump": _sfx("whoosh"), "pickup": _sfx("pickup"),
 	}
 	for key in streams:
@@ -1605,6 +1668,8 @@ func _build_sounds() -> void:
 	players["jump"].volume_db = -8.0
 	players["pickup"].volume_db = -7.0
 	players["thunder"].volume_db = -5.0
+	players["gunshot"].volume_db = -6.0
+	players["reload"].volume_db = -8.0
 	# Ambience: the sea, the wind and the rain, each a long loop whose volume
 	# follows where you are and what the weather is doing. They take a moment
 	# to generate, so they are built one per frame after the game is up rather
@@ -1851,7 +1916,9 @@ func _update_explore(delta: float) -> void:
 		ahead = clampf(head.distance_to(wh["position"]) - 0.22, -0.05, 0.26)
 	_cam_ahead = lerpf(_cam_ahead, ahead, clampf(delta * 14.0, 0.0, 1.0)) if ahead > _cam_ahead else ahead
 	camera.global_position = head + fwd * _cam_ahead
-	camera.rotation = Vector3(cam_pitch, cam_yaw, 0.0)
+	_update_gun(delta)
+	_update_npc_eyes(delta)
+	camera.rotation = Vector3(cam_pitch + _recoil, cam_yaw, 0.0)
 
 	_update_rod(delta)
 	_update_look()
@@ -1956,6 +2023,8 @@ func _update_prompts() -> void:
 			# No health readout on ordinary fish; the boss gets a bar up top.
 			touch.look_cost = "" if fd.get("boss", false) else "ALIVE"
 			p = "HIT" if held_weapon() != "" else "PUNCH"
+			if id == "pistol":
+				p = "SHOOT"
 		else:
 			touch.look_cost = ""
 			p = "GRAB"
@@ -1983,6 +2052,12 @@ func _update_prompts() -> void:
 	# Holding a fish or clam: you can always put it down, whatever you look at.
 	if (id == "fish" or id == "clam") and touch.secondary == "":
 		touch.secondary = "DROP"
+	# Pistol out and nothing else on offer: the button fires it.
+	if id == "pistol" and p in ["", "SHOO"]:
+		p = "RELOAD" if _gun_reload > 0.0 else "SHOOT"
+		touch.act_dim = _gun_reload > 0.0
+		if _gun_reload > 0.0:
+			touch.act_progress = 1.0 - _gun_reload / GUN_RELOAD
 	if id == "fish" and touch.look_info == "":
 		var hd := held_fish()
 		touch.carry_info = "%s  ·  %.1f kg%s" % [_nice_name(str(hd.get("name", ""))), float(hd.get("weight", 0.0)),
@@ -2044,6 +2119,10 @@ func _on_interact() -> void:
 				_grab(looked_fish)
 		"SHOO":
 			_shoo_gull()
+		"SHOOT":
+			_shoot()
+		"RELOAD":
+			pass
 		"PUNCH", "HIT":
 			if looked_fish == null or not is_instance_valid(looked_fish):
 				# Swinging at nothing: you still swing.
@@ -2105,6 +2184,9 @@ func _add_weapon_display(id: String, pos: Vector3, rot := Vector3.ZERO, scl := 0
 		holder.add_child(m)
 		var lb := _local_aabb(m)
 		(part as Node3D).position -= Vector3(lb.position.x + lb.size.x * 0.5, 0, lb.position.z + lb.size.z * 0.5)
+	elif str(info.get("kind", "")) == "gun":
+		m = _gun_model()
+		holder.add_child(m)
 	else:
 		var packed: PackedScene = load(WEAPON_DIR + id + ".gltf")
 		m = packed.instantiate()
@@ -2293,7 +2375,8 @@ func _spawn_character(path: String, pos: Vector3, yaw := 0.0, anim_name := "Idle
 	# named after the character; everything else is weaponry.
 	var who := path.get_file().get_basename()
 	for mi in m.find_children("*", "MeshInstance3D", true, false):
-		if not (mi as MeshInstance3D).name.begins_with(who):
+		var part := str((mi as MeshInstance3D).name)
+		if not part.begins_with(who) or "Shield" in part:
 			(mi as MeshInstance3D).visible = false
 	# Fit by the skeleton, not by the mesh bounds: Godot pads a skinned mesh's
 	# AABB generously (these models measure 3.4 units tall for a 1.8 unit
@@ -2323,7 +2406,94 @@ func _spawn_character(path: String, pos: Vector3, yaw := 0.0, anim_name := "Idle
 			a.loop_mode = Animation.LOOP_LINEAR
 		ap.play(anim_name)
 		root.set_meta("anim", ap)
+	if skel:
+		_give_eyes(skel)
 	return root
+
+
+var _npc_eyes: Array = []       # [head attachment, [pupils], [whites], blink timer]
+
+## Big cartoon eyes on the head bone: white, a fat pupil and a glint. The
+## pupils follow you round the room and they blink now and then, which does
+## more for a low-poly face than any amount of extra geometry.
+func _give_eyes(skel: Skeleton3D) -> void:
+	var hb := skel.find_bone("head")
+	if hb < 0:
+		return
+	var att := BoneAttachment3D.new()
+	att.bone_name = "head"
+	skel.add_child(att)
+	var rest_inv := skel.get_bone_global_rest(hb).affine_inverse()
+	var white := _mat(Color(1, 1, 1), 0.35)
+	var black := _mat(Color(0.05, 0.05, 0.07), 0.3)
+	var glint := _mat(Color(1, 1, 1), 0.2, 0.6)
+	var pupils: Array = []
+	var whites: Array = []
+	for sx in [-1.0, 1.0]:
+		var eye := Node3D.new()
+		eye.transform = Transform3D(rest_inv.basis, rest_inv * Vector3(0.2 * sx, 1.60, 0.455))
+		att.add_child(eye)
+		var w := MeshInstance3D.new()
+		var wm := SphereMesh.new()
+		wm.radius = 0.125
+		wm.height = 0.25
+		wm.radial_segments = 14
+		wm.rings = 7
+		wm.material = white
+		w.mesh = wm
+		w.scale = Vector3(1.0, 1.12, 0.5)
+		eye.add_child(w)
+		var pu := MeshInstance3D.new()
+		var pm := SphereMesh.new()
+		pm.radius = 0.062
+		pm.height = 0.124
+		pm.radial_segments = 10
+		pm.rings = 5
+		pm.material = black
+		pu.mesh = pm
+		pu.scale = Vector3(1.0, 1.0, 0.4)
+		pu.position = Vector3(0, 0, 0.05)
+		eye.add_child(pu)
+		var gl := MeshInstance3D.new()
+		var gm := SphereMesh.new()
+		gm.radius = 0.02
+		gm.height = 0.04
+		gm.radial_segments = 6
+		gm.rings = 3
+		gm.material = glint
+		gl.mesh = gm
+		gl.position = Vector3(0.022, 0.026, 0.022)
+		pu.add_child(gl)
+		for mi in [w, pu, gl]:
+			(mi as MeshInstance3D).cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+		pupils.append(pu)
+		whites.append(eye)
+	_npc_eyes.append([att, pupils, whites, randf_range(1.5, 4.0)])
+
+
+func _update_npc_eyes(delta: float) -> void:
+	if camera == null:
+		return
+	for e in _npc_eyes:
+		var att := e[0] as Node3D
+		if not is_instance_valid(att) or not att.is_visible_in_tree():
+			continue
+		if att.global_position.distance_squared_to(camera.global_position) > 400.0:
+			continue
+		e[3] = float(e[3]) - delta
+		var shut := float(e[3]) < 0.0
+		if float(e[3]) < -0.11:
+			e[3] = randf_range(2.0, 5.5)
+		for k in 2:
+			var eye := (e[2] as Array)[k] as Node3D
+			eye.scale.y = lerpf(eye.scale.y, 0.08 if shut else 1.0, clampf(delta * 30.0, 0.0, 1.0))
+			# where you are, seen from this eye: the pupil slides that way
+			var to := eye.global_transform.affine_inverse() * camera.global_position
+			var d := Vector2(to.x, to.y)
+			var reach := maxf(to.z, 0.4)
+			d = (d / reach).limit_length(1.0) * 0.05
+			var pu := (e[1] as Array)[k] as Node3D
+			pu.position = pu.position.lerp(Vector3(d.x, d.y, 0.05), clampf(delta * 8.0, 0.0, 1.0))
 
 
 ## Puts a weapon model in the world at a display size.
@@ -2392,6 +2562,58 @@ func _sync_rod_rack() -> void:
 ## Wraps a prop in a solid box so you cannot walk through it. Scenery without
 ## collision is the thing that most gives a world away as a painting, and the
 ## rocks, palms and buoys all used to be walk-through.
+## A collider cut to the model rather than a box round it. Every visible mesh
+## under `n` becomes either its exact triangles (`exact`: walls, towers, hulls,
+## anything with gaps you should be able to step into) or its convex hull
+## (lumps: buoys, crates, fish). Mesh names containing any of `skip` are left
+## out. Shapes go on `body`, or on a new static body if none is given.
+func _solid_shape(n: Node3D, exact := true, skip: Array = [], body: PhysicsBody3D = null) -> PhysicsBody3D:
+	if n == null or not is_instance_valid(n):
+		return body
+	if body == null:
+		body = StaticBody3D.new()
+		add_child(body)
+	var inv := body.global_transform.affine_inverse()
+	var meshes: Array = n.find_children("*", "MeshInstance3D", true, false)
+	if n is MeshInstance3D:
+		meshes.append(n)
+	for node in meshes:
+		var mi := node as MeshInstance3D
+		if mi.mesh == null or not mi.is_visible_in_tree():
+			continue
+		var skipped := false
+		for word in skip:
+			if str(word) in str(mi.name):
+				skipped = true
+				break
+		if skipped:
+			continue
+		var xf: Transform3D = inv * mi.global_transform
+		var col := CollisionShape3D.new()
+		if exact:
+			var faces: PackedVector3Array = mi.mesh.get_faces()
+			if faces.size() < 3:
+				continue
+			for i in faces.size():
+				faces[i] = xf * faces[i]
+			var tri := ConcavePolygonShape3D.new()
+			tri.backface_collision = true
+			tri.set_faces(faces)
+			col.shape = tri
+		else:
+			var hull := mi.mesh.create_convex_shape(true, true) as ConvexPolygonShape3D
+			if hull == null or hull.points.size() < 4:
+				continue
+			var pts: PackedVector3Array = hull.points
+			for i in pts.size():
+				pts[i] = xf * pts[i]
+			var cv := ConvexPolygonShape3D.new()
+			cv.points = pts
+			col.shape = cv
+		body.add_child(col)
+	return body
+
+
 func _solidify(n: Node3D, shrink := 0.82, tall := 1.0) -> void:
 	if n == null or not is_instance_valid(n):
 		return
@@ -2495,6 +2717,16 @@ func _build_shop() -> void:
 	_add_weapon_display("dagger_B", Vector3(x0 + 0.40, t2, z0 + 1.55), Vector3(0, PI * 0.5, 0), 0.42)
 	var t3 := _pedestal(Vector3(x1 - 0.40, floor_y, z0 + 0.55))
 	_add_weapon_display("fistweapon_A", Vector3(x1 - 0.40, t3, z0 + 0.55), Vector3(0, -PI * 0.5, 0), 0.55)
+	# The pistol hangs on the side wall on a board of its own, shown a size up
+	# so it reads from across the room: flat on a stand it was a grey smudge.
+	var plaque := MeshInstance3D.new()
+	var pq := BoxMesh.new()
+	pq.size = Vector3(0.03, 0.34, 0.50)
+	pq.material = _mat(Color(0.30, 0.20, 0.13), 0.8)
+	plaque.mesh = pq
+	plaque.position = Vector3(x0 + 0.03, floor_y + 1.30, z0 + 2.15)
+	add_child(plaque)
+	_add_weapon_display("pistol", Vector3(x0 + 0.075, floor_y + 1.18, z0 + 2.10), Vector3.ZERO, 1.7)
 	# The best of the lot, mounted on the side wall above the stands.
 	_add_weapon_display("axe_A", Vector3(x0 + 0.08, floor_y + 1.55, z0 + 1.05), Vector3(0, PI * 0.5, 0), 0.50)
 	# Rods lean against the wall on their butts. Laid flat they are two metres
@@ -2569,19 +2801,10 @@ func _build_market() -> void:
 		var fb: AABB = fm2.global_transform * fm2.mesh.get_aabb()
 		if fb.position.y < g + 0.80:
 			fm2.visible = false
-	for m in stall.find_children("*", "MeshInstance3D", true, false):
-		if m.name.begins_with("Counter") or m.name.begins_with("Stand") or m.name.begins_with("Base"):
-			m.create_trimesh_collision()
-	# A solid box for the counter so you can't walk through the stall.
-	var body := StaticBody3D.new()
-	var col := CollisionShape3D.new()
-	var bs := BoxShape3D.new()
-	var sbox := _node_aabb(stall)
-	bs.size = Vector3(maxf(1.4, sbox.size.x * 0.62), 1.2, maxf(3.6, sbox.size.z * 0.86))
-	col.shape = bs
-	body.add_child(col)
-	body.position = Vector3(MARKET_POS.x, g + 0.6, MARKET_POS.z)
-	add_child(body)
+	# The stall is solid where there is stall: counter, posts, buckets, the
+	# chalkboard. It used to be one big box, which stopped you a step short of
+	# the counter and let nothing through between the posts.
+	_solid_shape(stall, true, ["Fish", "Awning", "PriceTags", "IceChunks", "Emblem", "Scale", "Plank", "Slats"])
 	market_ground = g
 
 	var fm := _sign("FISH MARKET", Vector3(MARKET_POS.x - 0.2, g + 3.45, MARKET_POS.z), 58,
@@ -3496,6 +3719,25 @@ func _make_palm(pos: Vector3, scl: float, yaw: float, bent: bool) -> void:
 				st.set_normal(-n)
 				st.set_uv(Vector2(0.0, (t0 if idx < 2 else t1) * 0.35))
 				st.add_vertex(v)
+	# The trunk is solid, and it follows the lean: five short cylinders laid
+	# along the same curve as the bark, so a bent palm blocks you where the
+	# trunk actually is and not where a straight one would have been.
+	var tbody := StaticBody3D.new()
+	tbody.position = pos
+	add_child(tbody)
+	for i in 5:
+		var ca: Vector3 = (ring.call(float(i) / 5.0)[0] as Vector3) * scl
+		var cb: Vector3 = (ring.call(float(i + 1) / 5.0)[0] as Vector3) * scl
+		var axis := cb - ca
+		var tc := CollisionShape3D.new()
+		var cyl := CylinderShape3D.new()
+		cyl.radius = 0.24 * (1.0 - 0.42 * (float(i) + 0.5) / 5.0) * scl
+		cyl.height = axis.length() + cyl.radius
+		tc.shape = cyl
+		var ay := axis.normalized()
+		var ax := ay.cross(Vector3.FORWARD).normalized()
+		tc.transform = Transform3D(Basis(ax, ay, ax.cross(ay)), (ca + cb) * 0.5)
+		tbody.add_child(tc)
 	var top: Vector3 = ring.call(1.0)[0]
 	# coconuts
 	for c in 3:
@@ -3907,8 +4149,8 @@ func _apply_settings() -> void:
 
 ## Graphics preset: trades shadows, water detail, fog and anti-aliasing.
 const Q_NAMES := ["Low", "Medium", "High", "Ultra"]
-const Q_SCALE := [0.5, 0.7, 0.85, 1.0]        # 3D resolution (fraction of the screen)
-const Q_ROWS := [480, 620, 800, 100000]       # ...but never more rows than this
+const Q_SCALE := [0.56, 0.75, 0.9, 1.0]        # 3D resolution (fraction of the screen)
+const Q_ROWS := [500, 680, 860, 100000]       # ...but never more rows than this
 const Q_FAR := [150.0, 220.0, 280.0, 360.0]
 const Q_GRASS := [0.3, 0.6, 0.85, 1.0]
 const Q_CLOUDS := [8, 14, 20, 28]
@@ -3954,7 +4196,7 @@ func _apply_graphics() -> void:
 		if render_view.view:
 			render_view.view.render_target_update_mode = SubViewport.UPDATE_ALWAYS
 		if res == "Auto" or not res.ends_with("%"):
-			render_view.set_quality(Q_SCALE[q] * menu_cut, q >= 2, Q_ROWS[q])
+			render_view.set_quality(Q_SCALE[q] * menu_cut, true, Q_ROWS[q])
 		else:
 			render_view.set_quality(float(res.trim_suffix("%")) / 100.0 * menu_cut, q >= 2)
 	get_viewport().msaa_3d = Viewport.MSAA_DISABLED
@@ -4385,11 +4627,36 @@ func _spawn_loose_fish(data: Dictionary, pos: Vector3, yaw := 0.0) -> RigidBody3
 	body.add_child(model)
 	var box := _local_aabb(model)
 	var size := box.size * model.scale
+	# The body is the fish's own outline (its convex hull), so it lies on its
+	# side, rolls and wedges like a fish; a box is only the fallback for a
+	# model too thin to make a hull from.
+	var hull_pts := PackedVector3Array()
+	for fm in model.find_children("*", "MeshInstance3D", true, false):
+		var fmi := fm as MeshInstance3D
+		if fmi.mesh == null:
+			continue
+		var hs := fmi.mesh.create_convex_shape(true, true) as ConvexPolygonShape3D
+		if hs == null:
+			continue
+		var rel := model.transform
+		var up: Node = fmi
+		var chain := Transform3D()
+		while up != model and up is Node3D:
+			chain = (up as Node3D).transform * chain
+			up = up.get_parent()
+		rel = rel * chain
+		for pt in hs.points:
+			hull_pts.append(rel * pt)
 	var col := CollisionShape3D.new()
-	var bs := BoxShape3D.new()
-	bs.size = Vector3(maxf(size.x, 0.12), maxf(size.y, 0.10), maxf(size.z, 0.12))
-	col.shape = bs
-	col.position = Vector3(0, bs.size.y * 0.5, 0)
+	if hull_pts.size() >= 4 and minf(size.x, minf(size.y, size.z)) > 0.03:
+		var cvx := ConvexPolygonShape3D.new()
+		cvx.points = hull_pts
+		col.shape = cvx
+	else:
+		var bs := BoxShape3D.new()
+		bs.size = Vector3(maxf(size.x, 0.12), maxf(size.y, 0.10), maxf(size.z, 0.12))
+		col.shape = bs
+		col.position = Vector3(0, bs.size.y * 0.5, 0)
 	body.add_child(col)
 
 	# Outline shell, shown while the crosshair is on it.
@@ -4963,6 +5230,429 @@ func _shoo_gull() -> void:
 	_flash("Shooed it off!")
 
 
+# --- Pistol --------------------------------------------------------------------
+
+## One round. The shot is a ray from the middle of the screen, so it lands on
+## the crosshair; the tracer is drawn from the muzzle to wherever that was.
+func _shoot() -> void:
+	if _gun_cd > 0.0 or _gun_reload > 0.0 or held_id() != "pistol":
+		return
+	if hands and hands.busy():
+		return
+	if gun_ammo <= 0:
+		_start_reload()
+		return
+	gun_ammo -= 1
+	_gun_cd = 0.24
+	_recoil += 0.030
+	players["gunshot"].pitch_scale = randf_range(0.94, 1.06)
+	_play("gunshot")
+	if hands:
+		hands.gun_empty = gun_ammo <= 0
+		hands.play_fire()
+	var from: Vector3 = camera.global_position
+	var aim: Vector3 = -camera.global_basis.z
+	# a hair of spread, more if you are on the move
+	var wob := 0.004 + (0.012 if player and player.velocity.length() > 2.5 else 0.0)
+	aim = (aim + camera.global_basis.x * randf_range(-wob, wob)
+		+ camera.global_basis.y * randf_range(-wob, wob)).normalized()
+	var end := from + aim * GUN_RANGE
+	var q := PhysicsRayQueryParameters3D.create(from, end)
+	q.collision_mask = 0xFFFFFFFF & ~WEAPON_LAYER
+	if player:
+		q.exclude = [player.get_rid()]
+	var hit := get_world_3d().direct_space_state.intersect_ray(q)
+	var at := end
+	var body: Object = null
+	if not hit.is_empty():
+		at = hit["position"]
+		body = hit.get("collider")
+	# The diving gull has no collider: it counts if the shot passes close by.
+	var gull_at: Vector3 = fx.thief_dive_pos() if fx else Vector3.ZERO
+	if gull_at != Vector3.ZERO:
+		var along := (gull_at - from).dot(aim)
+		if along > 0.0 and along < from.distance_to(at) + 0.5 \
+				and (from + aim * along).distance_to(gull_at) < 0.8:
+			fx.scare_thief()
+			fx.hit_burst(gull_at, true)
+			fx.dust(gull_at, 0.8)
+			players["gull"].pitch_scale = 1.5
+			_play("gull")
+			_flash("Winged it! The gull clears off")
+			at = gull_at
+			body = null
+	# Into the sea: the round stops at the surface with a spout.
+	if aim.y < -0.001 and from.y > 0.0:
+		var tw := from.y / -aim.y
+		var wp := from + aim * tw
+		wp.y = wave_height(wp.x, wp.z)
+		if tw < from.distance_to(at) and tw < GUN_RANGE:
+			var ground := _island_y(HOME, HOME_R, HOME_H, wp.x, wp.z)
+			if ground < wp.y - 0.02:
+				at = wp
+				body = null
+				if fx:
+					fx.splash(wp, 0.9)
+				players["splash"].pitch_scale = randf_range(1.5, 1.9)
+				_play("splash")
+	_tracer(hands.muzzle_world() if hands else from, at)
+	# Loose a round past the shopkeeper or the fish buyer and they let you
+	# know about it. (They are not for shooting: the round goes by.)
+	for npc in [shopkeeper, fish_buyer]:
+		if npc == null or not is_instance_valid(npc):
+			continue
+		var head: Vector3 = npc.global_position + Vector3(0, 1.2, 0)
+		var t_along := (head - from).dot(aim)
+		if t_along > 0.0 and t_along < from.distance_to(at) + 0.3 \
+				and (from + aim * t_along).distance_to(head) < 0.75:
+			var nap = npc.get_meta("anim") if npc.has_meta("anim") else null
+			if nap and nap.has_animation("Hit_A"):
+				nap.play("Hit_A")
+				nap.queue("Idle")
+			players["hurt"].pitch_scale = 1.5
+			_play("hurt")
+			_flash(GUN_QUIPS[randi() % GUN_QUIPS.size()])
+			break
+	if body is RigidBody3D:
+		var rb := body as RigidBody3D
+		if rb.has_meta("can"):
+			_can_hit(rb, aim)
+		elif rb.has_meta("fish"):
+			var d: Dictionary = rb.get_meta("fish")
+			if d.get("alive", false):
+				_apply_hit(rb)
+			else:
+				rb.apply_central_impulse(aim * 1.2 + Vector3(0, 0.8, 0))
+				if fx:
+					fx.hit_burst(at, false)
+		else:
+			rb.apply_impulse(aim * 2.0, at - rb.global_position)
+			if fx:
+				fx.dust(at, 0.6)
+	elif body != null and (body as Object).has_meta("bottle"):
+		_bottle_hit(int((body as Object).get_meta("bottle")), at)
+	elif body != null and fx:
+		fx.dust(at, 0.7)
+		fx.hit_burst(at, false)
+	_sync_ammo()
+	if gun_ammo <= 0:
+		_gun_cd = 0.3
+
+
+func _start_reload() -> void:
+	if _gun_reload > 0.0 or gun_ammo >= GUN_MAG:
+		return
+	_gun_reload = GUN_RELOAD
+	_play("reload")
+	if hands:
+		hands.play_reload(GUN_RELOAD)
+
+
+func _update_gun(delta: float) -> void:
+	_gun_cd = maxf(_gun_cd - delta, 0.0)
+	# The camera kicks up with the shot and settles most of the way back.
+	_recoil = lerpf(_recoil, 0.0, clampf(delta * 9.0, 0.0, 1.0))
+	if _gun_reload > 0.0:
+		_gun_reload -= delta
+		if _gun_reload <= 0.0:
+			_gun_reload = 0.0
+			gun_ammo = GUN_MAG
+			if hands:
+				hands.gun_empty = false
+			_sync_ammo()
+	elif gun_ammo <= 0 and _gun_cd <= 0.0 and held_id() == "pistol":
+		_start_reload()                      # empty: it reloads itself
+	for i in range(_tracers.size() - 1, -1, -1):
+		var tr: Array = _tracers[i]
+		tr[1] = float(tr[1]) - delta
+		var mi := tr[0] as MeshInstance3D
+		if float(tr[1]) <= 0.0:
+			mi.queue_free()
+			_tracers.remove_at(i)
+		else:
+			(mi.material_override as StandardMaterial3D).albedo_color.a = float(tr[1]) / 0.07
+	_update_bottles(delta)
+	# Cans go back on the rail a while after the last one fell.
+	if _cans_reset > 0.0:
+		_cans_reset -= delta
+		if _cans_reset <= 0.0:
+			_reset_cans()
+
+
+## Rounds left, shown as the stack count on the pistol's hotbar slot.
+func _sync_ammo() -> void:
+	var i := _inv_slot_of("pistol")
+	if i != -1:
+		inv[i]["n"] = gun_ammo
+		_sync_hotbar()
+
+
+## A streak from the muzzle to the hit, gone in four frames.
+func _tracer(a: Vector3, b: Vector3) -> void:
+	var d := b - a
+	var len := d.length()
+	if len < 0.6:
+		return
+	var mi := MeshInstance3D.new()
+	var bm := BoxMesh.new()
+	bm.size = Vector3(0.012, 0.012, minf(len, 60.0))
+	mi.mesh = bm
+	var m := StandardMaterial3D.new()
+	m.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	m.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+	m.blend_mode = BaseMaterial3D.BLEND_MODE_ADD
+	m.albedo_color = Color(1.0, 0.86, 0.5, 1.0)
+	mi.material_override = m
+	mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	add_child(mi)
+	var dir := d / len
+	var up := Vector3.UP if absf(dir.y) < 0.95 else Vector3.RIGHT
+	mi.global_transform = Transform3D(Basis.looking_at(dir, up), a + dir * minf(len, 60.0) * 0.5)
+	_tracers.append([mi, 0.07])
+
+
+## Five tin cans on a driftwood rail up the beach: something to shoot at.
+## Clear all five and the shopkeeper's standing bet pays out.
+func _build_cans() -> void:
+	var ang := 2.02
+	var r := 16.8
+	var base := Vector3(HOME.x + cos(ang) * r, 0.0, HOME.z + sin(ang) * r)
+	base.y = _island_y(HOME, HOME_R, HOME_H, base.x, base.z)
+	var side := Vector3(-sin(ang), 0, cos(ang))
+	var wood := _mat(Color(0.47, 0.35, 0.24), 0.9)
+	var rail_y := base.y + 0.95
+	var rail := MeshInstance3D.new()
+	var rm := BoxMesh.new()
+	rm.size = Vector3(2.5, 0.09, 0.2)
+	rm.material = wood
+	rail.mesh = rm
+	add_child(rail)
+	rail.global_transform = Transform3D(Basis(Vector3.UP, -ang + PI * 0.5), Vector3(base.x, rail_y, base.z))
+	var rb := StaticBody3D.new()
+	var rc := CollisionShape3D.new()
+	var rs2 := BoxShape3D.new()
+	rs2.size = rm.size
+	rc.shape = rs2
+	rb.add_child(rc)
+	add_child(rb)
+	rb.global_transform = rail.global_transform
+	for k in [-1.0, 1.0]:
+		var post := MeshInstance3D.new()
+		var pm := CylinderMesh.new()
+		pm.top_radius = 0.06
+		pm.bottom_radius = 0.07
+		pm.height = 1.5
+		pm.radial_segments = 8
+		pm.material = wood
+		post.mesh = pm
+		add_child(post)
+		var pp: Vector3 = base + side * (1.05 * k)
+		post.global_position = Vector3(pp.x, rail_y - 0.75, pp.z)
+		var pb := StaticBody3D.new()
+		var pc := CollisionShape3D.new()
+		var ps := CylinderShape3D.new()
+		ps.radius = 0.07
+		ps.height = 1.5
+		pc.shape = ps
+		pb.add_child(pc)
+		add_child(pb)
+		pb.global_position = post.global_position
+	var tints := [Color(0.80, 0.22, 0.20), Color(0.92, 0.74, 0.22), Color(0.25, 0.52, 0.72),
+		Color(0.85, 0.85, 0.82), Color(0.30, 0.62, 0.36)]
+	for i in 5:
+		var can := RigidBody3D.new()
+		can.mass = 0.12
+		can.set_meta("can", true)
+		can.set_meta("down", false)
+		var cm := CylinderMesh.new()
+		cm.top_radius = 0.055
+		cm.bottom_radius = 0.055
+		cm.height = 0.16
+		cm.radial_segments = 10
+		cm.rings = 1
+		var mat := _mat(tints[i], 0.35)
+		mat.metallic = 0.7
+		cm.material = mat
+		var cmi := MeshInstance3D.new()
+		cmi.mesh = cm
+		can.add_child(cmi)
+		var band := MeshInstance3D.new()
+		var bm := CylinderMesh.new()
+		bm.top_radius = 0.0565
+		bm.bottom_radius = 0.0565
+		bm.height = 0.07
+		bm.radial_segments = 10
+		bm.rings = 1
+		bm.material = _mat(Color(0.96, 0.94, 0.86), 0.6)
+		band.mesh = bm
+		can.add_child(band)
+		var cc := CollisionShape3D.new()
+		var cs := CylinderShape3D.new()
+		cs.radius = 0.06
+		cs.height = 0.16
+		cc.shape = cs
+		can.add_child(cc)
+		add_child(can)
+		var cp: Vector3 = base + side * (float(i - 2) * 0.46)
+		var home := Transform3D(Basis(), Vector3(cp.x, rail_y + 0.045 + 0.085, cp.z))
+		can.global_transform = home
+		can.freeze = true                    # stood still until something hits it
+		_cans.append([can, home])
+
+
+func _can_hit(can: RigidBody3D, aim: Vector3) -> void:
+	can.freeze = false
+	can.linear_velocity = aim * 7.0 + Vector3(randf_range(-1, 1), randf_range(3.0, 4.5), randf_range(-1, 1))
+	can.angular_velocity = Vector3(randf_range(-18, 18), randf_range(-8, 8), randf_range(-18, 18))
+	players["bonk"].pitch_scale = randf_range(1.7, 2.1)
+	_play("bonk")
+	if fx:
+		fx.hit_burst(can.global_position, false)
+	if not bool(can.get_meta("down")):
+		can.set_meta("down", true)
+		if _cans_down == 0:
+			_cans_t0 = elapsed
+		_cans_down += 1
+		_cans_reset = 14.0
+		if _cans_down >= _cans.size():
+			# The shopkeeper's bet pays once; after that the only way to
+			# earn off the rail is to clear it faster than you ever have.
+			var took: float = elapsed - _cans_t0
+			_cans_reset = 6.0
+			if can_best <= 0.0:
+				can_best = took
+				coins += CAN_PRIZE
+				_play("coins")
+				_flash("All five cans in %.1fs!  +%d coins" % [took, CAN_PRIZE])
+			elif took < can_best - 0.05:
+				can_best = took
+				coins += CAN_RECORD
+				_play("coins")
+				_flash("New best: %.1fs!  +%d coins" % [took, CAN_RECORD])
+			else:
+				_play("caught")
+				_flash("All five in %.1fs  (best %.1fs)" % [took, can_best])
+			_save_game()
+			_update_info()
+		else:
+			_flash("Ping!  %d of %d" % [_cans_down, _cans.size()])
+
+
+const CAN_PRIZE := 8
+const CAN_RECORD := 3
+var can_best := 0.0             # fastest clear of the rail, seconds (0: never cleared)
+var _cans_t0 := 0.0
+const BOTTLE_PAY := [5, 12]
+var _bottles: Array = []        # [node, seconds until it drifts back in]
+
+## Corked bottles drifting just off the beach. Too far to wade to before they
+## bob away - but a pistol reaches, and each one has a few coins rolled up
+## inside. Another washes in a while after you pop one.
+func _build_bottles() -> void:
+	var glass := StandardMaterial3D.new()
+	glass.albedo_color = Color(0.30, 0.62, 0.45, 0.78)
+	glass.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+	glass.roughness = 0.12
+	glass.metallic = 0.2
+	var cork := _mat(Color(0.72, 0.55, 0.36), 0.9)
+	var paper := _mat(Color(0.95, 0.91, 0.78), 0.9)
+	for i in 3:
+		var b := Node3D.new()
+		var tip := Node3D.new()              # the bottle rides tilted, neck up
+		tip.rotation = Vector3(0.9, 0, 0.3)
+		tip.position = Vector3(0, 0.05, 0)
+		b.add_child(tip)
+		var parts := [
+			[0.075, 0.075, 0.24, glass, 0.0], [0.03, 0.07, 0.07, glass, 0.155],
+			[0.028, 0.028, 0.09, glass, 0.235], [0.03, 0.026, 0.045, cork, 0.295],
+			[0.022, 0.022, 0.16, paper, 0.0]]
+		for pt in parts:
+			var cm := CylinderMesh.new()
+			cm.top_radius = pt[0]
+			cm.bottom_radius = pt[1]
+			cm.height = pt[2]
+			cm.radial_segments = 10
+			cm.rings = 1
+			cm.material = pt[3]
+			var mi := MeshInstance3D.new()
+			mi.mesh = cm
+			mi.position = Vector3(0, pt[4], 0)
+			mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+			tip.add_child(mi)
+		var body := StaticBody3D.new()
+		body.set_meta("bottle", i)
+		var col := CollisionShape3D.new()
+		var cs := CylinderShape3D.new()
+		cs.radius = 0.11                      # a little generous: it is a small, moving target
+		cs.height = 0.46
+		col.shape = cs
+		col.position = Vector3(0, 0.1, 0)
+		body.add_child(col)
+		tip.add_child(body)
+		add_child(b)
+		b.set_meta("nomerge", true)
+		floaters.append(b)
+		_bottles.append([b, 0.0])
+		_place_bottle(i, float(i) * 2.1 + 0.4)
+
+
+func _place_bottle(i: int, ang: float) -> void:
+	var b := _bottles[i][0] as Node3D
+	var r := HOME_R + randf_range(5.0, 11.0)
+	b.position = Vector3(HOME.x + cos(ang) * r, 0.0, HOME.z + sin(ang) * r)
+	b.rotation.y = randf() * TAU
+	b.visible = true
+	for sb in b.find_children("*", "CollisionShape3D", true, false):
+		(sb as CollisionShape3D).disabled = false
+
+
+func _bottle_hit(i: int, at: Vector3) -> void:
+	var b := _bottles[i][0] as Node3D
+	if not b.visible:
+		return
+	b.visible = false
+	for sb in b.find_children("*", "CollisionShape3D", true, false):
+		(sb as CollisionShape3D).set_deferred("disabled", true)
+	_bottles[i][1] = randf_range(60.0, 100.0)
+	var pay := randi_range(BOTTLE_PAY[0], BOTTLE_PAY[1])
+	coins += pay
+	if fx:
+		fx.hit_burst(at, true)
+		fx.splash(Vector3(at.x, wave_height(at.x, at.z), at.z), 0.8)
+	players["snap"].pitch_scale = randf_range(1.5, 1.8)
+	_play("snap")
+	_play("coins")
+	_flash("Message in a bottle!  +%d coins" % pay)
+	_save_game()
+	_update_info()
+
+
+func _update_bottles(delta: float) -> void:
+	for i in _bottles.size():
+		var t: float = _bottles[i][1]
+		if t > 0.0:
+			t -= delta
+			_bottles[i][1] = t
+			if t <= 0.0:
+				_place_bottle(i, randf() * TAU)
+		else:
+			# drifting slowly round the island
+			var b := _bottles[i][0] as Node3D
+			var rel := b.position - HOME
+			rel = rel.rotated(Vector3.UP, delta * 0.012)
+			b.position = Vector3(HOME.x + rel.x, b.position.y, HOME.z + rel.z)
+
+func _reset_cans() -> void:
+	_cans_down = 0
+	for c in _cans:
+		var can := c[0] as RigidBody3D
+		can.freeze = true
+		can.linear_velocity = Vector3.ZERO
+		can.angular_velocity = Vector3.ZERO
+		can.global_transform = c[1]
+		can.set_meta("down", false)
+
+
 ## Punch (or chop) a live fish. The blow lands with the swing.
 func _hit_fish(b: RigidBody3D) -> void:
 	if _hit_cd > 0.0 or b == null or not is_instance_valid(b):
@@ -5065,7 +5755,10 @@ func _refresh_whack_tool() -> void:
 	# grip and +Y runs up the blade.
 	var m: Node3D
 	var style := "chop"
-	if equipped_weapon != "" and ResourceLoader.exists(WEAPON_DIR + equipped_weapon + ".gltf"):
+	if equipped_weapon == "pistol":
+		m = _gun_model()
+		style = "gun"
+	elif equipped_weapon != "" and ResourceLoader.exists(WEAPON_DIR + equipped_weapon + ".gltf"):
 		m = load(WEAPON_DIR + equipped_weapon + ".gltf").instantiate()
 		if equipped_weapon.begins_with("fistweapon"):
 			style = "punch"
@@ -5081,6 +5774,9 @@ func _refresh_whack_tool() -> void:
 	paddle.add_child(m)
 	if hands:
 		hands.whack_style = style
+		if style == "gun":
+			hands.fit_gun(m)
+			hands.gun_empty = gun_ammo <= 0
 	for mi in m.find_children("*", "MeshInstance3D", true, false):
 		mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 
@@ -5752,6 +6448,30 @@ func _autotest(_delta: float) -> void:
 			_test_shot("_%d_%s" % [k, held_id() if held_id() != "" else "bare"])
 			print("AUTOTEST held slot=%d id=%s hands=%s prompt='%s' secondary='%s'" % [sel, held_id(), hands.mode, touch.prompt, touch.secondary])
 		if k > SLOTS + 1:
+			get_tree().quit()
+		return
+
+	# Pistol: draw it, shoot the five cans off the rail, run dry and reload.
+	if start_screen == "gun":
+		var shot_i := (frame - 70) / 26
+		if frame < 70:
+			_test_aim((_cans[2][1] as Transform3D).origin)
+		elif shot_i < 5:
+			_test_aim((_cans[shot_i][1] as Transform3D).origin)
+		if frame == 60:
+			_test_shot("_idle")
+		if frame >= 70 and (frame - 70) % 26 == 14 and shot_i < 9:
+			_on_interact()
+			print("AUTOTEST gun f=%d prompt='%s' ammo=%d cans=%d reload=%.2f" % [frame, touch.shown_prompt(), gun_ammo, _cans_down, _gun_reload])
+		if frame == 70 + 14 + 1:
+			_test_shot("_fire")
+		if frame == 70 + 26 + 14 + 5:
+			_test_shot("_recoil")
+		if frame == 70 + 26 * 7 + 14 + 30:
+			_test_shot("_reload")
+		if frame == 70 + 26 * 9 + 60:
+			_test_shot("_after")
+			print("AUTOTEST gun done ammo=%d cans=%d coins=%d" % [gun_ammo, _cans_down, coins])
 			get_tree().quit()
 		return
 

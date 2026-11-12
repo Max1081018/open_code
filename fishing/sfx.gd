@@ -240,6 +240,46 @@ static func snap() -> AudioStreamWAV:
 	return _from(s)
 
 
+## The pistol: a sharp crack on top, a chesty thump under it and a short tail
+## rolling off across the bay. Kept well under the clip ceiling: it should feel
+## punchy, not hurt on a phone speaker.
+static func gunshot() -> AudioStreamWAV:
+	var n := int(RATE * 0.55)
+	var s := PackedFloat32Array()
+	s.resize(n)
+	var hp := HP.new(0.35)
+	var body := Res.new(150.0, 0.9975)
+	var mid := Res.new(620.0, 0.990)
+	var tail := LP.new(0.07)
+	for i in n:
+		var t := float(i) / RATE
+		var noise := randf() * 2.0 - 1.0
+		var crack := hp.run(noise) * _hit(t, 0.0006, 0.010)
+		var imp := noise * _hit(t, 0.001, 0.006)
+		var thump := sin(TAU * lerpf(165.0, 55.0, clampf(t / 0.09, 0.0, 1.0)) * t) * _hit(t, 0.002, 0.07)
+		var roll := tail.run(noise) * _hit(t, 0.03, 0.17) * 0.9
+		s[i] = crack * 0.75 + body.run(imp) * 0.05 + mid.run(imp) * 0.03 + thump * 0.6 + roll
+	return _from(_voice(s, 0.80))
+
+
+## Fresh magazine: it slides home with a clack, then the slide snaps forward.
+static func reload() -> AudioStreamWAV:
+	var n := int(RATE * 0.62)
+	var s := PackedFloat32Array()
+	s.resize(n)
+	var a := Res.new(1150.0, 0.985)
+	var b := Res.new(2100.0, 0.980)
+	var c := Res.new(520.0, 0.990)
+	for i in n:
+		var t := float(i) / RATE
+		var noise := randf() * 2.0 - 1.0
+		var e1 := _hit(t - 0.03, 0.001, 0.007) if t > 0.03 else 0.0     # mag seats
+		var e2 := _hit(t - 0.36, 0.001, 0.005) if t > 0.36 else 0.0     # slide back
+		var e3 := _hit(t - 0.44, 0.0008, 0.008) if t > 0.44 else 0.0    # and home
+		s[i] = c.run(noise * e1) * 0.06 + a.run(noise * (e1 * 0.6 + e3)) * 0.05 + b.run(noise * (e2 + e3 * 0.7)) * 0.04
+	return _from(_voice(s, 0.55))
+
+
 ## A whack landing: a wooden thud with a wet edge. Rounded rather than sharp —
 ## the strike is softened and the wood is given longer to ring out, so it reads
 ## as a thump against a plank instead of a crack.

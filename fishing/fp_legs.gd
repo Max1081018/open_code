@@ -18,7 +18,9 @@ const SHIN := 0.42
 const SKIN := Color(0.95, 0.78, 0.63)
 const SHORTS := Color(0.16, 0.37, 0.44)
 const SHOE := Color(0.31, 0.21, 0.15)
-const SOLE := Color(0.74, 0.62, 0.46)
+const SOLE := Color(0.90, 0.86, 0.76)
+const HEM := Color(0.22, 0.46, 0.53)
+const LACE := Color(0.93, 0.91, 0.84)
 const FOOT_DROP := 0.1   # sole below the ankle joint
 const STAND_TH := 0.17     # resting lean of the thighs
 const STAND_KN := 0.17     # and the matching soft knee
@@ -54,26 +56,44 @@ func _build() -> void:
 		var hip := Node3D.new()
 		hip.position = Vector3(HIP_X * side, HIP_Y, 0)
 		add_child(hip)
-		_ball(hip, 0.128, SHORTS)
-		_tube(hip, 0.128, 0.102, 0.2, SHORTS).position = Vector3(0, -0.055, 0)
-		_tube(hip, 0.082, 0.068, THIGH, SKIN).position = Vector3(0, -THIGH * 0.5, 0)
+		# Shorts: a rounded seat, a leg that widens a touch toward the hem and
+		# a lighter turn-up, so the cloth reads as cloth and not as more leg.
+		_ball(hip, 0.130, SHORTS)
+		_tube(hip, 0.126, 0.112, 0.21, SHORTS).position = Vector3(0, -0.06, 0)
+		_tube(hip, 0.115, 0.116, 0.028, HEM).position = Vector3(0, -0.176, 0)
+		# Thigh: full at the top, narrowing to the knee, with the muscle
+		# sitting forward of the bone the way a real one does.
+		_tube(hip, 0.092, 0.066, THIGH, SKIN).position = Vector3(0, -THIGH * 0.5, 0)
+		_lump(hip, Vector3(0.082, 0.17, 0.086), SKIN).position = Vector3(0, -0.19, -0.016)
 
 		var knee := Node3D.new()
 		knee.position = Vector3(0, -THIGH, 0)
 		hip.add_child(knee)
-		_ball(knee, 0.068, SKIN)
-		_tube(knee, 0.068, 0.050, SHIN, SKIN).position = Vector3(0, -SHIN * 0.5, 0)
+		_ball(knee, 0.066, SKIN)
+		_lump(knee, Vector3(0.044, 0.05, 0.03), SKIN).position = Vector3(0, 0.0, -0.05)   # kneecap
+		# Shin: slim down the front, with the calf swelling out behind and
+		# tapering into a narrow ankle.
+		_tube(knee, 0.060, 0.041, SHIN, SKIN).position = Vector3(0, -SHIN * 0.5, 0)
+		_lump(knee, Vector3(0.062, 0.145, 0.070), SKIN).position = Vector3(0, -0.14, 0.026)
 
 		var ankle := Node3D.new()
 		ankle.position = Vector3(0, -SHIN, 0)
 		knee.add_child(ankle)
-		_ball(ankle, 0.050, SKIN)            # the ankle, so the leg meets the shoe
-		# Deck shoe: a canvas upper on a pale sole, toes forward (-Z). The sole
-		# is inset so from above you only see shoe.
-		_box(ankle, Vector3(0.115, 0.075, 0.25), SHOE).position = Vector3(0, -0.03, -0.055)
+		_ball(ankle, 0.043, SKIN)
+		_lump(ankle, Vector3(0.022, 0.024, 0.022), SKIN).position = Vector3(0.04 * side, 0.0, 0.004)  # ankle bone
+		# Deck shoe, toes forward (-Z): a low upper with a rounded toe and
+		# heel instead of a brick, a collar round the ankle, a white lace
+		# panel and a pale sole showing as a thin line all the way round.
+		_box(ankle, Vector3(0.104, 0.062, 0.150), SHOE).position = Vector3(0, -0.036, -0.045)
+		_lump(ankle, Vector3(0.052, 0.036, 0.062), SHOE).position = Vector3(0, -0.040, -0.128)     # toe cap
+		_lump(ankle, Vector3(0.050, 0.040, 0.040), SHOE).position = Vector3(0, -0.034, 0.034)      # heel
+		_tube(ankle, 0.052, 0.054, 0.03, SHOE).position = Vector3(0, -0.012, 0.004)                # collar
+		_box(ankle, Vector3(0.046, 0.008, 0.070), LACE).position = Vector3(0, -0.003, -0.072)
 		# The sole is inset on every side: when it was wider than the shoe the
 		# two surfaces sat 2 mm apart and shimmered against each other.
-		_box(ankle, Vector3(0.10, 0.05, 0.228), SOLE).position = Vector3(0, -0.082, -0.055)
+		_box(ankle, Vector3(0.098, 0.030, 0.150), SOLE).position = Vector3(0, -0.080, -0.045)
+		_lump(ankle, Vector3(0.049, 0.015, 0.058), SOLE).position = Vector3(0, -0.080, -0.128)
+		_lump(ankle, Vector3(0.047, 0.015, 0.038), SOLE).position = Vector3(0, -0.080, 0.034)
 
 		_hip.append(hip)
 		_knee.append(knee)
@@ -176,10 +196,15 @@ func pose(delta: float, vel: Vector3, body_yaw: float, on_floor: bool, frozen: b
 
 # --- little mesh helpers -------------------------------------------------------
 
+var _mats := {}
+
 func _mat(c: Color) -> StandardMaterial3D:
+	if _mats.has(c):
+		return _mats[c]
 	var m := StandardMaterial3D.new()
 	m.albedo_color = c
 	m.roughness = 0.92
+	_mats[c] = m
 	return m
 
 
@@ -204,6 +229,19 @@ func _ball(parent: Node3D, r: float, c: Color) -> MeshInstance3D:
 	m.rings = 6
 	m.material = _mat(c)
 	return _put(parent, m)
+
+
+## An ellipsoid with the given half-sizes: calves, kneecaps, toe caps.
+func _lump(parent: Node3D, half: Vector3, c: Color) -> MeshInstance3D:
+	var m := SphereMesh.new()
+	m.radius = 1.0
+	m.height = 2.0
+	m.radial_segments = 12
+	m.rings = 6
+	m.material = _mat(c)
+	var mi := _put(parent, m)
+	mi.scale = half
+	return mi
 
 
 func _box(parent: Node3D, size: Vector3, c: Color) -> MeshInstance3D:

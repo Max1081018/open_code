@@ -31,10 +31,13 @@ market and a moored motorboat.
    live fish flop about and leap at you.
 6. **GRAB** it: it goes into a slot (each slot shows a little 3D picture of what's in it), so you can switch to the rod and back. Hold it
    at the market and **SELL** (or drop it on the counter).
-7. Buy the **Boat Key** and the **Sea Chart** (both on the little table in the shop):
-   with both, the boat is yours to **SAIL**. Buy the **Boss Reel** too, catch **the
-   Baby Kraken** from the deck, beat it, sail home and sell it. The buyer hands you
-   a map: **Island 2 unlocks**.
+7. Land something **Rare** or better and the **Boat Key** and **Sea Chart** are
+   handed to you: the motorboat at the jetty is yours to drive.
+8. The shop sells a **Harbour Pistol**. Hold it and the action button reads
+   **SHOOT**: seven rounds, then it reloads itself. It drops a flopping fish
+   from across the beach, sees off the thieving gull, knocks the five tin cans
+   off the rail behind the island (clear all five for a prize) and pops the
+   corked bottles drifting offshore, each with a few coins rolled up inside.
 
 Real catches include Minnow, Perch, Sunfish, Trout, Bass, Carp, Catfish, Pike,
 a rare Golden Koi, and junk like an old boot, a message in a bottle and a sunken chest.
@@ -148,4 +151,5 @@ GODOT=/path/to/Godot_v4.3-stable_linux.x86_64 fishing/tools/play.sh 1600 shot.pn
   and animated; the wrist is re-aimed in code so the fist grips the rod.
 - 3D models from Kenney (Nature, Pirate, Watercraft kits) and KayKit
   (Adventurers, Fantasy Weapons Bits), CC0.
+- Pistol: the 1911 from the "Free Guns Pack 1.2" model pack.
 - Stylized water shader: see `assets/water/LICENSE.txt`.
