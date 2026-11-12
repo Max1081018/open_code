@@ -126,6 +126,7 @@ var _pending_loose: Array = []    # from the save, spawned once the world exists
 var boat_deck: AnimatableBody3D
 var _cargo: Array = []            # [body, local offset] riding the boat
 var _hold_far_t := 0.0
+var _menu_frames := 0            # frames spent behind a menu, to freeze the backdrop
 var _gift_t := 0.0               # a beat after the key arrives, before the shout
 
 # Boat
@@ -1186,6 +1187,9 @@ func _build_world() -> void:
 	smat.set_shader_parameter("normal_map_a", load("res://assets/water/water_normal_a.png"))
 	smat.set_shader_parameter("normal_map_b", load("res://assets/water/water_normal_b.png"))
 	smat.set_shader_parameter("hole_half", Vector2(0.92, 2.35))
+	smat.set_shader_parameter("island_xz", Vector2(HOME.x, HOME.z))
+	smat.set_shader_parameter("island_r", HOME_R)
+	smat.set_shader_parameter("island_h", HOME_H)
 	plane.material = smat
 	water_mat = smat
 	water.mesh = plane
@@ -1479,7 +1483,7 @@ func _build_scenery() -> void:
 	var ty := _island_y(HOME, HOME_R, HOME_H, 3.0, 42.0)
 	var tower := _spawn("tower", Vector3(3.0, ty - 0.2, 42.0), -0.5, 1.2)
 	_static_props.append(tower)
-	_solidify(tower, 0.55)
+	_solidify(tower, 0.85)
 
 	# Buoys bobbing on the open water (they float at their origin).
 	for b in [
@@ -1582,12 +1586,12 @@ func _build_player_view() -> void:
 
 func _build_sounds() -> void:
 	var streams := {
-		"whoosh": Sfx.whoosh(), "splash": Sfx.splash(), "bite": Sfx.bite(),
-		"click": Sfx.click(), "caught": Sfx.caught(), "snap": Sfx.snap(),
-		"bonk": Sfx.bonk(), "hurt": Sfx.hurt(), "coins": Sfx.coins(),
-		"step_soft": Sfx.step_soft(), "step_wood": Sfx.step_wood(), "gull": Sfx.gull(),
-		"thunder": Sfx.thunder(),
-		"jump": Sfx.whoosh(), "pickup": Sfx.pickup(),
+		"whoosh": _sfx("whoosh"), "splash": _sfx("splash"), "bite": _sfx("bite"),
+		"click": _sfx("click"), "caught": _sfx("caught"), "snap": _sfx("snap"),
+		"bonk": _sfx("bonk"), "hurt": _sfx("hurt"), "coins": _sfx("coins"),
+		"step_soft": _sfx("step_soft"), "step_wood": _sfx("step_wood"), "gull": _sfx("gull"),
+		"thunder": _sfx("thunder"),
+		"jump": _sfx("whoosh"), "pickup": _sfx("pickup"),
 	}
 	for key in streams:
 		var p := AudioStreamPlayer.new()
@@ -1621,12 +1625,12 @@ func _build_ambience_step() -> void:
 	var key: String = _amb_todo.pop_front()
 	var p: AudioStreamPlayer = players[key]
 	match key:
-		"surf": p.stream = Sfx.surf_loop()
-		"wind": p.stream = Sfx.wind_loop()
-		"rain": p.stream = Sfx.rain_loop()
-		"engine": p.stream = Sfx.engine_loop()
+		"surf": p.stream = _sfx("surf_loop")
+		"wind": p.stream = _sfx("wind_loop")
+		"rain": p.stream = _sfx("rain_loop")
+		"engine": p.stream = _sfx("engine_loop")
 		"music":
-			p.stream = Sfx.music_loop()
+			p.stream = _sfx("music_loop")
 			_apply_music_volume()
 	if key != "engine":
 		p.play()
@@ -1640,6 +1644,35 @@ func _apply_music_volume() -> void:
 	var v: float = float(menu_ui.settings.get("music_vol", 0.5)) if menu_ui else 0.5
 	var p: AudioStreamPlayer = players["music"]
 	p.volume_db = -60.0 if v <= 0.01 else lerpf(-32.0, -13.0, clampf(v, 0.0, 1.0))
+
+
+## Every sound is synthesised in script, which is slow on a phone: several
+## seconds of start-up on a first launch. So each one is built once and its
+## samples kept on disk; every launch after that just reads them back.
+func _sfx(key: String) -> AudioStreamWAV:
+	var path := "user://sfx_v5_%s.bin" % key
+	if FileAccess.file_exists(path):
+		var f := FileAccess.open(path, FileAccess.READ)
+		if f and f.get_length() > 12:
+			var w := AudioStreamWAV.new()
+			w.format = AudioStreamWAV.FORMAT_16_BITS
+			w.mix_rate = f.get_32()
+			var looped := f.get_32()
+			var n := f.get_32()
+			w.data = f.get_buffer(n)
+			if looped == 1:
+				w.loop_mode = AudioStreamWAV.LOOP_FORWARD
+				w.loop_end = n / 2
+			if w.data.size() == n and n > 0:
+				return w
+	var made: AudioStreamWAV = Callable(Sfx, key).call()
+	var out := FileAccess.open(path, FileAccess.WRITE)
+	if out:
+		out.store_32(made.mix_rate)
+		out.store_32(1 if made.loop_mode == AudioStreamWAV.LOOP_FORWARD else 0)
+		out.store_32(made.data.size())
+		out.store_buffer(made.data)
+	return made
 
 
 func _play(key: String) -> void:
@@ -1702,6 +1735,17 @@ func _update_info() -> void:
 
 func _process(delta: float) -> void:
 	elapsed += delta
+	# Behind a menu the island is a backdrop. Draw it for a few frames, then
+	# stop drawing it at all: the menu costs nothing but its own buttons.
+	if render_view and render_view.view:
+		if app_state == "playing":
+			_menu_frames = 0
+			if render_view.view.render_target_update_mode != SubViewport.UPDATE_ALWAYS:
+				render_view.view.render_target_update_mode = SubViewport.UPDATE_ALWAYS
+		else:
+			_menu_frames += 1
+			if _menu_frames == 20 and not autotest:
+				render_view.view.render_target_update_mode = SubViewport.UPDATE_DISABLED
 	if autotest:
 		_autotest(delta)
 
@@ -2453,7 +2497,9 @@ func _build_shop() -> void:
 	_add_weapon_display("fistweapon_A", Vector3(x1 - 0.40, t3, z0 + 0.55), Vector3(0, -PI * 0.5, 0), 0.55)
 	# The best of the lot, mounted on the side wall above the stands.
 	_add_weapon_display("axe_A", Vector3(x0 + 0.08, floor_y + 1.55, z0 + 1.05), Vector3(0, PI * 0.5, 0), 0.50)
-	_add_weapon_display("rod", Vector3(x1 - 0.14, floor_y + 1.05, z0 + 1.05), Vector3(0, PI * 0.5, 0), 0.38)
+	# Rods lean against the wall on their butts. Laid flat they are two metres
+	# long and stuck out across the room looking like they were floating.
+	_add_weapon_display("rod", Vector3(x1 - 0.16, floor_y, z0 + 1.05), Vector3(0, PI * 0.5, PI * 0.5), 0.22)
 	# The shop already has a wall rack of rods in it, so that is what you buy
 	# from: one pick box over the rack, offering whichever rod is next. Adding
 	# four more rod models to a room this full only made a mess of it.
@@ -2478,8 +2524,7 @@ func _build_shop() -> void:
 	var t5 := _pedestal(Vector3(cx, floor_y, z0 + 1.75))
 	# The key and the chart are not for sale any more - they are earned, so
 	# the table they used to sit on is bare.
-	var t4 := _pedestal(Vector3(x1 - 0.40, floor_y, z0 + 1.55))
-	_add_weapon_display("boss_reel", Vector3(x1 - 0.40, t4, z0 + 1.55), Vector3(0, 0, 0), 0.30)
+	_add_weapon_display("boss_reel", Vector3(x1 - 0.16, floor_y, z0 + 1.75), Vector3(0, PI * 0.5, PI * 0.5), 0.25)
 
 	var ceil := MeshInstance3D.new()
 	var cm := BoxMesh.new()
@@ -2531,7 +2576,8 @@ func _build_market() -> void:
 	var body := StaticBody3D.new()
 	var col := CollisionShape3D.new()
 	var bs := BoxShape3D.new()
-	bs.size = Vector3(1.4, 1.2, 3.6)
+	var sbox := _node_aabb(stall)
+	bs.size = Vector3(maxf(1.4, sbox.size.x * 0.62), 1.2, maxf(3.6, sbox.size.z * 0.86))
 	col.shape = bs
 	body.add_child(col)
 	body.position = Vector3(MARKET_POS.x, g + 0.6, MARKET_POS.z)
@@ -3557,6 +3603,10 @@ func _optimize_world() -> void:
 ## is built and again whenever the graphics setting changes.
 func _apply_prop_range() -> void:
 	var q: int = clampi(quality, 0, Q_PROP.size() - 1)
+	if water_mat:
+		var want_sh: Shader = WATER_LITE if q <= 1 else WATER_FULL
+		if water_mat.shader != want_sh:
+			water_mat.shader = want_sh
 	if water_plane and water_plane.subdivide_width != Q_SEA[q]:
 		water_plane.subdivide_width = Q_SEA[q]
 		water_plane.subdivide_depth = Q_SEA[q]
@@ -3867,6 +3917,9 @@ const Q_CLOUDS := [8, 14, 20, 28]
 const Q_RAIN := [110, 190, 250, 300]
 # How finely the sea is cut up, per preset.
 const Q_SEA := [44, 64, 88, 104]
+# Low and Medium use a water shader that never reads the depth buffer.
+const WATER_FULL := preload("res://assets/water/stylized_water.gdshader")
+const WATER_LITE := preload("res://assets/water/stylized_water_lite.gdshader")
 # Shadow atlas per preset. Four splits over 75 m at 4096 was the single most
 # expensive thing in an Ultra frame on a phone - four passes over the whole
 # island - and at this art style it is indistinguishable from two splits over
@@ -3897,6 +3950,9 @@ func _apply_graphics() -> void:
 		# a backdrop, and a panel sits over most of it. Two thirds of the
 		# resolution there buys a menu that scrolls and taps smoothly.
 		var menu_cut := 1.0 if app_state == "playing" else 0.66
+		_menu_frames = 0                  # redraw the backdrop with the new settings
+		if render_view.view:
+			render_view.view.render_target_update_mode = SubViewport.UPDATE_ALWAYS
 		if res == "Auto" or not res.ends_with("%"):
 			render_view.set_quality(Q_SCALE[q] * menu_cut, q >= 2, Q_ROWS[q])
 		else:

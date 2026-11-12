@@ -66,7 +66,7 @@ var _layer: ArmLayer
 var _tips: Array = []               # thumb and index fingertip attachments
 var _hand_l: BoneAttachment3D
 var _grip_l: Node3D
-const ROD_AIM := Vector3(0.02, 0.50, -1.0)    # player view: forward and up
+const ROD_AIM := Vector3(0.02, 0.36, -1.0)    # player view: forward and up
 const WEAPON_AIM := Vector3(-0.10, 1.0, -0.55) # blade up and forward, ready
 const HOLD_SHIFT := Vector3(-0.075, 0.035, 0)  # holding something: right hand clears the buttons
 
@@ -761,10 +761,14 @@ func _place_prop() -> void:
 		var sway := sin(_t * 2.1) * 0.06 + sin(_phase) * 0.05 * clampf(move_speed / 3.0, 0.0, 1.0)
 		# Hangs almost straight down off the fist, so it isn't swinging across
 		# the middle of the screen while you walk around with it.
-		var d := (cam.global_basis * Vector3(-0.03 + sway, -1.0, -0.1)).normalized()
-		var z := d.cross(Vector3.UP).normalized()
-		if z.length() < 0.1:
-			z = cam.global_basis.x.normalized()
+		# It hangs by gravity, straight down from the fist whichever way you
+		# look. The side axis is taken from the camera's right, which is always
+		# level: it used to come from a cross product with world-up, which
+		# collapses when the fish points straight down - and that is the only
+		# way it ever points, so it spun round in the hand as you turned.
+		var right := cam.global_basis.x.normalized()
+		var d := (Vector3.DOWN + right * (sway - 0.03)).normalized()
+		var z := (right - d * right.dot(d)).normalized()
 		var y := z.cross(d).normalized()
 		var b := Basis(d, y, z)
 		# Gripped at the narrow part in front of the tail fin, not at the very
