@@ -38,6 +38,11 @@ market and a moored motorboat.
    from across the beach, sees off the thieving gull, knocks the five tin cans
    off the rail behind the island (clear all five for a prize) and pops the
    corked bottles drifting offshore, each with a few coins rolled up inside.
+9. Walk off the beach and you **swim**: you float with your head out, and the
+   action button becomes **SWIM** to kick upward. Look down and push forward to
+   dive - there's a real sea floor down there, with weed, stones, starfish and
+   fish over it, and you can stand on it in the shallows. You only drown if you
+   hold yourself under: the breath bar is your air.
 
 Real catches include Minnow, Perch, Sunfish, Trout, Bass, Carp, Catfish, Pike,
 a rare Golden Koi, and junk like an old boot, a message in a bottle and a sunken chest.

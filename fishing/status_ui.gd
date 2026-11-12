@@ -87,9 +87,17 @@ class Painter extends Control:
 		var vp := get_viewport_rect().size
 		var font := ThemeDB.fallback_font
 
-		# Underwater: murky green-blue wash.
+		# Underwater: a light green-blue wash and a soft vignette. It used to be
+		# half-opaque, which on top of the fog left the sea a flat colour with
+		# nothing in it.
 		if ui.underwater:
-			draw_rect(Rect2(Vector2.ZERO, vp), Color(0.05, 0.28, 0.32, 0.55))
+			draw_rect(Rect2(Vector2.ZERO, vp), Color(0.06, 0.34, 0.38, 0.20))
+			var bands := 7
+			for i in bands:
+				var t := float(i) / bands
+				var inset := t * minf(vp.x, vp.y) * 0.30
+				draw_rect(Rect2(Vector2(inset, inset), vp - Vector2(inset, inset) * 2.0),
+					Color(0.03, 0.20, 0.26, 0.055), false, maxf(minf(vp.x, vp.y) * 0.045, 2.0))
 
 		# Hit: red vignette from the edges.
 		if ui._hit > 0.0:

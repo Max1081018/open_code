@@ -253,7 +253,7 @@ func _build() -> void:
 	qbtn.pressed.connect(_on_quit)
 	footer.add_child(qbtn)
 	var ver := Label.new()
-	ver.text = "v" + str(ProjectSettings.get_setting("application/config/version", "0.17"))
+	ver.text = "v" + str(ProjectSettings.get_setting("application/config/version", "0.18"))
 	ver.add_theme_font_size_override("font_size", 20)
 	ver.add_theme_color_override("font_color", Color(1, 1, 1, 0.30))
 	ver.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
@@ -426,6 +426,7 @@ func _build() -> void:
 		"Push the stick to the edge to run. JUMP gets you up the shop steps.",
 		"Land something Rare and the Boat Key and Sea Chart are yours: DRIVE out past the buoys.",
 		"The PISTOL shoots cans off the rail, bottles off the sea, and scares the gull.",
+		"Walk into the sea and you swim. Look down and push forward to dive; SWIM kicks you up.",
 		"Out there the Boss Reel lands the Kraken. Drop a catch in the sea and it floats.",
 	]:
 		var l := Label.new()

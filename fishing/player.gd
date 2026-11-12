@@ -19,6 +19,14 @@ const GRAVITY := 22.0
 const TURN_RATE := 12.0
 const JUMP_SPEED := 7.2
 const STEP_HEIGHT := 0.45         # walks straight up porch steps and kerbs
+# --- swimming ---------------------------------------------------------------
+const SWIM_DEEP := 1.62           # water this far over your feet and you're swimming
+const SWIM_SPEED := 2.2
+const SWIM_FAST := 3.6            # with RUN held
+const FLOAT_AT := 1.06            # feet this far under when floating at rest
+const BUOY_K := 16.0              # how hard the water pushes you back to the top
+const BUOY_DAMP := 4.5
+const SWIM_KICK := 3.4            # the JUMP button, used in water
 
 var move_input := Vector2.ZERO   # x = right, y = forward(-) / back(+)
 var cam_yaw := 0.0
@@ -29,6 +37,11 @@ var first_person := true
 var show_body := true
 var sprint := false              # set by the RUN button
 var wading := false              # knee-deep or more: slower
+var water_y := -1e9              # sea surface over your head, from the game
+var cam_pitch := 0.0             # you swim where you look
+var swimming := false            # off your feet, in deep water
+var submerged := 0.0             # how far the surface is above your feet
+var _kick := 0.0                 # a swim stroke still pushing you along
 var carry_slow := 1.0            # < 1 while hauling something heavy
 var _body_yaw := 0.0
 var _jump_buffer := 0.0          # a tap just before landing still jumps
@@ -62,6 +75,12 @@ func jump() -> void:
 	_jump_buffer = 0.18
 
 
+## Can you get out here? True when the ground under you is close enough to
+## climb onto, which is what makes a beach a beach rather than a wall.
+func shallows() -> bool:
+	return submerged < SWIM_DEEP
+
+
 ## What the legs are doing, for the autotests.
 func gait() -> String:
 	return legs.gait if legs else "none"
@@ -73,8 +92,26 @@ func steps() -> int:
 
 
 func _physics_process(delta: float) -> void:
+	# How deep you are. Past about your own height the ground is no use to
+	# you and you start swimming: before this the sea was a hole you fell
+	# down, because nothing ever stopped you sinking.
+	submerged = water_y - global_position.y
+	var was_swimming := swimming
+	# Hysteresis: without it a passing wave flips you between swimming and
+	# walking several times a second in chest-deep water.
+	swimming = submerged > (SWIM_DEEP - 0.3 if swimming else SWIM_DEEP) and not frozen
+	if swimming and not was_swimming:
+		velocity.y = maxf(velocity.y, -3.2)      # a dive slows as it hits the water
+	_kick = maxf(_kick - delta, 0.0)
+
+	if swimming:
+		_swim(delta)
+		return
 	if not is_on_floor():
 		velocity.y -= GRAVITY * delta
+		# Wading out of your depth: the water takes your weight as you go.
+		if submerged > 0.2:
+			velocity.y += GRAVITY * clampf(submerged / SWIM_DEEP, 0.0, 0.8) * delta
 	elif velocity.y < 0.0:
 		velocity.y = -2.0  # keep it planted on slopes
 
@@ -114,3 +151,54 @@ func _physics_process(delta: float) -> void:
 	_body_yaw = lerp_angle(_body_yaw, cam_yaw, clampf(delta * rate, 0.0, 1.0))
 	if legs:
 		legs.pose(delta, velocity, _body_yaw, is_on_floor(), frozen)
+
+
+## In deep water: you float with your head out, swim where you look, and kick
+## upward with the JUMP button.
+##
+## The water sets how fast you *move* vertically rather than pushing on you:
+## left alone it lifts you to the waterline and holds you there riding the
+## swell, and putting your head down and swimming takes you under against it.
+## A spring was tried first and it fought itself - any downward glance sank
+## you, and you floated with your eyes under the water.
+func _swim(delta: float) -> void:
+	var mag := clampf(move_input.length(), 0.0, 1.0)
+	var top := (SWIM_FAST if sprint else SWIM_SPEED) * carry_slow
+	var want := Vector3.ZERO
+	var drive := 0.0                     # how hard you are swimming up or down
+	# A dead zone round the horizon: a glance down shouldn't sink you.
+	var down := clampf((-cam_pitch - 0.25) / 0.85, 0.0, 1.0)
+	var up := clampf((cam_pitch - 0.22) / 0.70, 0.0, 1.0)
+	if not frozen and mag > 0.08:
+		var dir := Basis(Vector3.UP, cam_yaw) * Vector3(move_input.x, 0.0, move_input.y)
+		dir.y = 0.0
+		if dir.length() > 0.001:
+			dir = dir.normalized()
+			want = dir * top
+			# only what you push *forward* steers you up or down
+			var fwd := (Basis(Vector3.UP, cam_yaw) * Vector3(0, 0, -1)).normalized()
+			var ahead := clampf(dir.dot(fwd), -1.0, 1.0)
+			drive = (up - down) * top * 0.95 * ahead
+	velocity.x = move_toward(velocity.x, want.x, ACCEL * 0.6 * delta)
+	velocity.z = move_toward(velocity.z, want.z, ACCEL * 0.6 * delta)
+
+	# The lift that holds you at the top, weakened while you swim down so a
+	# dive can beat it, and never so weak that letting go leaves you stranded
+	# on the bottom.
+	var below := (water_y - FLOAT_AT) - global_position.y
+	var lift: float = clampf(below * 2.4, -2.2, 1.9) * (1.0 - 0.78 * down)
+	var vy_want := lift + drive
+	if _kick > 0.0:
+		vy_want = maxf(vy_want, SWIM_KICK * 0.6)
+	velocity.y = move_toward(velocity.y, vy_want, 13.0 * delta)
+	if _jump_buffer > 0.0 and not frozen:
+		_jump_buffer = 0.0
+		_kick = 0.4
+		velocity.y = maxf(velocity.y, SWIM_KICK)
+	_jump_buffer = maxf(_jump_buffer - delta, 0.0)
+	move_and_slide()
+
+	var rate := 20.0 if want.length() > 0.01 else 9.0
+	_body_yaw = lerp_angle(_body_yaw, cam_yaw, clampf(delta * rate, 0.0, 1.0))
+	if legs:
+		legs.swim(delta, velocity, _body_yaw, cam_pitch, mag > 0.08 or _kick > 0.0)

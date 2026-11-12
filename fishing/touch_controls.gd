@@ -45,6 +45,7 @@ var look_stat := ""            # small grey stat line, e.g. "+1 power"
 var look_cost := ""            # price or status, drawn in gold
 var carry_info := ""           # "Carrying 3/5 - worth 120"
 var crosshair := true
+var jump_label := "JUMP"       # reads SWIM while you're in deep water
 var sens_scale := 1.0
 
 # Hotbar: 4 slots along the bottom. Each entry is {} (empty) or
@@ -228,7 +229,8 @@ func _process(d: float) -> void:
 		or _act_index != -1 or _jump_held or absf(_boss_shown - maxf(boss_hp, 0.0)) > 0.002
 	var sig := "%s|%s|%s|%s|%s|%s|%d|%d|%.2f|%s|%s|%s|%.2f|%.2f|%d|%.2f|%s|%s|%s" % [prompt, secondary,
 		look_info, look_stat, look_cost, carry_info, selected, coins, act_progress, act_dim, sprint,
-		crosshair, hud_opacity, hud_scale, slots.hash(), boss_hp, boss_name, fixed_joystick, _btn_held]
+		crosshair, hud_opacity, hud_scale, slots.hash(), boss_hp, boss_name, fixed_joystick,
+		_btn_held, jump_label]
 	if animating or sig != _sig:
 		_sig = sig
 		_view.queue_redraw()
@@ -477,7 +479,8 @@ class Painter extends Control:
 		# ---- right cluster ----
 		if not ui.auto_run:
 			UIDraw.round_button(self, font, ui._run_center, ui.run_r(), "RUN", "run", ui.sprint, false, op)
-		UIDraw.round_button(self, font, ui._jump_center, ui.jump_r(), "JUMP", "jump", false, ui._jump_held, op)
+		UIDraw.round_button(self, font, ui._jump_center, ui.jump_r(), ui.jump_label,
+			"jump", false, ui._jump_held, op)
 		if ui.secondary != "":
 			UIDraw.round_button(self, font, ui._sec_center, ui.sec_r(), ui.secondary,
 				ui.icon_for(ui.secondary), false, false, op)

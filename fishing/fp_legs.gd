@@ -41,6 +41,7 @@ var _was_air := false
 var _acc := 0.0             # unwrapped stride phase, for counting steps
 var _step_k := 0
 var _t := 0.0
+var _lay := -1.55           # how far the body is laid out, swimming
 
 
 func _ready() -> void:
@@ -98,6 +99,44 @@ func _build() -> void:
 		_hip.append(hip)
 		_knee.append(knee)
 		_ankle.append(ankle)
+
+
+## Swimming: the legs trail out behind you and flutter-kick. Called instead of
+## pose() while the player is off their feet in deep water.
+func swim(delta: float, vel: Vector3, body_yaw: float, cam_pitch: float, kicking: bool) -> void:
+	_t += delta
+	gait = "swim"
+	var speed := Vector2(vel.x, vel.z).length()
+	_blend = lerpf(_blend, 1.0 if kicking else 0.35, clampf(delta * 6.0, 0.0, 1.0))
+	# A flutter kick: quick and shallow, quicker the harder you are swimming.
+	_phase = wrapf(_phase + delta * (5.0 + speed * 1.1) * TAU * 0.25, -PI, PI)
+	var amp: float = 0.30 * _blend
+	for i in 2:
+		var p: float = _phase + (0.0 if i == 0 else PI)
+		var th: float = 0.26 + sin(p) * amp
+		# The knee trails the hip, which is what makes a kick look like a kick
+		# rather than two poles scissoring.
+		var kn: float = -(0.22 + 0.30 * _blend * maxf(0.0, sin(p - 0.9)))
+		_hip[i].rotation.x = th
+		_knee[i].rotation.x = kn
+		_ankle[i].rotation.x = clampf(-0.35 + sin(p - 1.4) * 0.3, -0.6, 0.35)
+	# Your body lines up with the way you are looking, so the legs trail out
+	# behind the camera: level when you swim flat, up over your head when you
+	# duck down for the bottom. They used to hang off the hips wherever the
+	# hips happened to be, which put both shins across the middle of the
+	# screen the moment you looked down.
+	var lay: float = clampf(-1.55 + cam_pitch, -2.70, -0.55)
+	_lay = lerp_angle(_lay, lay, clampf(delta * 6.0, 0.0, 1.0))
+	var yaw: float = lerp_angle(rotation.y, body_yaw, clampf(delta * 8.0, 0.0, 1.0))
+	# Hold the hip joint just below eye level and set the legs back from it,
+	# whatever angle the body is at (the node pivots at the feet, so this is
+	# worked back from where the hips have to end up).
+	var back: float = 0.10 - 0.95 * sin(_lay)
+	position = Vector3(sin(yaw) * back, 1.15 - 0.95 * cos(_lay), cos(yaw) * back)
+	rotation = Vector3(_lay, yaw, sin(_t * 1.7) * 0.05)
+	_air = 0.0
+	_land = 0.0
+	_was_air = true
 
 
 func set_shown(on: bool) -> void:
@@ -181,7 +220,8 @@ func pose(delta: float, vel: Vector3, body_yaw: float, on_floor: bool, frozen: b
 	_bob = lerpf(_bob, -low * (1.0 - _air), clampf(delta * 20.0, 0.0, 1.0))
 	# Breathing when you stand still, and the hips rolling toward whichever
 	# leg has the weight as you walk.
-	position.y = _bob + sin(_t * 0.9) * 0.006 * (1.0 - _blend)
+	# Back to standing: clear any offset the swim pose left behind.
+	position = Vector3(0.0, _bob + sin(_t * 0.9) * 0.006 * (1.0 - _blend), 0.0)
 	rotation = Vector3(0.0, _yaw, sin(_phase) * 0.04 * _blend)
 
 	if _air > 0.5:

@@ -86,6 +86,9 @@ var sky_mat: ProceduralSkyMaterial
 var _sky_rain := -1.0
 var water_mat: ShaderMaterial
 var water_plane: PlaneMesh       # re-cut when the graphics preset changes
+var seabed: MeshInstance3D       # the sea floor you can stand on
+var water_under: MeshInstance3D  # the surface seen from below
+var _reef: Array = []            # fish circling in the shallows
 var shop_building: Node3D
 var shop_counter: Node3D
 var shopkeeper: Node3D
@@ -1071,10 +1074,26 @@ func _ready() -> void:
 				sel = -1
 				_apply_held()
 			"drown":
+				# Dropped in open water: you should float, not sink. The test
+				# then dives on purpose and holds it until the air runs out.
 				_start_play()
-				player.position = Vector3(0, -5.0, -4.0)
+				player.position = Vector3(0, 1.2, -22.0)
 				cam_yaw = PI
 				cam_pitch = 0.0
+			"reef":
+				# In the water off the back of the island, where the weed is.
+				_start_play()
+				var ra := 2.35
+				var rp := HOME + Vector3(cos(ra), 0, sin(ra)) * (HOME_R + 6.0)
+				player.position = Vector3(rp.x, 0.6, rp.z)
+				cam_yaw = ra + PI * 0.5   # along the shore, into deeper water
+				cam_pitch = -0.45
+			"swim":
+				# Out of your depth off the beach: swim back in and climb out.
+				_start_play()
+				player.position = Vector3(7.0, 1.0, 2.0)
+				cam_yaw = PI - 0.35   # facing the island, clear of the jetty
+				cam_pitch = -0.05
 			"legs":
 				_start_play()
 				cam_pitch = -1.30
@@ -1207,20 +1226,8 @@ func _build_world() -> void:
 	add_child(sun)
 	sun_light = sun
 
-	# Seabed, so the transparent water has something to tint against.
-	var bed := MeshInstance3D.new()
-	var bm := PlaneMesh.new()
-	bm.size = Vector2(300, 300)
-	bm.material = _mat(Color(0.72, 0.64, 0.44), 1.0)
-	bed.mesh = bm
-	bed.position = Vector3(0, -7.0, -20)
-	add_child(bed)
-	var bed_body := StaticBody3D.new()
-	var bed_col := CollisionShape3D.new()
-	bed_col.shape = WorldBoundaryShape3D.new()
-	bed_body.add_child(bed_col)
-	bed_body.position = Vector3(0, -7.0, 0)
-	add_child(bed_body)
+	_build_seabed()
+	_build_underside()
 
 	# Water: a big subdivided plane running the stylized water shader.
 	var water := MeshInstance3D.new()
@@ -1465,6 +1472,325 @@ const HOME_R := 23.0
 const HOME_H := 4.4
 
 
+# --- the sea floor ------------------------------------------------------------
+const BED_SIZE := 300.0          # same patch of sea as the water plane
+const BED_GRID := 64             # quads across it
+const BED_DEEP := -8.4           # the flat bottom out in the open water
+const BED_TRENCH := 5.2          # how much deeper the Kraken's water is
+
+## Height of the sea floor at a point. Round an island it is the island's own
+## slope carried on underwater, a hand's width below the island mesh so the two
+## never fight over the same pixels; further out it levels off into open sand,
+## with a bowl scooped out under the boss zone.
+func _bed_y(x: float, z: float) -> float:
+	var shelf := _island_y(HOME, HOME_R, HOME_H, x, z) - 0.10
+	var d := Vector2(x - HOME.x, z - HOME.z).length()
+	var floor_y := BED_DEEP + 2.4 * cos(x * 0.045) * sin(z * 0.038)   # dunes
+	floor_y += 1.1 * sin(x * 0.11 + z * 0.07) + 0.5 * cos(x * 0.21 - z * 0.17)
+	# the Kraken's water is a deep bowl
+	var bd := Vector2(x - BOSS_WATERS.x, z - BOSS_WATERS.z).length()
+	if bd < BOSS_ZONE_R * 1.35:
+		var u := 1.0 - bd / (BOSS_ZONE_R * 1.35)
+		floor_y -= BED_TRENCH * u * u * (3.0 - 2.0 * u)
+	return maxf(shelf, floor_y)
+
+
+## The sea floor you can actually stand on: one generated mesh with matching
+## collision. The sea used to be a hole - you walked off the beach, sank, and
+## there was nothing underneath but an invisible plane seven metres down.
+func _build_seabed() -> void:
+	var st := SurfaceTool.new()
+	st.begin(Mesh.PRIMITIVE_TRIANGLES)
+	var step := BED_SIZE / float(BED_GRID)
+	var x0 := -BED_SIZE * 0.5
+	var z0 := -BED_SIZE * 0.5 - 20.0
+	var sand := Color(0.84, 0.74, 0.52)
+	var wet := Color(0.56, 0.52, 0.36)
+	var deep := Color(0.20, 0.32, 0.34)
+	var weed := Color(0.22, 0.40, 0.28)
+	var noise := FastNoiseLite.new()
+	noise.seed = 77
+	noise.frequency = 0.085
+	var grid: Array = []
+	for i in BED_GRID + 1:
+		var row: Array = []
+		for j in BED_GRID + 1:
+			var x := x0 + step * float(i)
+			var z := z0 + step * float(j)
+			row.append(Vector3(x, _bed_y(x, z), z))
+		grid.append(row)
+	var add := func(v: Vector3) -> void:
+		var h := v.y
+		var c: Color
+		if h > -1.2:
+			c = sand
+		elif h > -3.2:
+			c = sand.lerp(wet, (-1.2 - h) / 2.0)
+		else:
+			c = wet.lerp(deep, clampf((-3.2 - h) / 5.0, 0.0, 1.0))
+		var n := noise.get_noise_2d(v.x, v.z)
+		if n > 0.10:
+			c = c.lerp(weed, clampf((n - 0.10) * 2.0, 0.0, 0.70))
+		st.set_color(c.lightened(maxf(n, 0.0) * 0.18).darkened(maxf(-n, 0.0) * 0.22))
+		st.add_vertex(v)
+	for i in BED_GRID:
+		for j in BED_GRID:
+			var p0: Vector3 = grid[i][j]
+			var p1: Vector3 = grid[i][j + 1]
+			var p2: Vector3 = grid[i + 1][j + 1]
+			var p3: Vector3 = grid[i + 1][j]
+			# Clockwise seen from above is the front face in Godot: wound the
+			# other way the whole sea floor faced downward - invisible from
+			# above, and rays and footsteps went straight through it.
+			add.call(p0); add.call(p2); add.call(p1)
+			add.call(p0); add.call(p3); add.call(p2)
+	st.generate_normals()
+	var mi := MeshInstance3D.new()
+	mi.mesh = st.commit()
+	var m := StandardMaterial3D.new()
+	m.vertex_color_use_as_albedo = true
+	m.roughness = 1.0
+	m.specular_mode = BaseMaterial3D.SPECULAR_DISABLED
+	if OS.get_environment("BEDDBG") != "":
+		m.vertex_color_use_as_albedo = false
+		m.albedo_color = Color(1, 0, 0)
+		m.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	mi.material_override = m
+	mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	mi.set_meta("nomerge", true)
+	add_child(mi)
+	mi.create_trimesh_collision()
+	seabed = mi
+	# Backstop well below everything, so nothing can ever fall out of the world.
+	var guard := StaticBody3D.new()
+	var gcol := CollisionShape3D.new()
+	gcol.shape = WorldBoundaryShape3D.new()
+	guard.add_child(gcol)
+	guard.position = Vector3(0, -26.0, 0)
+	add_child(guard)
+
+
+## The sea seen from below. The water shader only draws its top face, so with
+## your head under you were looking straight up at the sky. This is a plain
+## sheet that rides over the camera while you are submerged - two triangles,
+## and it turns the surface back into a ceiling.
+func _build_underside() -> void:
+	var m := MeshInstance3D.new()
+	var q := PlaneMesh.new()
+	q.size = Vector2(170, 170)
+	q.orientation = PlaneMesh.FACE_Y
+	var mat := StandardMaterial3D.new()
+	mat.albedo_color = Color(0.22, 0.58, 0.62, 0.86)
+	mat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+	mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	mat.cull_mode = BaseMaterial3D.CULL_DISABLED
+	mat.no_depth_test = false
+	q.material = mat
+	m.mesh = q
+	m.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	m.set_meta("nomerge", true)
+	m.visible = false
+	add_child(m)
+	water_under = m
+
+
+## The ground under a point, island or sea floor, whichever is on top.
+func _ground_here(x: float, z: float) -> float:
+	return maxf(_island_y(HOME, HOME_R, HOME_H, x, z), _bed_y(x, z))
+
+
+## Weed, stones, starfish and shells over the bottom round the island. Without
+## them the sea floor is a flat sheet of sand: swim down and there is nothing
+## to look at, which is exactly how the water used to feel.
+##
+## The whole lot is welded into one mesh - about two thousand triangles in a
+## single draw - so the shallows can be properly dressed without costing a
+## phone anything to look at.
+func _build_reefscape() -> void:
+	var rng := RandomNumberGenerator.new()
+	rng.seed = 20260112
+	var st := SurfaceTool.new()
+	st.begin(Mesh.PRIMITIVE_TRIANGLES)
+	var tri := func(a: Vector3, b: Vector3, c: Vector3, col: Color) -> void:
+		var n := (b - a).cross(c - a).normalized()
+		for v in [a, b, c]:
+			st.set_color(col)
+			st.set_normal(n)
+			st.add_vertex(v)
+	var quad := func(a: Vector3, b: Vector3, c: Vector3, d: Vector3, c0: Color, c1: Color) -> void:
+		var n := (b - a).cross(d - a).normalized()
+		for pair in [[a, c0], [b, c0], [c, c1], [a, c0], [c, c1], [d, c1]]:
+			st.set_color(pair[1])
+			st.set_normal(n)
+			st.add_vertex(pair[0])
+	var placed := 0
+	var tries := 0
+	while placed < 260 and tries < 3000:
+		tries += 1
+		var ang := rng.randf() * TAU
+		var r := rng.randf_range(HOME_R - 4.0, HOME_R + 17.0)
+		var x := HOME.x + cos(ang) * r
+		var z := HOME.z + sin(ang) * r
+		# keep the jetty approach and the mooring clear
+		if absf(x) < 4.0 and z > -2.0 and z < 22.0:
+			continue
+		var y := _ground_here(x, z)
+		if y > -0.5 or y < -9.0:              # dry land, or out past the shelf
+			continue
+		placed += 1
+		var base := Vector3(x, y, z)
+		var kind := rng.randi() % 100
+		if kind < 46:
+			# A clump of weed: ribbons leaning off a common root.
+			var blades := rng.randi_range(3, 6)
+			var lean := rng.randf() * TAU
+			var dark := Color(0.12, 0.34, 0.20).lightened(rng.randf() * 0.10)
+			var tipc := Color(0.38, 0.66, 0.34)
+			# Deeper water grows taller weed, so a dive has kelp to swim through
+			# rather than stubble.
+			var tall: float = clampf(-y * 0.55, 0.5, 2.7)
+			for b in blades:
+				var a2 := lean + float(b) / float(blades) * TAU + rng.randf_range(-0.3, 0.3)
+				var h := tall * rng.randf_range(0.6, 1.15)
+				var w := rng.randf_range(0.045, 0.085)
+				var side := Vector3(cos(a2), 0, sin(a2))
+				var out := Vector3(-side.z, 0, side.x)
+				var root := base + side * rng.randf_range(0.0, 0.22)
+				var bend := side * h * rng.randf_range(0.25, 0.6)
+				var top := root + Vector3(0, h, 0) + bend
+				var mid := root + Vector3(0, h * 0.55, 0) + bend * 0.25
+				quad.call(root - out * w, root + out * w, mid + out * w * 0.8, mid - out * w * 0.8,
+					dark, dark.lerp(tipc, 0.5))
+				quad.call(mid - out * w * 0.8, mid + out * w * 0.8, top + out * w * 0.2,
+					top - out * w * 0.2, dark.lerp(tipc, 0.5), tipc)
+		elif kind < 70:
+			# A rounded stone, half buried.
+			var rad := rng.randf_range(0.22, 0.75)
+			var col := Color(0.42, 0.42, 0.40).lightened(rng.randf() * 0.18)
+			var segs := 7
+			var top2 := base + Vector3(0, rad * rng.randf_range(0.7, 1.1), 0)
+			var ring: Array = []
+			for k in segs:
+				var a3 := TAU * float(k) / float(segs)
+				ring.append(base + Vector3(cos(a3) * rad, rad * 0.12, sin(a3) * rad * rng.randf_range(0.8, 1.2)))
+			for k in segs:
+				tri.call(ring[k], ring[(k + 1) % segs], top2, col)
+		elif kind < 84:
+			# Starfish, flat on the sand.
+			var arms := 5
+			var col2 := Color(0.86, 0.38, 0.22).lerp(Color(0.92, 0.62, 0.25), rng.randf())
+			var rot := rng.randf() * TAU
+			var rr := rng.randf_range(0.16, 0.30)
+			var up := base + Vector3(0, 0.035, 0)
+			for k in arms:
+				var a4 := rot + TAU * float(k) / float(arms)
+				var a5 := a4 + TAU / float(arms)
+				tri.call(up,
+					up + Vector3(cos(a4) * rr, 0.0, sin(a4) * rr),
+					up + Vector3(cos((a4 + a5) * 0.5) * rr * 0.35, 0.0, sin((a4 + a5) * 0.5) * rr * 0.35),
+					col2)
+				tri.call(up,
+					up + Vector3(cos((a4 + a5) * 0.5) * rr * 0.35, 0.0, sin((a4 + a5) * 0.5) * rr * 0.35),
+					up + Vector3(cos(a5) * rr, 0.0, sin(a5) * rr),
+					col2.darkened(0.08))
+		else:
+			# A fan shell, propped open on the bottom.
+			var col3 := Color(0.95, 0.88, 0.74).lerp(Color(0.92, 0.72, 0.68), rng.randf())
+			var rot2 := rng.randf() * TAU
+			var rr2 := rng.randf_range(0.14, 0.26)
+			var hinge := base + Vector3(0, 0.02, 0)
+			for k in 6:
+				var a6 := rot2 - 0.6 + float(k) / 6.0 * 1.2
+				var a7 := rot2 - 0.6 + float(k + 1) / 6.0 * 1.2
+				tri.call(hinge,
+					hinge + Vector3(cos(a6) * rr2, 0.06, sin(a6) * rr2),
+					hinge + Vector3(cos(a7) * rr2, 0.06, sin(a7) * rr2),
+					col3 if k % 2 == 0 else col3.darkened(0.07))
+	var mi := MeshInstance3D.new()
+	mi.mesh = st.commit()
+	var m := StandardMaterial3D.new()
+	m.vertex_color_use_as_albedo = true
+	m.roughness = 0.95
+	m.cull_mode = BaseMaterial3D.CULL_DISABLED      # weed is single sided
+	m.specular_mode = BaseMaterial3D.SPECULAR_DISABLED
+	mi.material_override = m
+	mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	mi.set_meta("nomerge", true)
+	add_child(mi)
+
+
+## Fish going about their business in the shallows, so the water is somewhere
+## to swim rather than an empty blue room. They circle slowly, tilt into their
+## turns, and scatter if you swim into them.
+func _build_reef_fish() -> void:
+	var kinds := [["river", "Fish_Perch"], ["river", "Fish_Minnow"], ["ocean", "Fish_Clownfish"],
+		["ocean", "Fish_Angelfish"], ["river", "Fish_Sunfish"]]
+	for i in 12:
+		var k: Array = kinds[i % kinds.size()]
+		var f := _make_fish({"set": k[0], "node": k[1]}, 0.3)
+		if f.get_child_count() == 0:
+			f.queue_free()
+			continue
+		for mi in f.find_children("*", "MeshInstance3D", true, false):
+			(mi as MeshInstance3D).cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+		f.scale *= randf_range(0.5, 0.9)
+		f.set_meta("nomerge", true)
+		add_child(f)
+		var ang := TAU * float(i) / 12.0 + randf_range(-0.2, 0.2)
+		var r := HOME_R + randf_range(3.0, 13.0)
+		_reef.append({
+			"n": f,
+			"c": Vector3(HOME.x + cos(ang) * r, 0.0, HOME.z + sin(ang) * r),
+			"r": randf_range(1.6, 4.5),
+			"sp": randf_range(0.25, 0.6) * (1.0 if i % 2 == 0 else -1.0),
+			"ph": randf() * TAU,
+			"d": randf_range(0.7, 1.9),      # how far under the surface it swims
+			"flee": 0.0,
+		})
+
+
+func _update_reef(delta: float) -> void:
+	if _reef.is_empty() or player == null:
+		return
+	var eye: Vector3 = player.global_position
+	for f in _reef:
+		var n := f["n"] as Node3D
+		var c: Vector3 = f["c"]
+		if eye.distance_squared_to(c) > 2500.0:       # 50 m: out of sight, don't bother
+			if n.visible:
+				n.visible = false
+			continue
+		n.visible = true
+		f["ph"] = float(f["ph"]) + delta * float(f["sp"])
+		var ph: float = f["ph"]
+		var rr: float = f["r"]
+		var pos := c + Vector3(cos(ph) * rr, 0.0, sin(ph) * rr)
+		var surf := wave_height(pos.x, pos.z)
+		var bed := _bed_y(pos.x, pos.z)
+		# Keep to the water: under the surface, clear of the sand.
+		pos.y = clampf(surf - float(f["d"]) + sin(ph * 3.1) * 0.12, bed + 0.28, surf - 0.25)
+		# Scatter if you swim into them, then drift back to their patch.
+		var near := pos.distance_to(eye + Vector3(0, 0.9, 0))
+		if near < 2.2:
+			f["flee"] = 1.0
+			var away := (pos - eye)
+			away.y = 0.0
+			if away.length() > 0.01:
+				f["c"] = c + away.normalized() * delta * 7.0
+		else:
+			f["flee"] = maxf(float(f["flee"]) - delta * 0.5, 0.0)
+		var spd: float = absf(float(f["sp"])) * rr * (1.0 + 3.0 * float(f["flee"]))
+		if float(f["flee"]) > 0.0:
+			f["ph"] = float(f["ph"]) + delta * float(f["sp"]) * 3.0 * float(f["flee"])
+		var dir := Vector3(-sin(ph), 0.0, cos(ph)) * signf(float(f["sp"]))
+		# The model lies along +X, so its nose is +X: aim that down the path.
+		var fwd := dir.normalized()
+		var side := Vector3.UP.cross(fwd).normalized()
+		n.global_transform = Transform3D(
+			Basis(fwd, Vector3.UP, side).rotated(Vector3.UP, sin(ph * 6.0) * 0.12).scaled(n.scale),
+			pos)
+
+
 func _build_island() -> void:
 	_make_island(HOME, HOME_R, HOME_H, true, true)
 
@@ -1561,6 +1887,8 @@ func _build_scenery() -> void:
 	_build_clams()
 	_build_cans()
 	_build_bottles()
+	_build_reef_fish()
+	_build_reefscape()
 	_build_clouds()
 	_build_weather()
 	if island2_unlocked:
@@ -1870,14 +2198,18 @@ func _update_explore(delta: float) -> void:
 	player.move_input = touch.move
 	player.sprint = touch.sprint
 	player.cam_yaw = cam_yaw
+	player.cam_pitch = cam_pitch
+	player.water_y = wave_height(player.global_position.x, player.global_position.z)
 
 	# Water: wade slower, and with your head under you run out of air.
 	var surface := wave_height(player.global_position.x, player.global_position.z)
 	var depth := surface - player.global_position.y
-	player.wading = depth > 0.55
-	var eye_y := player.global_position.y + EYE_HEIGHT
+	player.wading = depth > 0.55 and not player.swimming
+	# Swimming, the head rides lower than it does standing up.
+	var eye_y := player.global_position.y + (EYE_HEIGHT - 0.22 if player.swimming else EYE_HEIGHT)
 	var under := eye_y < surface - 0.05
 	status.underwater = under
+	_underwater_fog(under, delta)
 	if under:
 		breath = maxf(breath - delta / BREATH_SECONDS, 0.0)
 		if breath <= 0.0:
@@ -1885,7 +2217,9 @@ func _update_explore(delta: float) -> void:
 	else:
 		breath = minf(breath + delta * 0.7, 1.0)
 	status.show_breath = breath < 0.995
-	if player.position.y < -14.0:
+	touch.jump_label = "SWIM" if player.swimming else "JUMP"
+	_water_sound(delta, under)
+	if player.position.y < -30.0:
 		player.velocity = Vector3.ZERO
 		player.position = PLAYER_SPAWN
 	# Out at sea: fall off the boat and you scramble back aboard.
@@ -1916,6 +2250,17 @@ func _update_explore(delta: float) -> void:
 	camera.global_position = head + fwd * _cam_ahead
 	_update_gun(delta)
 	_update_npc_eyes(delta)
+	_update_reef(delta)
+	if water_under:
+		# Just above your eyes while you are under, out of the way otherwise.
+		water_under.visible = under and OS.get_environment("WATERDBG") == ""
+		if water_under.visible:
+			# Always a little above your eyes: at the surface it would
+			# otherwise flicker through the waves, and once it was below the
+			# camera it read as a floor.
+			water_under.global_position = Vector3(camera.global_position.x,
+				maxf(surface - 0.02, camera.global_position.y + 0.06),
+				camera.global_position.z)
 	camera.rotation = Vector3(cam_pitch + _recoil, cam_yaw, 0.0)
 
 	_update_rod(delta)
@@ -3830,14 +4175,18 @@ func _optimize_world() -> void:
 		if g is MeshInstance3D and (g as MeshInstance3D).mesh:
 			box = g.global_transform * (g as MeshInstance3D).mesh.get_aabb()
 		var big := box.size.x > 0.9 or box.size.y > 0.9 or box.size.z > 0.9
-		if g is MeshInstance3D and ((g as MeshInstance3D).mesh is PlaneMesh or box.size.x > 40.0):
-			big = false                       # water, seabed, islands
+		# Water, sea floor and islands: no shadow casting, but they are the
+		# world itself and must never stop drawing in the distance.
+		var huge: bool = g is MeshInstance3D and ((g as MeshInstance3D).mesh is PlaneMesh
+			or box.size.x > 40.0 or box.size.z > 40.0)
+		if huge:
+			big = false
 		if not big:
 			g.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 			# Small clutter stops drawing in the distance. Not the buoys that
 			# mark the deep water or the signpost to island 2: those are how
 			# you find your way.
-			if not (_boat_ring and _boat_ring.is_ancestor_of(g)) \
+			if not huge and not (_boat_ring and _boat_ring.is_ancestor_of(g)) \
 					and not (island2_marker and island2_marker.is_ancestor_of(g)):
 				_small_props.append(g)
 		if _shop_box.has_volume() and box.has_volume() and _shop_box.encloses(box) \
@@ -4049,6 +4398,68 @@ func _update_floaters() -> void:
 		f.position.y = h
 		f.rotation.x = sin(elapsed * 1.3 + f.position.x) * 0.10
 		f.rotation.z = cos(elapsed * 1.1 + f.position.z) * 0.10
+
+
+var _swim_was := false
+var _stroke_t := 0.0
+var _muffle: AudioEffectLowPassFilter
+
+## Going in, swimming, and the world going quiet when your head is under.
+func _water_sound(delta: float, under: bool) -> void:
+	if player.swimming and not _swim_was:
+		players["splash"].pitch_scale = randf_range(0.7, 0.9)
+		_play("splash")
+		if fx:
+			fx.splash(player.global_position + Vector3(0, 0.9, 0), 1.3)
+	_swim_was = player.swimming
+	if player.swimming and Vector2(player.velocity.x, player.velocity.z).length() > 0.9:
+		_stroke_t -= delta
+		if _stroke_t <= 0.0:
+			_stroke_t = randf_range(0.62, 0.8)
+			players["step_soft"].pitch_scale = randf_range(0.5, 0.65)
+			players["step_soft"].volume_db = -15.0
+			_play("step_soft")
+	elif not player.swimming:
+		players["step_soft"].volume_db = -9.0
+	# Under the surface everything goes dull: a low-pass over the whole mix.
+	if _muffle == null:
+		_muffle = AudioEffectLowPassFilter.new()
+		_muffle.cutoff_hz = 620.0
+		AudioServer.add_bus_effect(0, _muffle)
+		AudioServer.set_bus_effect_enabled(0, AudioServer.get_bus_effect_count(0) - 1, false)
+	var idx := AudioServer.get_bus_effect_count(0) - 1
+	if AudioServer.get_bus_effect(0, idx) == _muffle:
+		AudioServer.set_bus_effect_enabled(0, idx, under)
+
+
+## Down here the light goes green and you can't see far. The weather code sets
+## the fog every frame, so this runs after it and takes it over while your head
+## is under; `_fog_was` keeps what the surface looked like to fade back to.
+var _under_amt := 0.0
+
+func _underwater_fog(under: bool, delta: float) -> void:
+	if world_env == null:
+		return
+	if OS.get_environment("WATERDBG") != "":
+		world_env.fog_enabled = false
+		if water_under:
+			water_under.visible = false
+		return
+	var want := 1.0 if under else 0.0
+	if _under_amt == want and want == 0.0:
+		return
+	_under_amt = move_toward(_under_amt, want, delta * 4.5)
+	if _under_amt <= 0.001:
+		return
+	world_env.fog_enabled = true
+	# Dense enough to lose the horizon, open enough to see the sand under you
+	# and the fish round you: at 0.2 the whole world was one flat wash.
+	world_env.fog_density = lerpf(world_env.fog_density, 0.075, _under_amt)
+	world_env.fog_light_color = world_env.fog_light_color.lerp(Color(0.10, 0.41, 0.45), _under_amt)
+	world_env.fog_sky_affect = lerpf(world_env.fog_sky_affect, 1.0, _under_amt)
+	world_env.fog_height_density = lerpf(world_env.fog_height_density, 0.0, _under_amt)
+	world_env.ambient_light_color = Color(0.46, 0.57, 0.70).lerp(Color(0.40, 0.66, 0.70), _under_amt)
+	world_env.ambient_light_energy = lerpf(world_env.ambient_light_energy, 0.58, _under_amt)
 
 
 func _menu_camera(delta: float) -> void:
@@ -6510,10 +6921,89 @@ func _autotest(_delta: float) -> void:
 			get_tree().quit()
 		return
 
+	# A look at the reef: duck under and swim along the bottom.
+	if start_screen == "reef":
+		if frame < 150:
+			touch.move = Vector2(0, -1)
+			cam_pitch = -0.75
+		else:
+			touch.move = Vector2(0, -0.35)
+			cam_pitch = -0.30
+		if frame == 150:
+			_test_shot("_down")
+		if frame % 90 == 0:
+			print("AUTOTEST reef f=%d y=%.2f swim=%s under=%s" % [
+				frame, player.global_position.y, player.swimming, status.underwater])
+		if frame == 280:
+			_test_shot("_along")
+		if frame > 320:
+			_test_shot()
+			print("AUTOTEST reef done y=%.2f" % player.global_position.y)
+			get_tree().quit()
+		return
+
+	# Swim ashore: float out of your depth, swim in, walk up the beach.
+	if start_screen == "swim":
+		touch.move = Vector2(0, -1)
+		if frame % 60 == 0:
+			print("AUTOTEST swim f=%d at=%s surf=%.2f swimming=%s floor=%s breath=%.2f" % [
+				frame, player.global_position.snapped(Vector3.ONE * 0.1),
+				wave_height(player.global_position.x, player.global_position.z),
+				player.swimming, player.is_on_floor(), breath])
+		if frame == 90:
+			_test_shot("_afloat")
+		if frame == 200:
+			cam_pitch = -0.55
+		if frame == 300:
+			_test_shot("_reef")
+		if frame == 150:
+			touch.jump_pressed.emit()
+		if frame > 660:
+			touch.move = Vector2.ZERO
+			_test_shot("_ashore")
+			print("AUTOTEST swim done at=%s dry=%s floor=%s health=%.0f" % [
+				player.global_position.snapped(Vector3.ONE * 0.1),
+				player.global_position.y > wave_height(player.global_position.x, player.global_position.z),
+				player.is_on_floor(), health])
+			get_tree().quit()
+		return
+
 	if start_screen == "drown":
 		if frame % 120 == 0:
-			print("AUTOTEST drown f=%d health=%.0f breath=%.2f under=%s mode=%s" % [
-				frame, health, breath, status.underwater, play_mode])
+			print("AUTOTEST drown f=%d y=%.2f swim=%s health=%.0f breath=%.2f under=%s mode=%s" % [
+				frame, player.global_position.y, player.swimming, health, breath,
+				status.underwater, play_mode])
+		# float first, then put your nose down and swim for the bottom
+		if frame < 150:
+			touch.move = Vector2(0, -1)
+			cam_pitch = 0.0
+			if frame == 120:
+				_test_shot("_float")
+				print("AUTOTEST drown afloat y=%.2f breath=%.2f under=%s" % [
+					player.global_position.y, breath, status.underwater])
+		else:
+			touch.move = Vector2(0, -1)
+			cam_pitch = -1.25
+			if frame == 330:
+				cam_pitch = -0.35         # level off and look along the bottom
+				# Is there really ground under you down here?
+				var rq := PhysicsRayQueryParameters3D.create(camera.global_position,
+					camera.global_position + Vector3(0, -14, 0))
+				var rh := get_world_3d().direct_space_state.intersect_ray(rq)
+				print("AUTOTEST bed under_you=%s drawn=%s" % [
+					rh.get("position", Vector3.ZERO).snapped(Vector3.ONE * 0.01) if not rh.is_empty() else "NOTHING",
+					seabed.visible])
+			if frame == 350:
+				_test_shot("_bed")
+			if frame == 400:
+				cam_pitch = 1.0           # look back up at the surface
+			if frame == 420:
+				_test_shot("_up")
+				cam_pitch = -1.25
+			if frame == 260:
+				_test_shot("_dive")
+				print("AUTOTEST drown diving y=%.2f floor=%s" % [
+					player.global_position.y, player.is_on_floor()])
 		if play_mode == "dead" and _death_t > 1.8:
 			_test_shot()
 			print("AUTOTEST died at f=%d coins=%d" % [frame, coins])
