@@ -1493,11 +1493,9 @@ func _build_island() -> void:
 	boat_deck.add_child(dcol)
 	add_child(boat_deck)
 	_sync_deck()
-	var n_before := boat_deck.get_child_count()
 	for part in ["Hull", "Dash", "Windshield_Frame"]:
 		_solid_shape(boat.find_child(part, true, false) as Node3D, true, [], boat_deck)
 	_solid_shape(boat.find_child("Motor", true, false) as Node3D, false, ["Propeller", "Tiller"], boat_deck)
-	print("boat collider: %d shapes" % (boat_deck.get_child_count() - n_before))
 
 	# Walkable surface for the jetty: one flat box rather than trimeshing every
 	# plank, so the player glides along it.
@@ -2210,6 +2208,15 @@ func _add_weapon_display(id: String, pos: Vector3, rot := Vector3.ZERO, scl := 0
 		var o := MeshInstance3D.new()
 		o.mesh = mi.mesh
 		o.material_override = om
+		# The shell grows in the mesh's own units. The pistol is modelled a
+		# tenth the size of everything else and scaled up, so the same grow
+		# wrapped it in a white cloud the size of the wall: size the shell
+		# by what it comes to in the world instead.
+		var ws: float = (mi as MeshInstance3D).global_transform.basis.get_scale().x
+		if ws > 1.5 or ws < 0.15:
+			var om2 := om.duplicate() as StandardMaterial3D
+			om2.grow_amount = 0.022 / maxf(ws, 0.001)
+			o.material_override = om2
 		o.transform = mi.transform
 		o.visible = false
 		mi.get_parent().add_child(o)
