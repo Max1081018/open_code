@@ -9,3 +9,4 @@ captures/
 forge-core/build/
 forge-core/.gradle/
 forge-core/.kotlin/
+!forge-core/src/main/kotlin/dev/rustmodforge/core/build/
