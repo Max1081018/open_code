@@ -44,6 +44,7 @@ import dev.rustmodforge.app.ForgeViewModel
 import dev.rustmodforge.app.ProjectDetail
 import dev.rustmodforge.app.data.Exports
 import dev.rustmodforge.core.compat.HorizonCompat
+import dev.rustmodforge.core.pipeline.ConversionPipeline
 import dev.rustmodforge.core.compat.Support
 import dev.rustmodforge.core.report.ConversionReport
 import dev.rustmodforge.core.report.FeatureStatus
@@ -71,6 +72,17 @@ fun ResultScreen(vm: ForgeViewModel, id: String, onBack: () -> Unit, onReport: (
         }
         val r = d.reports[tab.coerceIn(0, d.reports.lastIndex)]
         LazyColumn(Modifier.weight(1f)) {
+            // Outputs are kept as they were made, so a result from an older version still lists
+            // its old files. Converting again is what produces the current ones.
+            if (r.engineVersion != ConversionPipeline.ENGINE_VERSION) item {
+                SectionCard("These files are from an older version of RustMod Forge",
+                    subtitle = "Made by ${r.engineVersion}; this app is ${ConversionPipeline.ENGINE_VERSION}.") {
+                    Text("Convert this mod again to get what the current version produces, including the resource pack and data pack that carry a mod's changes to vanilla's own sounds, textures and tables. The files listed below are the old ones.",
+                        color = Palette.Text, style = MaterialTheme.typography.bodySmall)
+                    Spacer(Modifier.height(10.dp))
+                    Button(onClick = onReconvert, colors = ButtonDefaults.buttonColors(containerColor = Palette.Ember)) { Text("Convert again") }
+                }
+            }
             item { Summary(r) }
             item { Outputs(vm, r, d) }
             item { BuildSteps(r) }

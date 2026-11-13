@@ -56,7 +56,7 @@ class ConversionPipeline(
     private val progress: ProgressListener = NoProgress,
     private val cancel: CancellationToken = CancellationToken(),
 ) {
-    companion object { const val ENGINE_VERSION = "0.1.0" }
+    companion object { const val ENGINE_VERSION = "0.2.0" }
 
     private fun p(stage: Stage, f: Float, detail: String) = progress.onProgress(stage.label, f, detail)
 
