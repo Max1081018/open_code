@@ -86,6 +86,16 @@ class ReconstructionAgent(
 
         ${HorizonApiIndex.goalContract()}
 
+        How to reconstruct a behaviour (not a line-by-line translation):
+        1. entity_report, then disassemble the method or custom goal class behind the behaviour.
+        2. Say what it does in your own words: what it senses, what state it changes, what it then does.
+        3. search_horizon_api for each capability that needs: sensing, moving, timing, damage, sound.
+        4. Write the smallest code that does the same thing with those APIs, keeping the mod's own numbers.
+        5. validate, and compile where there is a native mod. Fix what they report, then finish.
+
+        An example of one reply, and the only shape accepted:
+        {"thought": "the stalk goal's distance is what I need", "tool": "disassemble", "args": {"name": "com.example.goal.StalkGoal", "method": "canUse", "limit": 2000}}
+
         What the project already knows:
         ${ctx.knowledge.digest()}
 
@@ -113,7 +123,12 @@ class ReconstructionAgent(
             if (cancel.isCancelled) { outcome = AgentOutcome.CANCELLED; break }
             if (input + output >= tokenBudget) { outcome = AgentOutcome.BUDGET_SPENT; break }
             val user = if (conversation.isEmpty()) "Begin. Step 1 of at most $maxSteps."
-            else conversation.toString().takeLast(12_000) + "\n\nStep $step of at most $maxSteps. Your next action as JSON:"
+            else {
+                val full = conversation.toString()
+                val tail = full.takeLast(12_000)
+                val note = if (tail.length < full.length) "(earlier steps were trimmed; what you recorded with remember is in the system message)\n\n" else ""
+                note + tail + "\n\nStep $step of at most $maxSteps. Your next action as JSON:"
+            }
 
             val reply = try {
                 provider.complete(systemPrompt(task), user, 1200)
