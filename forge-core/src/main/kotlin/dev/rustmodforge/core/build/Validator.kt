@@ -209,7 +209,21 @@ object Validator {
             val min = (pack["min_format"] as? Number)?.toInt()
             val max = (pack["max_format"] as? Number)?.toInt()
             if (format == null) err("pack.mcmeta", "pack_format is missing")
-            if (pack.containsKey("supported_formats")) err("pack.mcmeta", "supported_formats is refused past format $lastPreMinor; use min_format and max_format")
+            val supported = JsonTree.list(pack["supported_formats"])?.mapNotNull { (it as? Number)?.toInt() }
+            // The engine refuses supported_formats only when the whole range is past the old
+            // window, and requires it when the range reaches into that window.
+            if (supported != null && min != null && min > lastPreMinor) {
+                err("pack.mcmeta", "supported_formats is refused when min_format ($min) is past $lastPreMinor")
+            }
+            if (min != null && min <= lastPreMinor) {
+                when {
+                    supported == null || supported.size != 2 -> err("pack.mcmeta", "min_format $min reaches into the versions that need supported_formats: add [\"$min\", $lastPreMinor]")
+                    supported[0] != min -> err("pack.mcmeta", "supported_formats starts at ${supported[0]} but min_format is $min")
+                    max != null && supported[1] != max && supported[1] != lastPreMinor ->
+                        err("pack.mcmeta", "supported_formats ends at ${supported[1]}, which is neither max_format ($max) nor $lastPreMinor")
+                    else -> {}
+                }
+            }
             if ((min == null) != (max == null)) err("pack.mcmeta", "min_format and max_format are declared together")
             if (format != null && format > lastPreMinor && min == null) {
                 err("pack.mcmeta", "format $format is newer than $lastPreMinor, so min_format and max_format are mandatory")
@@ -218,7 +232,7 @@ object Validator {
                 if (min > max) err("pack.mcmeta", "min_format ($min) is greater than max_format ($max)")
                 if (min < 15) err("pack.mcmeta", "a multi-version pack cannot support a minimum below 15")
                 if (format != null && (format < min || format > max)) err("pack.mcmeta", "pack_format $format is outside min_format..max_format")
-                if (max < kind.format || min > kind.format) err("pack.mcmeta", "this build reads format ${kind.format}, which is outside $min..$max")
+                if (max < kind.format || min > kind.format) err("pack.mcmeta", "the newest Horizon reads format ${kind.format}, which is outside $min..$max")
             }
             if (!names.contains("pack.png")) warn("pack.png", "no icon: the pack shows the default one in the launcher's list")
             if (names.none { it.startsWith("${kind.root}/") }) err(file.name, "nothing under ${kind.root}/: the pack would change nothing")

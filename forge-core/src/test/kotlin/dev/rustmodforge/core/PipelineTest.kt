@@ -235,16 +235,21 @@ class PipelineTest {
         assertTrue("assets/bettersounds/sounds/zombie_extra.ogg" in a, a.toString())
         assertTrue("pack.png" in a, "the pack has no icon")
         // The format range this build reads, in the shape it validates.
+        // A range, not one number: a pack whose only format is the newest is marked too new by
+        // an older launcher and never applies, which is how "the pack does nothing" happens.
         val meta = JsonTree.obj(JsonTree.obj(JsonTree.parse(text(pack, "pack.mcmeta")))!!["pack"])!!
-        assertEquals(97L, meta["pack_format"])
-        assertEquals(97L, meta["min_format"])
-        assertEquals(97L, meta["max_format"])
-        assertTrue(!meta.containsKey("supported_formats"))
+        assertEquals(64L, meta["pack_format"])
+        assertEquals(15L, meta["min_format"])
+        assertEquals(99L, meta["max_format"])
+        assertEquals(listOf(15L, 64L), meta["supported_formats"])
         assertEquals(emptyList(), Validator.validatePack(pack, PackGenerator.PackKind.RESOURCE).filter { it.error })
 
         val d = entries(data)
         assertTrue("data/minecraft/loot_table/blocks/stone.json" in d, d.toString())
-        assertEquals(121L, JsonTree.obj(JsonTree.obj(JsonTree.parse(text(data, "pack.mcmeta")))!!["pack"])!!["pack_format"])
+        val dmeta = JsonTree.obj(JsonTree.obj(JsonTree.parse(text(data, "pack.mcmeta")))!!["pack"])!!
+        assertEquals(81L, dmeta["pack_format"])
+        assertEquals(listOf(15L, 81L), dmeta["supported_formats"])
+        assertEquals(140L, dmeta["max_format"])
         // Carried through the 26.3 upgrades, not copied blindly.
         val loot = text(data, "data/minecraft/loot_table/blocks/stone.json")
         assertTrue(loot.contains("minecraft:uniform"), loot)

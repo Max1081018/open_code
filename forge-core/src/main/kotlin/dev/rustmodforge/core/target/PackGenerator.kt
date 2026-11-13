@@ -28,9 +28,19 @@ class PackGenerator(
     /** True when no content mod is written, so the pack must carry the mod's own files too. */
     private val packIsTheWholeMod: Boolean,
 ) {
-    enum class PackKind(val root: String, val label: String, val format: Int) {
-        RESOURCE("assets", "resource pack", 97),
-        DATA("data", "data pack", 121),
+    /**
+     * A pack declares a **range** of formats rather than one number, because the installed
+     * launcher decides what it reads and a pack whose only format is newer than the build is
+     * marked too new and never applies. The engine's own rules
+     * (`packs::validate_pack_range`): with a minimum at or below `lastPreMinor` the pack must
+     * also carry `supported_formats`, whose top is either the maximum or `lastPreMinor`, and
+     * `pack_format` must lie inside the range. `main` is therefore inside the old window so an
+     * older build reading only `pack_format` and `supported_formats` accepts it too, while
+     * `max` reaches past the current format for new builds.
+     */
+    enum class PackKind(val root: String, val label: String, val format: Int, val main: Int, val min: Int, val max: Int, val lastPreMinor: Int) {
+        RESOURCE("assets", "resource pack", 97, main = 64, min = 15, max = 99, lastPreMinor = 64),
+        DATA("data", "data pack", 121, main = 81, min = 15, max = 140, lastPreMinor = 81),
     }
 
     val features = ArrayList<FeatureResult>()
@@ -132,11 +142,15 @@ class PackGenerator(
         out.putJson("pack.mcmeta", JsonTree.of(
             "pack" to JsonTree.of(
                 "description" to description.take(256),
-                "pack_format" to kind.format,
-                "min_format" to kind.format,
-                "max_format" to kind.format,
+                "pack_format" to kind.main,
+                "supported_formats" to listOf(kind.min, kind.lastPreMinor),
+                "min_format" to kind.min,
+                "max_format" to kind.max,
             ),
         ))
+        features += FeatureResult("Assets and data", "${kind.label.replaceFirstChar(Char::uppercase)} version range", FeatureStatus.IMPLEMENTED,
+            "declares formats ${kind.min} to ${kind.max}",
+            "so the pack applies whatever Horizon build is installed, not only the newest")
         // A pack's icon is its own pack.png; a .hmod may hold no such file, so this is where a
         // converted mod keeps its logo.
         val icon = m.iconPath.takeIf { it.isNotEmpty() && archive.contains(it) }
