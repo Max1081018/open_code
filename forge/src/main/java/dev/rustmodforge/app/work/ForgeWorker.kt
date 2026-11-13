@@ -124,7 +124,6 @@ class ForgeWorker(context: Context, params: WorkerParameters) : CoroutineWorker(
         project.stage(Stage.ANALYZE, StageState.DONE, "${state.sources.size} file(s) analysed")
     }
 
-    override suspend fun onStopped() { /* coroutine cancellation reaches doWork; the token stops the pipeline */ }
 
     companion object {
         const val CHANNEL = "conversions"
