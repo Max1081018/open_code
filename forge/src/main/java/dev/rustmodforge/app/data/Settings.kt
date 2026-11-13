@@ -11,13 +11,13 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 
-/**
- * Ready-made AI providers. The first needs no key at all, so Maximum fidelity works without
- * signing up anywhere; the others are free tiers that do need a key of your own.
- */
 /** OpenRouter's endpoint; the free models are chosen from its live catalog. */
 const val OPENROUTER_BASE = "https://openrouter.ai/api/v1"
 
+/**
+ * Ready-made AI providers. OpenRouter is the one the agent drives, with a list of free models it
+ * falls back through; Pollinations needs no key at all; the rest are free tiers needing a key.
+ */
 enum class AiPreset(val label: String, val kind: AiConfig.Kind, val baseUrl: String, val model: String, val needsKey: Boolean, val hint: String) {
     OPENROUTER("OpenRouter (free models)", AiConfig.Kind.OPENAI_COMPATIBLE, OPENROUTER_BASE, "recursive/flint-v1.0:free", true,
         "Your own free OpenRouter key from openrouter.ai/keys. The app checks which of the free models exist right now and falls back between them; it never uses a paid model."),
@@ -27,8 +27,6 @@ enum class AiPreset(val label: String, val kind: AiConfig.Kind, val baseUrl: Str
         "Free key from aistudio.google.com."),
     GROQ("Groq (free key)", AiConfig.Kind.OPENAI_COMPATIBLE, "https://api.groq.com/openai/v1", "llama-3.3-70b-versatile", true,
         "Free key from console.groq.com."),
-    OPENROUTER("OpenRouter (free)", AiConfig.Kind.OPENAI_COMPATIBLE, "https://openrouter.ai/api/v1", "meta-llama/llama-3.3-70b-instruct:free", true,
-        "Free key from openrouter.ai; free model names change from time to time."),
     ANTHROPIC("Anthropic (paid key)", AiConfig.Kind.ANTHROPIC, "https://api.anthropic.com", "claude-sonnet-4-5", true,
         "Your own Anthropic key."),
 }
