@@ -1,0 +1,2 @@
+package net.minecraft.world.level;
+public abstract class Level { public boolean isNight(){return false;} public boolean isDay(){return true;} public long getDayTime(){return 0;} public net.minecraft.world.entity.player.Player getNearestPlayer(net.minecraft.world.entity.Entity e, double d){return null;} public boolean isClientSide(){return false;} public void addParticle(net.minecraft.core.particles.ParticleOptions p, double x, double y, double z, double a, double b, double c){} }

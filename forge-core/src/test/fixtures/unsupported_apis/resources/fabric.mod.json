@@ -1,0 +1,1 @@
+{"schemaVersion": 1, "id": "badapis", "version": "0.1.0", "name": "Bad APIs", "mixins": ["badapis.mixins.json"], "accessWidener": "badapis.accesswidener", "depends": {"minecraft": "1.21.1"}}

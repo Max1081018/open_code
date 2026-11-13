@@ -1,0 +1,2 @@
+package net.minecraft.world.entity;
+public class EntityType<T extends Entity> { public interface EntityFactory<T extends Entity> { T create(EntityType<T> t, net.minecraft.world.level.Level l); } public static class Builder<T extends Entity> { public static <T extends Entity> Builder<T> of(EntityFactory<T> f, MobCategory c){return null;} public Builder<T> sized(float w, float h){return this;} public EntityType<T> build(String id){return null;} } }

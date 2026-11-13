@@ -1,0 +1,16 @@
+modLoader="javafml"
+loaderVersion="[47,)"
+license="MIT"
+logoFile="logo.png"
+
+[[mods]]
+modId="bettersounds"
+version="3.1.0"
+displayName="Better Sounds"
+description='''
+Replaces vanilla sounds with better ones.
+'''
+[[dependencies.bettersounds]]
+    modId="minecraft"
+    mandatory=true
+    versionRange="[1.20.1,1.21)"

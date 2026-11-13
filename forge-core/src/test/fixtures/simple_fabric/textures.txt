@@ -1,0 +1,1 @@
+assets/simplemod/textures/item/ruby.png 16 16 d01030

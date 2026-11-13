@@ -1,6 +1,6 @@
 # Open Code apps
 
-Two native Kotlin apps with Jetpack Compose in one Gradle project. No accounts,
+Native Kotlin apps with Jetpack Compose in one Gradle project. No accounts,
 no analytics, no tracking. **Wingman** stays entirely on the device except for the
 one screen you deliberately send to a model you configured; **Halo Camera** never
 touches the network at all.
@@ -9,6 +9,7 @@ touches the network at all.
 | --- | --- | --- |
 | **Wingman** | `:app` | A private notebook for keeping Discord friendships organised, plus an optional reply coach. |
 | **Halo Camera** | `:camera` | A native camera app with on-device AI, video recording and a full editor. |
+| **RustMod Forge** | `:forge` + `forge-core` | Rebuilds Minecraft Java mods for the Horizon Rust engine (Android launcher and desktop). See [docs/rustmod-forge](docs/rustmod-forge/README.md). |
 
 ---
 

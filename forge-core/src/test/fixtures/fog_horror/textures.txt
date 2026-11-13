@@ -1,0 +1,4 @@
+assets/fogwatcher/textures/entity/the_watcher.png 64 64 202020
+assets/fogwatcher/textures/entity/the_watcher_glowmask.png 64 64 000000
+assets/fogwatcher/textures/gui/jumpscare.png 256 256 101010
+assets/fogwatcher/textures/item/fog_essence.png 16 16 c0c0d0

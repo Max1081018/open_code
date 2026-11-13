@@ -1,0 +1,40 @@
+// RustMod Forge engine: archive safety, mod analysis, bytecode inspection, asset
+// reconstruction, Horizon target generation, validation and reports. Pure JVM so the
+// same code runs on Android (ART) and in unit tests without a device.
+plugins {
+    id 'org.jetbrains.kotlin.jvm' version '1.9.24'
+    id 'org.jetbrains.kotlin.plugin.serialization' version '1.9.24'
+    id 'java-library'
+}
+
+group = 'dev.rustmodforge'
+version = '0.1.0'
+
+java {
+    sourceCompatibility = JavaVersion.VERSION_17
+    targetCompatibility = JavaVersion.VERSION_17
+}
+
+tasks.withType(org.jetbrains.kotlin.gradle.tasks.KotlinCompile).configureEach {
+    kotlinOptions.jvmTarget = '17'
+}
+
+dependencies {
+    api 'org.jetbrains.kotlinx:kotlinx-serialization-json:1.6.3'
+    // ASM: the established JVM bytecode reader. Only parses classes, never loads or runs them.
+    implementation 'org.ow2.asm:asm:9.7'
+    implementation 'org.ow2.asm:asm-tree:9.7'
+    implementation 'org.ow2.asm:asm-util:9.7'
+    testImplementation 'org.jetbrains.kotlin:kotlin-test-junit:1.9.24'
+    testImplementation 'junit:junit:4.13.2'
+}
+
+tasks.withType(Test).configureEach {
+    // Fixture jars are compiled from Java sources at test time with the JDK's javac.
+    systemProperty 'rmf.fixtures', "$projectDir/src/test/fixtures"
+    maxHeapSize = '1g'
+    testLogging {
+        events 'failed'
+        exceptionFormat 'full'
+    }
+}

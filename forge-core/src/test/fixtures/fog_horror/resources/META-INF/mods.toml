@@ -1,0 +1,38 @@
+modLoader="javafml"
+loaderVersion="[47,)"
+license="All Rights Reserved"
+
+[[mods]]
+modId="fogwatcher"
+version="1.2.0"
+displayName="The Watcher in the Fog"
+authors="Fixture Author"
+description='''
+A test horror mod: something watches you from the fog.
+'''
+
+[[dependencies.fogwatcher]]
+    modId="forge"
+    mandatory=true
+    versionRange="[47,)"
+    ordering="NONE"
+    side="BOTH"
+[[dependencies.fogwatcher]]
+    modId="minecraft"
+    mandatory=true
+    versionRange="[1.20.1,1.21)"
+    side="BOTH"
+[[dependencies.fogwatcher]]
+    modId="geckolib"
+    mandatory=true
+    versionRange="[4.2,)"
+    side="BOTH"
+[[dependencies.fogwatcher]]
+    modId="jei"
+    mandatory=false
+    versionRange="*"
+    side="CLIENT"
+[[dependencies.fogwatcher]]
+    modId="loudfog"
+    type="incompatible"
+    versionRange="*"

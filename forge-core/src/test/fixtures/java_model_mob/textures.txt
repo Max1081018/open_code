@@ -1,0 +1,1 @@
+assets/ghouls/textures/entity/ghoul.png 64 64 405040

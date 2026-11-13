@@ -1,0 +1,5 @@
+{
+  "entity.zombie.ambient": {"replace": true, "subtitle": "subtitles.entity.zombie.ambient",
+    "sounds": [{"name": "minecraft:mob/zombie/say1", "volume": 0.9}, "bettersounds:zombie_extra"]},
+  "entity.zombie.hurt": {"replace": true, "sounds": ["minecraft:mob/zombie/hurt1"]}
+}
