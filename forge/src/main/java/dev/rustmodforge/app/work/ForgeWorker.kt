@@ -84,7 +84,17 @@ class ForgeWorker(context: Context, params: WorkerParameters) : CoroutineWorker(
                     val settings = app.settings.state.value
                     val ai = settings.aiConfig()?.let { AiAssistant(it, project.cache.resolve("ai")) }
                     val backend = settings.buildServerUrl.takeIf { it.isNotBlank() }?.let { RemoteBuildBackend(it, settings.buildServerToken) }
-                    val options = PipelineOptions(buildBackend = backend, ai = ai, maxRepairs = settings.maxRepairs)
+                    val options = PipelineOptions(
+                        buildBackend = backend, ai = ai, maxRepairs = settings.maxRepairs,
+                        agentProvider = settings.agentProvider(File(project.dir, "ai-history.jsonl")),
+                        agentMaxSteps = settings.agentMaxSteps, agentTokenBudget = settings.agentTokenBudget,
+                        onAgentStep = { st ->
+                            setProgressAsync(workDataOf(
+                                KEY_STAGE to st.phase, KEY_DETAIL to st.detail, KEY_FRACTION to 0.6f,
+                                KEY_AGENT_TOOL to st.tool, KEY_AGENT_OK to st.ok,
+                            ))
+                        },
+                    )
                     ConversionPipeline(project, options, dev.rustmodforge.core.pipeline.ProgressListener { s, f, d -> listener(s, f, d) }, token).run()
                 }
                 Result.success()
@@ -134,6 +144,8 @@ class ForgeWorker(context: Context, params: WorkerParameters) : CoroutineWorker(
         const val KEY_FRACTION = "fraction"
         const val KEY_DETAIL = "detail"
         const val KEY_ERROR = "error"
+        const val KEY_AGENT_TOOL = "agentTool"
+        const val KEY_AGENT_OK = "agentOk"
         const val MODE_ANALYZE = "analyze"
         const val MODE_CONVERT = "convert"
 

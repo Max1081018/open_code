@@ -37,7 +37,8 @@ data class ProjectDetail(
     val outputs: List<File>,
 )
 
-data class WorkStatus(val running: Boolean, val finished: Boolean, val failed: Boolean, val stage: String, val fraction: Float, val detail: String, val error: String?)
+data class WorkStatus(val running: Boolean, val finished: Boolean, val failed: Boolean, val stage: String, val fraction: Float,
+                      val detail: String, val error: String?, val agentTool: String = "", val agentOk: Boolean = true)
 
 class ForgeViewModel(app: Application) : AndroidViewModel(app) {
     private val forge = app as ForgeApp
@@ -136,6 +137,8 @@ class ForgeViewModel(app: Application) : AndroidViewModel(app) {
             fraction = p.getFloat(ForgeWorker.KEY_FRACTION, 0f),
             detail = p.getString(ForgeWorker.KEY_DETAIL) ?: "",
             error = w.outputData.getString(ForgeWorker.KEY_ERROR) ?: if (w.state == WorkInfo.State.CANCELLED) "Cancelled" else null,
+            agentTool = p.getString(ForgeWorker.KEY_AGENT_TOOL) ?: "",
+            agentOk = p.getBoolean(ForgeWorker.KEY_AGENT_OK, true),
         )
     }
 
@@ -156,6 +159,28 @@ class ForgeViewModel(app: Application) : AndroidViewModel(app) {
         if (tree.isBlank()) { say("Choose the Horizon Resource Packs folder first (Settings › Target launcher)"); return@launch }
         val r = withContext(Dispatchers.IO) { runCatching { Exports.copyToTree(getApplication(), file, tree) } }
         say(r.fold({ "Saved ${file.name} into $it. Open Horizon Android › Packs › Installed and switch it on." }, { "Export failed: ${it.message}" }))
+    }
+
+    /** The agent's steps for a project, newest last. */
+    suspend fun agentSteps(id: String) = withContext(Dispatchers.IO) {
+        dev.rustmodforge.core.agent.Knowledge.stepsOf(File(project(id).dir, "knowledge"))
+    }
+
+    /** Every AI request this project made, newest last. */
+    suspend fun aiHistory(id: String) = withContext(Dispatchers.IO) {
+        dev.rustmodforge.core.ai.OpenRouterProvider.readHistory(File(project(id).dir, "ai-history.jsonl"))
+    }
+
+    /** Asks OpenRouter which of the preferred models exist and are free right now. */
+    suspend fun checkModels(): Pair<String, List<Pair<String, String>>> = withContext(Dispatchers.IO) {
+        val s = settings.state.value
+        if (!s.usesOpenRouter) return@withContext "Not using OpenRouter" to emptyList()
+        if (s.aiKey.isBlank()) return@withContext "Enter your OpenRouter key first" to emptyList()
+        val p = dev.rustmodforge.core.ai.OpenRouterProvider(s.aiKey, s.aiModelPreference, s.aiAllowPaid)
+        runCatching { p.refreshCatalog() }.fold(
+            { cat -> "${cat.size} models in the catalog, ${cat.count { m -> m.isFree }} free" to p.availability() },
+            { e -> "Could not read the catalog: ${e.message}" to emptyList() },
+        )
     }
 
     fun storageBytes(): Long = forge.projectsRoot.walkTopDown().filter { it.isFile }.sumOf { it.length() }

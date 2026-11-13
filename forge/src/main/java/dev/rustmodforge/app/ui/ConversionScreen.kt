@@ -63,6 +63,14 @@ fun ConversionScreen(vm: ForgeViewModel, id: String, onBack: () -> Unit, onDone:
                 if (w?.running == true) {
                     Text(w.stage.ifEmpty { "Starting" }, color = Palette.Ember, fontWeight = FontWeight.SemiBold)
                     Text(w.detail, color = Palette.Muted, style = MaterialTheme.typography.bodySmall)
+                    // While the agent works, name the operation it is really performing.
+                    if (w.agentTool.isNotEmpty()) {
+                        Spacer(Modifier.height(6.dp))
+                        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            Pill(w.agentTool, if (w.agentOk) Palette.Steel else Palette.Bad)
+                            Text("AI engine operation", color = Palette.Muted, style = MaterialTheme.typography.bodySmall)
+                        }
+                    }
                     Spacer(Modifier.height(8.dp))
                     LinearProgressIndicator(progress = { w.fraction.coerceIn(0f, 1f) }, modifier = Modifier.fillMaxWidth(), color = Palette.Ember)
                     Spacer(Modifier.height(12.dp))

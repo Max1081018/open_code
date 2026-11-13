@@ -226,6 +226,27 @@ object Validator {
         return issues
     }
 
+    /**
+     * The same checks on a folder that is still being written, for the agent: the tree is packed
+     * to a temporary file and validated as the launcher would read it.
+     */
+    fun validateTree(dir: File, target: TargetId): List<Issue> = onPacked(dir, "hmod") { validateHmod(it, target) }
+
+    fun validateNativeTree(dir: File, modId: String): List<Issue> = onPacked(dir, "hnmod") { validateHnmod(it) }
+
+    private fun onPacked(dir: File, suffix: String, check: (File) -> List<Issue>): List<Issue> {
+        if (dir.walkTopDown().none { it.isFile }) return emptyList()
+        val tmp = File.createTempFile("rmf-validate", ".$suffix")
+        return try {
+            Packager.pack(dir, tmp)
+            check(tmp)
+        } catch (e: Exception) {
+            listOf(Issue(true, dir.name, "could not be packed for validation: ${e.message}"))
+        } finally {
+            tmp.delete()
+        }
+    }
+
     fun validateHnmod(file: File): List<Issue> {
         val issues = ArrayList<Issue>()
         fun err(p: String, m: String) { issues += Issue(true, p, m) }

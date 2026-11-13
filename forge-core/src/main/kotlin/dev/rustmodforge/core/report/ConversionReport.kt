@@ -6,9 +6,13 @@ import kotlinx.serialization.Serializable
 @Serializable
 enum class FeatureStatus { IMPLEMENTED, PARTIAL, UNSUPPORTED, NOT_APPLICABLE }
 
-/** Whether a build/validation step ran and passed. NOT_RUN is said plainly, never hidden. */
+/**
+ * Whether a build/validation step ran and passed. NOT_RUN is said plainly, never hidden, and
+ * UNVERIFIED is for work that was done but that nothing could confirm — generated Rust with no
+ * compiler to check it is neither a pass nor a failure.
+ */
 @Serializable
-enum class StepStatus { PASSED, FAILED, SKIPPED, NOT_RUN }
+enum class StepStatus { PASSED, FAILED, SKIPPED, NOT_RUN, UNVERIFIED }
 
 @Serializable
 data class FeatureResult(
@@ -26,8 +30,22 @@ data class FeatureResult(
 @Serializable
 data class StepResult(val name: String, val status: StepStatus, val detail: String = "", val log: String = "", val target: String = "")
 
+/**
+ * How far one artifact actually got. Each step is set only when the operation behind it ran and
+ * succeeded, so the list is evidence rather than a promise: PACKAGED means a file exists,
+ * COMPILED means a compiler exited zero, LOADED and RUNTIME_TESTED need the real client.
+ */
 @Serializable
-data class OutputFile(val name: String, val path: String, val size: Long, val sha256: String, val target: String, val kind: String)
+enum class Verification { EXTRACTED, ANALYZED, RECONSTRUCTED, GENERATED, COMPILED, PACKAGED, LOADED, RUNTIME_TESTED }
+
+@Serializable
+data class OutputFile(
+    val name: String, val path: String, val size: Long, val sha256: String, val target: String, val kind: String,
+    /** The steps reached for this file, in order. */
+    val reached: List<Verification> = emptyList(),
+    /** Why the next step was not reached. */
+    val stoppedBecause: String = "",
+)
 
 @Serializable
 data class DependencyStatus(val id: String, val kind: String, val range: String, val status: String, val note: String)
@@ -102,7 +120,13 @@ data class ConversionReport(
         appendLine()
         if (outputs.isNotEmpty()) {
             appendLine("## Output files")
-            outputs.forEach { appendLine("- `${it.name}` — ${it.kind} for ${it.target}, ${it.size} bytes, SHA-256 `${it.sha256}`") }
+            outputs.forEach { o ->
+                appendLine("- `${o.name}` — ${o.kind} for ${o.target}, ${o.size} bytes, SHA-256 `${o.sha256}`")
+                val reached = o.reached.joinToString(" → ") { it.name.lowercase().replace('_', ' ') }
+                val missing = Verification.entries.filter { it !in o.reached }.joinToString { it.name.lowercase().replace('_', ' ') }
+                appendLine("  - reached: ${reached.ifEmpty { "nothing" }}")
+                if (missing.isNotEmpty()) appendLine("  - not reached: $missing${o.stoppedBecause.let { if (it.isEmpty()) "" else " ($it)" }}")
+            }
             appendLine()
         }
         if (warnings.isNotEmpty()) {

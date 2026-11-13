@@ -16,6 +16,7 @@ import androidx.compose.material.icons.filled.Build
 import androidx.compose.material.icons.filled.Home
 import androidx.compose.material.icons.filled.List
 import androidx.compose.material.icons.filled.Settings
+import androidx.compose.material.icons.filled.Star
 import androidx.compose.material3.Icon
 import androidx.compose.material3.NavigationBar
 import androidx.compose.material3.NavigationBarItem
@@ -31,6 +32,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
+import dev.rustmodforge.app.ui.AiEngineScreen
 import dev.rustmodforge.app.ui.AnalyzerScreen
 import dev.rustmodforge.app.ui.ClassViewerScreen
 import dev.rustmodforge.app.ui.ConversionScreen
@@ -46,6 +48,7 @@ import dev.rustmodforge.app.ui.ForgeTheme
 sealed class Route {
     object Home : Route()
     object Library : Route()
+    object AiEngine : Route()
     object Settings : Route()
     data class Analyzer(val id: String) : Route()
     data class Conversion(val id: String) : Route()
@@ -86,7 +89,7 @@ fun App(vm: ForgeViewModel, shared: List<Uri>) {
     LaunchedEffect(message) { message?.let { snackbar.showSnackbar(it); vm.say(null) } }
     LaunchedEffect(Unit) { if (shared.isNotEmpty()) vm.import(shared) { id -> go(Route.Analyzer(id)) } }
 
-    val topLevel = route is Route.Home || route is Route.Library || route is Route.Settings
+    val topLevel = route is Route.Home || route is Route.Library || route is Route.AiEngine || route is Route.Settings
     Scaffold(
         containerColor = Palette.Bg,
         snackbarHost = { SnackbarHost(snackbar) },
@@ -95,6 +98,7 @@ fun App(vm: ForgeViewModel, shared: List<Uri>) {
                 val colors = NavigationBarItemDefaults.colors(selectedIconColor = Palette.Ember, selectedTextColor = Palette.Ember, indicatorColor = Palette.SurfaceHigh)
                 NavigationBarItem(route is Route.Home, { tab(Route.Home) }, { Icon(Icons.Filled.Home, null) }, label = { Text("Home") }, colors = colors)
                 NavigationBarItem(route is Route.Library, { tab(Route.Library) }, { Icon(Icons.Filled.List, null) }, label = { Text("Assets") }, colors = colors)
+                NavigationBarItem(route is Route.AiEngine, { tab(Route.AiEngine) }, { Icon(Icons.Filled.Star, null) }, label = { Text("AI") }, colors = colors)
                 NavigationBarItem(route is Route.Settings, { tab(Route.Settings) }, { Icon(Icons.Filled.Settings, null) }, label = { Text("Settings") }, colors = colors)
             }
         },
@@ -103,6 +107,7 @@ fun App(vm: ForgeViewModel, shared: List<Uri>) {
             when (val r = route) {
                 Route.Home -> HomeScreen(vm, open = { id, done -> go(if (done) Route.Result(id) else Route.Analyzer(id)) })
                 Route.Library -> LibraryScreen(vm)
+                Route.AiEngine -> AiEngineScreen(vm)
                 Route.Settings -> SettingsScreen(vm)
                 is Route.Analyzer -> AnalyzerScreen(vm, r.id, onBack = ::back, onConvert = { go(Route.Conversion(r.id)) },
                     onClasses = { go(Route.Classes(r.id, it)) })

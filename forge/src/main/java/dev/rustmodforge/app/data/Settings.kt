@@ -15,7 +15,12 @@ import kotlinx.coroutines.flow.asStateFlow
  * Ready-made AI providers. The first needs no key at all, so Maximum fidelity works without
  * signing up anywhere; the others are free tiers that do need a key of your own.
  */
+/** OpenRouter's endpoint; the free models are chosen from its live catalog. */
+const val OPENROUTER_BASE = "https://openrouter.ai/api/v1"
+
 enum class AiPreset(val label: String, val kind: AiConfig.Kind, val baseUrl: String, val model: String, val needsKey: Boolean, val hint: String) {
+    OPENROUTER("OpenRouter (free models)", AiConfig.Kind.OPENAI_COMPATIBLE, OPENROUTER_BASE, "recursive/flint-v1.0:free", true,
+        "Your own free OpenRouter key from openrouter.ai/keys. The app checks which of the free models exist right now and falls back between them; it never uses a paid model."),
     FREE("Free, no key", AiConfig.Kind.OPENAI_COMPATIBLE, "https://text.pollinations.ai/openai", "openai", false,
         "Pollinations' shared free endpoint. No account and no key; it is a shared queue, so a busy moment can be slow."),
     GEMINI("Gemini (free key)", AiConfig.Kind.OPENAI_COMPATIBLE, "https://generativelanguage.googleapis.com/v1beta/openai", "gemini-flash-latest", true,
@@ -31,8 +36,14 @@ enum class AiPreset(val label: String, val kind: AiConfig.Kind, val baseUrl: Str
 data class ForgeSettings(
     val aiEnabled: Boolean = false,
     val aiKind: AiConfig.Kind = AiConfig.Kind.OPENAI_COMPATIBLE,
-    val aiBaseUrl: String = AiPreset.FREE.baseUrl,
-    val aiModel: String = AiPreset.FREE.model,
+    val aiBaseUrl: String = AiPreset.OPENROUTER.baseUrl,
+    val aiModel: String = AiPreset.OPENROUTER.model,
+    /** The agent's model preference order, best first; only free ones are used. */
+    val aiModelPreference: List<String> = dev.rustmodforge.core.ai.OpenRouterProvider.DEFAULT_PREFERRED,
+    /** Paid models stay off unless the user turns this on themselves. */
+    val aiAllowPaid: Boolean = false,
+    val agentMaxSteps: Int = 24,
+    val agentTokenBudget: Int = 120_000,
     val aiKey: String = "",
     val aiTokenBudget: Int = 200_000,
     val buildServerUrl: String = "",
@@ -53,8 +64,19 @@ data class ForgeSettings(
         if (targetDesktop) add(TargetId.HORIZON_DESKTOP)
     }.ifEmpty { listOf(TargetId.HORIZON_ANDROID) }
 
+    val usesOpenRouter: Boolean get() = aiBaseUrl.trimEnd('/') == OPENROUTER_BASE
+
     fun aiConfig(): AiConfig? = if (!aiEnabled || aiModel.isBlank() || aiBaseUrl.isBlank()) null
     else AiConfig(aiKind, aiBaseUrl, aiModel, aiKey, tokenBudget = aiTokenBudget)
+
+    /** The agent's provider: OpenRouter with fallback, or the configured OpenAI-compatible one. */
+    fun agentProvider(historyFile: java.io.File?): dev.rustmodforge.core.ai.AiProvider? {
+        if (!aiEnabled) return null
+        return if (usesOpenRouter) {
+            if (aiKey.isBlank()) null
+            else dev.rustmodforge.core.ai.OpenRouterProvider(aiKey, aiModelPreference, aiAllowPaid, aiBaseUrl, historyFile)
+        } else aiConfig()?.let { dev.rustmodforge.core.ai.AiAssistant.providerFor(it) }
+    }
 }
 
 /**
@@ -95,6 +117,11 @@ class SettingsStore(context: Context) {
             targetDesktop = plain.getBoolean("target_desktop", d.targetDesktop),
             horizonModsTree = plain.getString("mods_tree", "")!!,
             horizonPacksTree = plain.getString("packs_tree", "")!!,
+            aiModelPreference = plain.getString("ai_models", null)?.split('\n')?.filter { it.isNotBlank() }
+                ?: dev.rustmodforge.core.ai.OpenRouterProvider.DEFAULT_PREFERRED,
+            aiAllowPaid = plain.getBoolean("ai_paid", false),
+            agentMaxSteps = plain.getInt("agent_steps", 24),
+            agentTokenBudget = plain.getInt("agent_tokens", 120_000),
             launcherPackage = plain.getString("launcher", d.launcherPackage)!!,
             debugLogging = plain.getBoolean("debug", d.debugLogging),
         )

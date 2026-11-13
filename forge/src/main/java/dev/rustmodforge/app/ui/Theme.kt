@@ -98,6 +98,7 @@ fun StepStatus.color() = when (this) {
     StepStatus.FAILED -> Palette.Bad
     StepStatus.SKIPPED -> Palette.Muted
     StepStatus.NOT_RUN -> Palette.Partial
+    StepStatus.UNVERIFIED -> Palette.Partial
 }
 
 @Composable

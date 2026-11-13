@@ -111,6 +111,49 @@ class PipelineTest {
         assertEquals(StageState.DONE, p.load().stages.single { it.stage == Stage.REPORT }.state)
     }
 
+    /** The agent runs inside the pipeline, uses the real tools, and its work is packed. */
+    @Test
+    fun theAgentRunsInsideTheConversionAndItsWorkIsPacked() {
+        val p = project("agent-pipeline", Quality.MAXIMUM, Fixtures.jar("fog_horror"), targets = listOf(TargetId.HORIZON_DESKTOP))
+        val script = listOf(
+            """{"thought":"read the entity","tool":"entity_report","args":{"id":"fogwatcher:the_watcher"}}""",
+            """{"thought":"look up the API","tool":"search_horizon_api","args":{"query":"goal can_use navigation"}}""",
+            """{"thought":"add a module","tool":"write_rust","args":{"path":"mixins/fogwatcher/api/src/notes.rs","content":"//! Reconstructed by the agent.\npub const KEEP_DISTANCE: f64 = 24.0;\n"}}""",
+            """{"thought":"check","tool":"validate","args":{}}""",
+            """{"tool":"finish","args":{"summary":"kept the stalk distance from the original","unsupported":"renderer fog"}}""",
+        )
+        var steps = 0
+        val provider = object : dev.rustmodforge.core.ai.AiProvider {
+            var calls = 0
+            override fun complete(system: String, user: String, maxTokens: Int): dev.rustmodforge.core.ai.AiReply {
+                // The prompt carries the real API revision and the project's own findings.
+                assertTrue(system.contains(dev.rustmodforge.core.compat.HorizonApiIndex.revision.take(10)), "no revision in the prompt")
+                val text = script.getOrElse(calls) { """{"tool":"finish","args":{"summary":"done"}}""" }
+                calls++
+                return dev.rustmodforge.core.ai.AiReply(text, 50, 20, false)
+            }
+        }
+        val report = ConversionPipeline(p, PipelineOptions(agentProvider = provider, onAgentStep = { steps++ })).run().single()
+
+        assertTrue(steps >= 5, "the app saw $steps agent steps")
+        val agentStep = report.build.single { it.name.startsWith("AI reconstruction agent") }
+        // Validators clean but no compiler here: neither passed nor failed.
+        assertEquals(StepStatus.UNVERIFIED, agentStep.status, agentStep.detail)
+        assertTrue(agentStep.detail.contains("1 file(s) kept"), agentStep.detail)
+        // The agent's file is inside the packaged .hnmod, not just on disk.
+        assertTrue("mixins/fogwatcher/api/src/notes.rs" in entries(File(p.out, "fogwatcher.hnmod")))
+        assertTrue(report.features.any { it.name == "AI reconstruction" && it.route.contains("stalk distance") })
+        assertTrue(report.features.any { it.name == "Missing Horizon capability" && it.reason.contains("renderer fog") })
+        // Verification statuses are per file and name what was not reached.
+        val hnmod = report.outputs.single { it.name.endsWith(".hnmod") }
+        assertTrue(dev.rustmodforge.core.report.Verification.PACKAGED in hnmod.reached)
+        assertTrue(dev.rustmodforge.core.report.Verification.RUNTIME_TESTED !in hnmod.reached)
+        assertTrue(dev.rustmodforge.core.report.Verification.COMPILED !in hnmod.reached, "nothing compiled it, so it must not claim COMPILED")
+        // The agent's steps are kept for the app's history.
+        val saved = dev.rustmodforge.core.agent.Knowledge.stepsOf(File(p.dir, "knowledge"))
+        assertTrue(saved.any { it.tool == "search_horizon_api" } && saved.any { it.tool == "write_rust" })
+    }
+
     @Test
     fun fastQualityIsContentOnly() {
         val p = project("fog-fast", Quality.FAST, Fixtures.jar("fog_horror"), targets = listOf(TargetId.HORIZON_ANDROID))

@@ -28,6 +28,7 @@ import dev.rustmodforge.core.report.FeatureStatus
 import dev.rustmodforge.core.report.OutputFile
 import dev.rustmodforge.core.report.StepResult
 import dev.rustmodforge.core.report.StepStatus
+import dev.rustmodforge.core.report.Verification
 import dev.rustmodforge.core.target.ContentModGenerator
 import dev.rustmodforge.core.target.FunctionBackend
 import dev.rustmodforge.core.target.NativeModGenerator
@@ -40,6 +41,12 @@ import java.time.Instant
 data class PipelineOptions(
     val buildBackend: BuildBackend? = null,
     val ai: AiAssistant? = null,
+    /** The model the reconstruction agent drives, when one is configured. */
+    val agentProvider: dev.rustmodforge.core.ai.AiProvider? = null,
+    val agentMaxSteps: Int = 24,
+    val agentTokenBudget: Int = 120_000,
+    /** Live agent steps for the app's progress view. */
+    val onAgentStep: (dev.rustmodforge.core.agent.AgentStep) -> Unit = {},
     /** Horizon's own `cargo horizon-mod check`, built from each target's source (they differ). */
     val horizonCheckers: Map<TargetId, HorizonModChecker> = emptyMap(),
     val maxRepairs: Int = 3,
@@ -131,6 +138,7 @@ class ConversionPipeline(
         val steps = ArrayList<StepResult>()
         val warnings = ArrayList<String>(a.warnings)
         val outputs = ArrayList<OutputFile>()
+        val agentRuns = ArrayList<dev.rustmodforge.core.agent.AgentRun>()
         val layers = layersFile(a.sha256).takeIf { it.exists() }?.let { Project.json.decodeFromString(ListSerializer(JavaLayer.serializer()), it.readText()) } ?: emptyList()
 
         SafeArchive.open(jar, options.limits).use { archive ->
@@ -196,7 +204,9 @@ class ConversionPipeline(
                         val name = if (kind == PackGenerator.PackKind.RESOURCE) "resourcepack" else "datapack"
                         val file = Packager.pack(packTree.root, File(project.out, "$id-$name.zip"))
                         packFiles[kind] = file
-                        outputs += OutputFile(file.name, file.path, file.length(), Packager.sha256(file), "both", "${kind.label} (.zip)")
+                        outputs += OutputFile(file.name, file.path, file.length(), Packager.sha256(file), "both", "${kind.label} (.zip)",
+                            reached = listOf(Verification.EXTRACTED, Verification.ANALYZED, Verification.GENERATED, Verification.PACKAGED),
+                            stoppedBecause = "a pack needs no compiler; loading and runtime testing happen in the launcher")
                     }
                 }
                 probe.root.deleteRecursively()
@@ -253,10 +263,18 @@ class ConversionPipeline(
                         "this mod changes only vanilla's own files, so all of it is in the ${packFiles.keys.joinToString { it.label }}; a content mod would hold nothing",
                         target = tname)
                 } else {
-                    outputs += OutputFile(hmod.name, hmod.path, hmod.length(), Packager.sha256(hmod), tname, "content mod (.hmod)")
+                    outputs += OutputFile(hmod.name, hmod.path, hmod.length(), Packager.sha256(hmod), tname, "content mod (.hmod)",
+                        reached = buildList {
+                            add(Verification.EXTRACTED); add(Verification.ANALYZED)
+                            if (quality.reconstructsBehaviour && entities.isNotEmpty()) add(Verification.RECONSTRUCTED)
+                            add(Verification.GENERATED); add(Verification.PACKAGED)
+                        },
+                        stoppedBecause = "content needs no compiler; RustMod Forge cannot load a mod into the game, so loading and runtime testing are yours to do")
                 }
                 val hnmod = nativeTree?.let { Packager.pack(it.root, File(project.out, "$id.hnmod")) }
-                hnmod?.let { outputs += OutputFile(it.name, it.path, it.length(), Packager.sha256(it), tname, "native mod source (.hnmod)") }
+                hnmod?.let { f -> outputs += OutputFile(f.name, f.path, f.length(), Packager.sha256(f), tname, "native mod source (.hnmod)",
+                    reached = listOf(Verification.EXTRACTED, Verification.ANALYZED, Verification.RECONSTRUCTED, Verification.GENERATED, Verification.PACKAGED),
+                    stoppedBecause = "compilation is recorded separately below; it needs a build backend") }
                 project.stage(Stage.PACKAGE, StageState.DONE)
 
                 // ---- validate ----
@@ -289,6 +307,59 @@ class ConversionPipeline(
                 if (nativeTree != null) compileAndRepair(nativeTree, id, steps, tname)
                 else if (target == TargetId.HORIZON_ANDROID) steps += StepResult("Rust compilation", StepStatus.SKIPPED,
                     "Horizon Android loads .hmod only; behaviours are data pack functions, which need no compiler", target = tname)
+
+                // ---- the reconstruction agent ----
+                // It runs after the generators, so it reads a real first version and the engine
+                // can compare validator and compiler results before and after its work.
+                if (quality.usesAi && options.agentProvider != null && entities.isNotEmpty()) {
+                    project.stage(Stage.RECONSTRUCT, StageState.RUNNING, "agent")
+                    val knowledge = dev.rustmodforge.core.agent.Knowledge(File(project.dir, "knowledge"))
+                    val agentCtx = dev.rustmodforge.core.agent.AgentContext(
+                        analysis = a.copy(entities = entities), archive = archive, modId = id, target = target, knowledge = knowledge,
+                        content = tree, native = nativeTree, backend = options.buildBackend,
+                        validator = {
+                            val hv = Validator.validateTree(tree.root, target)
+                            val nv = nativeTree?.let { Validator.validateNativeTree(it.root, id) } ?: emptyList()
+                            hv + nv
+                        },
+                    )
+                    val agent = dev.rustmodforge.core.agent.ReconstructionAgent(
+                        options.agentProvider, agentCtx, options.agentMaxSteps, options.agentTokenBudget, cancel,
+                        onStep = { st -> options.onAgentStep(st); p(Stage.RECONSTRUCT, 0.6f, "${st.phase}: ${st.detail.take(80)}") },
+                    )
+                    val task = buildString {
+                        append("Reconstruct the behaviour of ")
+                        append(entities.joinToString { it.id })
+                        append(" for ${profile.name}. ")
+                        append(if (nativeTree != null) "This target has a native mod: write Rust goals through write_rust and compile them. "
+                        else "This target has no native mod (Horizon Android loads .hmod only): improve the generated data and functions through write_content. ")
+                        append("Start from entity_report, look up every API before using it, and finish with what is reconstructed and what Horizon cannot do.")
+                    }
+                    val run = agent.run(task)
+                    agentRuns += run
+                    warnings += run.steps.filter { !it.ok }.map { "[agent] ${it.phase}: ${it.detail}" }
+                    steps += StepResult("AI reconstruction agent (${options.agentProvider.let { pr -> (pr as? dev.rustmodforge.core.ai.OpenRouterProvider)?.preferred?.firstOrNull() ?: "configured model" }})",
+                        when {
+                            run.outcome == dev.rustmodforge.core.agent.AgentOutcome.NO_PROVIDER -> StepStatus.NOT_RUN
+                            run.verified -> StepStatus.PASSED
+                            run.filesWritten.isEmpty() -> if (run.outcome == dev.rustmodforge.core.agent.AgentOutcome.FINISHED) StepStatus.SKIPPED else StepStatus.FAILED
+                            // Work was kept and the validators are clean, but nothing compiled it.
+                            run.verification.contains("unverified") -> StepStatus.UNVERIFIED
+                            else -> StepStatus.FAILED
+                        },
+                        "${run.steps.size} steps, ${run.filesWritten.size} file(s) kept, ${run.inputTokens + run.outputTokens} tokens — ${run.verification}",
+                        run.steps.joinToString("\n") { "${it.phase} · ${it.tool}: ${it.detail}" }, tname)
+                    if (run.summary.isNotEmpty()) features += FeatureResult("Behaviour", "AI reconstruction", if (run.verified) FeatureStatus.PARTIAL else FeatureStatus.UNSUPPORTED,
+                        run.summary.take(300), if (run.verified) run.verification else "not kept: ${run.verification}", target = tname)
+                    if (run.unsupported.isNotEmpty()) features += FeatureResult("Behaviour", "Missing Horizon capability", FeatureStatus.UNSUPPORTED,
+                        "", run.unsupported.take(400), target = tname)
+                    project.stage(Stage.RECONSTRUCT, if (run.verified || run.filesWritten.isEmpty()) StageState.DONE else StageState.FAILED, run.verification)
+                    // The agent may have changed the trees: pack and validate again.
+                    if (run.filesWritten.isNotEmpty()) {
+                        hmod?.let { Packager.pack(tree.root, it) }
+                        nativeTree?.let { nt -> Packager.pack(nt.root, File(project.out, "$id.hnmod")) }
+                    }
+                }
 
                 steps += StepResult("Runtime test in Horizon", StepStatus.NOT_RUN,
                     "No Horizon game is available to RustMod Forge to load the mod; test it in the launcher. Nothing here claims it works in-game.", target = tname)
