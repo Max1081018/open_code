@@ -96,6 +96,53 @@ GeckoLib model and animations, sounds and its recognised behaviours rebuilt as a
 fog, custom shaders, client-side GUI overlays and mixins reported as partial or unsupported with
 the reason. The result screen is the authority for your copy.
 
+## The AI engine (2.0)
+
+The AI is not a chat box: it is an **agent that drives the conversion through the engine's own
+tools**, and the engine, not the model, decides whether its work is kept.
+
+**Provider.** OpenRouter (`/api/v1/chat/completions`) with your own free key, entered on the
+**AI** screen. The model order is a preference list, checked against OpenRouter's live catalog:
+anything it does not list is reported as missing and skipped. A rate-limited model is rested for
+its `Retry-After` and the next free one is tried; a 5xx or timeout is retried once then skipped.
+When every free model is exhausted the conversion **pauses and keeps its progress** — paid models
+stay off unless you turn them on yourself. The default order is the one you asked for
+(`recursive/flint-v1.0:free`, `cohere/north-mini-code:free`,
+`thinkingmachines/inkling-2-small:free`, `openrouter/free`); **these names were not verifiable
+from the build environment**, which cannot reach openrouter.ai, so the app checks them on your
+phone and the AI screen shows which exist right now.
+
+**Tools.** The model may only name one operation per reply; the engine executes it:
+`list_classes`, `class_detail`, `disassemble` (ASM, never loaded or run), `entity_report`,
+`dependencies`, `read_resource`, `search_horizon_api`, `list_generated`, `read_generated`,
+`write_rust`, `write_content`, `validate`, `compile`, `remember`, `finish`. Writes are confined
+to the mod's own paths; a path outside them is refused.
+
+**Knowledge base.** `tools/build-horizon-api-index.py` extracts the API from a Horizon checkout
+into `horizon-api.json`: every hook point with its signature, doc comment and event type, the
+`Host` helpers, the goal types with their real constructors, the fields and methods of `Mob`,
+`MobWorld`, `Cx` and the rest, the `mod_api` exports and the modding documentation, stamped with
+the revision. `search_horizon_api` answers only from this, so the agent cites real APIs; when a
+search finds nothing it is told the API does not exist and must report the missing capability.
+
+**The engine has the last word.** After a run the validators run again and, where a build backend
+exists, the compiler. If the agent's files raise validator errors or produce Rust that does not
+compile, the previous files are **restored** and the report says so. A run can improve the output
+or leave it as it was; it cannot ship something broken. Generated Rust that nothing could compile
+is reported `unverified` — not passed, not failed.
+
+**Context efficiency.** One class or one method per request, results truncated with an explicit
+marker, a rolling conversation window, per-project caching of disassembly, and a persistent
+knowledge base (`knowledge.json`) the agent writes findings into, so a resumed conversion does
+not re-derive them. Steps and tokens are capped per conversion (AI screen).
+
+### Verification statuses
+
+Every output file records the steps it actually reached — `extracted`, `analyzed`,
+`reconstructed`, `generated`, `compiled`, `packaged`, `loaded`, `runtime tested` — and why the
+next one was not. `compiled` appears only when a compiler exited zero. `loaded` and
+`runtime tested` are never set by RustMod Forge: it cannot load a mod into your game.
+
 ## What is verified, and what is not
 
 Verified automatically (forge-core tests, run in CI):
@@ -108,9 +155,19 @@ Verified automatically (forge-core tests, run in CI):
   `horizon-client`** at the pinned revision (0 errors). Set `RMF_HORIZON_MOD_BIN`,
   `RMF_HORIZON_MOD_BIN_UPSTREAM` and `RMF_HORIZON_SRC` to run those checks in the tests.
 - Security: zip-slip, absolute paths, duplicate entries, zip bombs and size limits are refused.
+- The agent loop, driven by a scripted model with no network: its tools run against the real
+  fixture bytecode and the real API index; writes outside the mod are refused; work that raises
+  validator errors is rolled back; Rust that the compiler rejects is rolled back even when the
+  model claims success; an exhausted free model pauses the run and keeps the files.
+- OpenRouter's fallback: a rate-limited preference moves to the next free model, a paid model is
+  never called with paid models off, and a model absent from the catalog is reported, not called.
 - A sound mod that replaces vanilla sounds produces a resource pack holding those sounds, the
   mod's own sound it refers to, an icon and a `pack.mcmeta` the launcher's own format check
   accepts, plus a data pack whose loot table has been upgraded to 26.3.
+
+**Not verified: OpenRouter itself.** The build environment cannot reach openrouter.ai, so no
+live call was made from here: the provider is covered by tests with a fake transport, and the
+model names you gave are checked against the catalogue on your phone.
 
 **Not verified: running in the game.** No converted mod has been loaded in Horizon by these
 tests; every report says "Runtime test: not run". Display-entity rigs (orientation, handedness,
