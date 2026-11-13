@@ -241,14 +241,14 @@ class PipelineTest {
         assertEquals(64L, meta["pack_format"])
         assertEquals(15L, meta["min_format"])
         assertEquals(99L, meta["max_format"])
-        assertEquals(listOf(15L, 64L), meta["supported_formats"])
+        assertEquals(listOf(15L, 99L), meta["supported_formats"])
         assertEquals(emptyList(), Validator.validatePack(pack, PackGenerator.PackKind.RESOURCE).filter { it.error })
 
         val d = entries(data)
         assertTrue("data/minecraft/loot_table/blocks/stone.json" in d, d.toString())
         val dmeta = JsonTree.obj(JsonTree.obj(JsonTree.parse(text(data, "pack.mcmeta")))!!["pack"])!!
         assertEquals(81L, dmeta["pack_format"])
-        assertEquals(listOf(15L, 81L), dmeta["supported_formats"])
+        assertEquals(listOf(15L, 140L), dmeta["supported_formats"])
         assertEquals(140L, dmeta["max_format"])
         // Carried through the 26.3 upgrades, not copied blindly.
         val loot = text(data, "data/minecraft/loot_table/blocks/stone.json")

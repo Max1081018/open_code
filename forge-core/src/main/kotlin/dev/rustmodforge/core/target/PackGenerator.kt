@@ -143,7 +143,10 @@ class PackGenerator(
             "pack" to JsonTree.of(
                 "description" to description.take(256),
                 "pack_format" to kind.main,
-                "supported_formats" to listOf(kind.min, kind.lastPreMinor),
+                // Ending the old range at max_format satisfies the engine's check under any
+                // value it computes for the pre-minor window, so the verdict is Compatible on
+                // old and new builds alike rather than Unknown on some.
+                "supported_formats" to listOf(kind.min, kind.max),
                 "min_format" to kind.min,
                 "max_format" to kind.max,
             ),

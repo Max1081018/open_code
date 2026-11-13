@@ -217,7 +217,7 @@ object Validator {
             }
             if (min != null && min <= lastPreMinor) {
                 when {
-                    supported == null || supported.size != 2 -> err("pack.mcmeta", "min_format $min reaches into the versions that need supported_formats: add [\"$min\", $lastPreMinor]")
+                    supported == null || supported.size != 2 -> err("pack.mcmeta", "min_format $min reaches into the versions that need supported_formats: add [$min, ${max ?: lastPreMinor}]")
                     supported[0] != min -> err("pack.mcmeta", "supported_formats starts at ${supported[0]} but min_format is $min")
                     max != null && supported[1] != max && supported[1] != lastPreMinor ->
                         err("pack.mcmeta", "supported_formats ends at ${supported[1]}, which is neither max_format ($max) nor $lastPreMinor")
