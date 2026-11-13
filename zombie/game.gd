@@ -982,6 +982,8 @@ func _on_secondary() -> void:
 
 
 func _shoot() -> void:
+	if dead:
+		return
 	var id := held_id()
 	if id == "" or str(ITEMS[id].get("kind", "")) != "gun":
 		return
@@ -1028,6 +1030,8 @@ func _shoot() -> void:
 
 
 func _start_reload() -> void:
+	if dead:
+		return
 	var id := held_id()
 	if id == "" or str(ITEMS[id].get("kind", "")) != "gun" or _reload_t > 0.0:
 		return
@@ -1055,7 +1059,7 @@ func _finish_reload() -> void:
 
 
 func _melee() -> void:
-	if _use_cd > 0.0:
+	if dead or _use_cd > 0.0:
 		return
 	var id := held_id()
 	var dmg := 14.0
@@ -1108,7 +1112,7 @@ func _loot(entry: Dictionary) -> void:
 
 func _use_item() -> void:
 	var it := held()
-	if it.is_empty() or _use_cd > 0.0:
+	if dead or it.is_empty() or _use_cd > 0.0:
 		return
 	var id := str(it["id"])
 	var info: Dictionary = ITEMS[id]
@@ -1228,7 +1232,7 @@ func _apply_held() -> void:
 	holder.add_child(m)
 	m.transform = _grip_of(id)
 	hands.mount(holder)
-	hands.aim_offset(Vector3(0.045, 0.045, -0.02))
+	hands.aim_offset(Vector3(0.075, 0.105, -0.06))
 
 
 ## How each item sits in the fist. Every pack models at its own size and
@@ -1410,10 +1414,16 @@ func _basics_step() -> void:
 			var z: Node3D = _nearest_zombie() as Node3D
 			if z == null:
 				return
+			# Keep a magazine in it: running dry is a different test.
+			if _count("9mm") < 12:
+				_give("9mm", 30)
 			var to2: Vector3 = z.global_position - player.global_position
 			cam_yaw = atan2(-to2.x, -to2.z)
 			cam_pitch = clampf(atan2(z.global_position.y + 1.1 - camera.global_position.y,
 				Vector2(to2.x, to2.z).length()), -1.0, 1.0)
+			# This stage is testing that shots land and kill, not whether you
+			# can survive a mob, so damage is topped back up.
+			health = 100.0
 			if frame % 18 == 0:
 				_shoot()
 			if kills > 0:
@@ -1465,7 +1475,7 @@ func _nearest_zombie() -> Node:
 func _setup_test() -> void:
 	match start_screen:
 		"basics", "zombies":
-			for i in 6:
+			for i in (2 if start_screen == "basics" else 6):
 				var a := float(i) / 6.0 * TAU
 				var p := player.global_position + Vector3(cos(a), 0, sin(a)) * 7.0
 				p.y = terrain_y(p.x, p.z)
@@ -1473,6 +1483,15 @@ func _setup_test() -> void:
 				add_child(z)
 				z.setup(self, p, 100 + i, i == 5)
 				_zombies.append(z)
+		"fight":
+			# One of them, at a distance you can actually watch it from.
+			var at := player.global_position + Vector3(0, 0, -4.5)
+			at.y = terrain_y(at.x, at.z)
+			var z = Zombie.new()
+			add_child(z)
+			z.setup(self, at, 7, false)
+			_zombies.append(z)
+			cam_yaw = 0.0
 		"night":
 			clock = DAY_LENGTH * 0.92
 		"loot":
@@ -1492,6 +1511,33 @@ func _drive_test() -> void:
 			Vector2(player.velocity.x, player.velocity.z).length(), player.is_on_floor(), health,
 			_zombies.size(), _lootables.size(), _chunks.size(),
 			Engine.get_frames_per_second()])
+	if start_screen == "fight":
+		# Stand still and watch it come: walk, then the swing.
+		touch.move = Vector2.ZERO
+		var zz: Node3D = _nearest_zombie() as Node3D
+		if zz and autotest_shot != "":
+			var idx := [60, 110, 150, 190].find(frame)
+			if idx >= 0:
+				get_viewport().get_texture().get_image().save_png(
+					autotest_shot.replace(".png", "_%d.png" % idx))
+				print("AUTOTEST fight%d: %.1fm state=%s clip=%s hp=%.0f yours=%.0f" % [
+					idx, zz.global_position.distance_to(player.global_position), zz.state,
+					zz.body._pb.get_current_node() if zz.body._pb else "?", zz.health, health])
+		if frame > 210:
+			print("AUTOTEST fight done")
+			get_tree().quit()
+		return
+
+	if start_screen == "zombies" and autotest_shot != "":
+		var at := [120, 220, 300].find(frame)
+		if at >= 0:
+			get_viewport().get_texture().get_image().save_png(
+				autotest_shot.replace(".png", "_%d.png" % at))
+			var z0: Node3D = _nearest_zombie() as Node3D
+			if z0:
+				print("AUTOTEST shot%d: nearest %.1fm state=%s clip=%s hp=%.0f" % [
+					at, z0.global_position.distance_to(player.global_position),
+					z0.state, z0.body._pb.get_current_node() if z0.body._pb else "?", z0.health])
 	if start_screen == "zombies" and frame == 90:
 		var z = _zombies[0]
 		z.take_damage(40.0, "body", player.global_position)

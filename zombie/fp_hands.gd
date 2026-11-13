@@ -13,13 +13,15 @@ extends Node3D
 ## a gun, Pistol_Shoot when you fire, Pistol_Reload when you reload, a jab for
 ## bare fists and a sword swing for melee.
 
+const ZChar := preload("res://zchar.gd")
+
 const MODEL := "res://assets/chars/AtlasZombieLite_Walker.fbx"
 const LIB := "res://assets/chars/zombie_anims.res"
 
 # Where the model sits relative to the camera. The rig's own head bone is the
 # thing that should land on the camera, so this is worked out from the rest
 # pose at start-up and then nudged by these.
-const OFFSET := Vector3(0.0, 0.12, 0.20)    # where the head bone sits, from the eye
+const OFFSET := Vector3(0.0, 0.15, 0.21)    # where the head bone sits, from the eye
 const SKIN_HIDE := 0.001          # bone scale that makes a limb vanish
 
 var mode := "bare"                # bare / gun / melee
@@ -40,6 +42,7 @@ var _lag := Vector2.ZERO
 var _look_was := Vector2.ZERO
 var _hidden: Array[int] = []
 var _scale := 1.0
+var _rng := RandomNumberGenerator.new()
 var _held: Node3D
 var _align := -1
 var _aim_off := Vector3.ZERO
@@ -63,6 +66,9 @@ func _ready() -> void:
 	var head_local: Vector3 = _model.to_local(head_world)
 	var turn := Basis(Vector3.UP, PI)
 	_base = Transform3D(turn, OFFSET - turn * head_local)
+	# Slightly slimmed: these are blocky, heavy-set arms, and at this distance
+	# from the eye a life-size pair fills half the screen.
+	_base.basis = _base.basis.scaled(Vector3.ONE * 0.88)
 	_model.transform = _base
 
 	_hand_r = BoneAttachment3D.new()
@@ -79,6 +85,10 @@ func _ready() -> void:
 		var m := mi as MeshInstance3D
 		m.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 		m.extra_cull_margin = 4.0       # it never leaves the camera
+	# Your own arms: the same model, with a living person's colouring.
+	var look := ZChar.new()
+	look._model = _model
+	look.randomize_look(_rng, true)
 	_hide_parts()
 	_ap.play("z/hold_idle")
 
@@ -189,6 +199,9 @@ func _process(delta: float) -> void:
 			_align_weapon()
 
 	if _busy <= 0.0:
+		# Low ready. The straight-on aim pose (z/hold_aim, kept in the library
+		# for sighting down the barrel later) puts the forearm between the
+		# camera and the gun from this angle.
 		var want := "z/hold_idle"
 		if mode == "melee":
 			want = "z/swing_idle"

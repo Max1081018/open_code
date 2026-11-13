@@ -35,6 +35,11 @@ const SHIRTS := [Color(0.62, 0.33, 0.28), Color(0.30, 0.36, 0.44), Color(0.42, 0
 const PANTS := [Color(0.33, 0.38, 0.48), Color(0.28, 0.28, 0.31), Color(0.42, 0.37, 0.28),
 	Color(0.24, 0.30, 0.36), Color(0.38, 0.33, 0.30)]
 const SHOES := [Color(0.26, 0.20, 0.15), Color(0.18, 0.17, 0.17), Color(0.33, 0.26, 0.18)]
+const HAIRS := [Color(0.18, 0.15, 0.13), Color(0.31, 0.26, 0.20), Color(0.42, 0.38, 0.34),
+	Color(0.24, 0.19, 0.17), Color(0.50, 0.44, 0.33)]
+# The survivor you play is the same model, in better health.
+const HUMAN_SKINS := [Color(0.80, 0.63, 0.49), Color(0.68, 0.50, 0.37), Color(0.88, 0.73, 0.60),
+	Color(0.50, 0.36, 0.27), Color(0.76, 0.58, 0.44)]
 
 var speed := 0.0                  # ground speed, drives the locomotion blend
 var crawling := false
@@ -87,7 +92,9 @@ func _build_tree() -> void:
 		sm.add_node(one, _clip(one), Vector2(440, 60 * row))
 		row += 1
 
-	sm.add_transition("Start", "move", _link(0.0, false))
+	# Auto, or a character sits on the state machine's Start node until
+	# something else happens to move it on.
+	sm.add_transition("Start", "move", _link(0.0, false, true))
 	# Into an action from wherever you are, and back out when the clip ends.
 	for one in ["attack", "bite", "hit", "stagger", "feed", "reach"]:
 		sm.add_transition("move", one, _link(0.10, false))
@@ -199,44 +206,55 @@ func _apply_flash() -> void:
 		m.emission_energy_multiplier = _flash * 0.9
 
 
-## Rolls this individual's build and clothes. Each material is classified by
-## the colour the artist gave it - green is skin, blue is trousers, and so on -
-## so the recolour lands on the right part without having to name surfaces.
-func randomize_look(rng: RandomNumberGenerator) -> void:
-	var skin: Color = SKINS[rng.randi() % SKINS.size()]
-	var shirt: Color = SHIRTS[rng.randi() % SHIRTS.size()]
-	var pants: Color = PANTS[rng.randi() % PANTS.size()]
-	var shoe: Color = SHOES[rng.randi() % SHOES.size()]
+## Rolls this individual's build and clothes.
+##
+## The model paints each part of the body with its own named material - skin,
+## shirt, pants, boots, hair, eyes, wound - so a variant is a recolour of the
+## one mesh. Matching on those names rather than on the colours themselves
+## means a dark shirt is never mistaken for a boot.
+func randomize_look(rng: RandomNumberGenerator, human := false) -> void:
+	var pick := func(list: Array) -> Color:
+		return list[rng.randi() % list.size()]
+	var skin: Color = pick.call(HUMAN_SKINS if human else SKINS)
+	var shirt: Color = pick.call(SHIRTS)
+	var pants: Color = pick.call(PANTS)
+	var shoe: Color = pick.call(SHOES)
+	var hair: Color = pick.call(HAIRS)
 	for mi in _model.find_children("*", "MeshInstance3D", true, false):
 		var m3 := mi as MeshInstance3D
 		if m3.mesh == null:
 			continue
 		for si in m3.mesh.get_surface_count():
-			var src := m3.mesh.surface_get_material(si) as StandardMaterial3D
+			var src := m3.mesh.surface_get_material(si) as BaseMaterial3D
 			var mat := (src.duplicate() if src else StandardMaterial3D.new()) as StandardMaterial3D
-			var c: Color = mat.albedo_color
-			var h := c.h
-			var v := c.v
-			if c.s < 0.12 and v < 0.3:
-				pass                                   # eyes, mouth: leave them
-			elif h > 0.18 and h < 0.42:
-				mat.albedo_color = skin                # greens: exposed skin
-			elif h > 0.5 and h < 0.75:
-				mat.albedo_color = pants               # blues: trousers
-			elif v < 0.3:
-				mat.albedo_color = shoe
-			else:
+			var who := str(src.resource_name) if src else ""
+			if "Skin" in who:
+				mat.albedo_color = skin
+			elif "Shirt" in who:
 				mat.albedo_color = shirt
+			elif "Pants" in who:
+				mat.albedo_color = pants
+			elif "Boots" in who:
+				mat.albedo_color = shoe
+			elif "Hair" in who:
+				mat.albedo_color = hair
+			elif "Wound" in who:
+				# healthy people are not walking about with these on show
+				mat.albedo_color = skin.darkened(0.12) if human else \
+					Color(0.52, 0.17, 0.16).lerp(Color(0.33, 0.10, 0.12), rng.randf())
+			elif "Eyes" in who and not human:
+				mat.albedo_color = Color(0.86, 0.84, 0.62).lerp(Color(0.74, 0.78, 0.52), rng.randf())
 			mat.roughness = 0.95
 			mat.specular_mode = BaseMaterial3D.SPECULAR_DISABLED
 			m3.set_surface_override_material(si, mat)
 			_mats.append(mat)
 		m3.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_ON
 	# Build: these are heavy, blocky things, and no two are quite the same.
+	if human:
+		return
 	var wide: float = rng.randf_range(1.10, 1.26)
 	var tall: float = rng.randf_range(0.94, 1.06)
 	_model.scale = Vector3(wide, tall, wide * rng.randf_range(0.92, 1.0))
-	_model.rotation.y = 0.0
 
 
 ## How tall this one ended up, for colliders and head shots.

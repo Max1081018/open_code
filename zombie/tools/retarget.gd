@@ -53,6 +53,7 @@ const WANT := {
 	# The player's own hands use the same rig and the same library: the arms
 	# you see in first person are this model's arms.
 	"hold_idle": ["Pistol_Idle", true],
+	"hold_aim": ["Pistol_Aim_Neutral", true],
 	"hold_shoot": ["Pistol_Shoot", false],
 	"hold_reload": ["Pistol_Reload", false],
 	"aim_up": ["Pistol_Aim_Up", false],
