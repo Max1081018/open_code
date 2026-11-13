@@ -57,6 +57,9 @@ jobs:
             -storepass "$WINGMAN_KEYSTORE_PASS" -alias "$WINGMAN_KEY_ALIAS" \
             | grep -i "SHA256:" | head -1
 
+      - name: RustMod Forge engine tests
+        run: gradle -p forge-core test --no-daemon
+
       - name: Unit tests
         run: gradle testDebugUnitTest --no-daemon
 
@@ -94,6 +97,7 @@ jobs:
           # so stage them under their real product names.
           cp app/build/outputs/apk/debug/app-debug.apk out/Wingman.apk
           cp camera/build/outputs/apk/debug/camera-debug.apk out/HaloCamera.apk
+          cp forge/build/outputs/apk/debug/forge-debug.apk out/RustModForge.apk
 
       - name: Upload APKs
         uses: actions/upload-artifact@v4
@@ -120,3 +124,4 @@ jobs:
           files: |
             Wingman.apk
             HaloCamera.apk
+            RustModForge.apk
