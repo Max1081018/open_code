@@ -52,6 +52,8 @@ data class ConversionReport(
     val dependencies: List<DependencyStatus>,
     val warnings: List<String>,
     val aiUsage: String = "",
+    /** One plain sentence: what, if anything, these files change once installed. */
+    val verdict: String = "",
 ) {
     fun toMarkdown(): String = buildString {
         appendLine("# Conversion report: $modName")
@@ -65,6 +67,7 @@ data class ConversionReport(
         appendLine("| Targets | ${targets.joinToString()} |")
         appendLine("| Created | $createdAt (RustMod Forge $engineVersion) |")
         appendLine()
+        if (verdict.isNotEmpty()) { appendLine("**$verdict**"); appendLine() }
         appendLine("## Analysis")
         analysis.forEach { appendLine("- $it") }
         appendLine()

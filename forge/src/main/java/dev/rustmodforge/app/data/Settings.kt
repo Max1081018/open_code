@@ -43,6 +43,8 @@ data class ForgeSettings(
     val targetDesktop: Boolean = false,
     /** A folder the user picked once (normally Horizon Android › Mods), as a persisted tree URI. */
     val horizonModsTree: String = "",
+    /** The launcher's resource pack folder, picked once, for one-tap pack export. */
+    val horizonPacksTree: String = "",
     val launcherPackage: String = "dev.horizon.android",
     val debugLogging: Boolean = false,
 ) {
@@ -92,6 +94,7 @@ class SettingsStore(context: Context) {
             targetAndroid = plain.getBoolean("target_android", d.targetAndroid),
             targetDesktop = plain.getBoolean("target_desktop", d.targetDesktop),
             horizonModsTree = plain.getString("mods_tree", "")!!,
+            horizonPacksTree = plain.getString("packs_tree", "")!!,
             launcherPackage = plain.getString("launcher", d.launcherPackage)!!,
             debugLogging = plain.getBoolean("debug", d.debugLogging),
         )

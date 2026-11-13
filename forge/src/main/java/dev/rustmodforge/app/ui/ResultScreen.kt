@@ -83,6 +83,12 @@ fun ResultScreen(vm: ForgeViewModel, id: String, onBack: () -> Unit, onReport: (
                     Button(onClick = onReconvert, colors = ButtonDefaults.buttonColors(containerColor = Palette.Ember)) { Text("Convert again") }
                 }
             }
+            if (r.verdict.isNotEmpty()) item {
+                val good = !r.verdict.startsWith("Installing these changes nothing")
+                SectionCard(if (good) "What this does in game" else "This mod does not convert into anything playable") {
+                    Text(r.verdict, color = if (good) Palette.Good else Palette.Partial, style = MaterialTheme.typography.bodyMedium)
+                }
+            }
             item { Summary(r) }
             item { Outputs(vm, r, d) }
             item { BuildSteps(r) }
@@ -130,15 +136,23 @@ private fun Outputs(vm: ForgeViewModel, r: ConversionReport, d: ProjectDetail) {
         pending = null
     }
     SectionCard("Export", subtitle = "Files are checked before they are offered. A passed check is not an in-game test.") {
+        // The file that changes the game comes first: a mod installed from the Mods page while
+        // its resource pack sits unused is exactly how a conversion looks "installed but dead".
         val files = r.outputs.map { File(it.path) }.filter { it.exists() }
+            .sortedBy { if (it.name.endsWith("-resourcepack.zip")) 0 else if (it.name.endsWith("-datapack.zip")) 1 else 2 }
         if (files.isEmpty()) Text("No output files", color = Palette.Muted)
         files.forEach { f ->
             val out = r.outputs.first { it.path == f.path }
             Text(f.name, color = Palette.Text, fontWeight = FontWeight.Medium)
             Text("${out.kind} · ${out.target} · ${bytes(f.length())}", color = Palette.Muted, style = MaterialTheme.typography.bodySmall)
+            if (f.name.endsWith("-resourcepack.zip")) Pill("Packs page, not Mods", Palette.Ember)
+            if (f.name.endsWith("-datapack.zip")) Pill("Goes inside one world", Palette.Steel)
             Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 if (f.name.endsWith("-android.hmod")) {
                     Button(onClick = { vm.exportToHorizon(f) }, colors = ButtonDefaults.buttonColors(containerColor = Palette.Ember)) { Text("To Horizon Mods") }
+                }
+                if (f.name.endsWith("-resourcepack.zip")) {
+                    Button(onClick = { vm.exportToHorizonPacks(f) }, colors = ButtonDefaults.buttonColors(containerColor = Palette.Ember)) { Text("To Horizon Packs") }
                 }
                 OutlinedButton(onClick = { pending = f; save.launch(f.name) }) { Text("Save as…") }
                 OutlinedButton(onClick = { runCatching { Exports.share(context, f) }.onFailure { vm.say("Share failed: ${it.message}") } }) { Text("Share") }

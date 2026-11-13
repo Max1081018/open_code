@@ -296,12 +296,14 @@ class ConversionPipeline(
             project.stage(Stage.TEST, StageState.SKIPPED, "no runtime available")
         }
 
+        val verdict = verdict(outputs, features)
         val report = ConversionReport(
             modName = a.metadata.name, modId = a.metadata.modId, modVersion = a.metadata.version, sourceFile = a.sourceFile, sha256 = a.sha256,
             loader = a.metadata.loader.name, minecraftVersion = a.metadata.minecraftVersion, quality = quality.label,
             targets = state.targets.map { HorizonCompat.profile(it).name }, createdAt = Instant.now().toString(), engineVersion = ENGINE_VERSION,
             analysis = analysisLines(a), features = features, build = steps, outputs = outputs, dependencies = dependencies(a, provided),
             warnings = warnings.distinct(), aiUsage = options.ai?.let { it.usageSummary() + "\n" + it.log.joinToString("\n") { l -> "- $l" } } ?: "",
+            verdict = verdict,
         )
         File(project.out, "$id-report.md").writeText(report.toMarkdown())
         File(project.out, "$id-report.json").writeText(Project.json.encodeToString(ConversionReport.serializer(), report))
@@ -346,6 +348,29 @@ class ConversionPipeline(
         if (result.success && attempt > 0) {
             // Re-pack the repaired source.
             Packager.pack(tree.root, File(project.out, "$id.hnmod"))
+        }
+    }
+
+    /**
+     * Whether the files change anything once installed, and which one does it. A mod whose
+     * behaviour is Java code converts to files that add nothing, and saying so plainly is worth
+     * more than a list of green rows.
+     */
+    private fun verdict(outputs: List<OutputFile>, features: List<FeatureResult>): String {
+        val pack = outputs.firstOrNull { it.kind.startsWith("resource pack") }
+        val data = outputs.firstOrNull { it.kind.startsWith("data pack") }
+        val gameplay = features.any { f ->
+            f.status != FeatureStatus.UNSUPPORTED && f.status != FeatureStatus.NOT_APPLICABLE &&
+                (f.category == "Entities" || f.category == "Behaviour" || f.category == "Blocks" || f.category == "Items")
+        }
+        val changes = ArrayList<String>()
+        if (pack != null) changes += "${pack.name} changes the game's own sounds, textures or text"
+        if (data != null) changes += "${data.name} changes the game's own recipes, loot or advancements"
+        if (gameplay) changes += "the .hmod adds this mod's own content to your worlds"
+        return when {
+            changes.isEmpty() -> "Installing these changes nothing in game on their own: what this mod does lives in its Java code, which Horizon cannot run. See the unsupported rows below for what that is."
+            else -> "What changes in game: " + changes.joinToString("; ") + "." +
+                (if (pack != null) " The resource pack is imported on the Packs page, not Mods." else "")
         }
     }
 

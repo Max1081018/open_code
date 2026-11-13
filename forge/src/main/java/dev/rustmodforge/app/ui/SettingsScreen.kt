@@ -48,6 +48,12 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
+private enum class Picking { MODS, PACKS }
+
+/** Starts the folder picker in Horizon Android's own provider when it is installed. */
+private fun providerHint(): Uri? =
+    runCatching { DocumentsContract.buildRootsUri(HorizonCompat.ANDROID_DOCUMENTS_AUTHORITY) }.getOrNull()
+
 @Composable
 fun SettingsScreen(vm: ForgeViewModel) {
     val s by vm.settings.state.collectAsState()
@@ -55,13 +61,17 @@ fun SettingsScreen(vm: ForgeViewModel) {
     val scope = rememberCoroutineScope()
     var testing by remember { mutableStateOf(false) }
     var storage by remember { mutableStateOf<Long?>(null) }
+    var picking by remember { mutableStateOf(Picking.MODS) }
     val pickTree = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocumentTree()) { uri ->
         if (uri != null) {
             runCatching {
                 context.contentResolver.takePersistableUriPermission(uri, Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_GRANT_WRITE_URI_PERMISSION)
             }
-            vm.settings.update { it.copy(horizonModsTree = uri.toString()) }
-            vm.say("Exports will go to this folder")
+            when (picking) {
+                Picking.MODS -> vm.settings.update { it.copy(horizonModsTree = uri.toString()) }
+                Picking.PACKS -> vm.settings.update { it.copy(horizonPacksTree = uri.toString()) }
+            }
+            vm.say("Exports of that kind will go to this folder")
         }
     }
 
@@ -114,12 +124,17 @@ fun SettingsScreen(vm: ForgeViewModel) {
             Text(if (s.horizonModsTree.isBlank()) "No folder chosen" else "Folder: " + Uri.decode(s.horizonModsTree).substringAfterLast(':'),
                 color = Palette.Muted, style = MaterialTheme.typography.bodySmall)
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                Button(onClick = {
-                    // Start the picker in Horizon Android's provider when it is installed.
-                    val hint = runCatching { DocumentsContract.buildRootsUri(HorizonCompat.ANDROID_DOCUMENTS_AUTHORITY) }.getOrNull()
-                    pickTree.launch(hint)
-                }) { Text("Choose Mods folder") }
+                Button(onClick = { picking = Picking.MODS; pickTree.launch(providerHint()) }) { Text("Choose Mods folder") }
                 if (s.horizonModsTree.isNotBlank()) OutlinedButton(onClick = { vm.settings.update { it.copy(horizonModsTree = "") } }) { Text("Forget") }
+            }
+            Spacer(Modifier.height(8.dp))
+            Text(if (s.horizonPacksTree.isBlank()) "No resource pack folder chosen" else "Packs folder: " + Uri.decode(s.horizonPacksTree).substringAfterLast(':'),
+                color = Palette.Muted, style = MaterialTheme.typography.bodySmall)
+            Text("Resource packs are imported on the launcher's Packs page, so they need their own folder (Horizon Android › Resource Packs).",
+                color = Palette.Muted, style = MaterialTheme.typography.bodySmall)
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                Button(onClick = { picking = Picking.PACKS; pickTree.launch(providerHint()) }) { Text("Choose Resource Packs folder") }
+                if (s.horizonPacksTree.isNotBlank()) OutlinedButton(onClick = { vm.settings.update { it.copy(horizonPacksTree = "") } }) { Text("Forget") }
             }
         }
 

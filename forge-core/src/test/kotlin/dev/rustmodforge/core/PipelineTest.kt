@@ -213,6 +213,10 @@ class PipelineTest {
             report.features.joinToString { it.name })
         assertTrue(report.features.any { it.name.startsWith("Vanilla loot tables changed") && it.status == FeatureStatus.IMPLEMENTED })
         assertTrue(report.outputs.any { it.kind.startsWith("resource pack") } && report.outputs.any { it.kind.startsWith("data pack") })
+        // The report says in one line what changes, and where the pack is installed.
+        assertTrue(report.verdict.startsWith("What changes in game"), report.verdict)
+        assertTrue(report.verdict.contains("bettersounds-resourcepack.zip"), report.verdict)
+        assertTrue(report.verdict.contains("Packs page, not Mods"), report.verdict)
     }
 
     /** A mod with its own content keeps its .hmod; only vanilla's files move to the packs. */
@@ -230,5 +234,7 @@ class PipelineTest {
         val report = ConversionPipeline(p).run().single()
         assertTrue(report.analysis.any { it.contains("Mixins") && it.contains("Reflection") }, report.analysis.toString())
         assertTrue(report.analysis.any { it.contains("1 mixins") })
+        // A mod whose behaviour is Java code converts to files that add nothing: say so.
+        assertTrue(report.verdict.startsWith("Installing these changes nothing"), report.verdict)
     }
 }

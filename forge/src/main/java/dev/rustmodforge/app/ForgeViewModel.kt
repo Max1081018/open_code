@@ -151,6 +151,13 @@ class ForgeViewModel(app: Application) : AndroidViewModel(app) {
         say(r.fold({ "Saved ${file.name} into $it. Open Horizon Android › Mods › Installed and switch it on." }, { "Export failed: ${it.message}" }))
     }
 
+    fun exportToHorizonPacks(file: File) = viewModelScope.launch {
+        val tree = settings.state.value.horizonPacksTree
+        if (tree.isBlank()) { say("Choose the Horizon Resource Packs folder first (Settings › Target launcher)"); return@launch }
+        val r = withContext(Dispatchers.IO) { runCatching { Exports.copyToTree(getApplication(), file, tree) } }
+        say(r.fold({ "Saved ${file.name} into $it. Open Horizon Android › Packs › Installed and switch it on." }, { "Export failed: ${it.message}" }))
+    }
+
     fun storageBytes(): Long = forge.projectsRoot.walkTopDown().filter { it.isFile }.sumOf { it.length() }
 
     fun clearCaches() = viewModelScope.launch {
