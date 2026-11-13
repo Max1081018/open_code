@@ -1,0 +1,333 @@
+package dev.rustmodforge.core.pipeline
+
+import dev.rustmodforge.core.ai.AiAssistant
+import dev.rustmodforge.core.analysis.MetadataReader
+import dev.rustmodforge.core.analysis.ModAnalyzer
+import dev.rustmodforge.core.archive.ArchiveLimits
+import dev.rustmodforge.core.archive.SafeArchive
+import dev.rustmodforge.core.build.BuildBackend
+import dev.rustmodforge.core.build.BuildResult
+import dev.rustmodforge.core.build.HorizonModChecker
+import dev.rustmodforge.core.build.Packager
+import dev.rustmodforge.core.build.Validator
+import dev.rustmodforge.core.bytecode.Disassembler
+import dev.rustmodforge.core.bytecode.JavaLayer
+import dev.rustmodforge.core.compat.HorizonCompat
+import dev.rustmodforge.core.compat.TargetId
+import dev.rustmodforge.core.geo.GeoParser
+import dev.rustmodforge.core.geo.RigAnimation
+import dev.rustmodforge.core.geo.RigModel
+import dev.rustmodforge.core.model.DependencyKind
+import dev.rustmodforge.core.model.EntityInfo
+import dev.rustmodforge.core.model.ModAnalysis
+import dev.rustmodforge.core.model.ResourceKind
+import dev.rustmodforge.core.report.ConversionReport
+import dev.rustmodforge.core.report.DependencyStatus
+import dev.rustmodforge.core.report.FeatureResult
+import dev.rustmodforge.core.report.FeatureStatus
+import dev.rustmodforge.core.report.OutputFile
+import dev.rustmodforge.core.report.StepResult
+import dev.rustmodforge.core.report.StepStatus
+import dev.rustmodforge.core.target.ContentModGenerator
+import dev.rustmodforge.core.target.FunctionBackend
+import dev.rustmodforge.core.target.NativeModGenerator
+import dev.rustmodforge.core.target.OutputTree
+import kotlinx.serialization.builtins.ListSerializer
+import java.io.File
+import java.time.Instant
+
+data class PipelineOptions(
+    val buildBackend: BuildBackend? = null,
+    val ai: AiAssistant? = null,
+    /** Horizon's own `cargo horizon-mod check`, built from each target's source (they differ). */
+    val horizonCheckers: Map<TargetId, HorizonModChecker> = emptyMap(),
+    val maxRepairs: Int = 3,
+    val limits: ArchiveLimits = ArchiveLimits(),
+)
+
+/**
+ * Runs a project's conversion, stage by stage, saving each stage so it can resume. One report
+ * per imported jar; all imported jars are known to each other for dependency resolution.
+ */
+class ConversionPipeline(
+    private val project: Project,
+    private val options: PipelineOptions = PipelineOptions(),
+    private val progress: ProgressListener = NoProgress,
+    private val cancel: CancellationToken = CancellationToken(),
+) {
+    companion object { const val ENGINE_VERSION = "0.1.0" }
+
+    private fun p(stage: Stage, f: Float, detail: String) = progress.onProgress(stage.label, f, detail)
+
+    fun run(): List<ConversionReport> {
+        val state = project.load()
+        val reports = ArrayList<ConversionReport>()
+        try {
+            val analyses = state.sources.mapIndexed { i, s ->
+                cancel.check()
+                analyze(File(project.input, s.fileName), s.sha256, i, state.sources.size)
+            }
+            project.update { it.copy(modIds = analyses.map { a -> MetadataReader.sanitizeId(a.metadata.modId) }) }
+            val provided = analyses.flatMap { a -> (a.metadata.declaredModIds + a.metadata.modId + a.nested.flatMap { n -> n.metadata.declaredModIds + n.metadata.modId }) }.toSet()
+            project.backupOutputs()
+            for ((i, a) in analyses.withIndex()) {
+                cancel.check()
+                reports += convert(a, File(project.input, state.sources[i].fileName), state, provided)
+            }
+            File(project.dir, "reports.json").writeText(Project.json.encodeToString(ListSerializer(ConversionReport.serializer()), reports))
+            project.update { it.copy(outputs = project.out.listFiles()?.map { f -> f.name }?.sorted() ?: emptyList(), lastError = null) }
+            return reports
+        } catch (e: CancelledException) {
+            project.update { it.copy(lastError = "Cancelled. Resume continues from the last finished stage.") }
+            throw e
+        } catch (e: Exception) {
+            project.update { it.copy(lastError = "${e::class.simpleName}: ${e.message}") }
+            throw e
+        }
+    }
+
+    private fun analysisFile(sha: String) = File(project.analysisDir, "$sha.json")
+    private fun layersFile(sha: String) = File(project.analysisDir, "$sha.layers.json")
+
+    private fun analyze(jar: File, sha: String, index: Int, count: Int): ModAnalysis {
+        val cached = analysisFile(sha)
+        if (cached.exists()) {
+            p(Stage.ANALYZE, 1f, "Using the saved analysis of ${jar.name}")
+            return Project.json.decodeFromString(ModAnalysis.serializer(), cached.readText())
+        }
+        project.stage(Stage.ANALYZE, StageState.RUNNING, jar.name)
+        val analyzer = ModAnalyzer(options.limits, { _, f, d -> progress.onProgress(Stage.ANALYZE.label, (index + f) / count, d) }, cancel, project.work)
+        val a = analyzer.analyze(jar)
+        project.analysisDir.mkdirs()
+        cached.writeText(Project.json.encodeToString(ModAnalysis.serializer(), a))
+        layersFile(sha).writeText(Project.json.encodeToString(ListSerializer(JavaLayer.serializer()), analyzer.lastExtras.javaLayers))
+        project.stage(Stage.ANALYZE, StageState.DONE, "${a.classes.size} classes, ${a.resources.size} files, ${a.entities.size} entities")
+        return a
+    }
+
+    private class Assets(val rig: RigModel?, val animations: List<RigAnimation>, val texture: String?, val glow: String?, val notes: List<String>)
+
+    /** Geometry, animations and textures of one entity, from GeckoLib files or a Java model layer. */
+    private fun assetsOf(e: EntityInfo, archive: SafeArchive, layers: List<JavaLayer>): Assets {
+        val notes = ArrayList<String>()
+        var rig: RigModel? = null
+        e.geoModel?.let { path ->
+            val models = runCatching { GeoParser.parseGeometry(archive.readText(path), path) }.getOrElse { notes += "$path does not parse: ${it.message}"; emptyList() }
+            rig = models.firstOrNull()
+            rig?.warnings?.forEach { notes += "$path: $it" }
+        }
+        if (rig == null) e.javaModelLayer?.let { ref -> layers.firstOrNull { "${it.ownerClass.replace('/', '.')}.${it.method}" == ref }?.let { rig = it.toRig() } }
+        val animations = e.animationFile?.let { path -> runCatching { GeoParser.parseAnimations(archive.readText(path)) }.getOrElse { notes += "$path does not parse: ${it.message}"; emptyList() } } ?: emptyList()
+        val texture = e.texture
+        val glow = texture?.let { t -> listOf("_glowmask.png", "_glow.png", "_e.png", "_emissive.png").map { t.removeSuffix(".png") + it }.firstOrNull { archive.contains(it) } }
+        return Assets(rig, animations, texture, glow, notes)
+    }
+
+    private fun convert(a: ModAnalysis, jar: File, state: ProjectState, provided: Set<String>): ConversionReport {
+        val quality = state.quality
+        val id = MetadataReader.sanitizeId(a.metadata.modId)
+        val features = ArrayList<FeatureResult>()
+        val steps = ArrayList<StepResult>()
+        val warnings = ArrayList<String>(a.warnings)
+        val outputs = ArrayList<OutputFile>()
+        val layers = layersFile(a.sha256).takeIf { it.exists() }?.let { Project.json.decodeFromString(ListSerializer(JavaLayer.serializer()), it.readText()) } ?: emptyList()
+
+        SafeArchive.open(jar, options.limits).use { archive ->
+            // ---- extraction of models and animations ----
+            project.stage(Stage.EXTRACT, StageState.RUNNING)
+            p(Stage.EXTRACT, 0f, "Reading models and animations")
+            val assets = a.entities.associate { it.id to assetsOf(it, archive, layers) }
+            assets.values.flatMap { it.notes }.forEach { warnings += it }
+            project.stage(Stage.EXTRACT, StageState.DONE, "${assets.values.count { it.rig != null }} models, ${assets.values.sumOf { it.animations.size }} animations")
+
+            // ---- behaviour reconstruction: optional AI pass over custom goals nothing recognised ----
+            var entities = a.entities
+            if (quality.reconstructsBehaviour) {
+                project.stage(Stage.RECONSTRUCT, StageState.RUNNING)
+                val ai = options.ai
+                if (quality.usesAi && ai != null) {
+                    entities = entities.map { e ->
+                        val unrecognised = e.goals.filter { g -> g.custom && e.traits.none { t -> t.evidence.any { it.startsWith(g.goal.substringAfterLast('.')) } } }
+                        var traits = e.traits
+                        for (g in unrecognised) {
+                            cancel.check()
+                            p(Stage.RECONSTRUCT, 0.5f, "Asking the AI about ${g.goal.substringAfterLast('.')}")
+                            traits = traits + ai.classifyGoal(g.goal, Disassembler.disassemble(archive, g.goal.replace('.', '/'), 12_000))
+                        }
+                        e.copy(traits = traits)
+                    }
+                }
+                project.stage(Stage.RECONSTRUCT, StageState.DONE, "${entities.sumOf { it.traits.size }} behaviours")
+            } else {
+                project.stage(Stage.RECONSTRUCT, StageState.SKIPPED, "Fast quality: no behaviour reconstruction")
+                for (e in entities) if (e.traits.isNotEmpty() || e.geoModel != null) features += FeatureResult("Behaviour", "Behaviour and model of ${e.id}", FeatureStatus.UNSUPPORTED,
+                    reason = "Fast quality converts data only; choose Advanced or Maximum fidelity to rebuild ${e.traits.size} behaviours and the model")
+            }
+
+            for (target in state.targets) {
+                cancel.check()
+                val tname = if (target == TargetId.HORIZON_ANDROID) "android" else "desktop"
+                // ---- content mod ----
+                project.stage(Stage.CONTENT, StageState.RUNNING, tname)
+                p(Stage.CONTENT, 0.2f, "Writing the $tname content mod")
+                val tree = OutputTree(File(project.build, "$tname/$id/hmod")).also { it.clear() }
+                val profile = HorizonCompat.profile(target)
+                val content = ContentModGenerator(a.copy(entities = entities), archive, tree, livingEntityTypes = profile.livingTemplates.isNotEmpty())
+                content.generate()
+                features += content.features.map { it.copy(target = tname) }
+                warnings += content.warnings.map { "[$tname] $it" }
+                if (target == TargetId.HORIZON_ANDROID && quality.reconstructsBehaviour && entities.isNotEmpty()) {
+                    val fb = FunctionBackend(content.id, tree, archive, quality.frameStep)
+                    fb.generate(entities.filter { it.id.startsWith("${content.id}:") }.map { e ->
+                        val s = assets.getValue(e.id)
+                        val hostile = content.isHostile(e)
+                        FunctionBackend.EntityPlan(e, s.rig, s.animations, s.texture, s.glow, ContentModGenerator.bodyFor(hostile),
+                            HorizonCompat.templateAttributes.getValue(if (hostile) "minecraft:zombie" else "minecraft:wandering_trader"))
+                    })
+                    features += fb.features.map { it.copy(target = tname) }
+                    warnings += fb.warnings.map { "[$tname] $it" }
+                }
+                project.stage(Stage.CONTENT, StageState.DONE, tname)
+
+                // ---- native Rust mod (desktop) ----
+                var nativeTree: OutputTree? = null
+                if (target == TargetId.HORIZON_DESKTOP && quality.reconstructsBehaviour && entities.isNotEmpty()) {
+                    project.stage(Stage.NATIVE, StageState.RUNNING)
+                    p(Stage.NATIVE, 0.5f, "Generating Rust")
+                    nativeTree = OutputTree(File(project.build, "desktop/$id/hnmod")).also { it.clear() }
+                    // The native mod draws with the rig texture the content mod carries.
+                    for (e in entities) assets.getValue(e.id).texture?.let { tree.copyFrom(archive, it, "assets/$id/textures/item/rig/${e.id.substringAfter(':')}.png") }
+                    val ng = NativeModGenerator(id, a.metadata.version.ifBlank { "0.0.0" }.replace(Regex("[^0-9A-Za-z.+-]"), "-"), nativeTree)
+                    ng.generate(entities.filter { it.id.startsWith("$id:") }.map { e ->
+                        val s = assets.getValue(e.id)
+                        NativeModGenerator.EntityPlan(e, s.rig, s.animations, s.texture != null)
+                    })
+                    features += ng.features
+                    project.stage(Stage.NATIVE, StageState.DONE)
+                } else if (target == TargetId.HORIZON_DESKTOP) project.stage(Stage.NATIVE, StageState.SKIPPED, "nothing needs code")
+
+                // ---- package ----
+                project.stage(Stage.PACKAGE, StageState.RUNNING)
+                val hmod = Packager.pack(tree.root, File(project.out, "$id-$tname.hmod"))
+                outputs += OutputFile(hmod.name, hmod.path, hmod.length(), Packager.sha256(hmod), tname, "content mod (.hmod)")
+                val hnmod = nativeTree?.let { Packager.pack(it.root, File(project.out, "$id.hnmod")) }
+                hnmod?.let { outputs += OutputFile(it.name, it.path, it.length(), Packager.sha256(it), tname, "native mod source (.hnmod)") }
+                project.stage(Stage.PACKAGE, StageState.DONE)
+
+                // ---- validate ----
+                project.stage(Stage.VALIDATE, StageState.RUNNING)
+                p(Stage.VALIDATE, 0.7f, "Validating ${hmod.name}")
+                val issues = Validator.validateHmod(hmod, target)
+                val errors = issues.filter { it.error }
+                steps += StepResult("Manifest, paths and references", if (errors.isEmpty()) StepStatus.PASSED else StepStatus.FAILED,
+                    if (errors.isEmpty()) "${issues.size} warnings" else "${errors.size} errors: ${errors.take(3).joinToString("; ")}", issues.joinToString("\n"), tname)
+                hnmod?.let { f ->
+                    val ni = Validator.validateHnmod(f)
+                    steps += StepResult("Native bundle structure", if (ni.none { it.error }) StepStatus.PASSED else StepStatus.FAILED, ni.joinToString("; ").ifEmpty { "ok" }, target = tname)
+                }
+                val checker = options.horizonCheckers[target]
+                if (checker != null && checker.available()) {
+                    val r = checker.check(hmod)
+                    steps += StepResult("Horizon's own checker (cargo horizon-mod check)", if (r.success) StepStatus.PASSED else StepStatus.FAILED, r.log.lines().take(4).joinToString(" "), r.log, tname)
+                } else {
+                    steps += StepResult("Horizon's own checker (cargo horizon-mod check)", StepStatus.NOT_RUN, "not installed on this device; RustMod Forge's validator ran instead", target = tname)
+                }
+                project.stage(Stage.VALIDATE, if (errors.isEmpty()) StageState.DONE else StageState.FAILED)
+
+                // ---- compile and repair ----
+                if (nativeTree != null) compileAndRepair(nativeTree, id, steps, tname)
+                else if (target == TargetId.HORIZON_ANDROID) steps += StepResult("Rust compilation", StepStatus.SKIPPED,
+                    "Horizon Android loads .hmod only; behaviours are data pack functions, which need no compiler", target = tname)
+
+                steps += StepResult("Runtime test in Horizon", StepStatus.NOT_RUN,
+                    "No Horizon game is available to RustMod Forge to load the mod; test it in the launcher. Nothing here claims it works in-game.", target = tname)
+            }
+            project.stage(Stage.TEST, StageState.SKIPPED, "no runtime available")
+        }
+
+        val report = ConversionReport(
+            modName = a.metadata.name, modId = a.metadata.modId, modVersion = a.metadata.version, sourceFile = a.sourceFile, sha256 = a.sha256,
+            loader = a.metadata.loader.name, minecraftVersion = a.metadata.minecraftVersion, quality = quality.label,
+            targets = state.targets.map { HorizonCompat.profile(it).name }, createdAt = Instant.now().toString(), engineVersion = ENGINE_VERSION,
+            analysis = analysisLines(a), features = features, build = steps, outputs = outputs, dependencies = dependencies(a, provided),
+            warnings = warnings.distinct(), aiUsage = options.ai?.let { it.usageSummary() + "\n" + it.log.joinToString("\n") { l -> "- $l" } } ?: "",
+        )
+        File(project.out, "$id-report.md").writeText(report.toMarkdown())
+        File(project.out, "$id-report.json").writeText(Project.json.encodeToString(ConversionReport.serializer(), report))
+        project.stage(Stage.REPORT, StageState.DONE)
+        p(Stage.REPORT, 1f, "Done")
+        return report
+    }
+
+    private fun compileAndRepair(tree: OutputTree, id: String, steps: MutableList<StepResult>, tname: String) {
+        val backend = options.buildBackend
+        if (backend == null || !backend.available()) {
+            project.stage(Stage.COMPILE, StageState.SKIPPED, "no build backend")
+            steps += StepResult("Rust compilation", StepStatus.NOT_RUN,
+                "No build backend: a phone cannot rebuild Horizon. Set a remote build server in Settings, or build on a PC with horizon-launcher native-build.", target = tname)
+            return
+        }
+        project.stage(Stage.COMPILE, StageState.RUNNING)
+        p(Stage.COMPILE, 0.8f, "Compiling with ${backend.name}")
+        var result: BuildResult = backend.check(tree.root, id)
+        var attempt = 0
+        val ai = options.ai
+        while (result.ran && !result.success && ai != null && attempt < options.maxRepairs) {
+            cancel.check()
+            attempt++
+            project.stage(Stage.REPAIR, StageState.RUNNING, "attempt $attempt")
+            val lib = "mixins/$id/api/src/lib.rs"
+            val text = tree.readText(lib)
+            val start = text.indexOf(NativeModGenerator.REGION_START); val end = text.indexOf(NativeModGenerator.REGION_END)
+            if (start < 0 || end < start) break
+            val errors = result.diagnostics.filter { it.level == "error" }.joinToString("\n") { "${it.file}:${it.line}: ${it.message}" }.ifEmpty { result.log.takeLast(4000) }
+            val fixed = ai.repairRegion(text.substring(start + NativeModGenerator.REGION_START.length, end), errors, NativeModGenerator.API_NOTES) ?: break
+            tree.putText(lib, text.substring(0, start + NativeModGenerator.REGION_START.length) + "\n" + fixed + "\n" + text.substring(end))
+            result = backend.check(tree.root, id)
+            steps += StepResult("Error repair attempt $attempt", if (result.success) StepStatus.PASSED else StepStatus.FAILED, "${result.diagnostics.count { it.level == "error" }} errors after the fix", target = tname)
+        }
+        if (attempt > 0) project.stage(Stage.REPAIR, if (result.success) StageState.DONE else StageState.FAILED)
+        steps += StepResult("Rust compilation (${backend.name})",
+            if (!result.ran) StepStatus.NOT_RUN else if (result.success) StepStatus.PASSED else StepStatus.FAILED,
+            if (!result.ran) result.log.take(300) else "${result.diagnostics.count { it.level == "error" }} errors, ${result.diagnostics.count { it.level == "warning" }} warnings",
+            result.log, tname)
+        project.stage(Stage.COMPILE, if (result.success) StageState.DONE else StageState.FAILED)
+        if (result.success && attempt > 0) {
+            // Re-pack the repaired source.
+            Packager.pack(tree.root, File(project.out, "$id.hnmod"))
+        }
+    }
+
+    private fun analysisLines(a: ModAnalysis): List<String> = buildList {
+        add("Jar inspected: ${a.resources.size} files, ${a.classes.size} classes (bytecode parsed, never executed).")
+        add("Loader ${a.metadata.loader}, Minecraft ${a.metadata.minecraftVersion.ifEmpty { "not declared" }}, ${a.metadata.dependencies.size} declared dependencies.")
+        add("${a.registrations.size} registrations: ${a.registrations.groupBy { it.kind }.entries.joinToString { "${it.value.size} ${it.key.name.lowercase()}" }}.")
+        add("${a.entities.size} entities; ${a.entities.sumOf { it.goals.size }} AI goals and ${a.entities.sumOf { it.traits.size }} behaviours recognised.")
+        add("${a.resourcesOf(ResourceKind.TEXTURE).size} textures, ${a.geoModels.size} GeckoLib models, ${a.animations.size} animation files, ${a.sounds.size} sound events.")
+        if (a.mixins.isNotEmpty()) add("${a.mixins.size} mixins (not translatable: they patch Java classes).")
+        if (a.unsupportedApis.isNotEmpty()) add("APIs without a Horizon equivalent: ${a.unsupportedApis.joinToString { it.api }}.")
+        if (a.nested.isNotEmpty()) add("${a.nested.size} nested jars analysed: ${a.nested.joinToString { it.metadata.modId }}.")
+    }
+
+    private fun dependencies(a: ModAnalysis, provided: Set<String>): List<DependencyStatus> {
+        val platform = setOf("minecraft", "forge", "neoforge", "fabricloader", "fabric", "fabric-api", "fabric_api", "quilt_loader", "quilted_fabric_api", "java")
+        val reconstructed = mapOf("geckolib" to "GeckoLib models and animations are converted by RustMod Forge (display rig on Android, mob_submit on desktop)",
+            "geckolib3" to "GeckoLib models and animations are converted by RustMod Forge")
+        val viewers = setOf("jei", "rei", "emi", "roughlyenoughitems")
+        val config = setOf("cloth-config", "cloth_config", "cloth-config2", "modmenu", "configured", "yet_another_config_lib_v3", "yacl")
+        return a.metadata.dependencies.map { d ->
+            val (status, note) = when {
+                d.kind == DependencyKind.INCOMPATIBLE -> "incompatible" to "the original declares it incompatible; nothing to convert"
+                d.kind == DependencyKind.EMBEDDED -> "embedded" to "bundled inside the jar; analysed as a nested jar"
+                d.id in platform -> "platform" to "provided by Horizon itself (it is the game and the loader)"
+                d.id in reconstructed -> "reconstructed" to reconstructed.getValue(d.id)
+                d.id in provided -> "imported" to "converted alongside from the files you imported"
+                d.id in viewers -> "replaced" to "recipe viewers: Horizon has its own Recipes mod"
+                d.id in config -> "not needed" to "config screens are not reproduced; generated mods have no Java config"
+                d.kind == DependencyKind.OPTIONAL -> "optional, missing" to "optional integration left out"
+                else -> "missing" to "not imported: whatever ${d.id} provides to this mod (APIs, items, rendering) is not available. Import its jar too if you are allowed to use it."
+            }
+            DependencyStatus(d.id, d.kind.name, d.versionRange, status, note)
+        }
+    }
+}

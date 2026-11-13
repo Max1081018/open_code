@@ -1,0 +1,175 @@
+package dev.rustmodforge.core
+
+import dev.rustmodforge.core.build.HorizonModChecker
+import dev.rustmodforge.core.build.LocalCargoBackend
+import dev.rustmodforge.core.build.Validator
+import dev.rustmodforge.core.compat.TargetId
+import dev.rustmodforge.core.pipeline.CancellationToken
+import dev.rustmodforge.core.pipeline.CancelledException
+import dev.rustmodforge.core.pipeline.ConversionPipeline
+import dev.rustmodforge.core.pipeline.PipelineOptions
+import dev.rustmodforge.core.pipeline.Project
+import dev.rustmodforge.core.pipeline.Quality
+import dev.rustmodforge.core.pipeline.Stage
+import dev.rustmodforge.core.pipeline.StageState
+import dev.rustmodforge.core.report.FeatureStatus
+import dev.rustmodforge.core.report.StepStatus
+import dev.rustmodforge.core.util.JsonTree
+import dev.rustmodforge.core.util.MiniToml
+import java.io.File
+import java.util.zip.ZipFile
+import kotlin.test.Test
+import kotlin.test.assertEquals
+import kotlin.test.assertFailsWith
+import kotlin.test.assertTrue
+
+class PipelineTest {
+    private fun project(name: String, quality: Quality, vararg jars: File, targets: List<TargetId> = listOf(TargetId.HORIZON_ANDROID, TargetId.HORIZON_DESKTOP)) =
+        Project.create(Fixtures.tempDir("proj"), name, quality, targets, jars.toList())
+
+    /** Optional external checks: Horizon's checker and a Horizon checkout, when the environment provides them. */
+    private val checkers = buildMap {
+        System.getenv("RMF_HORIZON_MOD_BIN")?.let { put(TargetId.HORIZON_ANDROID, HorizonModChecker(File(it))) }
+        System.getenv("RMF_HORIZON_MOD_BIN_UPSTREAM")?.let { put(TargetId.HORIZON_DESKTOP, HorizonModChecker(File(it))) }
+    }
+    private val horizonSrc = System.getenv("RMF_HORIZON_SRC")?.let { File(it) }
+
+    private fun entries(f: File) = ZipFile(f).use { z -> z.entries().toList().map { it.name }.toSet() }
+    private fun text(f: File, entry: String) = ZipFile(f).use { z -> z.getInputStream(z.getEntry(entry)).readBytes().decodeToString() }
+
+    @Test
+    fun horrorModAdvancedBothTargets() {
+        val p = project("fog", Quality.ADVANCED, Fixtures.jar("fog_horror"))
+        val opts = PipelineOptions(horizonCheckers = checkers, buildBackend = horizonSrc?.let { LocalCargoBackend(it) })
+        val report = ConversionPipeline(p, opts).run().single()
+        val android = File(p.out, "fogwatcher-android.hmod")
+        val desktop = File(p.out, "fogwatcher-desktop.hmod")
+        val native = File(p.out, "fogwatcher.hnmod")
+        assertTrue(android.exists() && desktop.exists() && native.exists())
+
+        // Our validator finds no errors on any output.
+        assertEquals(emptyList(), Validator.validateHmod(android, TargetId.HORIZON_ANDROID).filter { it.error })
+        assertEquals(emptyList(), Validator.validateHmod(desktop, TargetId.HORIZON_DESKTOP).filter { it.error })
+        assertEquals(emptyList(), Validator.validateHnmod(native).filter { it.error })
+
+        val a = entries(android)
+        // Content carried, folders renamed to 1.21+ names, item definitions added.
+        assertTrue("assets/fogwatcher/textures/entity/the_watcher.png" in a)
+        assertTrue("data/fogwatcher/loot_table/entities/the_watcher.json" in a)
+        assertTrue("data/fogwatcher/recipe/fog_lantern.json" in a)
+        assertTrue("assets/fogwatcher/items/fog_essence.json" in a)
+        assertTrue("data/fogwatcher/forge/biome_modifier/watcher_spawns.json" in entries(desktop))
+        // Horizon Android declares no living mob types: the creature is a tagged zombie set up by functions.
+        assertTrue(a.none { it.contains("/horizon/entity_type/") })
+        assertTrue("data/fogwatcher/function/summon/the_watcher.mcfunction" in a)
+        assertTrue("data/fogwatcher/predicate/spawn/the_watcher.json" in a)
+        assertTrue(a.none { it.contains("biome_modifier") })
+        val init = text(android, "data/fogwatcher/function/e/the_watcher/init.mcfunction")
+        assertTrue(init.contains("attribute @s minecraft:max_health base set 80"), init)
+        assertTrue(init.contains("DeathLootTable:\"fogwatcher:entities/the_watcher\""), init)
+        // Upstream declares it from the zombie template with the mod's attributes.
+        val decl = JsonTree.obj(JsonTree.parse(text(desktop, "data/fogwatcher/horizon/entity_type/the_watcher.json")))!!
+        assertEquals("minecraft:zombie", decl["template"])
+        assertEquals(80L, JsonTree.obj(decl["attributes"])!!["minecraft:max_health"])
+        // Rig, behaviour functions and tick tag.
+        assertTrue("assets/fogwatcher/models/item/rig/the_watcher/head.json" in a)
+        assertTrue("assets/fogwatcher/items/rig/the_watcher/head.json" in a)
+        assertTrue("assets/fogwatcher/textures/item/rig/the_watcher_glow.png" in a)
+        assertTrue("data/minecraft/tags/function/tick.json" in a)
+        val ai = text(android, "data/fogwatcher/function/e/the_watcher/tick.mcfunction")
+        assertTrue(ai.contains("function fogwatcher:e/the_watcher/vanish"), ai)
+        assertTrue(ai.contains("effect give @a[distance=..16,gamemode=!spectator] minecraft:darkness"), ai)
+        assertTrue(ai.contains("#looked"), ai)
+        assertTrue(a.any { it.startsWith("data/fogwatcher/function/e/the_watcher/anim/") })
+        // Loot upgraded: no 1.21.1-style keys remain.
+        assertTrue(!text(android, "data/fogwatcher/loot_table/entities/the_watcher.json").contains("\"functions\""))
+        // The desktop content mod has no functions (the native mod does that work there).
+        assertTrue(entries(desktop).none { it.endsWith(".mcfunction") })
+        val manifest = MiniToml.parse(text(android, "horizon-mod.toml"))
+        assertEquals("0.2", manifest["api"]); assertEquals("both", manifest["side"])
+
+        val lib = text(native, "mixins/fogwatcher/api/src/lib.rs")
+        assertTrue(lib.contains("impl Hooks for Mod"))
+        assertTrue(lib.contains("goals::MeleeAttack::new(1.2, false)"), lib)
+        assertTrue(lib.contains("VanishWhenNear { distance: 8.0 }"))
+        assertTrue(lib.contains("Stalk { keep: 24.0"))
+
+        // Report: statuses with reasons, honest build steps.
+        val byName = report.features.associateBy { it.name + "|" + it.target }
+        assertTrue(report.features.any { it.status == FeatureStatus.PARTIAL && it.name.startsWith("Model of fogwatcher:the_watcher") && it.target == "android" })
+        assertTrue(report.features.filter { it.status != FeatureStatus.IMPLEMENTED }.all { it.reason.isNotBlank() }, byName.keys.toString())
+        assertTrue(report.build.any { it.name.startsWith("Runtime test") && it.status == StepStatus.NOT_RUN })
+        if (horizonSrc == null) assertTrue(report.build.any { it.name.startsWith("Rust compilation") && it.status == StepStatus.NOT_RUN })
+        else assertEquals(StepStatus.PASSED, report.build.first { it.name.startsWith("Rust compilation") && it.target == "desktop" }.status,
+            report.build.first { it.name.startsWith("Rust compilation") && it.target == "desktop" }.log.takeLast(3000))
+        if (checkers.isNotEmpty()) assertTrue(report.build.filter { it.name.startsWith("Horizon's own checker") && it.status != StepStatus.NOT_RUN }.all { it.status == StepStatus.PASSED },
+            report.build.filter { it.name.startsWith("Horizon's own checker") }.joinToString { it.log })
+        assertTrue(report.dependencies.single { it.id == "geckolib" }.status == "reconstructed")
+        assertTrue(report.dependencies.single { it.id == "loudfog" }.status == "incompatible")
+        assertTrue(File(p.out, "fogwatcher-report.md").readText().contains("## Reconstruction"))
+        assertEquals(StageState.DONE, p.load().stages.single { it.stage == Stage.REPORT }.state)
+    }
+
+    @Test
+    fun fastQualityIsContentOnly() {
+        val p = project("fog-fast", Quality.FAST, Fixtures.jar("fog_horror"), targets = listOf(TargetId.HORIZON_ANDROID))
+        val report = ConversionPipeline(p).run().single()
+        val android = File(p.out, "fogwatcher-android.hmod")
+        assertTrue(entries(android).none { it.endsWith(".mcfunction") || it.contains("/rig/") })
+        assertTrue(!File(p.out, "fogwatcher.hnmod").exists())
+        assertTrue(report.features.any { it.category == "Behaviour" && it.status == FeatureStatus.UNSUPPORTED })
+    }
+
+    @Test
+    fun maximumQualitySamplesEveryTick() {
+        val p = project("fog-max", Quality.MAXIMUM, Fixtures.jar("fog_horror"), targets = listOf(TargetId.HORIZON_ANDROID))
+        ConversionPipeline(p).run()
+        val frames = entries(File(p.out, "fogwatcher-android.hmod")).filter { it.contains("/anim/1/f") }
+        // The walk clip is 1 s: 20 frames at every tick (Advanced writes 10).
+        assertEquals(20, frames.size)
+    }
+
+    @Test
+    fun simpleAndJavaModelModsConvertTogether() {
+        val p = project("multi", Quality.ADVANCED, Fixtures.jar("simple_fabric"), Fixtures.jar("java_model_mob"), Fixtures.jar("content_only"))
+        val reports = ConversionPipeline(p, PipelineOptions(horizonCheckers = checkers, buildBackend = horizonSrc?.let { LocalCargoBackend(it) })).run()
+        assertEquals(3, reports.size)
+        for (f in p.out.listFiles()!!.filter { it.name.endsWith(".hmod") }) {
+            val target = if (f.name.contains("-android")) TargetId.HORIZON_ANDROID else TargetId.HORIZON_DESKTOP
+            assertEquals(emptyList(), Validator.validateHmod(f, target).filter { it.error }, f.name)
+        }
+        val simple = File(p.out, "simplemod-android.hmod")
+        assertTrue("data/simplemod/horizon/item/ruby.json" in entries(simple))
+        assertTrue("data/simplemod/horizon/block/ruby_block.json" in entries(simple))
+        assertTrue("data/c/tags/item/gems.json" in entries(simple))
+        val recipe = text(simple, "data/simplemod/recipe/ruby_block.json")
+        assertTrue(recipe.contains("\"#\": \"simplemod:ruby\""), recipe)
+        // The Java-model mob gets a rig on Android and a drawn model on desktop.
+        assertTrue(entries(File(p.out, "ghouls-android.hmod")).any { it.startsWith("assets/ghouls/models/item/rig/ghoul/") })
+        assertTrue(text(File(p.out, "ghouls.hnmod"), "mixins/ghouls/api/src/lib.rs").contains("GHOUL_BONES"))
+        if (horizonSrc != null) assertEquals(StepStatus.PASSED, reports.single { it.modId == "ghouls" }.build.first { it.name.startsWith("Rust compilation") && it.target == "desktop" }.status)
+    }
+
+    @Test
+    fun cancelAndResume() {
+        val p = project("resume", Quality.ADVANCED, Fixtures.jar("fog_horror"), targets = listOf(TargetId.HORIZON_ANDROID))
+        val token = CancellationToken()
+        var seen = 0
+        assertFailsWith<CancelledException> {
+            ConversionPipeline(p, progress = { _, _, _ -> if (++seen == 5) token.cancel() }, cancel = token).run()
+        }
+        assertTrue(p.load().lastError!!.startsWith("Cancelled"))
+        // Resume: a fresh run finishes and reuses nothing it should not.
+        val report = ConversionPipeline(p).run().single()
+        assertEquals("fogwatcher", report.modId)
+        assertTrue(File(p.out, "fogwatcher-android.hmod").exists())
+    }
+
+    @Test
+    fun unsupportedApisAreReportedNotHidden() {
+        val p = project("bad", Quality.ADVANCED, Fixtures.jar("unsupported_apis"), targets = listOf(TargetId.HORIZON_ANDROID))
+        val report = ConversionPipeline(p).run().single()
+        assertTrue(report.analysis.any { it.contains("Mixins") && it.contains("Reflection") }, report.analysis.toString())
+        assertTrue(report.analysis.any { it.contains("1 mixins") })
+    }
+}

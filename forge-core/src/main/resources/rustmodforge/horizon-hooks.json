@@ -1,0 +1,2793 @@
+{
+ "source": {
+  "repository": "github.com/horizon-rust/horizon",
+  "revision": "6c4c0347f9926e3b1d5994e7fb8b1ba5e68ddf70",
+  "file": "native-hooks.json",
+  "nativeHooksApi": 415
+ },
+ "hooks": [
+  {
+   "name": "frame",
+   "version": 1,
+   "side": "client",
+   "contract": "listen"
+  },
+  {
+   "name": "tick",
+   "version": 1,
+   "side": "",
+   "contract": "listen"
+  },
+  {
+   "name": "visuals",
+   "version": 1,
+   "side": "",
+   "contract": "listen"
+  },
+  {
+   "name": "emissive",
+   "version": 1,
+   "side": "",
+   "contract": "collect"
+  },
+  {
+   "name": "world_lifecycle",
+   "version": 1,
+   "side": "server",
+   "contract": "listen"
+  },
+  {
+   "name": "server_about_to_start",
+   "version": 1,
+   "side": "server",
+   "contract": "listen"
+  },
+  {
+   "name": "server_stopping",
+   "version": 1,
+   "side": "server",
+   "contract": "listen"
+  },
+  {
+   "name": "server_tick",
+   "version": 1,
+   "side": "server",
+   "contract": "listen"
+  },
+  {
+   "name": "level_tick_pre",
+   "version": 1,
+   "side": "server",
+   "contract": "listen"
+  },
+  {
+   "name": "level_tick_post",
+   "version": 1,
+   "side": "server",
+   "contract": "listen"
+  },
+  {
+   "name": "block_changed",
+   "version": 1,
+   "side": "",
+   "contract": "listen"
+  },
+  {
+   "name": "neighbor_changed",
+   "version": 1,
+   "side": "",
+   "contract": "listen"
+  },
+  {
+   "name": "random_tick",
+   "version": 1,
+   "side": "",
+   "contract": "cancel"
+  },
+  {
+   "name": "tick_block",
+   "version": 1,
+   "side": "",
+   "contract": "cancel"
+  },
+  {
+   "name": "update_shape",
+   "version": 1,
+   "side": "",
+   "contract": "replace"
+  },
+  {
+   "name": "hud",
+   "version": 1,
+   "side": "",
+   "contract": "listen"
+  },
+  {
+   "name": "key",
+   "version": 1,
+   "side": "",
+   "contract": "listen"
+  },
+  {
+   "name": "wheel",
+   "version": 1,
+   "side": "",
+   "contract": "cancel"
+  },
+  {
+   "name": "command",
+   "version": 1,
+   "side": "",
+   "contract": "cancel"
+  },
+  {
+   "name": "commands",
+   "version": 1,
+   "side": "",
+   "contract": "collect"
+  },
+  {
+   "name": "zoom",
+   "version": 1,
+   "side": "",
+   "contract": "replace"
+  },
+  {
+   "name": "minimap",
+   "version": 1,
+   "side": "",
+   "contract": "replace"
+  },
+  {
+   "name": "mods",
+   "version": 1,
+   "side": "",
+   "contract": "collect"
+  },
+  {
+   "name": "settings",
+   "version": 1,
+   "side": "",
+   "contract": "collect"
+  },
+  {
+   "name": "settings_click",
+   "version": 1,
+   "side": "",
+   "contract": "listen"
+  },
+  {
+   "name": "panel_event",
+   "version": 1,
+   "side": "",
+   "contract": "listen"
+  },
+  {
+   "name": "block_entity",
+   "version": 1,
+   "side": "",
+   "contract": "replace"
+  },
+  {
+   "name": "block_entity_ticks",
+   "version": 1,
+   "side": "",
+   "contract": "listen"
+  },
+  {
+   "name": "block_entity_tick",
+   "version": 1,
+   "side": "",
+   "contract": "listen"
+  },
+  {
+   "name": "block_entity_update_tag",
+   "version": 1,
+   "side": "",
+   "contract": "replace"
+  },
+  {
+   "name": "block_entity_container",
+   "version": 1,
+   "side": "",
+   "contract": "replace"
+  },
+  {
+   "name": "screen",
+   "version": 1,
+   "side": "",
+   "contract": "replace"
+  },
+  {
+   "name": "screen_draw",
+   "version": 1,
+   "side": "",
+   "contract": "listen"
+  },
+  {
+   "name": "screen_click",
+   "version": 1,
+   "side": "",
+   "contract": "replace"
+  },
+  {
+   "name": "screen_tooltip",
+   "version": 1,
+   "side": "",
+   "contract": "collect"
+  },
+  {
+   "name": "menu_button",
+   "version": 1,
+   "side": "",
+   "contract": "listen"
+  },
+  {
+   "name": "register_commands",
+   "version": 1,
+   "side": "server",
+   "contract": "collect"
+  },
+  {
+   "name": "perform_command",
+   "version": 1,
+   "side": "",
+   "contract": "cancel"
+  },
+  {
+   "name": "menu_clicked",
+   "version": 1,
+   "side": "",
+   "contract": "listen"
+  },
+  {
+   "name": "menu_closed",
+   "version": 1,
+   "side": "",
+   "contract": "listen"
+  },
+  {
+   "name": "tooltip",
+   "version": 1,
+   "side": "",
+   "contract": "collect"
+  },
+  {
+   "name": "use_item_on",
+   "version": 1,
+   "side": "",
+   "contract": "cancel"
+  },
+  {
+   "name": "use_item",
+   "version": 1,
+   "side": "server",
+   "contract": "cancel"
+  },
+  {
+   "name": "destroy_block",
+   "version": 1,
+   "side": "server",
+   "contract": "cancel"
+  },
+  {
+   "name": "place_block",
+   "version": 1,
+   "side": "server",
+   "contract": "listen"
+  },
+  {
+   "name": "right_click_block",
+   "version": 1,
+   "side": "server",
+   "contract": "cancel"
+  },
+  {
+   "name": "block_spread",
+   "version": 1,
+   "side": "",
+   "contract": "cancel"
+  },
+  {
+   "name": "piston_move",
+   "version": 1,
+   "side": "",
+   "contract": "cancel"
+  },
+  {
+   "name": "explosion_detonate",
+   "version": 1,
+   "side": "server",
+   "contract": "collect"
+  },
+  {
+   "name": "fill_bucket",
+   "version": 1,
+   "side": "",
+   "contract": "cancel"
+  },
+  {
+   "name": "attack_entity",
+   "version": 1,
+   "side": "server",
+   "contract": "cancel"
+  },
+  {
+   "name": "net_from_client",
+   "version": 1,
+   "side": "",
+   "contract": "listen"
+  },
+  {
+   "name": "net_from_server",
+   "version": 1,
+   "side": "",
+   "contract": "listen"
+  },
+  {
+   "name": "player_died",
+   "version": 1,
+   "side": "",
+   "contract": "listen"
+  },
+  {
+   "name": "mob_spawned",
+   "version": 1,
+   "side": "",
+   "contract": "listen"
+  },
+  {
+   "name": "mob_killed",
+   "version": 1,
+   "side": "",
+   "contract": "listen"
+  },
+  {
+   "name": "item_dropped",
+   "version": 1,
+   "side": "server",
+   "contract": "listen"
+  },
+  {
+   "name": "item_picked_up",
+   "version": 1,
+   "side": "server",
+   "contract": "cancel"
+  },
+  {
+   "name": "hurt_enemy",
+   "version": 1,
+   "side": "",
+   "contract": "listen"
+  },
+  {
+   "name": "inventory_tick",
+   "version": 1,
+   "side": "",
+   "contract": "listen"
+  },
+  {
+   "name": "on_equip",
+   "version": 1,
+   "side": "",
+   "contract": "listen"
+  },
+  {
+   "name": "block_signal",
+   "version": 1,
+   "side": "",
+   "contract": "listen"
+  },
+  {
+   "name": "is_signal_source",
+   "version": 1,
+   "side": "",
+   "contract": "listen"
+  },
+  {
+   "name": "health_hud",
+   "version": 1,
+   "side": "",
+   "contract": "replace"
+  },
+  {
+   "name": "interact_entity",
+   "version": 1,
+   "side": "server",
+   "contract": "cancel"
+  },
+  {
+   "name": "left_click_block",
+   "version": 1,
+   "side": "server",
+   "contract": "cancel"
+  },
+  {
+   "name": "player_tick",
+   "version": 1,
+   "side": "server",
+   "contract": "listen"
+  },
+  {
+   "name": "entity_join_level",
+   "version": 1,
+   "side": "server",
+   "contract": "cancel"
+  },
+  {
+   "name": "living_incoming_damage",
+   "version": 1,
+   "side": "server",
+   "contract": "cancel"
+  },
+  {
+   "name": "menu_button_v2",
+   "version": 1,
+   "side": "",
+   "contract": "listen"
+  },
+  {
+   "name": "entity_leave_level",
+   "version": 1,
+   "side": "server",
+   "contract": "listen"
+  },
+  {
+   "name": "block_entity_fluids",
+   "version": 1,
+   "side": "",
+   "contract": "replace"
+  },
+  {
+   "name": "should_apply_effect_tick_this_tick",
+   "version": 1,
+   "side": "",
+   "contract": "listen"
+  },
+  {
+   "name": "apply_effect_tick",
+   "version": 1,
+   "side": "",
+   "contract": "listen"
+  },
+  {
+   "name": "on_effect_added",
+   "version": 1,
+   "side": "",
+   "contract": "listen"
+  },
+  {
+   "name": "mob_effect_added",
+   "version": 1,
+   "side": "server",
+   "contract": "listen"
+  },
+  {
+   "name": "chunk_load",
+   "version": 1,
+   "side": "server",
+   "contract": "listen"
+  },
+  {
+   "name": "chunk_unload",
+   "version": 1,
+   "side": "server",
+   "contract": "listen"
+  },
+  {
+   "name": "player_logged_in",
+   "version": 1,
+   "side": "server",
+   "contract": "listen"
+  },
+  {
+   "name": "player_logged_out",
+   "version": 1,
+   "side": "server",
+   "contract": "listen"
+  },
+  {
+   "name": "world_drawn",
+   "version": 1,
+   "side": "client",
+   "contract": "listen"
+  },
+  {
+   "name": "render_needs",
+   "version": 1,
+   "side": "",
+   "contract": "collect"
+  },
+  {
+   "name": "item_bar",
+   "version": 1,
+   "side": "",
+   "contract": "listen"
+  },
+  {
+   "name": "has_analog_output",
+   "version": 1,
+   "side": "",
+   "contract": "collect"
+  },
+  {
+   "name": "analog_output",
+   "version": 1,
+   "side": "",
+   "contract": "collect"
+  },
+  {
+   "name": "component_types",
+   "version": 1,
+   "side": "",
+   "contract": "collect"
+  },
+  {
+   "name": "dispense_item",
+   "version": 1,
+   "side": "server",
+   "contract": "replace"
+  },
+  {
+   "name": "tooltip_component",
+   "version": 1,
+   "side": "client",
+   "contract": "replace"
+  },
+  {
+   "name": "tooltip_component_draw",
+   "version": 1,
+   "side": "client",
+   "contract": "listen"
+  },
+  {
+   "name": "can_survive",
+   "version": 1,
+   "side": "",
+   "contract": "replace"
+  },
+  {
+   "name": "may_place_on",
+   "version": 1,
+   "side": "",
+   "contract": "replace"
+  },
+  {
+   "name": "block_entity_submit",
+   "version": 1,
+   "side": "",
+   "contract": "listen"
+  },
+  {
+   "name": "block_entity_render_bounding_box",
+   "version": 1,
+   "side": "",
+   "contract": "collect"
+  },
+  {
+   "name": "is_valid_bonemeal_target",
+   "version": 1,
+   "side": "",
+   "contract": "replace"
+  },
+  {
+   "name": "is_bonemeal_success",
+   "version": 1,
+   "side": "",
+   "contract": "collect"
+  },
+  {
+   "name": "perform_bonemeal",
+   "version": 1,
+   "side": "",
+   "contract": "listen"
+  },
+  {
+   "name": "block_step_on",
+   "version": 1,
+   "side": "server",
+   "contract": "listen"
+  },
+  {
+   "name": "block_entity_inside",
+   "version": 1,
+   "side": "server",
+   "contract": "listen"
+  },
+  {
+   "name": "block_fall_on",
+   "version": 1,
+   "side": "server",
+   "contract": "collect"
+  },
+  {
+   "name": "consume_effect",
+   "version": 1,
+   "side": "",
+   "contract": "listen"
+  },
+  {
+   "name": "loot_table_load",
+   "version": 1,
+   "side": "",
+   "contract": "collect"
+  },
+  {
+   "name": "loot_drops",
+   "version": 1,
+   "side": "server",
+   "contract": "collect"
+  },
+  {
+   "name": "state_for_placement",
+   "version": 1,
+   "side": "",
+   "contract": "replace"
+  },
+  {
+   "name": "enchant_effect",
+   "version": 1,
+   "side": "",
+   "contract": "listen"
+  },
+  {
+   "name": "screen_render_post",
+   "version": 1,
+   "side": "client",
+   "contract": "listen"
+  },
+  {
+   "name": "modify_default_components",
+   "version": 1,
+   "side": "both",
+   "contract": "collect"
+  },
+  {
+   "name": "screen_mouse_button_pressed_pre",
+   "version": 1,
+   "side": "client",
+   "contract": "cancel"
+  },
+  {
+   "name": "screen_mouse_button_released_pre",
+   "version": 1,
+   "side": "client",
+   "contract": "cancel"
+  },
+  {
+   "name": "camera_shake",
+   "version": 1,
+   "side": "",
+   "contract": "listen"
+  },
+  {
+   "name": "shader_params",
+   "version": 1,
+   "side": "",
+   "contract": "listen"
+  },
+  {
+   "name": "block_highlight",
+   "version": 1,
+   "side": "client",
+   "contract": "cancel"
+  },
+  {
+   "name": "render_hand",
+   "version": 1,
+   "side": "client",
+   "contract": "cancel"
+  },
+  {
+   "name": "client_resources_reloaded",
+   "version": 1,
+   "side": "client",
+   "contract": "listen"
+  },
+  {
+   "name": "item_decorations",
+   "version": 1,
+   "side": "client",
+   "contract": "listen"
+  },
+  {
+   "name": "use_duration",
+   "version": 1,
+   "side": "",
+   "contract": "listen"
+  },
+  {
+   "name": "use_animation",
+   "version": 1,
+   "side": "client",
+   "contract": "listen"
+  },
+  {
+   "name": "can_eat",
+   "version": 1,
+   "side": "",
+   "contract": "listen"
+  },
+  {
+   "name": "living_entity_use_item_start",
+   "version": 1,
+   "side": "",
+   "contract": "cancel"
+  },
+  {
+   "name": "living_entity_use_item_finish",
+   "version": 1,
+   "side": "server",
+   "contract": "listen"
+  },
+  {
+   "name": "screen_mouse_scrolled_pre",
+   "version": 1,
+   "side": "client",
+   "contract": "cancel"
+  },
+  {
+   "name": "player_command",
+   "version": 1,
+   "side": "server",
+   "contract": "cancel"
+  },
+  {
+   "name": "perform_console_command",
+   "version": 1,
+   "side": "",
+   "contract": "cancel"
+  },
+  {
+   "name": "screen_key_pressed_pre",
+   "version": 1,
+   "side": "client",
+   "contract": "cancel"
+  },
+  {
+   "name": "screen_char_typed_pre",
+   "version": 1,
+   "side": "client",
+   "contract": "cancel"
+  },
+  {
+   "name": "data_pack_files",
+   "version": 1,
+   "side": "",
+   "contract": "collect"
+  },
+  {
+   "name": "biome_colors",
+   "version": 1,
+   "side": "client",
+   "contract": "listen"
+  },
+  {
+   "name": "server_data_loaded",
+   "version": 1,
+   "side": "server",
+   "contract": "listen"
+  },
+  {
+   "name": "compute_fov",
+   "version": 1,
+   "side": "client",
+   "contract": "listen"
+  },
+  {
+   "name": "mob_submit",
+   "version": 1,
+   "side": "client",
+   "contract": "cancel"
+  },
+  {
+   "name": "camera_distance",
+   "version": 1,
+   "side": "client",
+   "contract": "listen"
+  },
+  {
+   "name": "compute_fog_color",
+   "version": 1,
+   "side": "client",
+   "contract": "listen"
+  },
+  {
+   "name": "mouse_button_pre",
+   "version": 1,
+   "side": "client",
+   "contract": "cancel"
+  },
+  {
+   "name": "mouse_button_post",
+   "version": 1,
+   "side": "client",
+   "contract": "listen"
+  },
+  {
+   "name": "player_respawned",
+   "version": 1,
+   "side": "server",
+   "contract": "listen"
+  },
+  {
+   "name": "render_fog",
+   "version": 1,
+   "side": "client",
+   "contract": "listen"
+  },
+  {
+   "name": "screen_key_released_pre",
+   "version": 1,
+   "side": "client",
+   "contract": "cancel"
+  },
+  {
+   "name": "music",
+   "version": 1,
+   "side": "client",
+   "contract": "listen"
+  },
+  {
+   "name": "music_layers",
+   "version": 1,
+   "side": "client",
+   "contract": "collect"
+  },
+  {
+   "name": "datapack_sync",
+   "version": 1,
+   "side": "server",
+   "contract": "collect"
+  },
+  {
+   "name": "recipes_received",
+   "version": 1,
+   "side": "client",
+   "contract": "listen"
+  },
+  {
+   "name": "input_key",
+   "version": 1,
+   "side": "client",
+   "contract": "listen"
+  },
+  {
+   "name": "mouse_scrolling",
+   "version": 1,
+   "side": "client",
+   "contract": "cancel"
+  },
+  {
+   "name": "screen_mouse_dragged_pre",
+   "version": 1,
+   "side": "client",
+   "contract": "cancel"
+  },
+  {
+   "name": "mod_container_viewers",
+   "version": 1,
+   "side": "server",
+   "contract": "listen"
+  },
+  {
+   "name": "living_knockback",
+   "version": 1,
+   "side": "server",
+   "contract": "cancel"
+  },
+  {
+   "name": "experience_orb_can_merge",
+   "version": 1,
+   "side": "server",
+   "contract": "listen"
+  },
+  {
+   "name": "experience_orb_merge",
+   "version": 1,
+   "side": "server",
+   "contract": "cancel"
+  },
+  {
+   "name": "menu_slot_rules",
+   "version": 1,
+   "side": "server",
+   "contract": "listen"
+  },
+  {
+   "name": "living_entity_use_item_tick",
+   "version": 1,
+   "side": "",
+   "contract": "cancel"
+  },
+  {
+   "name": "on_use_tick",
+   "version": 1,
+   "side": "",
+   "contract": "listen"
+  },
+  {
+   "name": "living_entity_use_item_stop",
+   "version": 1,
+   "side": "",
+   "contract": "cancel"
+  },
+  {
+   "name": "release_using",
+   "version": 1,
+   "side": "",
+   "contract": "listen"
+  },
+  {
+   "name": "loot_function",
+   "version": 1,
+   "side": "",
+   "contract": "collect"
+  },
+  {
+   "name": "loot_condition",
+   "version": 1,
+   "side": "",
+   "contract": "collect"
+  },
+  {
+   "name": "level_load",
+   "version": 1,
+   "side": "server",
+   "contract": "listen"
+  },
+  {
+   "name": "level_unload",
+   "version": 1,
+   "side": "server",
+   "contract": "listen"
+  },
+  {
+   "name": "client_level_load",
+   "version": 1,
+   "side": "client",
+   "contract": "listen"
+  },
+  {
+   "name": "client_level_unload",
+   "version": 1,
+   "side": "client",
+   "contract": "listen"
+  },
+  {
+   "name": "hears_projectile_impacts",
+   "version": 1,
+   "side": "server",
+   "contract": "collect"
+  },
+  {
+   "name": "projectile_impact",
+   "version": 1,
+   "side": "server",
+   "contract": "cancel"
+  },
+  {
+   "name": "entity_mount",
+   "version": 1,
+   "side": "server",
+   "contract": "cancel"
+  },
+  {
+   "name": "interaction_key",
+   "version": 1,
+   "side": "client",
+   "contract": "cancel"
+  },
+  {
+   "name": "gui_layer_pre",
+   "version": 1,
+   "side": "client",
+   "contract": "cancel"
+  },
+  {
+   "name": "gui_layer_post",
+   "version": 1,
+   "side": "client",
+   "contract": "listen"
+  },
+  {
+   "name": "map_decorations",
+   "version": 1,
+   "side": "client",
+   "contract": "collect"
+  },
+  {
+   "name": "player_start_tracking",
+   "version": 1,
+   "side": "server",
+   "contract": "listen"
+  },
+  {
+   "name": "player_stop_tracking",
+   "version": 1,
+   "side": "server",
+   "contract": "listen"
+  },
+  {
+   "name": "block_entity_energy",
+   "version": 1,
+   "side": "server",
+   "contract": "replace"
+  },
+  {
+   "name": "data_map_types",
+   "version": 1,
+   "side": "server",
+   "contract": "collect"
+  },
+  {
+   "name": "living_breathe",
+   "version": 1,
+   "side": "server",
+   "contract": "listen"
+  },
+  {
+   "name": "blocks",
+   "version": 1,
+   "side": "",
+   "contract": "collect"
+  },
+  {
+   "name": "items",
+   "version": 1,
+   "side": "",
+   "contract": "collect"
+  },
+  {
+   "name": "entity_tick_pre",
+   "version": 1,
+   "side": "server",
+   "contract": "cancel"
+  },
+  {
+   "name": "entity_tick_post",
+   "version": 1,
+   "side": "server",
+   "contract": "listen"
+  },
+  {
+   "name": "entity_tick_listened",
+   "version": 1,
+   "side": "server",
+   "contract": "collect"
+  },
+  {
+   "name": "item_fluid_tank",
+   "version": 1,
+   "side": "",
+   "contract": "replace"
+  },
+  {
+   "name": "living_equipment_change",
+   "version": 1,
+   "side": "server",
+   "contract": "listen"
+  },
+  {
+   "name": "living_equipment_listened",
+   "version": 1,
+   "side": "server",
+   "contract": "collect"
+  },
+  {
+   "name": "player_submit",
+   "version": 1,
+   "side": "client",
+   "contract": "cancel"
+  },
+  {
+   "name": "mob_layer",
+   "version": 1,
+   "side": "client",
+   "contract": "listen"
+  },
+  {
+   "name": "player_render_listened",
+   "version": 1,
+   "side": "client",
+   "contract": "collect"
+  },
+  {
+   "name": "sign_changed",
+   "version": 1,
+   "side": "server",
+   "contract": "cancel"
+  },
+  {
+   "name": "standalone_models",
+   "version": 1,
+   "side": "client",
+   "contract": "collect"
+  },
+  {
+   "name": "player_container_open",
+   "version": 1,
+   "side": "server",
+   "contract": "listen"
+  },
+  {
+   "name": "player_container_close",
+   "version": 1,
+   "side": "server",
+   "contract": "listen"
+  },
+  {
+   "name": "player_toggle_flight",
+   "version": 1,
+   "side": "server",
+   "contract": "cancel"
+  },
+  {
+   "name": "anvil_damaged",
+   "version": 1,
+   "side": "server",
+   "contract": "listen"
+  },
+  {
+   "name": "arrow_loose",
+   "version": 1,
+   "side": "server",
+   "contract": "cancel"
+  },
+  {
+   "name": "beacon_state_change",
+   "version": 1,
+   "side": "server",
+   "contract": "listen"
+  },
+  {
+   "name": "bell_ring",
+   "version": 1,
+   "side": "server",
+   "contract": "cancel"
+  },
+  {
+   "name": "block_break_progress_update",
+   "version": 1,
+   "side": "server",
+   "contract": "listen"
+  },
+  {
+   "name": "block_burn",
+   "version": 1,
+   "side": "server",
+   "contract": "cancel"
+  },
+  {
+   "name": "block_cook",
+   "version": 1,
+   "side": "server",
+   "contract": "listen"
+  },
+  {
+   "name": "block_damage_abort",
+   "version": 1,
+   "side": "server",
+   "contract": "listen"
+  },
+  {
+   "name": "block_dispense_armor",
+   "version": 1,
+   "side": "server",
+   "contract": "listen"
+  },
+  {
+   "name": "block_exp",
+   "version": 1,
+   "side": "server",
+   "contract": "listen"
+  },
+  {
+   "name": "block_fade",
+   "version": 1,
+   "side": "server",
+   "contract": "cancel"
+  },
+  {
+   "name": "block_failed_dispense",
+   "version": 1,
+   "side": "server",
+   "contract": "listen"
+  },
+  {
+   "name": "block_form",
+   "version": 1,
+   "side": "server",
+   "contract": "cancel"
+  },
+  {
+   "name": "block_ignite",
+   "version": 1,
+   "side": "server",
+   "contract": "cancel"
+  },
+  {
+   "name": "block_lock_check",
+   "version": 1,
+   "side": "server",
+   "contract": "cancel"
+  },
+  {
+   "name": "block_receive_game",
+   "version": 1,
+   "side": "server",
+   "contract": "cancel"
+  },
+  {
+   "name": "block_shear_entity",
+   "version": 1,
+   "side": "server",
+   "contract": "listen"
+  },
+  {
+   "name": "brewing_complete",
+   "version": 1,
+   "side": "server",
+   "contract": "listen"
+  },
+  {
+   "name": "brewing_fuel",
+   "version": 1,
+   "side": "server",
+   "contract": "listen"
+  },
+  {
+   "name": "brewing_start",
+   "version": 1,
+   "side": "server",
+   "contract": "listen"
+  },
+  {
+   "name": "broadcast_message",
+   "version": 1,
+   "side": "server",
+   "contract": "cancel"
+  },
+  {
+   "name": "campfire_start",
+   "version": 1,
+   "side": "server",
+   "contract": "listen"
+  },
+  {
+   "name": "cauldron_level_changed",
+   "version": 1,
+   "side": "server",
+   "contract": "cancel"
+  },
+  {
+   "name": "chorus_fruit_teleport",
+   "version": 1,
+   "side": "server",
+   "contract": "cancel"
+  },
+  {
+   "name": "compost_item",
+   "version": 1,
+   "side": "server",
+   "contract": "listen"
+  },
+  {
+   "name": "crafter_craft",
+   "version": 1,
+   "side": "server",
+   "contract": "listen"
+  },
+  {
+   "name": "creeper_ignite",
+   "version": 1,
+   "side": "server",
+   "contract": "listen"
+  },
+  {
+   "name": "creeper_power",
+   "version": 1,
+   "side": "server",
+   "contract": "listen"
+  },
+  {
+   "name": "critical_hit",
+   "version": 1,
+   "side": "both",
+   "contract": "listen"
+  },
+  {
+   "name": "difficulty_changed",
+   "version": 1,
+   "side": "server",
+   "contract": "listen"
+  },
+  {
+   "name": "dragon_egg_form",
+   "version": 1,
+   "side": "server",
+   "contract": "cancel"
+  },
+  {
+   "name": "enchant_item",
+   "version": 1,
+   "side": "server",
+   "contract": "listen"
+  },
+  {
+   "name": "ender_pearl_teleport",
+   "version": 1,
+   "side": "server",
+   "contract": "cancel"
+  },
+  {
+   "name": "entities_load",
+   "version": 1,
+   "side": "server",
+   "contract": "listen"
+  },
+  {
+   "name": "entities_unload",
+   "version": 1,
+   "side": "server",
+   "contract": "listen"
+  },
+  {
+   "name": "entity_break_door",
+   "version": 1,
+   "side": "server",
+   "contract": "listen"
+  },
+  {
+   "name": "entity_breed",
+   "version": 1,
+   "side": "server",
+   "contract": "listen"
+  },
+  {
+   "name": "entity_change_block",
+   "version": 1,
+   "side": "server",
+   "contract": "listen"
+  },
+  {
+   "name": "entity_drop_item",
+   "version": 1,
+   "side": "server",
+   "contract": "listen"
+  },
+  {
+   "name": "entity_enter_block",
+   "version": 1,
+   "side": "server",
+   "contract": "listen"
+  },
+  {
+   "name": "entity_enter_love_mode",
+   "version": 1,
+   "side": "server",
+   "contract": "listen"
+  },
+  {
+   "name": "entity_portal",
+   "version": 1,
+   "side": "server",
+   "contract": "listen"
+  },
+  {
+   "name": "entity_pose_change",
+   "version": 1,
+   "side": "server",
+   "contract": "listen"
+  },
+  {
+   "name": "entity_shoot_bow",
+   "version": 1,
+   "side": "server",
+   "contract": "listen"
+  },
+  {
+   "name": "entity_tame",
+   "version": 1,
+   "side": "server",
+   "contract": "listen"
+  },
+  {
+   "name": "entity_teleport",
+   "version": 1,
+   "side": "server",
+   "contract": "listen"
+  },
+  {
+   "name": "entity_toggle_glide",
+   "version": 1,
+   "side": "server",
+   "contract": "listen"
+  },
+  {
+   "name": "entity_transform",
+   "version": 1,
+   "side": "server",
+   "contract": "listen"
+  },
+  {
+   "name": "entity_unleash",
+   "version": 1,
+   "side": "server",
+   "contract": "listen"
+  },
+  {
+   "name": "exp_bottle",
+   "version": 1,
+   "side": "server",
+   "contract": "listen"
+  },
+  {
+   "name": "experience_orb_pickup_listened",
+   "version": 1,
+   "side": "server",
+   "contract": "collect"
+  },
+  {
+   "name": "experience_orb_pickup",
+   "version": 1,
+   "side": "server",
+   "contract": "cancel"
+  },
+  {
+   "name": "mending_repair",
+   "version": 1,
+   "side": "server",
+   "contract": "listen"
+  },
+  {
+   "name": "explosion_prime",
+   "version": 1,
+   "side": "server",
+   "contract": "listen"
+  },
+  {
+   "name": "fire_odds",
+   "version": 1,
+   "side": "",
+   "contract": "replace"
+  },
+  {
+   "name": "smoke_source",
+   "version": 1,
+   "side": "",
+   "contract": "replace"
+  },
+  {
+   "name": "firework_explode",
+   "version": 1,
+   "side": "server",
+   "contract": "listen"
+  },
+  {
+   "name": "fluid_level_change",
+   "version": 1,
+   "side": "server",
+   "contract": "cancel"
+  },
+  {
+   "name": "framerate_limit",
+   "version": 1,
+   "side": "client",
+   "contract": "listen"
+  },
+  {
+   "name": "furnace_burn",
+   "version": 1,
+   "side": "server",
+   "contract": "listen"
+  },
+  {
+   "name": "furnace_extract",
+   "version": 1,
+   "side": "server",
+   "contract": "listen"
+  },
+  {
+   "name": "furnace_smelt",
+   "version": 1,
+   "side": "server",
+   "contract": "listen"
+  },
+  {
+   "name": "furnace_start_smelt",
+   "version": 1,
+   "side": "server",
+   "contract": "listen"
+  },
+  {
+   "name": "game_event",
+   "version": 1,
+   "side": "server",
+   "contract": "listen"
+  },
+  {
+   "name": "hopper_inventory_search",
+   "version": 1,
+   "side": "server",
+   "contract": "listen"
+  },
+  {
+   "name": "hopper_pickup_item",
+   "version": 1,
+   "side": "server",
+   "contract": "cancel"
+  },
+  {
+   "name": "ingredient",
+   "version": 1,
+   "side": "",
+   "contract": "collect"
+  },
+  {
+   "name": "inventory_block_start",
+   "version": 1,
+   "side": "server",
+   "contract": "cancel"
+  },
+  {
+   "name": "inventory_move_item",
+   "version": 1,
+   "side": "server",
+   "contract": "cancel"
+  },
+  {
+   "name": "item_crafted",
+   "version": 1,
+   "side": "server",
+   "contract": "listen"
+  },
+  {
+   "name": "item_despawn",
+   "version": 1,
+   "side": "server",
+   "contract": "listen"
+  },
+  {
+   "name": "item_energy_buffer",
+   "version": 1,
+   "side": "",
+   "contract": "replace"
+  },
+  {
+   "name": "item_expire",
+   "version": 1,
+   "side": "server",
+   "contract": "listen"
+  },
+  {
+   "name": "item_spawn",
+   "version": 1,
+   "side": "server",
+   "contract": "listen"
+  },
+  {
+   "name": "leaves_decay",
+   "version": 1,
+   "side": "server",
+   "contract": "cancel"
+  },
+  {
+   "name": "lightning_strike",
+   "version": 1,
+   "side": "server",
+   "contract": "cancel"
+  },
+  {
+   "name": "menu_quick_move",
+   "version": 1,
+   "side": "server",
+   "contract": "cancel"
+  },
+  {
+   "name": "moisture_change",
+   "version": 1,
+   "side": "server",
+   "contract": "cancel"
+  },
+  {
+   "name": "anvil_craft_post",
+   "version": 1,
+   "side": "server",
+   "contract": "listen"
+  },
+  {
+   "name": "anvil_craft_pre",
+   "version": 1,
+   "side": "server",
+   "contract": "cancel"
+  },
+  {
+   "name": "armor_stand_manipulate",
+   "version": 1,
+   "side": "server",
+   "contract": "cancel"
+  },
+  {
+   "name": "bucket_empty",
+   "version": 1,
+   "side": "server",
+   "contract": "cancel"
+  },
+  {
+   "name": "container_opened",
+   "version": 1,
+   "side": "server",
+   "contract": "cancel"
+  },
+  {
+   "name": "creative_slot",
+   "version": 1,
+   "side": "server",
+   "contract": "cancel"
+  },
+  {
+   "name": "food_level_changed",
+   "version": 1,
+   "side": "server",
+   "contract": "cancel"
+  },
+  {
+   "name": "hanging_break",
+   "version": 1,
+   "side": "server",
+   "contract": "cancel"
+  },
+  {
+   "name": "hanging_place",
+   "version": 1,
+   "side": "server",
+   "contract": "cancel"
+  },
+  {
+   "name": "item_damaged",
+   "version": 1,
+   "side": "server",
+   "contract": "cancel"
+  },
+  {
+   "name": "player_changed_dimension",
+   "version": 1,
+   "side": "server",
+   "contract": "listen"
+  },
+  {
+   "name": "player_clone",
+   "version": 1,
+   "side": "server",
+   "contract": "listen"
+  },
+  {
+   "name": "player_commands_sent",
+   "version": 1,
+   "side": "server",
+   "contract": "collect"
+  },
+  {
+   "name": "player_destroy_item",
+   "version": 1,
+   "side": "server",
+   "contract": "listen"
+  },
+  {
+   "name": "player_fish",
+   "version": 1,
+   "side": "server",
+   "contract": "cancel"
+  },
+  {
+   "name": "player_flower_pot_manipulate",
+   "version": 1,
+   "side": "server",
+   "contract": "listen"
+  },
+  {
+   "name": "player_game_mode_changed",
+   "version": 1,
+   "side": "server",
+   "contract": "cancel"
+  },
+  {
+   "name": "player_insert_lectern_book",
+   "version": 1,
+   "side": "server",
+   "contract": "listen"
+  },
+  {
+   "name": "player_item_frame_change",
+   "version": 1,
+   "side": "server",
+   "contract": "listen"
+  },
+  {
+   "name": "player_item_mend",
+   "version": 1,
+   "side": "server",
+   "contract": "listen"
+  },
+  {
+   "name": "player_lectern_page_change",
+   "version": 1,
+   "side": "server",
+   "contract": "listen"
+  },
+  {
+   "name": "player_load_from_file",
+   "version": 1,
+   "side": "server",
+   "contract": "listen"
+  },
+  {
+   "name": "player_login",
+   "version": 1,
+   "side": "server",
+   "contract": "cancel"
+  },
+  {
+   "name": "player_save_to_file",
+   "version": 1,
+   "side": "server",
+   "contract": "listen"
+  },
+  {
+   "name": "player_sprint",
+   "version": 1,
+   "side": "server",
+   "contract": "listen"
+  },
+  {
+   "name": "player_swap_hands",
+   "version": 1,
+   "side": "server",
+   "contract": "cancel"
+  },
+  {
+   "name": "player_take_lectern_book",
+   "version": 1,
+   "side": "server",
+   "contract": "listen"
+  },
+  {
+   "name": "player_teleported",
+   "version": 1,
+   "side": "server",
+   "contract": "listen"
+  },
+  {
+   "name": "player_totem",
+   "version": 1,
+   "side": "server",
+   "contract": "listen"
+  },
+  {
+   "name": "resource_pack_status",
+   "version": 1,
+   "side": "server",
+   "contract": "listen"
+  },
+  {
+   "name": "spawn_change",
+   "version": 1,
+   "side": "server",
+   "contract": "listen"
+  },
+  {
+   "name": "tnt_primed",
+   "version": 1,
+   "side": "server",
+   "contract": "cancel"
+  },
+  {
+   "name": "vehicle_create",
+   "version": 1,
+   "side": "server",
+   "contract": "listen"
+  },
+  {
+   "name": "vehicle_damage",
+   "version": 1,
+   "side": "server",
+   "contract": "cancel"
+  },
+  {
+   "name": "vehicle_destroy",
+   "version": 1,
+   "side": "server",
+   "contract": "listen"
+  },
+  {
+   "name": "vehicle_moved",
+   "version": 1,
+   "side": "server",
+   "contract": "listen"
+  },
+  {
+   "name": "world_border_bounds_changed",
+   "version": 1,
+   "side": "server",
+   "contract": "listen"
+  },
+  {
+   "name": "world_border_center_changed",
+   "version": 1,
+   "side": "server",
+   "contract": "listen"
+  },
+  {
+   "name": "world_game_rule_change",
+   "version": 1,
+   "side": "server",
+   "contract": "listen"
+  },
+  {
+   "name": "note_play",
+   "version": 1,
+   "side": "server",
+   "contract": "cancel"
+  },
+  {
+   "name": "player_advancement_criterion_grant",
+   "version": 1,
+   "side": "server",
+   "contract": "listen"
+  },
+  {
+   "name": "player_advancement_done",
+   "version": 1,
+   "side": "server",
+   "contract": "listen"
+  },
+  {
+   "name": "player_advancement_progress",
+   "version": 1,
+   "side": "server",
+   "contract": "listen"
+  },
+  {
+   "name": "player_arm_swing",
+   "version": 1,
+   "side": "server",
+   "contract": "listen"
+  },
+  {
+   "name": "player_attack_cooldown_reset",
+   "version": 1,
+   "side": "server",
+   "contract": "listen"
+  },
+  {
+   "name": "player_bed_enter",
+   "version": 1,
+   "side": "server",
+   "contract": "cancel"
+  },
+  {
+   "name": "player_bed_leave",
+   "version": 1,
+   "side": "server",
+   "contract": "listen"
+  },
+  {
+   "name": "player_bucket_entity",
+   "version": 1,
+   "side": "server",
+   "contract": "listen"
+  },
+  {
+   "name": "player_bundle_item_select",
+   "version": 1,
+   "side": "server",
+   "contract": "listen"
+  },
+  {
+   "name": "player_change_beacon_effect",
+   "version": 1,
+   "side": "server",
+   "contract": "listen"
+  },
+  {
+   "name": "player_change_main_hand",
+   "version": 1,
+   "side": "server",
+   "contract": "listen"
+  },
+  {
+   "name": "player_client_loaded_world",
+   "version": 1,
+   "side": "server",
+   "contract": "listen"
+  },
+  {
+   "name": "player_deep_sleep",
+   "version": 1,
+   "side": "server",
+   "contract": "listen"
+  },
+  {
+   "name": "player_edit_book",
+   "version": 1,
+   "side": "server",
+   "contract": "cancel"
+  },
+  {
+   "name": "player_egg_throw",
+   "version": 1,
+   "side": "server",
+   "contract": "listen"
+  },
+  {
+   "name": "player_elytra_boost",
+   "version": 1,
+   "side": "server",
+   "contract": "listen"
+  },
+  {
+   "name": "player_exp_change",
+   "version": 1,
+   "side": "server",
+   "contract": "listen"
+  },
+  {
+   "name": "player_exp_cooldown_change",
+   "version": 1,
+   "side": "server",
+   "contract": "listen"
+  },
+  {
+   "name": "player_input",
+   "version": 1,
+   "side": "server",
+   "contract": "listen"
+  },
+  {
+   "name": "player_item_cooldown",
+   "version": 1,
+   "side": "server",
+   "contract": "cancel"
+  },
+  {
+   "name": "player_item_held",
+   "version": 1,
+   "side": "server",
+   "contract": "cancel"
+  },
+  {
+   "name": "player_jump",
+   "version": 1,
+   "side": "server",
+   "contract": "listen"
+  },
+  {
+   "name": "player_kicked",
+   "version": 1,
+   "side": "server",
+   "contract": "listen"
+  },
+  {
+   "name": "player_launch_projectile",
+   "version": 1,
+   "side": "server",
+   "contract": "listen"
+  },
+  {
+   "name": "player_level_change",
+   "version": 1,
+   "side": "server",
+   "contract": "listen"
+  },
+  {
+   "name": "player_locale_change",
+   "version": 1,
+   "side": "server",
+   "contract": "listen"
+  },
+  {
+   "name": "player_loom_pattern_select",
+   "version": 1,
+   "side": "server",
+   "contract": "listen"
+  },
+  {
+   "name": "player_map_filled",
+   "version": 1,
+   "side": "server",
+   "contract": "listen"
+  },
+  {
+   "name": "player_name_entity",
+   "version": 1,
+   "side": "server",
+   "contract": "listen"
+  },
+  {
+   "name": "player_open_sign",
+   "version": 1,
+   "side": "server",
+   "contract": "listen"
+  },
+  {
+   "name": "player_pick_item",
+   "version": 1,
+   "side": "server",
+   "contract": "cancel"
+  },
+  {
+   "name": "player_pickup_arrow",
+   "version": 1,
+   "side": "server",
+   "contract": "listen"
+  },
+  {
+   "name": "player_portal",
+   "version": 1,
+   "side": "server",
+   "contract": "cancel"
+  },
+  {
+   "name": "player_ready_arrow",
+   "version": 1,
+   "side": "server",
+   "contract": "listen"
+  },
+  {
+   "name": "player_recipe_book_click",
+   "version": 1,
+   "side": "server",
+   "contract": "listen"
+  },
+  {
+   "name": "player_recipe_book_settings_change",
+   "version": 1,
+   "side": "server",
+   "contract": "listen"
+  },
+  {
+   "name": "player_recipe_discovered",
+   "version": 1,
+   "side": "server",
+   "contract": "cancel"
+  },
+  {
+   "name": "player_riptide",
+   "version": 1,
+   "side": "server",
+   "contract": "listen"
+  },
+  {
+   "name": "player_shear_entity",
+   "version": 1,
+   "side": "server",
+   "contract": "cancel"
+  },
+  {
+   "name": "player_shield_disable",
+   "version": 1,
+   "side": "server",
+   "contract": "listen"
+  },
+  {
+   "name": "player_spawn_point_set",
+   "version": 1,
+   "side": "server",
+   "contract": "cancel"
+  },
+  {
+   "name": "player_stat_award",
+   "version": 1,
+   "side": "server",
+   "contract": "cancel"
+  },
+  {
+   "name": "player_stonecutter_recipe_select",
+   "version": 1,
+   "side": "server",
+   "contract": "listen"
+  },
+  {
+   "name": "player_stop_spectating_entity",
+   "version": 1,
+   "side": "server",
+   "contract": "listen"
+  },
+  {
+   "name": "player_stop_using_item",
+   "version": 1,
+   "side": "server",
+   "contract": "listen"
+  },
+  {
+   "name": "player_swap_with_equipment_slot",
+   "version": 1,
+   "side": "server",
+   "contract": "listen"
+  },
+  {
+   "name": "player_teleport_end_gateway",
+   "version": 1,
+   "side": "server",
+   "contract": "cancel"
+  },
+  {
+   "name": "player_toggle_entity_age_lock",
+   "version": 1,
+   "side": "server",
+   "contract": "listen"
+  },
+  {
+   "name": "player_toggle_sneak",
+   "version": 1,
+   "side": "server",
+   "contract": "listen"
+  },
+  {
+   "name": "player_trade",
+   "version": 1,
+   "side": "server",
+   "contract": "listen"
+  },
+  {
+   "name": "player_unleash_entity",
+   "version": 1,
+   "side": "server",
+   "contract": "listen"
+  },
+  {
+   "name": "player_velocity",
+   "version": 1,
+   "side": "server",
+   "contract": "listen"
+  },
+  {
+   "name": "portal_create",
+   "version": 1,
+   "side": "server",
+   "contract": "listen"
+  },
+  {
+   "name": "potion_splash",
+   "version": 1,
+   "side": "server",
+   "contract": "listen"
+  },
+  {
+   "name": "prepare_anvil",
+   "version": 1,
+   "side": "server",
+   "contract": "replace"
+  },
+  {
+   "name": "prepare_grindstone",
+   "version": 1,
+   "side": "server",
+   "contract": "replace"
+  },
+  {
+   "name": "prepare_hopper_transfer",
+   "version": 1,
+   "side": "server",
+   "contract": "listen"
+  },
+  {
+   "name": "prepare_item_craft",
+   "version": 1,
+   "side": "server",
+   "contract": "replace"
+  },
+  {
+   "name": "prepare_item_enchant",
+   "version": 1,
+   "side": "server",
+   "contract": "listen"
+  },
+  {
+   "name": "prepare_smithing",
+   "version": 1,
+   "side": "server",
+   "contract": "replace"
+  },
+  {
+   "name": "projectile_launch",
+   "version": 1,
+   "side": "server",
+   "contract": "listen"
+  },
+  {
+   "name": "raid_spawn_wave",
+   "version": 1,
+   "side": "server",
+   "contract": "listen"
+  },
+  {
+   "name": "raid_state_change",
+   "version": 1,
+   "side": "server",
+   "contract": "listen"
+  },
+  {
+   "name": "sculk_bloom",
+   "version": 1,
+   "side": "server",
+   "contract": "listen"
+  },
+  {
+   "name": "sleep_finished_time",
+   "version": 1,
+   "side": "server",
+   "contract": "listen"
+  },
+  {
+   "name": "sponge_absorb",
+   "version": 1,
+   "side": "server",
+   "contract": "listen"
+  },
+  {
+   "name": "tab_complete",
+   "version": 1,
+   "side": "server",
+   "contract": "collect"
+  },
+  {
+   "name": "target_hit",
+   "version": 1,
+   "side": "server",
+   "contract": "listen"
+  },
+  {
+   "name": "thunder_change",
+   "version": 1,
+   "side": "server",
+   "contract": "cancel"
+  },
+  {
+   "name": "time_skip",
+   "version": 1,
+   "side": "server",
+   "contract": "cancel"
+  },
+  {
+   "name": "trade_select",
+   "version": 1,
+   "side": "server",
+   "contract": "listen"
+  },
+  {
+   "name": "trade_with_villager",
+   "version": 1,
+   "side": "server",
+   "contract": "listen"
+  },
+  {
+   "name": "vault_change_state",
+   "version": 1,
+   "side": "server",
+   "contract": "listen"
+  },
+  {
+   "name": "vault_loot",
+   "version": 1,
+   "side": "server",
+   "contract": "listen"
+  },
+  {
+   "name": "weather_change",
+   "version": 1,
+   "side": "server",
+   "contract": "cancel"
+  },
+  {
+   "name": "whitelist_state_update",
+   "version": 1,
+   "side": "server",
+   "contract": "listen"
+  },
+  {
+   "name": "world_border_bounds_change_finish",
+   "version": 1,
+   "side": "server",
+   "contract": "listen"
+  },
+  {
+   "name": "world_saved",
+   "version": 1,
+   "side": "server",
+   "contract": "listen"
+  },
+  {
+   "name": "living_drown",
+   "version": 1,
+   "side": "server",
+   "contract": "cancel"
+  },
+  {
+   "name": "living_fall",
+   "version": 1,
+   "side": "both",
+   "contract": "cancel"
+  },
+  {
+   "name": "living_heal",
+   "version": 1,
+   "side": "both",
+   "contract": "cancel"
+  },
+  {
+   "name": "living_jump",
+   "version": 1,
+   "side": "both",
+   "contract": "listen"
+  },
+  {
+   "name": "arrow_nock",
+   "version": 1,
+   "side": "both",
+   "contract": "cancel"
+  },
+  {
+   "name": "baby_entity_spawn",
+   "version": 1,
+   "side": "server",
+   "contract": "cancel"
+  },
+  {
+   "name": "can_player_sleep",
+   "version": 1,
+   "side": "server",
+   "contract": "listen"
+  },
+  {
+   "name": "compute_fov_modifier",
+   "version": 1,
+   "side": "client",
+   "contract": "listen"
+  },
+  {
+   "name": "explosion_knockback",
+   "version": 1,
+   "side": "server",
+   "contract": "collect"
+  },
+  {
+   "name": "hand_drawn",
+   "version": 1,
+   "side": "client",
+   "contract": "listen"
+  },
+  {
+   "name": "ingredient_test",
+   "version": 1,
+   "side": "",
+   "contract": "listen"
+  },
+  {
+   "name": "item_container",
+   "version": 1,
+   "side": "",
+   "contract": "replace"
+  },
+  {
+   "name": "item_model_property",
+   "version": 1,
+   "side": "client",
+   "contract": "listen"
+  },
+  {
+   "name": "living_conversion_post",
+   "version": 1,
+   "side": "server",
+   "contract": "listen"
+  },
+  {
+   "name": "living_conversion_pre",
+   "version": 1,
+   "side": "server",
+   "contract": "cancel"
+  },
+  {
+   "name": "living_death",
+   "version": 1,
+   "side": "server",
+   "contract": "cancel"
+  },
+  {
+   "name": "living_get_projectile",
+   "version": 1,
+   "side": "both",
+   "contract": "collect"
+  },
+  {
+   "name": "living_incoming_damage_v2",
+   "version": 1,
+   "side": "server",
+   "contract": "cancel"
+  },
+  {
+   "name": "living_knockback_v2",
+   "version": 1,
+   "side": "server",
+   "contract": "cancel"
+  },
+  {
+   "name": "mob_split",
+   "version": 1,
+   "side": "server",
+   "contract": "cancel"
+  },
+  {
+   "name": "register_configs",
+   "version": 1,
+   "side": "both",
+   "contract": "collect"
+  },
+  {
+   "name": "config_loading",
+   "version": 1,
+   "side": "both",
+   "contract": "listen"
+  },
+  {
+   "name": "config_reloading",
+   "version": 1,
+   "side": "both",
+   "contract": "listen"
+  },
+  {
+   "name": "config_unloading",
+   "version": 1,
+   "side": "server",
+   "contract": "listen"
+  },
+  {
+   "name": "movement_input",
+   "version": 1,
+   "side": "client",
+   "contract": "listen"
+  },
+  {
+   "name": "note_block_change",
+   "version": 1,
+   "side": "server",
+   "contract": "cancel"
+  },
+  {
+   "name": "potential_spawns",
+   "version": 1,
+   "side": "server",
+   "contract": "cancel"
+  },
+  {
+   "name": "village_siege",
+   "version": 1,
+   "side": "server",
+   "contract": "cancel"
+  },
+  {
+   "name": "player_chat",
+   "version": 1,
+   "side": "server",
+   "contract": "cancel"
+  },
+  {
+   "name": "player_xp_change",
+   "version": 1,
+   "side": "server",
+   "contract": "cancel"
+  },
+  {
+   "name": "recipe_book_categories",
+   "version": 1,
+   "side": "",
+   "contract": "listen"
+  },
+  {
+   "name": "render_hand_pose",
+   "version": 1,
+   "side": "client",
+   "contract": "listen"
+  },
+  {
+   "name": "render_item_in_frame",
+   "version": 1,
+   "side": "client",
+   "contract": "cancel"
+  },
+  {
+   "name": "render_name_tag",
+   "version": 1,
+   "side": "client",
+   "contract": "listen"
+  },
+  {
+   "name": "screen_closing",
+   "version": 1,
+   "side": "client",
+   "contract": "listen"
+  },
+  {
+   "name": "screen_init_post",
+   "version": 1,
+   "side": "client",
+   "contract": "listen"
+  },
+  {
+   "name": "screen_opening",
+   "version": 1,
+   "side": "client",
+   "contract": "listen"
+  },
+  {
+   "name": "tooltip_color",
+   "version": 1,
+   "side": "client",
+   "contract": "listen"
+  },
+  {
+   "name": "camera_pose",
+   "version": 1,
+   "side": "client",
+   "contract": "listen"
+  },
+  {
+   "name": "client_chat_received",
+   "version": 1,
+   "side": "client",
+   "contract": "cancel"
+  },
+  {
+   "name": "client_packet",
+   "version": 1,
+   "side": "client",
+   "contract": "listen"
+  },
+  {
+   "name": "menu_extra_data",
+   "version": 1,
+   "side": "server",
+   "contract": "replace"
+  },
+  {
+   "name": "merchant_offer_traded",
+   "version": 1,
+   "side": "server",
+   "contract": "collect"
+  },
+  {
+   "name": "add_server_reload_listeners",
+   "version": 1,
+   "side": "server",
+   "contract": "collect"
+  },
+  {
+   "name": "server_reload_listener_apply",
+   "version": 1,
+   "side": "server",
+   "contract": "listen"
+  },
+  {
+   "name": "client_start",
+   "version": 1,
+   "side": "client",
+   "contract": "listen"
+  },
+  {
+   "name": "client_disconnecting",
+   "version": 1,
+   "side": "client",
+   "contract": "listen"
+  },
+  {
+   "name": "client_stopping",
+   "version": 1,
+   "side": "client",
+   "contract": "listen"
+  },
+  {
+   "name": "menu_background",
+   "version": 1,
+   "side": "client",
+   "contract": "listen"
+  },
+  {
+   "name": "gui_render_post",
+   "version": 1,
+   "side": "client",
+   "contract": "listen"
+  },
+  {
+   "name": "world_hold",
+   "version": 1,
+   "side": "client",
+   "contract": "collect"
+  },
+  {
+   "name": "world_warp",
+   "version": 1,
+   "side": "client",
+   "contract": "collect"
+  }
+ ],
+ "helpers": [
+  "acting_player",
+  "action_bar",
+  "attachments",
+  "block",
+  "block_collision",
+  "block_entity_sync",
+  "block_property",
+  "block_sprites",
+  "block_sprites_version",
+  "block_state_property",
+  "broadcast",
+  "built_data",
+  "camera",
+  "carried_items",
+  "carried_stack",
+  "claim_items",
+  "client_action_bar",
+  "client_block_obstruction",
+  "client_entities",
+  "client_heads",
+  "client_profiles",
+  "client_state",
+  "client_visual_clear",
+  "clock",
+  "close_menu",
+  "config_dir",
+  "count_items",
+  "cursor",
+  "data",
+  "day_time",
+  "dimension",
+  "dispense_default",
+  "draw_block",
+  "draw_cube",
+  "draw_item",
+  "draw_quad",
+  "edit_blocks",
+  "entity",
+  "entity_add_tag",
+  "entity_block_position",
+  "entity_bounding_box",
+  "entity_distance_to_sqr",
+  "entity_eye_height",
+  "entity_eye_position",
+  "entity_kind",
+  "entity_level",
+  "entity_merge_nbt",
+  "entity_name",
+  "entity_nbt",
+  "entity_on_ground",
+  "entity_position",
+  "entity_remove_tag",
+  "entity_rotation",
+  "entity_set_velocity",
+  "entity_tags",
+  "entity_uuid",
+  "entity_velocity",
+  "entity_view_vector",
+  "exchange_items",
+  "experience_orbs",
+  "extract_item",
+  "feedback",
+  "fill",
+  "flame_particle",
+  "fluid_extract",
+  "fluid_insert",
+  "force_chunk",
+  "force_chunk_in",
+  "forced_chunks",
+  "give",
+  "give_experience",
+  "give_items",
+  "give_levels",
+  "give_stack",
+  "gui_nine_slice",
+  "gui_paint",
+  "gui_tooltip",
+  "held",
+  "hide_player",
+  "insert_item",
+  "instance_dir",
+  "item",
+  "item_container_extract",
+  "item_container_insert",
+  "item_container_slots",
+  "item_model",
+  "item_stack",
+  "kill_mob",
+  "known_recipes",
+  "level",
+  "level_block",
+  "level_block_property",
+  "level_block_state",
+  "level_day_time",
+  "level_game_time",
+  "level_height",
+  "level_is_loaded",
+  "light",
+  "lit_block_name",
+  "living",
+  "living_equipment",
+  "living_hand_item",
+  "living_set_equipment",
+  "max_stack_size",
+  "mod_image",
+  "mod_key",
+  "mod_screen",
+  "mod_screen_close",
+  "mod_screen_open",
+  "move_entity",
+  "move_fluids",
+  "move_items",
+  "neighbor_signal",
+  "net_send_to_player",
+  "net_send_to_server",
+  "on",
+  "open_menu",
+  "panel_items",
+  "place_recipe",
+  "play_local_sound",
+  "player",
+  "player_stacks",
+  "playing",
+  "poll",
+  "push_mob",
+  "push_player",
+  "quad",
+  "raycast",
+  "read_columns",
+  "recipe_book_category",
+  "recipe_ingredient",
+  "recipe_result",
+  "recipes_of_type",
+  "refresh_biome_colors",
+  "remove_entity",
+  "remove_mob",
+  "room_for",
+  "run_command",
+  "screen_extra_data",
+  "screen_pos",
+  "screen_title",
+  "send_chat",
+  "send_packet",
+  "server_players",
+  "set_block",
+  "set_block_property",
+  "set_block_property_with",
+  "set_experience_orb",
+  "set_flying_speed",
+  "set_item_entity",
+  "set_menu_items",
+  "set_mob_health",
+  "set_mod_key",
+  "set_nickname",
+  "set_setting",
+  "setting",
+  "sleep_ignored",
+  "spawn_falling_block",
+  "sprite",
+  "summon",
+  "surface_heights",
+  "tab_list",
+  "take_items",
+  "teleport_mob",
+  "tell",
+  "text",
+  "text_allowed",
+  "text_width",
+  "texture_sprites",
+  "tick_stats",
+  "update_output_neighbors",
+  "update_signal_neighbors",
+  "view_hit",
+  "weather",
+  "window",
+  "world_dir",
+  "world_height"
+ ]
+}
