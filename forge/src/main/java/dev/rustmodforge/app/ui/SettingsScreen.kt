@@ -155,7 +155,7 @@ fun SettingsScreen(vm: ForgeViewModel) {
 private fun Field(label: String, value: String, hint: String? = null, secret: Boolean = false, number: Boolean = false, onChange: (String) -> Unit) {
     OutlinedTextField(
         value = value, onValueChange = onChange, label = { Text(label) }, singleLine = true,
-        supportingText = hint?.let { { Text(it) } },
+        supportingText = if (hint != null) { { Text(hint) } } else null,
         visualTransformation = if (secret) PasswordVisualTransformation() else androidx.compose.ui.text.input.VisualTransformation.None,
         keyboardOptions = if (number) KeyboardOptions(keyboardType = KeyboardType.Number) else KeyboardOptions.Default,
         modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp),
