@@ -13,6 +13,7 @@ import dev.rustmodforge.core.pipeline.Quality
 import dev.rustmodforge.core.pipeline.Stage
 import dev.rustmodforge.core.pipeline.StageState
 import dev.rustmodforge.core.report.FeatureStatus
+import dev.rustmodforge.core.target.PackGenerator
 import dev.rustmodforge.core.report.StepStatus
 import dev.rustmodforge.core.util.JsonTree
 import dev.rustmodforge.core.util.MiniToml
@@ -163,6 +164,64 @@ class PipelineTest {
         val report = ConversionPipeline(p).run().single()
         assertEquals("fogwatcher", report.modId)
         assertTrue(File(p.out, "fogwatcher-android.hmod").exists())
+    }
+
+    /**
+     * The bug a user hit: a sound mod replaces vanilla's own files, which a content mod may not
+     * hold, so it converted to a .hmod that changed nothing in game. Its content belongs in a
+     * resource pack (and a data pack), which is what the launcher applies over vanilla.
+     */
+    @Test
+    fun vanillaOverridesBecomePacksThatActuallyApply() {
+        val p = project("sounds", Quality.ADVANCED, Fixtures.jar("better_sounds"), targets = listOf(TargetId.HORIZON_ANDROID))
+        val report = ConversionPipeline(p, PipelineOptions(horizonCheckers = checkers)).run().single()
+
+        val pack = File(p.out, "bettersounds-resourcepack.zip")
+        val data = File(p.out, "bettersounds-datapack.zip")
+        assertTrue(pack.exists(), "no resource pack: " + p.out.list()?.joinToString())
+        assertTrue(data.exists(), "no data pack")
+        // A mod that only changes vanilla's files needs no content mod, and an empty one would
+        // be the bug all over again.
+        assertTrue(!File(p.out, "bettersounds-android.hmod").exists())
+
+        val a = entries(pack)
+        assertTrue("assets/minecraft/sounds.json" in a, a.toString())
+        assertTrue("assets/minecraft/sounds/mob/zombie/say1.ogg" in a)
+        assertTrue("assets/minecraft/sounds/mob/zombie/hurt1.ogg" in a)
+        // The vanilla sounds.json points at the mod's own namespace, so the pack carries it too.
+        assertTrue("assets/bettersounds/sounds/zombie_extra.ogg" in a, a.toString())
+        assertTrue("pack.png" in a, "the pack has no icon")
+        // The format range this build reads, in the shape it validates.
+        val meta = JsonTree.obj(JsonTree.obj(JsonTree.parse(text(pack, "pack.mcmeta")))!!["pack"])!!
+        assertEquals(97L, meta["pack_format"])
+        assertEquals(97L, meta["min_format"])
+        assertEquals(97L, meta["max_format"])
+        assertTrue(!meta.containsKey("supported_formats"))
+        assertEquals(emptyList(), Validator.validatePack(pack, PackGenerator.PackKind.RESOURCE).filter { it.error })
+
+        val d = entries(data)
+        assertTrue("data/minecraft/loot_table/blocks/stone.json" in d, d.toString())
+        assertEquals(121L, JsonTree.obj(JsonTree.obj(JsonTree.parse(text(data, "pack.mcmeta")))!!["pack"])!!["pack_format"])
+        // Carried through the 26.3 upgrades, not copied blindly.
+        val loot = text(data, "data/minecraft/loot_table/blocks/stone.json")
+        assertTrue(loot.contains("minecraft:uniform"), loot)
+        assertTrue(!loot.contains("\"functions\"") && !loot.contains("\"conditions\""), loot)
+        assertEquals(emptyList(), Validator.validatePack(data, PackGenerator.PackKind.DATA).filter { it.error })
+
+        // The report says the sounds apply, and how to install each file.
+        assertTrue(report.features.any { it.name.startsWith("Vanilla sounds replaced") && it.status == FeatureStatus.IMPLEMENTED },
+            report.features.joinToString { it.name })
+        assertTrue(report.features.any { it.name.startsWith("Vanilla loot tables changed") && it.status == FeatureStatus.IMPLEMENTED })
+        assertTrue(report.outputs.any { it.kind.startsWith("resource pack") } && report.outputs.any { it.kind.startsWith("data pack") })
+    }
+
+    /** A mod with its own content keeps its .hmod; only vanilla's files move to the packs. */
+    @Test
+    fun ownContentStillBecomesAContentMod() {
+        val p = project("mixed", Quality.FAST, Fixtures.jar("simple_fabric"), targets = listOf(TargetId.HORIZON_ANDROID))
+        ConversionPipeline(p).run()
+        assertTrue(File(p.out, "simplemod-android.hmod").exists())
+        assertTrue(!File(p.out, "simplemod-resourcepack.zip").exists(), "nothing of vanilla's is touched")
     }
 
     @Test

@@ -176,6 +176,56 @@ object Validator {
         else -> emptyList()
     }
 
+    /**
+     * A generated resource or data pack, by the rules the game applies when it reads one
+     * (`horizon_client_render::packs::validate_pack_range`, `PackFormat.IntermediaryFormat`):
+     * `pack.mcmeta` at the root, a format range that covers this build, lower-case resource
+     * paths, and no entry outside `assets/`, `data/` and the pack's own root files.
+     */
+    fun validatePack(file: File, kind: dev.rustmodforge.core.target.PackGenerator.PackKind): List<Issue> {
+        val issues = ArrayList<Issue>()
+        fun err(p: String, m: String) { issues += Issue(true, p, m) }
+        fun warn(p: String, m: String) { issues += Issue(false, p, m) }
+        // Past these formats the game makes min_format and max_format mandatory and refuses
+        // supported_formats (resource packs: 64, data packs: 81).
+        val lastPreMinor = if (kind == dev.rustmodforge.core.target.PackGenerator.PackKind.DATA) 81 else 64
+        ZipFile(file).use { zip ->
+            val entries = zip.entries().toList().filter { !it.isDirectory }
+            val names = entries.map { it.name }
+            if (names.isEmpty()) err(file.name, "the pack is empty")
+            for (e in entries) {
+                val n = e.name
+                if (n.startsWith("/") || n.contains('\\') || n.split('/').any { it.isEmpty() || it == "." || it == ".." }) err(n, "not a relative /-separated path")
+                val top = n.substringBefore('/')
+                if (top != "assets" && top != "data" && n.contains('/')) err(n, "a pack holds only assets/, data/ and its own root files")
+                if ((top == "assets" || top == "data") && !n.matches(contentPathRe)) err(n, "resource paths are lower-case [a-z0-9_.-] parts")
+            }
+            val meta = zip.getEntry("pack.mcmeta")
+            if (meta == null) { err("pack.mcmeta", "missing: the launcher refuses a pack without it"); return issues }
+            val parsed = runCatching { JsonTree.obj(JsonTree.parse(zip.getInputStream(meta).readBytes().decodeToString())) }.getOrNull()
+            val pack = JsonTree.obj(parsed?.get("pack"))
+            if (pack == null) { err("pack.mcmeta", "has no \"pack\" section"); return issues }
+            val format = (pack["pack_format"] as? Number)?.toInt()
+            val min = (pack["min_format"] as? Number)?.toInt()
+            val max = (pack["max_format"] as? Number)?.toInt()
+            if (format == null) err("pack.mcmeta", "pack_format is missing")
+            if (pack.containsKey("supported_formats")) err("pack.mcmeta", "supported_formats is refused past format $lastPreMinor; use min_format and max_format")
+            if ((min == null) != (max == null)) err("pack.mcmeta", "min_format and max_format are declared together")
+            if (format != null && format > lastPreMinor && min == null) {
+                err("pack.mcmeta", "format $format is newer than $lastPreMinor, so min_format and max_format are mandatory")
+            }
+            if (min != null && max != null) {
+                if (min > max) err("pack.mcmeta", "min_format ($min) is greater than max_format ($max)")
+                if (min < 15) err("pack.mcmeta", "a multi-version pack cannot support a minimum below 15")
+                if (format != null && (format < min || format > max)) err("pack.mcmeta", "pack_format $format is outside min_format..max_format")
+                if (max < kind.format || min > kind.format) err("pack.mcmeta", "this build reads format ${kind.format}, which is outside $min..$max")
+            }
+            if (!names.contains("pack.png")) warn("pack.png", "no icon: the pack shows the default one in the launcher's list")
+            if (names.none { it.startsWith("${kind.root}/") }) err(file.name, "nothing under ${kind.root}/: the pack would change nothing")
+        }
+        return issues
+    }
+
     fun validateHnmod(file: File): List<Issue> {
         val issues = ArrayList<Issue>()
         fun err(p: String, m: String) { issues += Issue(true, p, m) }

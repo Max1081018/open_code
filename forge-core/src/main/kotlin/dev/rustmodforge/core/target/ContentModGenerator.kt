@@ -49,6 +49,9 @@ class ContentModGenerator(
     private var copied = 0
     private val skipped = LinkedHashMap<String, MutableList<String>>()
 
+    /** Whether the mod has content of its own: a .hmod with nothing but a manifest does nothing. */
+    fun hasOwnContent() = out.list().any { it.startsWith("assets/") || it.startsWith("data/") }
+
     private fun skip(reason: String, path: String) { skipped.getOrPut(reason) { ArrayList() } += path }
 
     fun generate() {
@@ -72,10 +75,10 @@ class ContentModGenerator(
             var target = DataUpgrader.renamePath(path)
             when {
                 root == "assets" && ns == "minecraft" && rest.startsWith("atlases/") -> {}
-                root == "assets" && ns == "minecraft" -> { skip("vanilla asset overrides (a content mod may not replace vanilla's assets)", path); continue }
+                root == "assets" && ns == "minecraft" -> { skip("vanilla's own assets, which a content mod may not hold: they are carried in the resource pack instead", path); continue }
                 root == "data" && (ns == "minecraft" || ns == "c") && target.removePrefix("data/$ns/").startsWith("tags/") -> {}
                 root == "data" && ns in loaderNamespaces && rest.startsWith("tags/") -> target = DataUpgrader.renamePath("data/c/$rest")
-                root == "data" && (ns == "minecraft" || ns in loaderNamespaces) -> { skip("vanilla or loader data other than tags (not allowed in a content mod)", path); continue }
+                root == "data" && (ns == "minecraft" || ns in loaderNamespaces) -> { skip("vanilla's own data other than tags, which a content mod may not hold: it is carried in the data pack instead", path); continue }
                 ns !in owned -> { skip("files in a namespace the mod cannot claim", path); continue }
             }
             if (!target.matches(pathOk)) { skip("paths vanilla does not read (upper case or invalid characters)", path); continue }
@@ -289,6 +292,10 @@ class ContentModGenerator(
             FeatureStatus.PARTIAL, "files copied", "custom particle types are registered in code; only vanilla particles can be spawned without a native mod")
         if (count(ResourceKind.SHADER) > 0) features += FeatureResult("Assets and data", "Shaders (${count(ResourceKind.SHADER)})", FeatureStatus.UNSUPPORTED,
             reason = "GLSL core shaders do not run on Horizon's wgpu renderer")
+        if (analysis.metadata.iconPath.isNotEmpty()) features += FeatureResult("Assets and data", "Mod icon", FeatureStatus.NOT_APPLICABLE,
+            "kept for the resource pack's pack.png",
+            "a .hmod may hold only its manifest, assets/ and data/, so the Mods list shows no icon for a mod installed from a file; " +
+                "the launcher shows icons for registry mods and for packs")
         if (recipesKept.isNotEmpty()) warnings += "${recipesKept.size} recipes are custom types or have conditions and were copied unchanged: ${recipesKept.take(5).joinToString()}"
         for ((reason, paths) in skipped) warnings += "Left out ${paths.size} file(s): $reason — e.g. ${paths.take(3).joinToString()}"
         warnings += "Copied $copied asset/data files into the content mod"

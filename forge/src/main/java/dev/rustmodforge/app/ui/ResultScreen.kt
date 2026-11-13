@@ -131,7 +131,16 @@ private fun Outputs(vm: ForgeViewModel, r: ConversionReport, d: ProjectDetail) {
                 OutlinedButton(onClick = { pending = f; save.launch(f.name) }) { Text("Save as…") }
                 OutlinedButton(onClick = { runCatching { Exports.share(context, f) }.onFailure { vm.say("Share failed: ${it.message}") } }) { Text("Share") }
             }
-            Spacer(Modifier.height(10.dp))
+            // Each kind is installed somewhere else, so the steps follow the file itself.
+            val steps = HorizonCompat.installSteps(f.name)
+            if (steps.isNotEmpty()) {
+                var open by remember(f.name) { mutableStateOf(f.name.endsWith("-resourcepack.zip") || f.name.endsWith("-datapack.zip")) }
+                TextButton(onClick = { open = !open }) { Text(if (open) "Hide install steps" else "How to install this") }
+                if (open) steps.forEachIndexed { i, line ->
+                    Text("${i + 1}. $line", color = Palette.Text, style = MaterialTheme.typography.bodySmall)
+                }
+            }
+            Spacer(Modifier.height(14.dp))
         }
         val reportFile = d.outputs.firstOrNull { it.name.endsWith("-report.md") }
         if (reportFile != null) TextButton(onClick = { pending = reportFile; save.launch(reportFile.name) }) { Text("Save the report (Markdown)") }
@@ -142,9 +151,8 @@ private fun Outputs(vm: ForgeViewModel, r: ConversionReport, d: ProjectDetail) {
         } else {
             Text("Horizon Android is not installed on this phone.", color = Palette.Muted, style = MaterialTheme.typography.bodySmall)
         }
-        Spacer(Modifier.height(8.dp))
-        Text("Import into Horizon Android", color = Palette.Steel, fontWeight = FontWeight.Medium)
-        HorizonCompat.android.importGuide.forEachIndexed { i, line -> Text("${i + 1}. $line", color = Palette.Text, style = MaterialTheme.typography.bodySmall) }
+        Text("Resource packs and data packs are how Horizon applies a mod's changes to vanilla's own sounds, textures and tables; mods add the mod's own content.",
+            color = Palette.Muted, style = MaterialTheme.typography.bodySmall)
     }
 }
 

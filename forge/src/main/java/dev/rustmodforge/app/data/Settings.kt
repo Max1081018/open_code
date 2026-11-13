@@ -11,11 +11,28 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 
+/**
+ * Ready-made AI providers. The first needs no key at all, so Maximum fidelity works without
+ * signing up anywhere; the others are free tiers that do need a key of your own.
+ */
+enum class AiPreset(val label: String, val kind: AiConfig.Kind, val baseUrl: String, val model: String, val needsKey: Boolean, val hint: String) {
+    FREE("Free, no key", AiConfig.Kind.OPENAI_COMPATIBLE, "https://text.pollinations.ai/openai", "openai", false,
+        "Pollinations' shared free endpoint. No account and no key; it is a shared queue, so a busy moment can be slow."),
+    GEMINI("Gemini (free key)", AiConfig.Kind.OPENAI_COMPATIBLE, "https://generativelanguage.googleapis.com/v1beta/openai", "gemini-flash-latest", true,
+        "Free key from aistudio.google.com."),
+    GROQ("Groq (free key)", AiConfig.Kind.OPENAI_COMPATIBLE, "https://api.groq.com/openai/v1", "llama-3.3-70b-versatile", true,
+        "Free key from console.groq.com."),
+    OPENROUTER("OpenRouter (free)", AiConfig.Kind.OPENAI_COMPATIBLE, "https://openrouter.ai/api/v1", "meta-llama/llama-3.3-70b-instruct:free", true,
+        "Free key from openrouter.ai; free model names change from time to time."),
+    ANTHROPIC("Anthropic (paid key)", AiConfig.Kind.ANTHROPIC, "https://api.anthropic.com", "claude-sonnet-4-5", true,
+        "Your own Anthropic key."),
+}
+
 data class ForgeSettings(
     val aiEnabled: Boolean = false,
     val aiKind: AiConfig.Kind = AiConfig.Kind.OPENAI_COMPATIBLE,
-    val aiBaseUrl: String = "https://api.openai.com/v1",
-    val aiModel: String = "",
+    val aiBaseUrl: String = AiPreset.FREE.baseUrl,
+    val aiModel: String = AiPreset.FREE.model,
     val aiKey: String = "",
     val aiTokenBudget: Int = 200_000,
     val buildServerUrl: String = "",

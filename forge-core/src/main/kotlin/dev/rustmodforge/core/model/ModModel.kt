@@ -42,6 +42,8 @@ data class ModMetadata(
     val embeddedJars: List<String> = emptyList(),
     /** Every mod id the metadata files declared (a jar can carry several). */
     val declaredModIds: List<String> = emptyList(),
+    /** The jar path of the mod's logo/icon, for the packs' `pack.png`. */
+    val iconPath: String = "",
 )
 
 @Serializable

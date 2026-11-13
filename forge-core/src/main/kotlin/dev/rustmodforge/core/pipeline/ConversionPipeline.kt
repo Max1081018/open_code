@@ -32,6 +32,7 @@ import dev.rustmodforge.core.target.ContentModGenerator
 import dev.rustmodforge.core.target.FunctionBackend
 import dev.rustmodforge.core.target.NativeModGenerator
 import dev.rustmodforge.core.target.OutputTree
+import dev.rustmodforge.core.target.PackGenerator
 import kotlinx.serialization.builtins.ListSerializer
 import java.io.File
 import java.time.Instant
@@ -164,6 +165,43 @@ class ConversionPipeline(
                     reason = "Fast quality converts data only; choose Advanced or Maximum fidelity to rebuild ${e.traits.size} behaviours and the model")
             }
 
+            // ---- packs: the mod's changes to vanilla's own files ----
+            // A content mod may not hold them, so without this a sound or texture mod would
+            // convert to a .hmod that does nothing. Their content is the same for every target.
+            val packFiles = LinkedHashMap<PackGenerator.PackKind, File>()
+            var packOnly = false
+            run {
+                val probe = OutputTree(File(project.build, "probe/$id")).also { it.clear() }
+                val probeGen = ContentModGenerator(a.copy(entities = entities), archive, probe)
+                val packTrees = LinkedHashMap<PackGenerator.PackKind, OutputTree>()
+                for (kind in PackGenerator.PackKind.entries) {
+                    val packTree = OutputTree(File(project.build, "packs/$id/${kind.name.lowercase()}")).also { it.clear() }
+                    val gen = PackGenerator(a, archive, packTree, kind, id, setOf(id) + probeGen.extraNamespaces, packIsTheWholeMod = true)
+                    if (gen.isEmpty()) continue
+                    p(Stage.CONTENT, 0.15f, "Writing the ${kind.label}")
+                    gen.generate()
+                    features += gen.features
+                    warnings += gen.warnings
+                    packTrees[kind] = packTree
+                }
+                if (packTrees.isNotEmpty()) {
+                    probeGen.generate()
+                    val inPacks = packTrees.values.flatMap { it.list() }.toSet()
+                    val own = probe.list().filter { it.startsWith("assets/") || it.startsWith("data/") }
+                    // A content mod earns its place when it holds data of its own (declarations,
+                    // recipes, loot, tags, functions) or assets the packs do not already carry.
+                    // Otherwise its files are pack content and a .hmod would do nothing.
+                    packOnly = own.none { it.startsWith("data/") } && own.all { it in inPacks }
+                    for ((kind, packTree) in packTrees) {
+                        val name = if (kind == PackGenerator.PackKind.RESOURCE) "resourcepack" else "datapack"
+                        val file = Packager.pack(packTree.root, File(project.out, "$id-$name.zip"))
+                        packFiles[kind] = file
+                        outputs += OutputFile(file.name, file.path, file.length(), Packager.sha256(file), "both", "${kind.label} (.zip)")
+                    }
+                }
+                probe.root.deleteRecursively()
+            }
+
             for (target in state.targets) {
                 cancel.check()
                 val tname = if (target == TargetId.HORIZON_ANDROID) "android" else "desktop"
@@ -208,25 +246,38 @@ class ConversionPipeline(
 
                 // ---- package ----
                 project.stage(Stage.PACKAGE, StageState.RUNNING)
-                val hmod = Packager.pack(tree.root, File(project.out, "$id-$tname.hmod"))
-                outputs += OutputFile(hmod.name, hmod.path, hmod.length(), Packager.sha256(hmod), tname, "content mod (.hmod)")
+                val hmod = if (packOnly) null else Packager.pack(tree.root, File(project.out, "$id-$tname.hmod"))
+                if (hmod == null) {
+                    features += FeatureResult("Assets and data", "Content mod", FeatureStatus.NOT_APPLICABLE,
+                        "none written",
+                        "this mod changes only vanilla's own files, so all of it is in the ${packFiles.keys.joinToString { it.label }}; a content mod would hold nothing",
+                        target = tname)
+                } else {
+                    outputs += OutputFile(hmod.name, hmod.path, hmod.length(), Packager.sha256(hmod), tname, "content mod (.hmod)")
+                }
                 val hnmod = nativeTree?.let { Packager.pack(it.root, File(project.out, "$id.hnmod")) }
                 hnmod?.let { outputs += OutputFile(it.name, it.path, it.length(), Packager.sha256(it), tname, "native mod source (.hnmod)") }
                 project.stage(Stage.PACKAGE, StageState.DONE)
 
                 // ---- validate ----
                 project.stage(Stage.VALIDATE, StageState.RUNNING)
-                p(Stage.VALIDATE, 0.7f, "Validating ${hmod.name}")
-                val issues = Validator.validateHmod(hmod, target)
+                p(Stage.VALIDATE, 0.7f, "Validating the output")
+                val issues = hmod?.let { Validator.validateHmod(it, target) } ?: emptyList()
                 val errors = issues.filter { it.error }
-                steps += StepResult("Manifest, paths and references", if (errors.isEmpty()) StepStatus.PASSED else StepStatus.FAILED,
+                if (hmod != null) steps += StepResult("Manifest, paths and references", if (errors.isEmpty()) StepStatus.PASSED else StepStatus.FAILED,
                     if (errors.isEmpty()) "${issues.size} warnings" else "${errors.size} errors: ${errors.take(3).joinToString("; ")}", issues.joinToString("\n"), tname)
+                if (target == state.targets.first()) for ((kind, file) in packFiles) {
+                    val pi = Validator.validatePack(file, kind)
+                    steps += StepResult("${kind.label.replaceFirstChar(Char::uppercase)} structure and formats",
+                        if (pi.none { it.error }) StepStatus.PASSED else StepStatus.FAILED,
+                        pi.filter { it.error }.take(3).joinToString("; ").ifEmpty { "${file.name}: pack.mcmeta and paths check out" }, pi.joinToString("\n"), "both")
+                }
                 hnmod?.let { f ->
                     val ni = Validator.validateHnmod(f)
                     steps += StepResult("Native bundle structure", if (ni.none { it.error }) StepStatus.PASSED else StepStatus.FAILED, ni.joinToString("; ").ifEmpty { "ok" }, target = tname)
                 }
                 val checker = options.horizonCheckers[target]
-                if (checker != null && checker.available()) {
+                if (checker != null && checker.available() && hmod != null) {
                     val r = checker.check(hmod)
                     steps += StepResult("Horizon's own checker (cargo horizon-mod check)", if (r.success) StepStatus.PASSED else StepStatus.FAILED, r.log.lines().take(4).joinToString(" "), r.log, tname)
                 } else {

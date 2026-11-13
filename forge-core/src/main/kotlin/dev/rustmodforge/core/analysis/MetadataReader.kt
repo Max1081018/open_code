@@ -58,6 +58,16 @@ object MetadataReader {
         return out
     }
 
+    /**
+     * The jar entry holding the mod's logo: what its metadata names, else a conventional
+     * location. Empty when the jar has none.
+     */
+    fun iconOf(archive: SafeArchive, declared: String?): String {
+        val candidates = listOfNotNull(declared?.trim()?.trimStart('/')?.takeIf { it.isNotEmpty() }) +
+            listOf("pack.png", "icon.png", "logo.png")
+        return candidates.firstOrNull { it.endsWith(".png") && archive.contains(it) } ?: ""
+    }
+
     /** `[a-z0-9_]{1,64}` as Horizon's manifest requires. */
     fun sanitizeId(raw: String): String {
         val s = raw.lowercase().map { if (it in 'a'..'z' || it in '0'..'9' || it == '_') it else '_' }.joinToString("")
@@ -128,12 +138,16 @@ object MetadataReader {
             }
             val aw = listOfNotNull(root["accessWidener"].str())
             val mc = deps.firstOrNull { it.id == "minecraft" }?.versionRange ?: ""
+            val icon = when (val i = meta?.get("icon") ?: root["icon"]) {
+                is JsonObject -> i.values.mapNotNull { it.str() }.lastOrNull()
+                else -> i.str()
+            }
             return ModMetadata(
                 modId = id, name = name, version = version, description = desc, authors = authors,
                 license = license, loader = loader, minecraftVersion = mc,
                 loaderVersion = deps.firstOrNull { it.id == "fabricloader" || it.id == "quilt_loader" }?.versionRange ?: "",
                 dependencies = deps, entrypoints = entrypoints, mixinConfigs = mixins, accessWideners = aw,
-                embeddedJars = jars, declaredModIds = listOf(id),
+                embeddedJars = jars, declaredModIds = listOf(id), iconPath = iconOf(archive, icon),
             )
         }
     }
@@ -190,6 +204,7 @@ object MetadataReader {
                 accessWideners = listOfNotNull("META-INF/accesstransformer.cfg".takeIf { archive.contains(it) }),
                 embeddedJars = jarJar,
                 declaredModIds = mods.mapNotNull { it["modId"]?.toString() },
+                iconPath = iconOf(archive, (first["logoFile"] ?: toml["logoFile"])?.toString()),
             )
         }
     }
@@ -208,7 +223,7 @@ object MetadataReader {
                 description = first?.get("description").str() ?: "",
                 authors = (first?.get("authorList") as? JsonArray)?.mapNotNull { it.str() } ?: emptyList(),
                 loader = loader, minecraftVersion = first?.get("mcversion").str() ?: "",
-                declaredModIds = listOf(id),
+                declaredModIds = listOf(id), iconPath = iconOf(archive, first?.get("logoFile").str()),
             )
         }
     }
@@ -225,6 +240,7 @@ object MetadataReader {
                 modId = sanitizeId(stem), name = stem, version = "1.0.0",
                 description = (pack?.get("description") as? JsonPrimitive)?.contentOrNull ?: "",
                 loader = loader, minecraftVersion = format?.let { PackFormats.describe(it) } ?: "",
+                iconPath = iconOf(archive, null),
             )
         }
     }

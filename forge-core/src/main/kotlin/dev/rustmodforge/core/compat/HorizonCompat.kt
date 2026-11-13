@@ -141,4 +141,33 @@ object HorizonCompat {
     )
 
     fun profile(id: TargetId) = if (id == TargetId.HORIZON_ANDROID) android else desktop
+
+    /**
+     * Where one generated file goes in Horizon Android, by what it is. Each kind has its own
+     * place: mods, resource packs and data packs are read from different folders, and a data
+     * pack belongs to one world.
+     */
+    fun installSteps(fileName: String): List<String> = when {
+        fileName.endsWith("-resourcepack.zip") -> listOf(
+            "Open Horizon Android and go to Packs.",
+            "Press Import file and pick this .zip (it is a resource pack, which is how Horizon applies changes to vanilla's own sounds, textures, models and text).",
+            "Open Installed, expand Resource Packs and switch it on.",
+            "Start the game: the pack applies at the next start. In game you can also check Options > Resource Packs.",
+        )
+        fileName.endsWith("-datapack.zip") -> listOf(
+            "A data pack belongs to one world, so it is not imported on the Mods page.",
+            "Open the system Files app, choose Horizon Android in its drawer, then Worlds, and open the world you want.",
+            "Create a datapacks folder there if it is missing and copy this .zip into it, with the game closed.",
+            "Open the world: its recipes, loot tables and advancements merge over vanilla's.",
+        )
+        fileName.endsWith(".hnmod") -> listOf(
+            "This one is for desktop Horizon, not for Android: it is Rust source the desktop launcher compiles into the game.",
+            "Copy it into the game folder's horizon-native-mods/ on a PC and run horizon-launcher native-build --trust-native-code.",
+        )
+        fileName.endsWith("-desktop.hmod") -> listOf(
+            "For desktop Horizon: copy it into the game folder's horizon-mods/ and turn it on in Options > Mods.",
+        )
+        fileName.endsWith(".hmod") -> android.importGuide
+        else -> emptyList()
+    }
 }

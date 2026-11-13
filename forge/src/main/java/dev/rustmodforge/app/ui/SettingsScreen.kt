@@ -15,6 +15,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Button
@@ -40,7 +41,7 @@ import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.ui.unit.dp
 import dev.rustmodforge.app.ForgeViewModel
 import dev.rustmodforge.core.ai.AiAssistant
-import dev.rustmodforge.core.ai.AiConfig
+import dev.rustmodforge.app.data.AiPreset
 import dev.rustmodforge.core.compat.HorizonCompat
 import dev.rustmodforge.core.pipeline.Quality
 import kotlinx.coroutines.Dispatchers
@@ -67,19 +68,23 @@ fun SettingsScreen(vm: ForgeViewModel) {
     Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState())) {
         Text("Settings", style = MaterialTheme.typography.headlineSmall, color = Palette.Text, modifier = Modifier.padding(16.dp))
 
-        SectionCard("AI provider", subtitle = "Optional. Used only at Maximum fidelity, one class or one compiler error per request. Analysis and extraction never need it.") {
+        SectionCard("AI provider", subtitle = "Optional, and only at Maximum fidelity: it classifies custom Java goals the built-in rules do not recognise and helps fix compile errors, one class or one error per request. It cannot make Java code run on Horizon, so it does not turn an unsupported feature into a supported one.") {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Text("Use an AI provider", color = Palette.Text, modifier = Modifier.weight(1f))
                 Switch(checked = s.aiEnabled, onCheckedChange = { v -> vm.settings.update { it.copy(aiEnabled = v) } })
             }
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                FilterChip(selected = s.aiKind == AiConfig.Kind.OPENAI_COMPATIBLE, onClick = {
-                    vm.settings.update { it.copy(aiKind = AiConfig.Kind.OPENAI_COMPATIBLE, aiBaseUrl = if (it.aiKind != AiConfig.Kind.OPENAI_COMPATIBLE) "https://api.openai.com/v1" else it.aiBaseUrl) }
-                }, label = { Text("OpenAI-compatible") })
-                FilterChip(selected = s.aiKind == AiConfig.Kind.ANTHROPIC, onClick = {
-                    vm.settings.update { it.copy(aiKind = AiConfig.Kind.ANTHROPIC, aiBaseUrl = if (it.aiKind != AiConfig.Kind.ANTHROPIC) "https://api.anthropic.com" else it.aiBaseUrl) }
-                }, label = { Text("Anthropic") })
+            Text("Provider", color = Palette.Muted, style = MaterialTheme.typography.labelMedium)
+            Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                AiPreset.entries.forEach { preset ->
+                    val chosen = s.aiBaseUrl.trimEnd('/') == preset.baseUrl.trimEnd('/')
+                    FilterChip(selected = chosen, onClick = {
+                        vm.settings.update { it.copy(aiKind = preset.kind, aiBaseUrl = preset.baseUrl, aiModel = preset.model) }
+                    }, label = { Text(preset.label) })
+                }
             }
+            val current = AiPreset.entries.firstOrNull { it.baseUrl.trimEnd('/') == s.aiBaseUrl.trimEnd('/') }
+            if (current != null) Text(current.hint, color = Palette.Muted, style = MaterialTheme.typography.bodySmall)
+            if (current?.needsKey == false) Text("This one needs no API key.", color = Palette.Good, style = MaterialTheme.typography.bodySmall)
             Field("Base URL", s.aiBaseUrl) { v -> vm.settings.update { it.copy(aiBaseUrl = v) } }
             Field("Model", s.aiModel, hint = "the model id your provider documents") { v -> vm.settings.update { it.copy(aiModel = v) } }
             Field("API key", s.aiKey, secret = true) { v -> vm.settings.update { it.copy(aiKey = v) } }
