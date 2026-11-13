@@ -35,14 +35,38 @@ network is used only for an AI provider or build server you configure.
 | Assets, data (upgraded to 26.3), declarations, dependency report, validation | ✓ | ✓ | ✓ |
 | Behaviour reconstruction from bytecode, model rig + function AI (Android), Rust trait mod (desktop), compile via build backend | | ✓ | ✓ |
 | Animation sampled every tick (instead of every 2) | | | ✓ |
-| AI-assisted classification of custom Java goals the rules do not recognise; AI repair of compile errors (scoped region, bounded attempts) | | | ✓ (if a provider is set) |
+| AI-assisted classification of custom Java goals the rules do not recognise; AI repair of compile errors (scoped region, bounded attempts) | | | ✓ (a provider is set by default) |
+
+**AI**: Settings ships presets. The default (Pollinations) needs **no key**; Gemini, Groq and
+OpenRouter free tiers need a free key of your own. AI is used for two narrow jobs — classifying a
+custom Java goal the rules do not recognise, and fixing a compile error in a marked region — one
+class or one error per request, cached, under a token budget. It cannot make Java run on Horizon,
+so it does not turn an unsupported feature into a supported one.
+
+## What each mod becomes
+
+A jar is not one thing: its files belong in different places in Horizon, and putting them in the
+wrong one is why a converted mod can look installed and change nothing.
+
+| The jar's files | Where they go | Why |
+|---|---|---|
+| `assets/<mod>/**`, `data/<mod>/**`, additions to vanilla and `c` tags, atlas sources | **content mod** `.hmod` | A content mod owns its own namespaces. |
+| `assets/minecraft/**` (sounds, textures, models, lang, fonts) | **resource pack** `.zip` | A content mod may not replace vanilla's files; Horizon merges a pack's `assets/minecraft/sounds.json` and the rest over vanilla. |
+| `data/minecraft/**` beyond tags (recipes, loot tables, advancements) | **data pack** `.zip` | The same, per world: the game loads a world's packs into its item, recipe, loot and advancement tables. |
+| Java classes | nothing is copied | Java does not run on Horizon; behaviour is rebuilt from what the bytecode shows (below). |
+
+So a "better sounds" style mod converts to a **resource pack**, not a mod, and no `.hmod` is
+written for it — an empty one would be installed and do nothing. The Result screen gives install
+steps per file, because the three go to different folders. A `.hmod` may hold nothing but its
+manifest, `assets/` and `data/`, so it cannot carry a `pack.png`: the mod's logo goes on the
+packs, and a mod installed from a file shows no icon in the Mods list.
 
 ## Targets
 
 | Target | Output | Notes |
 |---|---|---|
-| **Horizon Android** (`dev.horizon.android`, RxLauncher Rust Edition `150a414`) | `<id>-android.hmod` | Content + data pack functions. No living mob types at this revision, so a creature is a *tagged vanilla mob* driven by functions, drawn by a display-entity rig. `.hnmod` is not supported there. |
-| **Desktop Horizon** (upstream `6c4c034`) | `<id>-desktop.hmod` + `<id>.hnmod` | Content with living entity types; a Rust trait mod (`register_goals`, `mob_submit`) that the desktop launcher compiles. |
+| **Horizon Android** (`dev.horizon.android`, RxLauncher Rust Edition `150a414`) | `<id>-android.hmod`, `<id>-resourcepack.zip`, `<id>-datapack.zip` | Content + data pack functions. No living mob types at this revision, so a creature is a *tagged vanilla mob* driven by functions, drawn by a display-entity rig. `.hnmod` is not supported there. |
+| **Desktop Horizon** (upstream `6c4c034`) | `<id>-desktop.hmod` + `<id>.hnmod` (+ the same packs) | Content with living entity types; a Rust trait mod (`register_goals`, `mob_submit`) that the desktop launcher compiles. |
 
 ## How a creature is rebuilt (example: a stalker horror mob)
 
@@ -84,6 +108,9 @@ Verified automatically (forge-core tests, run in CI):
   `horizon-client`** at the pinned revision (0 errors). Set `RMF_HORIZON_MOD_BIN`,
   `RMF_HORIZON_MOD_BIN_UPSTREAM` and `RMF_HORIZON_SRC` to run those checks in the tests.
 - Security: zip-slip, absolute paths, duplicate entries, zip bombs and size limits are refused.
+- A sound mod that replaces vanilla sounds produces a resource pack holding those sounds, the
+  mod's own sound it refers to, an icon and a `pack.mcmeta` the launcher's own format check
+  accepts, plus a data pack whose loot table has been upgraded to 26.3.
 
 **Not verified: running in the game.** No converted mod has been loaded in Horizon by these
 tests; every report says "Runtime test: not run". Display-entity rigs (orientation, handedness,
