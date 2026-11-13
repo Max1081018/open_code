@@ -1,0 +1,7 @@
+{
+  "schemaVersion": 1, "id": "simplemod", "version": "1.0.0", "name": "Simple Ruby", "description": "Rubies.",
+  "authors": ["Fixture Author"], "license": "MIT", "environment": "*",
+  "entrypoints": {"main": ["com.example.simplemod.SimpleMod"]},
+  "depends": {"fabricloader": ">=0.15.0", "minecraft": "~1.21.1", "fabric-api": "*"},
+  "suggests": {"modmenu": "*"}
+}

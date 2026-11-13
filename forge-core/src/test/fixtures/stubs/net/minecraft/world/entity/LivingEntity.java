@@ -1,0 +1,2 @@
+package net.minecraft.world.entity;
+public abstract class LivingEntity extends Entity { public boolean addEffect(net.minecraft.world.effect.MobEffectInstance i){return true;} public boolean hasLineOfSight(Entity e){return true;} protected net.minecraft.sounds.SoundEvent getHurtSound(net.minecraft.world.damagesource.DamageSource s){return null;} protected net.minecraft.sounds.SoundEvent getDeathSound(){return null;} }

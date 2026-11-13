@@ -17,3 +17,8 @@ dependencyResolutionManagement {
 rootProject.name = "App"
 include(":app")
 include(":camera")
+include(":forge")
+
+// RustMod Forge's engine is a standalone pure-JVM build (no Android SDK needed):
+// `gradle -p forge-core test`. The :forge app consumes it as dev.rustmodforge:forge-core.
+includeBuild("forge-core")

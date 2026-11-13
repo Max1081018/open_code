@@ -1,0 +1,4 @@
+{
+  "watcher_ambient": {"subtitle": "subtitles.fogwatcher.watcher_ambient", "sounds": ["fogwatcher:watcher_ambient"]},
+  "watcher_scream": {"subtitle": "subtitles.fogwatcher.watcher_scream", "sounds": [{"name": "fogwatcher:watcher_scream", "volume": 1.0}]}
+}
