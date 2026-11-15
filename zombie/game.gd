@@ -22,12 +22,15 @@ const Sfx := preload("res://sfx.gd")
 const Zombie := preload("res://zombie.gd")
 const UITheme := preload("res://ui_theme.gd")
 const IconBaker := preload("res://icon_baker.gd")
+const MapUI := preload("res://map_ui.gd")
 
 # --- world shape --------------------------------------------------------------
 const CHUNK := 48.0               # metres across one patch of ground
 const CHUNK_GRID := 24            # quads across that patch
 const VIEW_CHUNKS := 2            # rings of chunks kept around you
 const TOWN_R := 44.0              # the clearing the town sits in
+const WORLD_R := 620.0            # how far the land runs before the coast
+const SEA_Y := -11.0              # water level past the shore
 const SPAWN := Vector3(0, 0, 6)
 
 const EYE := 1.62
@@ -46,7 +49,7 @@ const ITEMS := {
 	"knife": {"name": "Knife", "kind": "melee", "dmg": 26.0, "rate": 0.38,
 		"model": "res://assets/loot/Knife.fbx", "loot": 0.12},
 	"9mm": {"name": "9mm Ammo", "kind": "ammo", "stack": 60, "loot": 0.34,
-		"model": "res://assets/loot/Battery_Small.fbx"},
+		"model": "res://assets/loot/Matchbox.fbx"},
 	"bandage": {"name": "Bandage", "kind": "heal", "heal": 28.0, "stack": 6, "loot": 0.26,
 		"model": "res://assets/loot/Bandages.fbx"},
 	"medkit": {"name": "First Aid Kit", "kind": "heal", "heal": 70.0, "stack": 3, "loot": 0.09,
@@ -113,6 +116,7 @@ var hands: Node3D
 var touch
 var status
 var icons
+var map_ui
 var render_view
 var fx
 var sun: DirectionalLight3D
@@ -141,6 +145,7 @@ var _reload_t := 0.0
 var _use_cd := 0.0
 var _noise: FastNoiseLite
 var _rough: FastNoiseLite
+var _coast: FastNoiseLite
 var _chunks := {}                 # Vector2i -> Node3D
 var _models := {}                 # name -> PackedScene
 var _zombies: Array = []
@@ -202,6 +207,9 @@ func _build_world() -> void:
 	_rough = FastNoiseLite.new()
 	_rough.seed = 99
 	_rough.frequency = 0.021
+	_coast = FastNoiseLite.new()
+	_coast.seed = 2024
+	_coast.frequency = 0.0022
 
 	var env := Environment.new()
 	env.background_mode = Environment.BG_SKY
@@ -223,9 +231,9 @@ func _build_world() -> void:
 	env.fog_sky_affect = 0.0
 	env.fog_aerial_perspective = 0.35
 	env.tonemap_mode = Environment.TONE_MAPPER_ACES
-	env.tonemap_white = 1.6
+	env.tonemap_white = 1.25
 	env.adjustment_enabled = true
-	env.adjustment_saturation = 1.10
+	env.adjustment_saturation = 1.18
 	env.adjustment_contrast = 1.06
 	var we := WorldEnvironment.new()
 	we.environment = env
@@ -242,6 +250,21 @@ func _build_world() -> void:
 	sun.shadow_normal_bias = 1.4
 	add_child(sun)
 
+	# The sea beyond the shore: one big plate at water level. It is what the
+	# land falls into, and what stops the world looking like it was cut out.
+	var sea := MeshInstance3D.new()
+	var pm := PlaneMesh.new()
+	pm.size = Vector2(WORLD_R * 4.0, WORLD_R * 4.0)
+	var sm := StandardMaterial3D.new()
+	sm.albedo_color = Color(0.10, 0.26, 0.34)
+	sm.roughness = 0.12
+	sm.metallic = 0.35
+	pm.material = sm
+	sea.mesh = pm
+	sea.position = Vector3(0, SEA_Y, 0)
+	sea.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	add_child(sea)
+
 	fx = WorldFX.new()
 	add_child(fx)
 
@@ -256,6 +279,12 @@ func terrain_y(x: float, z: float) -> float:
 	var h: float = _noise.get_noise_2d(x, z) * 17.0
 	h += _rough.get_noise_2d(x, z) * 1.1
 	var d := Vector2(x, z).length()
+	# The land is finite: past the shore it falls away into the sea, with a
+	# ragged coast rather than a circle. This is what gives the map a shape.
+	var coast: float = WORLD_R + _coast.get_noise_2d(x * 0.6, z * 0.6) * 110.0
+	if d > coast - 60.0:
+		var t: float = clampf((d - (coast - 60.0)) / 60.0, 0.0, 1.0)
+		h = lerpf(h, -14.0, t * t * (3.0 - 2.0 * t))
 	if d < TOWN_R + 26.0:
 		var flat: float = clampf((d - TOWN_R) / 26.0, 0.0, 1.0)
 		h = lerpf(_town_level(), h, flat * flat * (3.0 - 2.0 * flat))
@@ -476,11 +505,7 @@ func _build_chunk(k: Vector2i) -> Node3D:
 			add.call(p0); add.call(p3); add.call(p2)
 	var mi := MeshInstance3D.new()
 	mi.mesh = st.commit()
-	var gm := StandardMaterial3D.new()
-	gm.vertex_color_use_as_albedo = true
-	gm.roughness = 1.0
-	gm.specular_mode = BaseMaterial3D.SPECULAR_DISABLED
-	mi.material_override = gm
+	mi.material_override = _ground_mat()
 	mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 	root.add_child(mi)
 	mi.create_trimesh_collision()
@@ -508,14 +533,28 @@ func _scatter(root: Node3D, k: Vector2i, x0: float, z0: float) -> void:
 			batches[name] = [mm, [], pair[1]]
 		(batches[name][1] as Array).append(xf * (batches[name][2] as Transform3D))
 
-	var density: int = 70
+	# Trees come in stands rather than evenly spread: a few seed points per
+	# chunk with a thick cluster round each, which reads as woodland instead
+	# of an orchard.
+	var groves: Array = []
+	for i in rng.randi_range(2, 4):
+		groves.append(Vector2(x0 + rng.randf() * CHUNK, z0 + rng.randf() * CHUNK))
+	var density: int = 130
 	for i in density:
 		var x := x0 + rng.randf() * CHUNK
 		var z := z0 + rng.randf() * CHUNK
+		if rng.randf() < 0.55 and not groves.is_empty():
+			var g: Vector2 = groves[rng.randi() % groves.size()]
+			var ga := rng.randf() * TAU
+			var gr := rng.randf() * rng.randf() * 13.0
+			x = g.x + cos(ga) * gr
+			z = g.y + sin(ga) * gr
 		var d := Vector2(x, z).length()
 		if d < TOWN_R * 0.92:
 			continue                                   # the town is a clearing
 		var y := terrain_y(x, z)
+		if y < SEA_Y + 1.5:
+			continue                                   # under water
 		var n := _ground_normal(x, z)
 		if n.y < 0.80:
 			continue                                   # too steep to root in
@@ -580,7 +619,7 @@ func _scatter(root: Node3D, k: Vector2i, x0: float, z0: float) -> void:
 					Vector3(x, y, z)))
 		# And the proper grass: tufted clumps with the EmacEArt wind shader,
 		# thick near you and gone a short way off.
-		_grass_carpet(root, rng, x0, z0, blades * 3)
+		_grass_carpet(root, rng, x0, z0, blades * 6)
 
 	for name in batches:
 		var mm: MultiMesh = batches[name][0]
@@ -601,6 +640,17 @@ func _scatter(root: Node3D, k: Vector2i, x0: float, z0: float) -> void:
 			mmi.visibility_range_end = Q_DRAW[quality]
 			mmi.visibility_range_end_margin = 14.0
 		root.add_child(mmi)
+
+
+var _ground_shader: ShaderMaterial
+
+## One material for every chunk of ground: the terrain shader, which does the
+## blotching, grain, dirt and haze that a flat vertex colour cannot.
+func _ground_mat() -> ShaderMaterial:
+	if _ground_shader == null:
+		_ground_shader = ShaderMaterial.new()
+		_ground_shader.shader = load("res://assets/shaders/terrain.gdshader")
+	return _ground_shader
 
 
 var _grass_mat: ShaderMaterial
@@ -652,8 +702,8 @@ func _grass_carpet(root: Node3D, rng: RandomNumberGenerator, x0: float, z0: floa
 	mmi.multimesh = mm
 	mmi.material_override = _grass_mat
 	mmi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
-	mmi.visibility_range_end = 34.0
-	mmi.visibility_range_end_margin = 8.0
+	mmi.visibility_range_end = 44.0
+	mmi.visibility_range_end_margin = 10.0
 	root.add_child(mmi)
 
 
@@ -819,6 +869,7 @@ func _build_town() -> void:
 			continue
 		var kind: String = ["supply_crate", "toxic_barrel", "burning_barrel", "supply_crate"][rng.randi() % 4]
 		put.call(kind, x, z, rng.randf() * TAU, true)
+	_map_marks.append({"pos": Vector3.ZERO, "kind": "town"})
 	print("TOWN: %d lootable containers" % _lootables.size())
 
 
@@ -844,6 +895,7 @@ func _ruins(root: Node3D, k: Vector2i, x0: float, z0: float) -> void:
 	var n := _prop(root, main, Vector3(x, y, z), yaw, 1.0, "apoc")
 	if n and APOC_SOLID.has(main):
 		_solid_shape(n, bool(APOC_SOLID[main]))
+	_map_marks.append({"pos": Vector3(x, y, z), "kind": "ruin"})
 	for i in rng.randi_range(1, 3):
 		var a := rng.randf() * TAU
 		var r := rng.randf_range(4.0, 9.0)
@@ -955,6 +1007,16 @@ func _build_ui() -> void:
 	icons = IconBaker.new()
 	add_child(icons)
 	icons.baked.connect(func(_k: String) -> void: _sync_hotbar())
+	# The map is painted from the same functions that built the ground, so it
+	# cannot disagree with the world.
+	map_ui = MapUI.new()
+	map_ui.world_r = WORLD_R
+	map_ui.sea_y = SEA_Y
+	map_ui.height_at = func(x: float, z: float) -> float: return terrain_y(x, z)
+	map_ui.biome_at = func(x: float, z: float) -> int: return _biome(x, z)
+	add_child(map_ui)
+	map_ui.bake()
+	map_ui.marks = _map_marks
 	status.respawn_pressed.connect(_respawn)
 
 
@@ -1634,7 +1696,12 @@ func _icon_for(id: String) -> String:
 	return "whack"
 
 
+var _map_marks: Array = []
+
 func _update_hud() -> void:
+	if map_ui:
+		map_ui.player_pos = player.global_position
+		map_ui.player_yaw = cam_yaw
 	status.health = health
 	status.breath = stamina
 	status.show_breath = stamina < 0.995
@@ -1894,6 +1961,16 @@ func _drive_test() -> void:
 		_basics_step()
 		if frame > autotest_frames:
 			print("AUTOTEST basics done kills=%d hp=%.0f items=%s" % [kills, health, inv])
+			get_tree().quit()
+		return
+
+	# The map, open, with the island on it.
+	if start_screen == "map":
+		if frame == 20:
+			map_ui.open = true
+		if frame > 40 and autotest_shot != "":
+			get_viewport().get_texture().get_image().save_png(autotest_shot)
+			print("AUTOTEST map marks=%d open=%s" % [map_ui.marks.size(), map_ui.open])
 			get_tree().quit()
 		return
 

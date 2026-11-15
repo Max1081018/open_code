@@ -24,8 +24,8 @@ const LIB := "res://assets/chars/zombie_anims.res"
 const OFFSET := Vector3(0.0, 0.10, 0.0)      # first guess for the head, before the hand is pinned
 # Where the gun hand should sit in view: a little right of centre, below the
 # crosshair, a forearm's length out. The whole rig is moved to put it there.
-const HAND_AT := Vector3(0.21, -0.21, -0.40)
-const RIG_SCALE := 0.45
+const HAND_AT := Vector3(0.19, -0.185, -0.33)
+const RIG_SCALE := 0.50
 const SKIN_HIDE := 0.001          # bone scale that makes a limb vanish
 
 var mode := "bare"                # bare / gun / melee
@@ -45,6 +45,7 @@ var _busy := 0.0
 var _lag := Vector2.ZERO
 var _look_was := Vector2.ZERO
 var _hidden: Array[int] = []
+var _slim := {}
 var _scale := 1.0
 var _rng := RandomNumberGenerator.new()
 var _held: Node3D
@@ -116,13 +117,27 @@ func _ready() -> void:
 
 
 ## Folds away everything that would be in shot: the head you are looking out
-## of, and the legs, which the camera sits above anyway.
+## of, and the legs, which the camera sits above anyway. The arms are also
+## taken in: the model's limbs are heavy square blocks, and seen from a
+## hand's length away a life-size one reads as a plank across the screen. The
+## hand is scaled back out again so it stays the size of a hand.
+const SLIM := 0.58
+
 func _hide_parts() -> void:
 	for name in ["neck", "thigh_L", "thigh_R"]:
 		var b := _skel.find_bone(name)
 		if b >= 0:
 			_skel.set_bone_pose_scale(b, Vector3.ONE * SKIN_HIDE)
 			_hidden.append(b)
+	for side in ["L", "R"]:
+		for name in ["upper_arm_" + side, "forearm_" + side]:
+			var b := _skel.find_bone(name)
+			if b >= 0:
+				_slim[b] = Vector3(SLIM, 1.0, SLIM)
+		var h := _skel.find_bone("hand_" + side)
+		if h >= 0:
+			# undo the two slimmings it inherits through the chain
+			_slim[h] = Vector3(1.0 / (SLIM * SLIM), 1.0, 1.0 / (SLIM * SLIM))
 
 
 var _flash: MeshInstance3D
@@ -271,6 +286,8 @@ func _process(delta: float) -> void:
 	# have to be folded away again after it has had its say.
 	for b in _hidden:
 		_skel.set_bone_pose_scale(b, Vector3.ONE * SKIN_HIDE)
+	for b in _slim:
+		_skel.set_bone_pose_scale(b, _slim[b])
 
 	# Once the idle pose is on the skeleton, slide the whole rig so the gun
 	# hand lands exactly on HAND_AT. Pinning the hand rather than the head is

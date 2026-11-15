@@ -7,7 +7,7 @@ extends Node
 
 signal baked(key: String)
 
-const SIZE := 160
+const SIZE := 224
 
 var cache := {}                   # key -> Texture2D
 var _queue: Array = []            # [key, Node3D]
@@ -29,8 +29,8 @@ func _ready() -> void:
 	var env := Environment.new()
 	env.background_mode = Environment.BG_CLEAR_COLOR
 	env.ambient_light_source = Environment.AMBIENT_SOURCE_COLOR
-	env.ambient_light_color = Color(0.75, 0.78, 0.85)
-	env.ambient_light_energy = 0.75
+	env.ambient_light_color = Color(0.72, 0.76, 0.86)
+	env.ambient_light_energy = 1.05
 	_cam = Camera3D.new()
 	_cam.environment = env
 	_cam.fov = 30.0
@@ -38,11 +38,11 @@ func _ready() -> void:
 	_vp.add_child(_cam)
 	var key := DirectionalLight3D.new()
 	key.rotation_degrees = Vector3(-40, 35, 0)
-	key.light_energy = 1.25
+	key.light_energy = 1.7
 	_vp.add_child(key)
 	var rim := DirectionalLight3D.new()
 	rim.rotation_degrees = Vector3(-10, 200, 0)
-	rim.light_energy = 0.55
+	rim.light_energy = 0.9
 	rim.light_color = Color(0.75, 0.85, 1.0)
 	_vp.add_child(rim)
 	_stage = Node3D.new()
@@ -104,7 +104,7 @@ func _frame(model: Node3D) -> void:
 	var box2 := _aabb(model, Transform3D.IDENTITY)
 	model.position = -box2.get_center()
 	var r := maxf(box2.size.x, box2.size.y) * 0.5
-	var dist := r / tan(deg_to_rad(_cam.fov * 0.5)) * 0.98
+	var dist := r / tan(deg_to_rad(_cam.fov * 0.5)) * 0.86
 	_cam.position = Vector3(0, 0, dist + box2.size.z * 0.5)
 	_cam.near = maxf(dist * 0.05, 0.01)
 	_cam.far = dist * 4.0 + box2.size.z * 2.0

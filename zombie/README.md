@@ -10,7 +10,10 @@ art and the rest of the survival systems come on top of it.
 ## What works now
 
 - **Open ground.** Terrain is generated from noise in 48 m chunks that load and
-  unload around you, with forest, rocks and undergrowth scattered into them.
+  unload around you. The land is finite: a ragged coast about 600 m out,
+  falling into the sea. Three biomes - pine and birch forest, jungle in the
+  low wet ground, and dead dusty ground round the ruins - with the trees in
+  stands rather than evenly spread, and a grass carpet underfoot.
 - **Zombies.** The Zombie Lite model on an 18-bone rig, driven by an
   AnimationTree state machine: a blend space for idle/walk/run/sprint, and
   states for attacking, biting, flinching, staggering, crawling, getting up and
@@ -25,6 +28,11 @@ art and the rest of the survival systems come on top of it.
   and leg hits; a crosshair that tells you what you are looking at.
 - **Survival.** Health, stamina, food and water, containers to search, items
   that stack in a six-slot hotbar, death and respawn.
+- **A map you can read.** The whole island is sampled once at start-up from
+  the same functions that build the ground - height, biome, slope - and
+  painted into one small image, so it cannot disagree with the world. A
+  compass rose sits in the corner with the land round you and your heading;
+  tap it for the whole island, the town and the ruins you know about.
 - **Day and night.** A real sky shader with sun, moon, stars and drifting
   cloud; the light, the fog and how far zombies can see all follow the clock.
 
