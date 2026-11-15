@@ -17,6 +17,11 @@ uniform vec4 tint : source_color = vec4(1.0, 1.0, 1.0, 1.0);
 uniform sampler2D albedo_texture : source_color, hint_default_white, filter_linear_mipmap, repeat_enable;
 uniform bool use_texture = false;
 uniform float alpha_scissor : hint_range(0.0, 1.0) = 0.0;
+// How far to pull the colour toward grey. The environment's own saturation
+// control does nothing in the compatibility renderer, which is what this game
+// ships with, so the drabness has to be baked in here.
+uniform float desaturate : hint_range(0.0, 1.0) = 0.0;
+uniform float darken : hint_range(0.0, 1.0) = 0.0;
 
 group_uniforms Toon;
 uniform int bands : hint_range(2, 6) = 3;
@@ -76,7 +81,10 @@ void fragment() {
 	// Undergrowth loses light at its base; without this a bush is a flat
 	// cut-out however good the lighting above it is.
 	float ao = mix(1.0 - ao_strength, 1.0, clamp(v_up + 0.25, 0.0, 1.0));
-	ALBEDO = c.rgb * ao;
+	vec3 col = c.rgb;
+	float grey = dot(col, vec3(0.299, 0.587, 0.114));
+	col = mix(col, vec3(grey * 0.96), desaturate) * (1.0 - darken);
+	ALBEDO = col * ao;
 	SPECULAR = 0.0;
 	ROUGHNESS = 1.0;
 	if (alpha_scissor > 0.0) {

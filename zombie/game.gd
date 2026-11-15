@@ -29,7 +29,7 @@ const CHUNK := 48.0               # metres across one patch of ground
 const CHUNK_GRID := 24            # quads across that patch
 const VIEW_CHUNKS := 2            # rings of chunks kept around you
 const TOWN_R := 44.0              # the clearing the town sits in
-const WORLD_R := 620.0            # how far the land runs before the coast
+const WORLD_R := 1150.0           # how far the land runs before the coast
 const SEA_Y := -11.0              # water level past the shore
 const SPAWN := Vector3(0, 0, 6)
 
@@ -224,23 +224,36 @@ func _build_world() -> void:
 	sky.radiance_size = Sky.RADIANCE_SIZE_128
 	sky_mat = ShaderMaterial.new()
 	sky_mat.shader = load("res://assets/shaders/sky.gdshader")
+	# A washed-out, colourless sky: the pack's palette is for a world that
+	# still has people in it.
+	sky_mat.set_shader_parameter("day_top", Color(0.34, 0.40, 0.47))
+	sky_mat.set_shader_parameter("day_horizon", Color(0.62, 0.64, 0.63))
+	sky_mat.set_shader_parameter("dawn_top", Color(0.26, 0.29, 0.38))
+	sky_mat.set_shader_parameter("dawn_horizon", Color(0.68, 0.56, 0.46))
+	sky_mat.set_shader_parameter("dusk_top", Color(0.22, 0.23, 0.31))
+	sky_mat.set_shader_parameter("dusk_horizon", Color(0.60, 0.44, 0.36))
+	sky_mat.set_shader_parameter("cloud_day", Color(0.72, 0.73, 0.73))
+	sky_mat.set_shader_parameter("cloud_night", Color(0.14, 0.15, 0.19))
+	sky_mat.set_shader_parameter("sun_glow", 0.7)
 	sky.sky_material = sky_mat
 	env.sky = sky
 	# The sky lights the world: ambient comes from it, so dawn is pink on the
 	# walls and midnight is blue, without any of that being set by hand.
 	env.ambient_light_source = Environment.AMBIENT_SOURCE_SKY
-	env.ambient_light_energy = 0.75
+	env.ambient_light_energy = 0.62
 	env.ambient_light_sky_contribution = 1.0
 	env.fog_enabled = true
 	env.fog_mode = Environment.FOG_MODE_DEPTH
-	env.fog_light_color = Color(0.60, 0.66, 0.70)
-	env.fog_density = 0.0075
+	env.fog_light_color = Color(0.50, 0.53, 0.55)
+	env.fog_density = 0.013
 	env.fog_sky_affect = 0.0
 	env.fog_aerial_perspective = 0.35
 	env.tonemap_mode = Environment.TONE_MAPPER_ACES
-	env.tonemap_white = 1.25
+	env.tonemap_white = 1.5
 	env.adjustment_enabled = true
-	env.adjustment_saturation = 1.18
+	# Note: the compatibility renderer ignores these, which is why the drab
+	# palette is baked into the shaders instead. Kept for desktop builds.
+	env.adjustment_saturation = 0.72
 	env.adjustment_contrast = 1.06
 	var we := WorldEnvironment.new()
 	we.environment = env
@@ -313,7 +326,7 @@ func _biome(x: float, z: float) -> int:
 		_biome_noise.seed = 555
 		_biome_noise.frequency = 0.0045
 	var dead: float = _biome_noise.get_noise_2d(x + 900.0, z - 400.0)
-	if dead > 0.34:
+	if dead > 0.12:
 		return 2
 	var h := terrain_y(x, z)
 	return 1 if h < -3.0 else 0
@@ -395,6 +408,11 @@ func _wind_mat(kind: String) -> ShaderMaterial:
 	kind = kind.replace("_raft", "")
 	var m := ShaderMaterial.new()
 	m.shader = load("res://assets/shaders/toon_world.gdshader")
+	# Everything green is knocked back toward olive and grey. A ruined world
+	# does not have municipal lawns in it.
+	m.set_shader_parameter("tint", Color(0.80, 0.80, 0.74))
+	m.set_shader_parameter("desaturate", 0.52)
+	m.set_shader_parameter("darken", 0.10)
 	match kind:
 		"grass":
 			m.set_shader_parameter("sway_strength", 0.26)
@@ -418,6 +436,9 @@ func _wind_mat(kind: String) -> ShaderMaterial:
 			m.set_shader_parameter("height_scale", 2.0)
 			m.set_shader_parameter("ao_strength", 0.25)
 			m.set_shader_parameter("bands", 4)
+	if kind == "tree":
+		m.set_shader_parameter("tint", Color(0.76, 0.76, 0.70))
+		m.set_shader_parameter("desaturate", 0.58)
 	if raft:
 		if _raft_tex == null:
 			_raft_tex = load("res://assets/raft/texture.png")
@@ -518,9 +539,9 @@ func _build_chunk(k: Vector2i) -> Node3D:
 
 	var st := SurfaceTool.new()
 	st.begin(Mesh.PRIMITIVE_TRIANGLES)
-	var grass_col := Color(0.29, 0.44, 0.22)
-	var dirt := Color(0.36, 0.30, 0.22)
-	var rock := Color(0.42, 0.42, 0.44)
+	var grass_col := Color(0.27, 0.29, 0.19)
+	var dirt := Color(0.31, 0.28, 0.22)
+	var rock := Color(0.38, 0.38, 0.37)
 	var grid: Array = []
 	for i in CHUNK_GRID + 1:
 		var row: Array = []
@@ -534,8 +555,8 @@ func _build_chunk(k: Vector2i) -> Node3D:
 		var slope := 1.0 - n.y
 		var c: Color = grass_col.lerp(rock, clampf(slope * 3.4, 0.0, 1.0))
 		match _biome(v.x, v.z):
-			1: c = c.lerp(Color(0.22, 0.38, 0.18), 0.55)      # jungle: deeper green
-			2: c = c.lerp(Color(0.40, 0.35, 0.28), 0.75)      # dead ground: dust
+			1: c = c.lerp(Color(0.21, 0.29, 0.18), 0.55)      # overgrown: dark, damp
+			2: c = c.lerp(Color(0.33, 0.30, 0.24), 0.92)      # dead ground: ash and dust
 		var d := Vector2(v.x, v.z).length()
 		if d < TOWN_R * 0.8:
 			c = c.lerp(dirt, clampf((TOWN_R * 0.8 - d) / 22.0, 0.0, 0.55))
@@ -633,7 +654,7 @@ func _scatter(root: Node3D, k: Vector2i, x0: float, z0: float) -> void:
 			else:
 				pick = [["rubble_pile", "apoc"], ["bone_pile", "apoc"], ["tire_stack", "apoc"],
 					["toxic_barrel", "apoc"]][rng.randi() % 4]
-		elif roll < 0.50:
+		elif roll < 0.38:
 			# Trunks are solid wherever they are. They used to be solid only
 			# near the middle of the map, so anywhere else you walked through
 			# the forest as if it were painted on.
@@ -642,6 +663,8 @@ func _scatter(root: Node3D, k: Vector2i, x0: float, z0: float) -> void:
 		elif roll < 0.58:
 			pick = DEAD_TREES[rng.randi() % DEAD_TREES.size()]
 			_trunk(root, Vector3(x, y, z), 0.3, 4.0)
+		elif roll < 0.64:
+			pick = DEAD_FLOOR[rng.randi() % DEAD_FLOOR.size()]
 		elif roll < 0.72:
 			pick = ROCKS[rng.randi() % ROCKS.size()]
 			_trunk(root, Vector3(x, y, z), 0.55, 1.0)
@@ -722,7 +745,7 @@ func _grass_carpet(root: Node3D, rng: RandomNumberGenerator, x0: float, z0: floa
 		_grass_mat.shader = load("res://assets/grass/EA_GrassWind.gdshader")
 		_grass_mat.set_shader_parameter("albedo_texture", load("res://assets/grass/GRASS_DIFF.tga"))
 		_grass_mat.set_shader_parameter("normal_texture", load("res://assets/grass/GRASS_NMAP.tga"))
-		_grass_mat.set_shader_parameter("base_color", Color(0.62, 0.78, 0.30))
+		_grass_mat.set_shader_parameter("base_color", Color(0.33, 0.32, 0.21))
 		_grass_mat.set_shader_parameter("alpha_cutoff", 0.55)
 		_grass_mat.set_shader_parameter("normal_strength", 0.5)
 		_grass_mat.set_shader_parameter("wind_strength", 0.28)
@@ -822,6 +845,8 @@ func _toonify(m3: MeshInstance3D, dir: String) -> void:
 			tm.set_shader_parameter("ao_strength", 0.12)
 			tm.set_shader_parameter("bands", 4)
 			tm.set_shader_parameter("rim_strength", 0.30)
+			tm.set_shader_parameter("desaturate", 0.34)
+			tm.set_shader_parameter("darken", 0.06)
 			if tex:
 				tm.set_shader_parameter("use_texture", true)
 				tm.set_shader_parameter("albedo_texture", tex)
@@ -976,7 +1001,7 @@ func _build_town() -> void:
 func _ruins(root: Node3D, k: Vector2i, x0: float, z0: float) -> void:
 	var rng := RandomNumberGenerator.new()
 	rng.seed = hash(k) * 31 + 7
-	if rng.randf() > 0.38:
+	if rng.randf() > 0.46:
 		return
 	var x := x0 + rng.randf_range(8.0, CHUNK - 8.0)
 	var z := z0 + rng.randf_range(8.0, CHUNK - 8.0)
@@ -1283,8 +1308,9 @@ func _update_sky() -> void:
 	var low: float = clampf(1.0 - absf(up) * 2.2, 0.0, 1.0)      # near the horizon
 	if up > 0.0:
 		sun.rotation = Vector3(-ang, 0.55 + sin(ang) * 0.25, 0.0)
-		sun.light_energy = lerpf(0.0, 1.15, clampf(up * 2.2, 0.0, 1.0))
-		sun.light_color = Color(1.0, 0.95, 0.86).lerp(Color(1.0, 0.56, 0.30), low)
+		# Weak and colourless: the sun is behind cloud most of the time.
+		sun.light_energy = lerpf(0.0, 0.85, clampf(up * 2.2, 0.0, 1.0))
+		sun.light_color = Color(0.92, 0.91, 0.86).lerp(Color(0.86, 0.58, 0.40), low)
 	else:
 		# After dark the one light is the moon, opposite the sun, cold and
 		# faint - enough to make out shapes, not enough to see colour.
@@ -1292,17 +1318,18 @@ func _update_sky() -> void:
 		sun.light_energy = 0.16 * clampf(-up * 2.5, 0.0, 1.0)
 		sun.light_color = Color(0.62, 0.70, 0.95)
 	sun.light_angular_distance = lerpf(0.6, 3.0, low)
-	world_env.ambient_light_energy = lerpf(0.34, 0.85, light)
-	var fog_day := Color(0.62, 0.70, 0.76)
+	world_env.ambient_light_energy = lerpf(0.30, 0.70, light)
+	var fog_day := Color(0.52, 0.55, 0.56)
 	var fog_night := Color(0.09, 0.11, 0.18)
-	var fog_dusk := Color(0.55, 0.34, 0.26)
+	var fog_dusk := Color(0.44, 0.31, 0.26)
 	world_env.fog_light_color = fog_night.lerp(fog_day, light).lerp(fog_dusk, low * 0.7)
-	world_env.fog_density = lerpf(0.026, 0.0062, light)
+	world_env.fog_density = lerpf(0.030, 0.0105, light)
 	if players.has("wind"):
 		players["wind"].volume_db = lerpf(-16.0, -23.0, light)
 	if sky_mat:
 		sky_mat.set_shader_parameter("hour", hour)
-		sky_mat.set_shader_parameter("cloud_cover", 0.38 + 0.2 * sin(elapsed * 0.012))
+		# Heavy cover most of the time: the sun rarely gets through.
+		sky_mat.set_shader_parameter("cloud_cover", 0.66 + 0.16 * sin(elapsed * 0.012))
 
 
 func is_night() -> bool:
