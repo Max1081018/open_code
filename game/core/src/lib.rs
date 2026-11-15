@@ -9,5 +9,6 @@ pub mod interact;
 pub mod noise;
 pub mod physics;
 pub mod png;
+pub mod tilemap;
 pub mod view;
 pub mod world;
