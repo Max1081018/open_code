@@ -99,6 +99,20 @@ impl Tile {
         self != Tile::Air
     }
 
+    /// How much work it takes to break this tile, or `None` if there is
+    /// nothing there to break.
+    pub fn hardness(self) -> Option<f32> {
+        match self {
+            Tile::Air => None,
+            Tile::Grass | Tile::Dirt => Some(1.0),
+            Tile::Stone => Some(2.5),
+            Tile::CoalOre => Some(3.0),
+            Tile::CopperOre => Some(3.5),
+            Tile::IronOre => Some(4.5),
+            Tile::GoldOre => Some(6.0),
+        }
+    }
+
     /// Whether the tile is an ore deposit embedded in stone.
     pub fn is_ore(self) -> bool {
         matches!(
@@ -234,6 +248,14 @@ impl World {
 
     pub fn height(&self) -> usize {
         self.height
+    }
+
+    /// Overwrite the tile at `(x, y)`. Out-of-bounds writes are ignored.
+    pub fn set_tile(&mut self, x: usize, y: usize, tile: Tile) {
+        if x >= self.width || y >= self.height {
+            return;
+        }
+        self.tiles[y * self.width + x] = tile;
     }
 
     /// The tile at `(x, y)`, or `Tile::Air` outside the world bounds.

@@ -4,6 +4,7 @@
 //! that every rule of the game can be tested headlessly. The Bevy layer on top
 //! only draws what lives here and feeds input into it.
 
+pub mod interact;
 pub mod noise;
 pub mod physics;
 pub mod view;
