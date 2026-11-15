@@ -144,43 +144,56 @@ impl Enemy {
 }
 
 /// Close enough to the target that shuffling back and forth looks silly.
-const CHASE_DEADZONE: f32 = 0.25;
+pub const CHASE_DEADZONE: f32 = 0.25;
 
 /// How far ahead of its leading edge an enemy checks for obstacles, in tiles.
 /// Looking a little further than its own body means it hops a step *before*
 /// grinding into the wall, which reads as intent rather than stupidity.
 const OBSTACLE_LOOKAHEAD: f32 = 0.8;
 
-/// Walk toward `target_x`, hopping over whatever is in the way.
-pub fn chase_intent(enemy: &Enemy, world: &World, target_x: f32) -> Intent {
-    let delta = target_x - enemy.body.x;
+/// Whether something solid sits in the body's path at shin height.
+///
+/// Shared by enemies and bosses so both hop obstacles the same way.
+pub fn blocked_ahead(body: &Body, world: &World, direction: f32) -> bool {
+    if direction == 0.0 {
+        return false;
+    }
 
-    let move_dir = if delta.abs() < CHASE_DEADZONE {
+    let probe_x = if direction > 0.0 {
+        body.right() + OBSTACLE_LOOKAHEAD
+    } else {
+        body.left() - OBSTACLE_LOOKAHEAD
+    };
+
+    // Shin height: the row just above the one being stood on.
+    let probe_y = body.bottom() - 0.5;
+
+    if probe_x < 0.0 || probe_y < 0.0 {
+        return false;
+    }
+
+    world.tile(probe_x as usize, probe_y as usize).is_solid()
+}
+
+/// Which way to head to reach `target_x`, or 0.0 if close enough already.
+pub fn heading_toward(from_x: f32, target_x: f32) -> f32 {
+    let delta = target_x - from_x;
+
+    if delta.abs() < CHASE_DEADZONE {
         0.0
     } else {
         delta.signum()
-    };
-
-    let mut jump = false;
-
-    if enemy.body.on_ground && move_dir != 0.0 {
-        let probe_x = if move_dir > 0.0 {
-            enemy.body.right() + OBSTACLE_LOOKAHEAD
-        } else {
-            enemy.body.left() - OBSTACLE_LOOKAHEAD
-        };
-
-        // Shin height: the row just above the one being stood on.
-        let probe_y = enemy.body.bottom() - 0.5;
-
-        if probe_x >= 0.0 && probe_y >= 0.0 {
-            jump = world
-                .tile(probe_x as usize, probe_y as usize)
-                .is_solid();
-        }
     }
+}
 
-    Intent { move_dir, jump }
+/// Walk toward `target_x`, hopping over whatever is in the way.
+pub fn chase_intent(enemy: &Enemy, world: &World, target_x: f32) -> Intent {
+    let move_dir = heading_toward(enemy.body.x, target_x);
+
+    Intent {
+        move_dir,
+        jump: enemy.body.on_ground && blocked_ahead(&enemy.body, world, move_dir),
+    }
 }
 
 /// Whether two bodies' boxes intersect, for contact damage.

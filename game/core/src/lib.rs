@@ -6,6 +6,7 @@
 
 pub mod art;
 pub mod biome;
+pub mod boss;
 pub mod craft;
 pub mod daynight;
 pub mod enemy;

@@ -112,6 +112,48 @@ pub const ITEMS: &[ItemDef] = &[
         max_stack: STANDARD_STACK,
         kind: ItemKind::Block(Tile::Snow),
     },
+    // Summoning tokens: one per boss, consumed to call it.
+    ItemDef {
+        name: "Cracked Idol",
+        max_stack: STANDARD_STACK,
+        kind: ItemKind::Material,
+    },
+    ItemDef {
+        name: "Frozen Heart",
+        max_stack: STANDARD_STACK,
+        kind: ItemKind::Material,
+    },
+    ItemDef {
+        name: "Sunstone",
+        max_stack: STANDARD_STACK,
+        kind: ItemKind::Material,
+    },
+    ItemDef {
+        name: "Void Shard",
+        max_stack: STANDARD_STACK,
+        kind: ItemKind::Material,
+    },
+    // Trophies: proof of a kill, and crafting material later.
+    ItemDef {
+        name: "Warden Trophy",
+        max_stack: STANDARD_STACK,
+        kind: ItemKind::Material,
+    },
+    ItemDef {
+        name: "Rimewyrm Trophy",
+        max_stack: STANDARD_STACK,
+        kind: ItemKind::Material,
+    },
+    ItemDef {
+        name: "Sand Colossus Trophy",
+        max_stack: STANDARD_STACK,
+        kind: ItemKind::Material,
+    },
+    ItemDef {
+        name: "Hollow King Trophy",
+        max_stack: STANDARD_STACK,
+        kind: ItemKind::Material,
+    },
 ];
 
 pub const DIRT: ItemId = ItemId(0);
@@ -129,6 +171,14 @@ pub const IRON_PICKAXE: ItemId = ItemId(11);
 pub const GOLD_PICKAXE: ItemId = ItemId(12);
 pub const SAND: ItemId = ItemId(13);
 pub const SNOW: ItemId = ItemId(14);
+pub const CRACKED_IDOL: ItemId = ItemId(15);
+pub const FROZEN_HEART: ItemId = ItemId(16);
+pub const SUNSTONE: ItemId = ItemId(17);
+pub const VOID_SHARD: ItemId = ItemId(18);
+pub const WARDEN_TROPHY: ItemId = ItemId(19);
+pub const RIMEWYRM_TROPHY: ItemId = ItemId(20);
+pub const COLOSSUS_TROPHY: ItemId = ItemId(21);
+pub const HOLLOW_KING_TROPHY: ItemId = ItemId(22);
 
 /// Look up an item's definition.
 pub fn def(id: ItemId) -> &'static ItemDef {
@@ -277,7 +327,8 @@ mod tests {
         assert_eq!(def(STONE).name, "Stone Block");
         assert_eq!(def(GOLD_PICKAXE).name, "Gold Pickaxe");
         assert_eq!(def(SNOW).name, "Snow Block");
-        assert_eq!(ITEMS.len(), 15, "constants must cover the whole table");
+        assert_eq!(def(HOLLOW_KING_TROPHY).name, "Hollow King Trophy");
+        assert_eq!(ITEMS.len(), 23, "constants must cover the whole table");
     }
 
     #[test]
