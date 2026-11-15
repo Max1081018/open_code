@@ -6,6 +6,7 @@
 
 pub mod art;
 pub mod craft;
+pub mod enemy;
 pub mod interact;
 pub mod item;
 pub mod noise;
