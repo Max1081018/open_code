@@ -80,6 +80,10 @@ void fragment() {
 	}
 	// Undergrowth loses light at its base; without this a bush is a flat
 	// cut-out however good the lighting above it is.
+	// Back faces take the front face's lighting. The models are open shells -
+	// a canopy seen from below, a blade of grass from behind - and left alone
+	// their back faces point away from every light and render as black fill.
+	NORMAL = FRONT_FACING ? NORMAL : -NORMAL;
 	float ao = mix(1.0 - ao_strength, 1.0, clamp(v_up + 0.25, 0.0, 1.0));
 	vec3 col = c.rgb;
 	float grey = dot(col, vec3(0.299, 0.587, 0.114));

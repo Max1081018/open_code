@@ -24,8 +24,8 @@ const LIB := "res://assets/chars/zombie_anims.res"
 const OFFSET := Vector3(0.0, 0.10, 0.0)      # first guess for the head, before the hand is pinned
 # Where the gun hand should sit in view: a little right of centre, below the
 # crosshair, a forearm's length out. The whole rig is moved to put it there.
-const HAND_AT := Vector3(0.19, -0.185, -0.33)
-const RIG_SCALE := 0.50
+const HAND_AT := Vector3(0.165, -0.175, -0.37)
+const RIG_SCALE := 0.46
 const SKIN_HIDE := 0.001          # bone scale that makes a limb vanish
 
 var mode := "bare"                # bare / gun / melee
@@ -95,15 +95,22 @@ func _ready() -> void:
 	var look := ZChar.new()
 	look._model = _model
 	look.randomize_look(_rng, true)
-	# Only the arms are wanted in shot. The body is one skinned mesh, so the
-	# rest of it is hidden by its materials: everything that is not skin goes
-	# fully transparent, which leaves a pair of bare arms and nothing else.
+	# Only the arm is wanted in shot, and it wears a glove and a sleeve. The
+	# body is one skinned mesh, so everything that is not skin is hidden
+	# through its materials - and the skin itself goes dark: a pale bare
+	# forearm floating in the corner never stopped looking wrong, where a
+	# gloved hand on the grip is what every shooter trains you to expect.
 	for mi in _model.find_children("*", "MeshInstance3D", true, false):
 		var m := mi as MeshInstance3D
 		for si in m.mesh.get_surface_count():
 			var src := m.mesh.surface_get_material(si)
 			var who := str(src.resource_name) if src else ""
 			if "Skin" in who:
+				var glove := StandardMaterial3D.new()
+				glove.albedo_color = Color(0.24, 0.24, 0.22)
+				glove.roughness = 0.92
+				glove.specular_mode = BaseMaterial3D.SPECULAR_DISABLED
+				m.set_surface_override_material(si, glove)
 				continue
 			var hide := StandardMaterial3D.new()
 			hide.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
@@ -124,7 +131,9 @@ func _ready() -> void:
 const SLIM := 0.58
 
 func _hide_parts() -> void:
-	for name in ["neck", "thigh_L", "thigh_R"]:
+	# The left arm goes too: it hangs dead at the side doing nothing, and an
+	# empty sleeve drifting at the edge of the screen reads as a glitch.
+	for name in ["neck", "thigh_L", "thigh_R", "upper_arm_L"]:
 		var b := _skel.find_bone(name)
 		if b >= 0:
 			_skel.set_bone_pose_scale(b, Vector3.ONE * SKIN_HIDE)

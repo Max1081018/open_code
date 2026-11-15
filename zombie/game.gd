@@ -429,16 +429,22 @@ func _wind_mat(kind: String) -> ShaderMaterial:
 			m.set_shader_parameter("sway_strength", 0.055)
 			m.set_shader_parameter("sway_speed", 0.75)
 			m.set_shader_parameter("height_scale", 7.0)
-			m.set_shader_parameter("ao_strength", 0.28)
+			m.set_shader_parameter("ao_strength", 0.22)
 			m.set_shader_parameter("bands", 3)
+			m.set_shader_parameter("shade_floor", 0.44)
 		_:
+			# rocks and stone: still, grey, and never bright - the pale ones
+			# were rendering like marshmallows among the undergrowth
 			m.set_shader_parameter("sway_strength", 0.0)
 			m.set_shader_parameter("height_scale", 2.0)
 			m.set_shader_parameter("ao_strength", 0.25)
 			m.set_shader_parameter("bands", 4)
+			m.set_shader_parameter("tint", Color(0.58, 0.58, 0.56))
+			m.set_shader_parameter("desaturate", 0.4)
+			m.set_shader_parameter("darken", 0.18)
 	if kind == "tree":
-		m.set_shader_parameter("tint", Color(0.76, 0.76, 0.70))
-		m.set_shader_parameter("desaturate", 0.58)
+		m.set_shader_parameter("tint", Color(0.78, 0.78, 0.72))
+		m.set_shader_parameter("desaturate", 0.45)
 	if raft:
 		if _raft_tex == null:
 			_raft_tex = load("res://assets/raft/texture.png")
@@ -745,7 +751,7 @@ func _grass_carpet(root: Node3D, rng: RandomNumberGenerator, x0: float, z0: floa
 		_grass_mat.shader = load("res://assets/grass/EA_GrassWind.gdshader")
 		_grass_mat.set_shader_parameter("albedo_texture", load("res://assets/grass/GRASS_DIFF.tga"))
 		_grass_mat.set_shader_parameter("normal_texture", load("res://assets/grass/GRASS_NMAP.tga"))
-		_grass_mat.set_shader_parameter("base_color", Color(0.33, 0.32, 0.21))
+		_grass_mat.set_shader_parameter("base_color", Color(0.38, 0.37, 0.24))
 		_grass_mat.set_shader_parameter("alpha_cutoff", 0.55)
 		_grass_mat.set_shader_parameter("normal_strength", 0.5)
 		_grass_mat.set_shader_parameter("wind_strength", 0.28)
@@ -1097,7 +1103,7 @@ func _build_player() -> void:
 	player.position = Vector3(SPAWN.x, terrain_y(SPAWN.x, SPAWN.z) + 1.0, SPAWN.z)
 	add_child(player)
 	camera = Camera3D.new()
-	camera.fov = 76.0
+	camera.fov = 71.0
 	camera.near = 0.05
 	camera.far = 420.0
 	add_child(camera)
