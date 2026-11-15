@@ -24,6 +24,10 @@ fn main() {
                 Tile::Grass => '"',
                 Tile::Dirt => '.',
                 Tile::Stone => '#',
+                Tile::CoalOre => 'c',
+                Tile::CopperOre => 'u',
+                Tile::IronOre => 'i',
+                Tile::GoldOre => 'G',
             })
             .collect();
         println!("|{row}|");

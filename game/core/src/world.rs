@@ -30,6 +30,54 @@ const BEDROCK_ROWS: usize = 2;
 /// Solid rock between the soil and the highest a cave may reach.
 const CAVE_CEILING_MARGIN: usize = 2;
 
+/// Octaves for ore seams: few, so deposits come out as chunky blobs rather
+/// than single scattered pixels.
+const ORE_OCTAVES: u32 = 2;
+
+/// One kind of ore deposit and the rules governing where it appears.
+struct OreSeam {
+    tile: Tile,
+    /// Fraction of world height above which this ore never appears.
+    min_depth: f32,
+    /// Spatial scale of the deposits; higher means smaller, tighter clumps.
+    frequency: f32,
+    /// Noise above this becomes ore. Higher is rarer.
+    threshold: f32,
+    salt: u64,
+}
+
+/// Checked in order, so the most precious ore wins a contested tile.
+const ORE_SEAMS: [OreSeam; 4] = [
+    OreSeam {
+        tile: Tile::GoldOre,
+        min_depth: 0.62,
+        frequency: 0.14,
+        threshold: 0.90,
+        salt: 0x6_01D_6017_601D,
+    },
+    OreSeam {
+        tile: Tile::IronOre,
+        min_depth: 0.40,
+        frequency: 0.13,
+        threshold: 0.885,
+        salt: 0x1_205_1205_1205,
+    },
+    OreSeam {
+        tile: Tile::CopperOre,
+        min_depth: 0.0,
+        frequency: 0.12,
+        threshold: 0.87,
+        salt: 0xC_0BB_3700_0BB3,
+    },
+    OreSeam {
+        tile: Tile::CoalOre,
+        min_depth: 0.0,
+        frequency: 0.11,
+        threshold: 0.86,
+        salt: 0xC_0A1_C0A1_C0A1,
+    },
+];
+
 /// A single tile of the world grid.
 #[derive(Clone, Copy, PartialEq, Eq, Debug, Default)]
 pub enum Tile {
@@ -39,6 +87,25 @@ pub enum Tile {
     Dirt,
     Grass,
     Stone,
+    CoalOre,
+    CopperOre,
+    IronOre,
+    GoldOre,
+}
+
+impl Tile {
+    /// Whether the tile blocks movement.
+    pub fn is_solid(self) -> bool {
+        self != Tile::Air
+    }
+
+    /// Whether the tile is an ore deposit embedded in stone.
+    pub fn is_ore(self) -> bool {
+        matches!(
+            self,
+            Tile::CoalOre | Tile::CopperOre | Tile::IronOre | Tile::GoldOre
+        )
+    }
 }
 
 /// A generated tile world, addressed by `(x, y)` with `y = 0` at the top.
@@ -103,6 +170,35 @@ impl World {
             }
         }
 
+        // Seed ore into stone, after carving, so deposits never hang in open air.
+        for x in 0..width {
+            for y in 0..height {
+                if tiles[y * width + x] != Tile::Stone {
+                    continue;
+                }
+
+                let depth = y as f32 / height as f32;
+
+                for seam in &ORE_SEAMS {
+                    if depth < seam.min_depth {
+                        continue;
+                    }
+
+                    let field = fbm_2d(
+                        seed ^ seam.salt,
+                        x as f32 * seam.frequency,
+                        y as f32 * seam.frequency,
+                        ORE_OCTAVES,
+                    );
+
+                    if field > seam.threshold {
+                        tiles[y * width + x] = seam.tile;
+                        break;
+                    }
+                }
+            }
+        }
+
         World {
             width,
             height,
@@ -145,7 +241,7 @@ mod tests {
     }
 
     #[test]
-    fn generate_puts_open_sky_at_the_top_and_solid_rock_at_the_bottom() {
+    fn generate_puts_open_sky_at_the_top_and_a_sealed_floor_at_the_bottom() {
         let world = World::generate(7, 64, 64);
 
         for x in 0..world.width() {
@@ -154,10 +250,11 @@ mod tests {
                 Tile::Air,
                 "column {x} should be open sky at the very top"
             );
-            assert_eq!(
-                world.tile(x, world.height() - 1),
-                Tile::Stone,
-                "column {x} should be solid rock at the very bottom"
+            assert!(
+                world.tile(x, world.height() - 1).is_solid(),
+                "column {x} should have a sealed floor so the player cannot fall out; \
+                 found {:?}",
+                world.tile(x, world.height() - 1)
             );
         }
     }
@@ -205,6 +302,68 @@ mod tests {
             "underground should be caved but not hollow; {:.1}% of deep rock is open",
             open_fraction * 100.0
         );
+    }
+
+    #[test]
+    fn stone_holds_a_modest_scattering_of_ore() {
+        let world = World::generate(7, 256, 160);
+
+        let mut rock = 0usize;
+        let mut ore = 0usize;
+
+        for x in 0..world.width() {
+            for y in 0..world.height() {
+                let tile = world.tile(x, y);
+                if tile == Tile::Stone || tile.is_ore() {
+                    rock += 1;
+                    if tile.is_ore() {
+                        ore += 1;
+                    }
+                }
+            }
+        }
+
+        let ore_fraction = ore as f32 / rock as f32;
+
+        assert!(
+            (0.005..0.12).contains(&ore_fraction),
+            "ore should be worth hunting for but not paving the caves; \
+             {:.2}% of rock is ore",
+            ore_fraction * 100.0
+        );
+    }
+
+    #[test]
+    fn every_ore_kind_appears_somewhere() {
+        let world = World::generate(7, 256, 160);
+
+        for kind in [
+            Tile::CoalOre,
+            Tile::CopperOre,
+            Tile::IronOre,
+            Tile::GoldOre,
+        ] {
+            let found = (0..world.width())
+                .any(|x| (0..world.height()).any(|y| world.tile(x, y) == kind));
+
+            assert!(found, "{kind:?} never spawned anywhere in the world");
+        }
+    }
+
+    #[test]
+    fn gold_is_confined_to_the_deep_rock() {
+        let world = World::generate(7, 256, 160);
+        let too_shallow = world.height() * 3 / 5;
+
+        for x in 0..world.width() {
+            for y in 0..too_shallow {
+                assert_ne!(
+                    world.tile(x, y),
+                    Tile::GoldOre,
+                    "gold at ({x}, {y}) is shallower than y={too_shallow}"
+                );
+            }
+        }
     }
 
     #[test]
