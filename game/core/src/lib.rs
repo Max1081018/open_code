@@ -10,6 +10,7 @@ pub mod daynight;
 pub mod enemy;
 pub mod interact;
 pub mod item;
+pub mod light;
 pub mod noise;
 pub mod physics;
 pub mod png;

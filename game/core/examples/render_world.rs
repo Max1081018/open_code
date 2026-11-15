@@ -9,6 +9,7 @@
 use deepdelve_core::art::{
     edge_shade, tile_texture, variant_for, variant_seed, Exposure, Texture, TEXTURE_VARIANTS,
 };
+use deepdelve_core::light::{compute_sky_light, LightMap};
 use deepdelve_core::png::encode_rgba;
 use deepdelve_core::view::{RENDER_SCALE, TILE_SOURCE_PX};
 use deepdelve_core::world::{Tile, World};
@@ -95,6 +96,25 @@ fn main() {
         }
     }
 
+    // Light is applied as a post-pass, sampled smoothly between tile centres
+    // so the falloff is a gradient rather than a staircase of lit squares.
+    let light = compute_sky_light(&world);
+    let sky = 1.0f32;
+
+    for py in 0..out_h {
+        for px in 0..out_w {
+            let world_x = origin_x as f32 + px as f32 / tile_px as f32;
+            let world_y = origin_y as f32 + py as f32 / tile_px as f32;
+
+            let lit = (sample_light(&light, world_x, world_y) * sky).clamp(AMBIENT, 1.0);
+
+            let i = ((py * out_w + px) * 4) as usize;
+            for channel in 0..3 {
+                canvas[i + channel] = (canvas[i + channel] as f32 * lit) as u8;
+            }
+        }
+    }
+
     let encoded = encode_rgba(out_w, out_h, &canvas);
     std::fs::write(&out_path, &encoded).expect("failed to write PNG");
 
@@ -102,6 +122,28 @@ fn main() {
         "wrote {out_path}: {out_w}x{out_h} ({} tiles at {tile_px}px, seed {seed})",
         tiles_across * tiles_down
     );
+}
+
+/// Floor on darkness, so unlit rock is readable rather than pure black.
+const AMBIENT: f32 = 0.15;
+
+/// Bilinear sample of the light map at a position in tile units.
+fn sample_light(light: &LightMap, x: f32, y: f32) -> f32 {
+    // Light levels sit at tile centres, half a tile in from the grid.
+    let fx = (x - 0.5).max(0.0);
+    let fy = (y - 0.5).max(0.0);
+
+    let x0 = fx.floor();
+    let y0 = fy.floor();
+    let tx = fx - x0;
+    let ty = fy - y0;
+
+    let at = |ix: f32, iy: f32| light.brightness(ix.max(0.0) as usize, iy.max(0.0) as usize);
+
+    let top = at(x0, y0) + (at(x0 + 1.0, y0) - at(x0, y0)) * tx;
+    let bottom = at(x0, y0 + 1.0) + (at(x0 + 1.0, y0 + 1.0) - at(x0, y0 + 1.0)) * tx;
+
+    top + (bottom - top) * ty
 }
 
 /// A vertical sky gradient as an RGBA canvas.
