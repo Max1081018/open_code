@@ -1,6 +1,6 @@
 //! Enemies, their chase behaviour, and the damage rules shared with the player.
 
-use crate::item::{ItemId, COAL, COPPER_ORE, GOLD_ORE, IRON_ORE};
+use crate::item::{ItemId, COAL, COPPER_ORE, CRACKED_IDOL, GOLD_ORE, IRON_ORE};
 use crate::physics::{Body, Intent};
 use crate::world::World;
 
@@ -63,7 +63,8 @@ pub const ENEMIES: &[EnemyKind] = &[
         speed_scale: 0.5,
         min_depth: 0.8,
         nocturnal: false,
-        loot: &[(GOLD_ORE, 2), (IRON_ORE, 4)],
+        // Brutes also carry the token that calls the first boss.
+        loot: &[(GOLD_ORE, 2), (IRON_ORE, 4), (CRACKED_IDOL, 1)],
     },
 ];
 

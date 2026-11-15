@@ -21,8 +21,13 @@ use deepdelve_core::daynight::{TimeOfDay, DAY_LENGTH};
 use deepdelve_core::enemy::{bodies_overlap, chase_intent, kind, Combat, Enemy, EnemyKindId};
 use deepdelve_core::spawn::{choose_kind, find_standing_spot};
 use deepdelve_core::touch::{Controls, Zone};
-use deepdelve_core::interact::{can_reach, place, MiningState, REACH_TILES};
+use deepdelve_core::interact::{can_reach, place, MiningState};
+use deepdelve_core::boss::{
+    boss_intent, kind as boss_kind_of, summoned_by as boss_summoned_by, Attack as BossAttack, Boss,
+};
+use deepdelve_core::craft::{available, craft, Station};
 use deepdelve_core::light::{compute_sky_light, LightMap};
+use deepdelve_core::save::{load, save, PlayerSave, SaveGame};
 use deepdelve_core::noise::hash01;
 use deepdelve_core::item::{def, drop_from, Inventory, ItemId, ItemKind};
 use deepdelve_core::physics::{Body, Intent};
@@ -65,6 +70,22 @@ struct Player {
 
 #[derive(Resource, Default)]
 struct Monsters(Vec<Enemy>);
+
+#[derive(Resource, Default)]
+struct Bosses(Vec<Boss>);
+
+#[derive(Component)]
+struct BossSprite(usize);
+
+/// Damage one swing deals to a boss. Lower than against ordinary enemies
+/// would be, because boss health pools are large and the fight should last.
+const BOSS_ATTACK_DAMAGE: f32 = 26.0;
+
+/// Seconds between a summoning phase calling in its minions.
+const BOSS_SUMMON_INTERVAL: f32 = 6.0;
+
+/// A boss stands head and shoulders over the player.
+const BOSS_SCALE: f32 = 2.4;
 
 #[derive(Resource)]
 struct Clock(TimeOfDay);
@@ -159,6 +180,120 @@ struct LightOverlay {
 /// Set when the light map has changed and every overlay needs redrawing.
 #[derive(Resource, Default)]
 struct LightingStale(bool);
+
+/// Where the game writes its save file.
+const SAVE_PATH: &str = "deepdelve-save.bin";
+
+/// Stations the player can reach.
+///
+/// Simplification: the player carries a field kit, so every recipe's station
+/// is always available. Placeable workbenches and furnaces would replace
+/// this with a proximity check against station tiles.
+const FIELD_KIT: [Station; 2] = [Station::Furnace, Station::Anvil];
+
+/// The last thing that happened worth telling the player about.
+#[derive(Resource, Default)]
+struct Notice(String);
+
+/// Save on F5, reload on F9.
+fn save_and_load(
+    keys: Res<ButtonInput<KeyCode>>,
+    mut game: ResMut<Game>,
+    mut player: ResMut<Player>,
+    mut clock: ResMut<Clock>,
+    mut monsters: ResMut<Monsters>,
+    mut dirty: ResMut<DirtyChunks>,
+    mut notice: ResMut<Notice>,
+) {
+    if keys.just_pressed(KeyCode::F5) {
+        let snapshot = SaveGame {
+            seed: SEED,
+            world: game.world.clone(),
+            player: PlayerSave {
+                x: player.body.x,
+                y: player.body.y,
+                health: player.combat.health,
+                hotbar_slot: player.hotbar_slot as u32,
+                inventory: player.inventory.clone(),
+            },
+            time_of_day: clock.0.fraction() * DAY_LENGTH,
+        };
+
+        notice.0 = match std::fs::write(SAVE_PATH, save(&snapshot)) {
+            Ok(()) => format!("saved to {SAVE_PATH}"),
+            Err(error) => format!("save failed: {error}"),
+        };
+    }
+
+    if keys.just_pressed(KeyCode::F9) {
+        let bytes = match std::fs::read(SAVE_PATH) {
+            Ok(bytes) => bytes,
+            Err(error) => {
+                notice.0 = format!("no save to load: {error}");
+                return;
+            }
+        };
+
+        match load(&bytes) {
+            Ok(restored) => {
+                game.world = restored.world;
+
+                player.body = Body::new(restored.player.x, restored.player.y);
+                player.combat = Combat::new(PLAYER_HEALTH);
+                player.combat.health = restored.player.health;
+                player.inventory = restored.player.inventory;
+                player.hotbar_slot = restored.player.hotbar_slot as usize;
+                player.mining.cancel();
+
+                let mut restored_clock = TimeOfDay::dawn();
+                restored_clock.advance(restored.time_of_day);
+                clock.0 = restored_clock;
+
+                monsters.0.clear();
+
+                // Force every chunk to re-composite against the new world.
+                for cy in 0..WORLD_TILES_Y.div_ceil(CHUNK_TILES) {
+                    for cx in 0..WORLD_TILES_X.div_ceil(CHUNK_TILES) {
+                        dirty.0.insert((cx, cy));
+                    }
+                }
+
+                notice.0 = "loaded".to_string();
+            }
+            Err(error) => notice.0 = format!("save file unreadable: {error:?}"),
+        }
+    }
+}
+
+/// Craft the nth currently-available recipe, on keys F1 to F4.
+fn crafting(
+    keys: Res<ButtonInput<KeyCode>>,
+    mut player: ResMut<Player>,
+    mut notice: ResMut<Notice>,
+) {
+    let slots = [KeyCode::F1, KeyCode::F2, KeyCode::F3, KeyCode::F4];
+
+    for (position, key) in slots.into_iter().enumerate() {
+        if !keys.just_pressed(key) {
+            continue;
+        }
+
+        let craftable = available(&player.inventory, &FIELD_KIT);
+
+        let Some(&recipe) = craftable.get(position) else {
+            notice.0 = format!("nothing to craft in slot {}", position + 1);
+            return;
+        };
+
+        let output = deepdelve_core::craft::RECIPES[recipe].output;
+
+        if craft(&mut player.inventory, recipe, &FIELD_KIT) {
+            notice.0 = format!("crafted {}", def(output).name);
+        } else {
+            notice.0 = format!("could not craft {}", def(output).name);
+        }
+    }
+}
 
 /// Light texture size: one texel per tile plus a one-texel border each side.
 const LIGHT_TEXELS: u32 = CHUNK_TILES as u32 + 2;
@@ -302,22 +437,40 @@ pub fn main() {
         .add_systems(Startup, setup)
         .add_systems(
             Update,
+            // Grouped because a single chain tops out at 20 systems. The
+            // groups run in order, and so do the systems inside each.
             (
-                advance_clock,
-                step_player,
-                aim_at_tile,
-                dig_or_build,
-                attack_monsters,
-                spawn_monsters,
-                step_monsters,
-                sync_monster_sprites,
-                refresh_lighting,
-                stream_chunks,
-                refresh_light_overlays,
-                apply_sky_tint,
-                follow_camera,
-                update_hud,
-                layout_touch_controls,
+                // Input and the player.
+                (advance_clock, step_player, aim_at_tile, dig_or_build).chain(),
+                // Combat and spawning.
+                (
+                    attack_monsters,
+                    attack_bosses,
+                    spawn_monsters,
+                    step_monsters,
+                    summon_boss,
+                    step_bosses,
+                )
+                    .chain(),
+                // Player-driven side effects.
+                (crafting, save_and_load).chain(),
+                // World presentation.
+                (
+                    refresh_lighting,
+                    stream_chunks,
+                    refresh_light_overlays,
+                    apply_sky_tint,
+                )
+                    .chain(),
+                // Everything that follows the simulation.
+                (
+                    sync_monster_sprites,
+                    sync_boss_sprites,
+                    follow_camera,
+                    update_hud,
+                    layout_touch_controls,
+                )
+                    .chain(),
             )
                 .chain(),
         )
@@ -441,6 +594,8 @@ fn setup(mut commands: Commands) {
     commands.insert_resource(Target::default());
     commands.insert_resource(DirtyChunks::default());
     commands.insert_resource(Monsters::default());
+    commands.insert_resource(Bosses::default());
+    commands.insert_resource(Notice::default());
     commands.insert_resource(SpawnTicks::default());
     // Start after dark when asked, so nocturnal spawning can be exercised
     // without waiting out half a day cycle.
@@ -703,6 +858,190 @@ fn attack_monsters(
     }
 }
 
+/// Summon a boss with B, consuming whichever token the player holds.
+fn summon_boss(
+    keys: Res<ButtonInput<KeyCode>>,
+    game: Res<Game>,
+    mut player: ResMut<Player>,
+    mut bosses: ResMut<Bosses>,
+    mut notice: ResMut<Notice>,
+) {
+    if !keys.just_pressed(KeyCode::KeyB) {
+        return;
+    }
+
+    if !bosses.0.is_empty() {
+        notice.0 = "a boss is already here".to_string();
+        return;
+    }
+
+    // Find any summoning token in the inventory.
+    let token = (0..player.inventory.slot_count())
+        .filter_map(|slot| player.inventory.slot(slot))
+        .find_map(|stack| boss_summoned_by(stack.item).map(|boss| (stack.item, boss)));
+
+    let Some((item, boss_kind)) = token else {
+        notice.0 = "no summoning token — brutes carry the Cracked Idol".to_string();
+        return;
+    };
+
+    // Place it on solid footing beside the player.
+    let column = (player.body.x as usize + 6).min(WORLD_TILES_X - 2);
+    let top = (player.body.y as usize).saturating_sub(10);
+    let bottom = (player.body.y as usize + 10).min(WORLD_TILES_Y - 2);
+
+    let Some(row) = find_standing_spot(&game.world, column, top, bottom, 0.5) else {
+        notice.0 = "no room here to summon".to_string();
+        return;
+    };
+
+    player.inventory.remove(item, 1);
+    bosses
+        .0
+        .push(Boss::new(boss_kind, column as f32 + 0.5, (row + 1) as f32));
+
+    notice.0 = format!("{} rises!", boss_kind_of(boss_kind).name);
+}
+
+/// Advance boss AI, physics, contact damage and minion summoning.
+fn step_bosses(
+    time: Res<Time>,
+    game: Res<Game>,
+    mut bosses: ResMut<Bosses>,
+    mut monsters: ResMut<Monsters>,
+    mut player: ResMut<Player>,
+    mut notice: ResMut<Notice>,
+    mut summon_timer: Local<f32>,
+) {
+    if bosses.0.is_empty() {
+        return;
+    }
+
+    let dt = time.delta_secs().min(MAX_FRAME);
+    *summon_timer += dt;
+
+    let summoning_due = *summon_timer >= BOSS_SUMMON_INTERVAL;
+    if summoning_due {
+        *summon_timer = 0.0;
+    }
+
+    let player_body = player.body;
+
+    for boss in bosses.0.iter_mut() {
+        boss.combat.tick(dt);
+
+        let intent = boss_intent(boss, &game.world, player_body.x);
+        boss.body.step(&game.world, intent, dt);
+
+        let phase = *boss.phase();
+
+        if bodies_overlap(&boss.body, &player_body) {
+            player.combat.take_damage(phase.contact_damage);
+        }
+
+        if summoning_due {
+            if let BossAttack::Summon { minion, count } = phase.attack {
+                for offset in 0..count {
+                    let x = boss.body.x + 2.0 + offset as f32;
+                    monsters.0.push(Enemy::new(minion, x, boss.body.y));
+                }
+            }
+        }
+    }
+
+    // Pay out and clear any boss that has fallen.
+    let fallen: Vec<Boss> = bosses
+        .0
+        .iter()
+        .filter(|boss| !boss.is_alive())
+        .copied()
+        .collect();
+
+    for boss in &fallen {
+        for &(item, count) in boss.loot() {
+            player.inventory.add(item, count);
+        }
+        notice.0 = format!("{} defeated!", boss_kind_of(boss.kind).name);
+    }
+
+    bosses.0.retain(|boss| boss.is_alive());
+}
+
+/// One sprite per living boss, kept in step with the boss list.
+fn sync_boss_sprites(
+    mut commands: Commands,
+    bosses: Res<Bosses>,
+    mut sprites: Query<(Entity, &BossSprite, &mut Transform)>,
+) {
+    let mut drawn = vec![false; bosses.0.len()];
+
+    for (entity, marker, mut transform) in &mut sprites {
+        match bosses.0.get(marker.0) {
+            Some(boss) => {
+                drawn[marker.0] = true;
+                transform.translation.x = boss.body.x * PX;
+                transform.translation.y =
+                    -(boss.body.y - PLAYER_HEIGHT_TILES * BOSS_SCALE / 2.0) * PX;
+            }
+            None => {
+                commands.entity(entity).despawn();
+            }
+        }
+    }
+
+    for (index, already_drawn) in drawn.iter().enumerate() {
+        if *already_drawn {
+            continue;
+        }
+
+        let boss = &bosses.0[index];
+        commands.spawn((
+            Sprite {
+                color: Color::srgb(0.72, 0.12, 0.42),
+                custom_size: Some(Vec2::new(
+                    PLAYER_WIDTH_TILES * BOSS_SCALE * PX,
+                    PLAYER_HEIGHT_TILES * BOSS_SCALE * PX,
+                )),
+                ..default()
+            },
+            Transform::from_xyz(
+                boss.body.x * PX,
+                -(boss.body.y - PLAYER_HEIGHT_TILES * BOSS_SCALE / 2.0) * PX,
+                8.0,
+            ),
+            BossSprite(index),
+        ));
+    }
+}
+
+/// Swing at a boss. Bosses are large, so they are easier to connect with.
+fn attack_bosses(
+    mouse: Res<ButtonInput<MouseButton>>,
+    target: Res<Target>,
+    mut bosses: ResMut<Bosses>,
+) {
+    if !mouse.just_pressed(MouseButton::Left) {
+        return;
+    }
+
+    let Some((tile_x, tile_y)) = target.0 else {
+        return;
+    };
+    let aim = (tile_x as f32 + 0.5, tile_y as f32 + 0.5);
+
+    for boss in bosses.0.iter_mut() {
+        let centre_y = boss.body.y - boss.body.height() * BOSS_SCALE / 2.0;
+        let reach = ATTACK_RADIUS * BOSS_SCALE;
+
+        let distance_sq = (boss.body.x - aim.0).powi(2) + (centre_y - aim.1).powi(2);
+
+        if distance_sq <= reach * reach {
+            boss.combat.take_damage(BOSS_ATTACK_DAMAGE);
+            return;
+        }
+    }
+}
+
 /// Keep one sprite per living enemy, in step with the enemy list.
 fn sync_monster_sprites(
     mut commands: Commands,
@@ -925,6 +1264,8 @@ fn update_hud(
     player: Res<Player>,
     clock: Res<Clock>,
     monsters: Res<Monsters>,
+    bosses: Res<Bosses>,
+    notice: Res<Notice>,
     mut hud: Query<&mut Text, With<HudText>>,
 ) {
     let held = HOTBAR[player.hotbar_slot];
@@ -939,12 +1280,53 @@ fn update_hud(
 
     let sky = if clock.0.is_night() { "night" } else { "day" };
 
+    let craftable = available(&player.inventory, &FIELD_KIT);
+    let recipes: Vec<String> = craftable
+        .iter()
+        .take(4)
+        .enumerate()
+        .map(|(slot, &recipe)| {
+            format!(
+                "F{}:{}",
+                slot + 1,
+                def(deepdelve_core::craft::RECIPES[recipe].output).name
+            )
+        })
+        .collect();
+
+    let crafting_line = if recipes.is_empty() {
+        "Craftable: nothing yet (mine ore and coal)".to_string()
+    } else {
+        format!("Craftable: {}", recipes.join("  "))
+    };
+
+    let boss_line = match bosses.0.first() {
+        Some(boss) => {
+            let blocks = (boss.health_fraction() * 20.0).ceil().max(0.0) as usize;
+            format!(
+                "\n{} [{}{}] phase {}/{}",
+                boss_kind_of(boss.kind).name,
+                "#".repeat(blocks),
+                "-".repeat(20 - blocks.min(20)),
+                boss.phase_index() + 1,
+                boss_kind_of(boss.kind).phases.len(),
+            )
+        }
+        None => String::new(),
+    };
+
+    let notice_line = if notice.0.is_empty() {
+        String::new()
+    } else {
+        format!("\n> {}", notice.0)
+    };
+
     for mut text in &mut hud {
         text.0 = format!(
-            "HP [{health_bar}] {:.0}/{:.0}    {sky}    monsters: {}\n\
-             Holding: {}  [1-4 to switch]\n{}\n\
-             WASD / arrows move, space jumps\n\
-             Left click digs and swings, right click builds (reach {REACH_TILES} tiles)",
+            "HP [{health_bar}] {:.0}/{:.0}    {sky}    monsters: {}{boss_line}\n\
+             Holding: {}  [1-4 to switch]\n{}\n{crafting_line}\n\
+             WASD move, space jumps, left click digs/swings, right click builds\n\
+             B summons a boss    F5 saves    F9 loads{notice_line}",
             player.combat.health,
             player.combat.max_health,
             monsters.0.len(),
