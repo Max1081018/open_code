@@ -26,6 +26,11 @@ art and the rest of the survival systems come on top of it.
   mounted on the hand's bone and squared up to the view automatically.
 - **Fighting.** Pistol with magazines, reloading and spread; melee; head, body
   and leg hits; a crosshair that tells you what you are looking at.
+- **The loop.** Zombies drop what they were carrying; it lies on the ground
+  bobbing until you walk up and TAKE it. When you die, everything you had
+  spills where you fell and you come back with a knife and a dressing - the
+  corpse run is the game. Containers further from the start hold better
+  things, so the far ruins are worth the walk.
 - **Survival.** Health, stamina, food and water, containers to search, items
   that stack in a six-slot hotbar, death and respawn.
 - **A map you can read.** The whole island is sampled once at start-up from

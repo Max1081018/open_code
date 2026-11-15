@@ -158,6 +158,7 @@ var _models := {}                 # name -> PackedScene
 var _zombies: Array = []
 var _lootables: Array = []        # [{body, items, opened, label}]
 var _looked_loot: Dictionary = {}
+var _looked_pickup := -1
 var _looked_zombie: Node = null
 var _spawn_t := 0.0
 var _rng := RandomNumberGenerator.new()
@@ -1075,7 +1076,13 @@ func _make_lootable(node: Node3D, at: Vector3, r: float, rng: RandomNumberGenera
 	b.position = at
 	add_child(b)
 	var items: Array = []
+	# The further from the start, the better the finds: the reason to walk
+	# out past the treeline instead of looping the same six crates.
+	var far_bonus: float = clampf(at.length() / 420.0, 0.0, 1.0)
 	var tries: int = rng.randi_range(2, 4)
+	if rng.randf() < far_bonus * 0.8:
+		items.append([{"id": "revolver", "n": 1}, {"id": "medkit", "n": 1},
+			{"id": "axe", "n": 1}, {"id": "9mm", "n": rng.randi_range(14, 26)}][rng.randi() % 4])
 	for i in tries:
 		for id in ITEMS:
 			var chance: float = float(ITEMS[id].get("loot", 0.0))
@@ -1142,6 +1149,31 @@ func _build_ui() -> void:
 	map_ui.bake()
 	map_ui.marks = _map_marks
 	status.respawn_pressed.connect(_respawn)
+
+
+var _voices: Array = []           # 3D mouths, borrowed in turn
+var _voice_next := 0
+
+## A sound from a place: moans, blows and bodies come from where they happen,
+## not from inside your head. A small pool of 3D players is reused in turn.
+func _play_at(key: String, at: Vector3, pitch := 1.0, vol_db := 0.0) -> void:
+	if _voices.is_empty():
+		for i in 6:
+			var v := AudioStreamPlayer3D.new()
+			v.max_distance = 46.0
+			v.unit_size = 7.0
+			v.attenuation_filter_cutoff_hz = 4500.0
+			add_child(v)
+			_voices.append(v)
+	var p: AudioStreamPlayer3D = _voices[_voice_next]
+	_voice_next = (_voice_next + 1) % _voices.size()
+	if not players.has(key):
+		return
+	p.stream = (players[key] as AudioStreamPlayer).stream
+	p.global_position = at
+	p.pitch_scale = pitch
+	p.volume_db = vol_db
+	p.play()
 
 
 func _build_audio() -> void:
@@ -1214,6 +1246,7 @@ func _process(delta: float) -> void:
 	_update_player(delta)
 	_update_chunks(player.global_position)
 	_update_zombies(delta)
+	_update_pickups(delta)
 	_update_survival(delta)
 	_update_look()
 	_update_hud()
@@ -1242,7 +1275,13 @@ func _update_player(delta: float) -> void:
 		ahead = clampf(head.distance_to(wh["position"]) - 0.24, -0.05, 0.26)
 	_cam_ahead = lerpf(_cam_ahead, ahead, clampf(delta * 14.0, 0.0, 1.0)) if ahead > _cam_ahead else ahead
 	camera.global_position = head + fwd * _cam_ahead
-	camera.rotation = Vector3(cam_pitch + _recoil(), cam_yaw, 0.0)
+	_shake = maxf(_shake - delta * 2.4, 0.0)
+	var jolt := Vector3.ZERO
+	if _shake > 0.001:
+		var k := _shake * _shake
+		jolt = Vector3(sin(elapsed * 51.0) * 0.022, sin(elapsed * 47.0 + 1.7) * 0.018,
+			sin(elapsed * 43.0 + 0.6) * 0.03) * k
+	camera.rotation = Vector3(cam_pitch + _recoil() + jolt.x, cam_yaw + jolt.y, jolt.z)
 
 	# Footsteps, paced by distance covered rather than a timer.
 	var sp := Vector2(player.velocity.x, player.velocity.z).length()
@@ -1388,32 +1427,38 @@ func _spawn_zombie() -> void:
 
 func zombie_hit_player(amount: float, _z: Node) -> void:
 	_damage(amount, "mauled")
+	_shake = maxf(_shake, 0.65)
 	if status:
 		status.hit(clampf(amount / 30.0, 0.2, 1.0))
 	players["hurt"].play()
 
 
 func zombie_moan(at: Vector3, near: bool) -> void:
-	var d := at.distance_to(player.global_position)
-	var p: AudioStreamPlayer = players["moan_near"] if near else players["moan"]
-	p.pitch_scale = randf_range(0.75, 1.05)
-	p.volume_db = lerpf(-6.0, -24.0, clampf(d / 34.0, 0.0, 1.0))
-	if not p.playing:
-		p.play()
+	_play_at("moan", at, randf_range(0.75, 1.05), 0.0 if near else -7.0)
 
 
 func zombie_hurt(z: Node, where: String, amount: float) -> void:
 	if fx:
 		fx.blood(z.global_position + Vector3(0, 1.2 if where == "head" else 0.9, 0), where == "head")
-	players["hit"].pitch_scale = randf_range(0.9, 1.2) * (1.3 if where == "head" else 1.0)
-	players["hit"].play()
+	_play_at("hit", z.global_position + Vector3(0, 1.1, 0),
+		randf_range(0.9, 1.2) * (1.3 if where == "head" else 1.0))
 	if where == "head" and amount > 40.0:
 		_flash_msg("Headshot!")
 
 
-func zombie_died(_z: Node) -> void:
+func zombie_died(z: Node) -> void:
 	kills += 1
 	_flash_msg("Zombie down  (%d)" % kills)
+	# What it was carrying. Most have nothing; ammunition is the commonest
+	# find, and the rare ones make a kill feel like a win.
+	var roll := randf()
+	var at: Vector3 = (z as Node3D).global_position
+	if roll < 0.30:
+		_drop_item("9mm", randi_range(3, 8), at)
+	elif roll < 0.42:
+		_drop_item(["bandage", "can", "water"][randi() % 3], 1, at)
+	elif roll < 0.455:
+		_drop_item(["medkit", "revolver"][randi() % 2], 1, at)
 
 
 # =====================================================================
@@ -1428,12 +1473,15 @@ func _update_look() -> void:
 	q.collision_mask = 4                       # loot pick bodies
 	var hit := space.intersect_ray(q)
 	_looked_loot = {}
+	_looked_pickup = -1
 	if not hit.is_empty() and hit.has("collider"):
 		var c = hit["collider"]
 		if c and c.has_meta("loot"):
 			var idx := int(c.get_meta("loot"))
 			if idx < _lootables.size():
 				_looked_loot = _lootables[idx]
+		elif c and c.has_meta("pickup"):
+			_looked_pickup = int(c.get_meta("pickup"))
 	# And whatever zombie is under the crosshair, for the name tag.
 	_looked_zombie = null
 	var q2 := PhysicsRayQueryParameters3D.create(from, from - camera.global_transform.basis.z * 40.0)
@@ -1453,6 +1501,8 @@ func _on_action() -> void:
 	match p:
 		"LOOT":
 			_loot(_looked_loot)
+		"TAKE":
+			_take_pickup(_looked_pickup)
 		"SHOOT":
 			_shoot()
 		"RELOAD":
@@ -1750,7 +1800,19 @@ func _damage(amount: float, cause: String) -> void:
 		health = 0.0
 		dead = true
 		player.frozen = true
-		status.show_death("YOU DIED", "%s on day %d  ·  %d zombies killed" % [cause.capitalize(), day, kills])
+		# Everything you were carrying stays where you fell. Getting back to
+		# your own corpse with a knife is the oldest loop in the genre, and
+		# it is what makes dying matter without ending the run.
+		var spill := 0.0
+		for i in SLOTS:
+			if inv[i].is_empty():
+				continue
+			var off := Vector3(cos(spill) * 0.8, 0, sin(spill) * 0.8)
+			_drop_item(str(inv[i]["id"]), int(inv[i]["n"]), player.global_position + off)
+			spill += 1.3
+			inv[i] = {}
+		status.show_death("YOU DIED", "%s on day %d  ·  %d zombies killed  ·  your gear is where you fell" % [
+			cause.capitalize(), day, kills])
 
 
 func _respawn() -> void:
@@ -1758,6 +1820,15 @@ func _respawn() -> void:
 	health = 100.0
 	food = 70.0
 	water = 70.0
+	# You come back with a knife and a dressing, nothing more.
+	for i in SLOTS:
+		inv[i] = {}
+	inv[0] = {"id": "knife", "n": 1}
+	inv[1] = {"id": "bandage", "n": 1}
+	sel = 0
+	ammo_loaded = 0
+	_apply_held()
+	_sync_hotbar()
 	player.frozen = false
 	player.global_position = Vector3(SPAWN.x, terrain_y(SPAWN.x, SPAWN.z) + 1.2, SPAWN.z)
 	player.velocity = Vector3.ZERO
@@ -1823,6 +1894,82 @@ func _icon_for(id: String) -> String:
 
 
 var _map_marks: Array = []
+var _pickups: Array = []          # things lying on the ground you can take
+var _shake := 0.0                 # camera flinch, decaying
+
+## Drops an item into the world as something you can walk up to and take.
+## This is where half the game's objects come from: zombie drops, and your
+## own gear after you die.
+func _drop_item(id: String, n: int, at: Vector3) -> void:
+	if not ITEMS.has(id):
+		return
+	var m := _item_model(id)
+	if m == null:
+		return
+	var root := Node3D.new()
+	add_child(root)
+	root.global_position = Vector3(at.x, terrain_y(at.x, at.z) + 0.25, at.z)
+	var box := _node_box(m)
+	var longest: float = maxf(box.size.x, maxf(box.size.y, box.size.z))
+	if longest > 0.001:
+		m.scale = Vector3.ONE * (0.45 / longest)
+	root.add_child(m)
+	for mi in m.find_children("*", "MeshInstance3D", true, false):
+		(mi as MeshInstance3D).cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	var b := StaticBody3D.new()
+	b.collision_layer = 4
+	b.collision_mask = 0
+	var c := CollisionShape3D.new()
+	var bs := SphereShape3D.new()
+	bs.radius = 0.55
+	c.shape = bs
+	b.add_child(c)
+	root.add_child(b)
+	b.set_meta("pickup", _pickups.size())
+	_pickups.append({"root": root, "body": b, "id": id, "n": n, "ph": randf() * TAU})
+
+
+func _node_box(n: Node3D) -> AABB:
+	var acc := AABB()
+	var got := false
+	for mi in n.find_children("*", "MeshInstance3D", true, false):
+		var m := mi as MeshInstance3D
+		if m.mesh == null:
+			continue
+		var a: AABB = m.transform * m.mesh.get_aabb()
+		acc = a if not got else acc.merge(a)
+		got = true
+	return acc if got else AABB(Vector3.ZERO, Vector3.ONE)
+
+
+## Dropped things bob and turn so they catch the eye, but only the ones near
+## enough to be seen.
+func _update_pickups(delta: float) -> void:
+	for p in _pickups:
+		var root = p["root"]
+		if not is_instance_valid(root):
+			continue
+		if root.global_position.distance_squared_to(player.global_position) > 1600.0:
+			continue
+		p["ph"] = float(p["ph"]) + delta * 2.2
+		root.rotation.y = float(p["ph"]) * 0.6
+		(root.get_child(0) as Node3D).position.y = 0.12 + sin(float(p["ph"])) * 0.05
+
+
+func _take_pickup(idx: int) -> void:
+	if idx < 0 or idx >= _pickups.size():
+		return
+	var p: Dictionary = _pickups[idx]
+	if not is_instance_valid(p["root"]):
+		return
+	if not _give(str(p["id"]), int(p["n"])):
+		_flash_msg("No room")
+		return
+	players["pickup"].play()
+	_flash_msg("Took %s%s" % [str(ITEMS[str(p["id"])]["name"]),
+		(" x%d" % int(p["n"])) if int(p["n"]) > 1 else ""])
+	(p["root"] as Node) .queue_free()
+	_sync_hotbar()
 
 func _update_hud() -> void:
 	if map_ui:
@@ -1841,7 +1988,13 @@ func _update_hud() -> void:
 	var p := ""
 	var id := held_id()
 	var kind := str(ITEMS[id].get("kind", "")) if id != "" else ""
-	if not _looked_loot.is_empty():
+	if _looked_pickup >= 0 and _looked_pickup < _pickups.size() \
+			and is_instance_valid(_pickups[_looked_pickup]["root"]):
+		var pk: Dictionary = _pickups[_looked_pickup]
+		touch.look_info = str(ITEMS[str(pk["id"])]["name"])
+		touch.look_stat = ("x%d" % int(pk["n"])) if int(pk["n"]) > 1 else ""
+		p = "TAKE"
+	elif not _looked_loot.is_empty():
 		touch.look_info = "Container"
 		touch.look_stat = "searched" if bool(_looked_loot.get("opened", false)) else "not searched"
 		p = "LOOT"
@@ -1978,6 +2131,7 @@ func _basics_step() -> void:
 				print("AUTOTEST basics FAIL no zombie ever reached the player")
 				_basics = 99
 		5:
+			print("AUTOTEST basics: pickups on the ground before dying: %d" % _live_pickups())
 			_damage(200.0, "testing")
 			_basics = 6
 		6:
@@ -1986,14 +2140,63 @@ func _basics_step() -> void:
 				_respawn()
 				_basics = 7
 		7:
-			print("AUTOTEST basics: respawned hp=%.0f at %s" % [health, player.global_position.snapped(Vector3.ONE)])
-			_basics = 98
+			print("AUTOTEST basics: respawned hp=%.0f, carrying %d things, %d lying where I fell" % [
+				health, _inv_count(), _live_pickups()])
+			if _inv_count() > 2:
+				print("AUTOTEST basics FAIL still carrying everything after death")
+				_basics = 99
+				return
+			_basics = 8
+		8:
+			# The corpse run: walk back to your things and pick one up.
+			var best := Vector3.ZERO
+			var bd := 1e9
+			for pk in _pickups:
+				if not is_instance_valid(pk["root"]):
+					continue
+				var d2: float = (pk["root"] as Node3D).global_position.distance_to(player.global_position)
+				if d2 < bd:
+					bd = d2
+					best = (pk["root"] as Node3D).global_position
+			if bd > 900.0:
+				print("AUTOTEST basics FAIL no gear to walk back to")
+				_basics = 99
+				return
+			var to3 := best - player.global_position
+			cam_yaw = atan2(-to3.x, -to3.z)
+			cam_pitch = clampf(atan2(to3.y - 1.2, Vector2(to3.x, to3.z).length()), -1.2, 0.3)
+			touch.move = Vector2(0, -1) if to3.length() > 1.6 else Vector2.ZERO
+			if _looked_pickup >= 0:
+				var before := _inv_count()
+				_on_action()
+				touch.move = Vector2.ZERO
+				print("AUTOTEST basics: took my gear back (%d -> %d things)" % [before, _inv_count()])
+				_basics = 98
+			elif frame > 5200:
+				print("AUTOTEST basics FAIL could not reach my own gear")
+				_basics = 99
 		98:
 			print("AUTOTEST basics ALL OK")
 			get_tree().quit()
 
 
 var _test_target := Vector3.ZERO
+
+func _live_pickups() -> int:
+	var n := 0
+	for pk in _pickups:
+		if is_instance_valid(pk["root"]):
+			n += 1
+	return n
+
+
+func _inv_count() -> int:
+	var n := 0
+	for it in inv:
+		if not it.is_empty():
+			n += 1
+	return n
+
 
 func _nearest_zombie() -> Node:
 	var best: Node = null
