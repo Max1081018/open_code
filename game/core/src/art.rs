@@ -178,6 +178,17 @@ fn palette_for(tile: Tile) -> Palette {
             fleck: None,
             crown: Some([84.0, 152.0, 58.0]),
         },
+        Tile::Sand => Palette {
+            base: [214.0, 192.0, 138.0],
+            fleck: None,
+            crown: None,
+        },
+        Tile::Snow => Palette {
+            // Faintly blue, so it reads as snow rather than blown-out white.
+            base: [228.0, 236.0, 246.0],
+            fleck: None,
+            crown: None,
+        },
         Tile::Stone => Palette {
             base: ROCK,
             fleck: None,
@@ -212,6 +223,8 @@ fn material_salt(tile: Tile) -> u64 {
         Tile::Air => 0,
         Tile::Dirt => 0x0001_D127_0001_D127,
         Tile::Grass => 0x0002_6025_0002_6025,
+        Tile::Sand => 0x0008_5A4D_0008_5A4D,
+        Tile::Snow => 0x0009_5407_0009_5407,
         Tile::Stone => 0x0003_570E_0003_570E,
         Tile::CoalOre => 0x0004_C0A1_0004_C0A1,
         Tile::CopperOre => 0x0005_C0BB_0005_C0BB,

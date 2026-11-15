@@ -23,6 +23,8 @@ fn main() {
                 Tile::Air => ' ',
                 Tile::Grass => '"',
                 Tile::Dirt => '.',
+                Tile::Sand => ':',
+                Tile::Snow => '*',
                 Tile::Stone => '#',
                 Tile::CoalOre => 'c',
                 Tile::CopperOre => 'u',

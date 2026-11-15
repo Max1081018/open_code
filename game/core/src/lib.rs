@@ -5,6 +5,7 @@
 //! only draws what lives here and feeds input into it.
 
 pub mod art;
+pub mod biome;
 pub mod craft;
 pub mod daynight;
 pub mod enemy;

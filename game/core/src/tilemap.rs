@@ -32,6 +32,8 @@ impl TileAtlas {
         let textures = [
             Tile::Dirt,
             Tile::Grass,
+            Tile::Sand,
+            Tile::Snow,
             Tile::Stone,
             Tile::CoalOre,
             Tile::CopperOre,

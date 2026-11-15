@@ -44,6 +44,8 @@ fn main() {
     let textures: Vec<(Tile, Vec<Texture>)> = [
         Tile::Dirt,
         Tile::Grass,
+        Tile::Sand,
+        Tile::Snow,
         Tile::Stone,
         Tile::CoalOre,
         Tile::CopperOre,

@@ -1,5 +1,6 @@
 //! The tile world: storage and generation.
 
+use crate::biome::biome_at;
 use crate::noise::{fbm_1d, fbm_2d};
 
 /// How fast the surface height wanders as you walk sideways. Lower is flatter.
@@ -86,6 +87,8 @@ pub enum Tile {
     Air,
     Dirt,
     Grass,
+    Sand,
+    Snow,
     Stone,
     CoalOre,
     CopperOre,
@@ -110,6 +113,8 @@ impl Tile {
             Tile::CopperOre => 5,
             Tile::IronOre => 6,
             Tile::GoldOre => 7,
+            Tile::Sand => 8,
+            Tile::Snow => 9,
         }
     }
 
@@ -124,6 +129,8 @@ impl Tile {
             5 => Tile::CopperOre,
             6 => Tile::IronOre,
             7 => Tile::GoldOre,
+            8 => Tile::Sand,
+            9 => Tile::Snow,
             _ => return None,
         })
     }
@@ -134,6 +141,9 @@ impl Tile {
         match self {
             Tile::Air => None,
             Tile::Grass | Tile::Dirt => Some(1.0),
+            // Loose material gives way faster than packed soil.
+            Tile::Sand => Some(0.8),
+            Tile::Snow => Some(0.6),
             Tile::Stone => Some(2.5),
             Tile::CoalOre => Some(3.0),
             Tile::CopperOre => Some(3.5),
@@ -180,11 +190,13 @@ impl World {
             let surface = (surface.clamp(highest as isize, lowest as isize)) as usize;
             surfaces[x] = surface;
 
+            let biome = biome_at(seed, x);
+
             for y in surface..height {
                 tiles[y * width + x] = if y == surface {
-                    Tile::Grass
+                    biome.surface_tile()
                 } else if y < surface + SOIL_DEPTH {
-                    Tile::Dirt
+                    biome.soil_tile()
                 } else {
                     Tile::Stone
                 };
@@ -328,18 +340,23 @@ mod tests {
     }
 
     #[test]
-    fn topmost_solid_tile_of_every_column_is_grass() {
-        let world = World::generate(7, 64, 64);
+    fn topmost_solid_tile_of_every_column_matches_its_biome() {
+        const SEED: u64 = 7;
+        let world = World::generate(SEED, 64, 64);
 
         for x in 0..world.width() {
             let surface = world
                 .surface_y(x)
                 .unwrap_or_else(|| panic!("column {x} has no solid ground at all"));
 
+            let biome = crate::biome::biome_at(SEED, x);
+
             assert_eq!(
                 world.tile(x, surface),
-                Tile::Grass,
-                "column {x} should be capped with grass at y={surface}"
+                biome.surface_tile(),
+                "column {x} is in {} but is capped with {:?} at y={surface}",
+                biome.name(),
+                world.tile(x, surface)
             );
         }
     }

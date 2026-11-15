@@ -102,6 +102,16 @@ pub const ITEMS: &[ItemDef] = &[
         max_stack: UNIQUE,
         kind: ItemKind::Pickaxe { power: 5.0 },
     },
+    ItemDef {
+        name: "Sand Block",
+        max_stack: STANDARD_STACK,
+        kind: ItemKind::Block(Tile::Sand),
+    },
+    ItemDef {
+        name: "Snow Block",
+        max_stack: STANDARD_STACK,
+        kind: ItemKind::Block(Tile::Snow),
+    },
 ];
 
 pub const DIRT: ItemId = ItemId(0);
@@ -117,6 +127,8 @@ pub const GOLD_BAR: ItemId = ItemId(9);
 pub const COPPER_PICKAXE: ItemId = ItemId(10);
 pub const IRON_PICKAXE: ItemId = ItemId(11);
 pub const GOLD_PICKAXE: ItemId = ItemId(12);
+pub const SAND: ItemId = ItemId(13);
+pub const SNOW: ItemId = ItemId(14);
 
 /// Look up an item's definition.
 pub fn def(id: ItemId) -> &'static ItemDef {
@@ -129,6 +141,8 @@ pub fn drop_from(tile: Tile) -> Option<ItemId> {
         Tile::Air => None,
         // Digging grass destroys the turf and leaves plain soil.
         Tile::Dirt | Tile::Grass => Some(DIRT),
+        Tile::Sand => Some(SAND),
+        Tile::Snow => Some(SNOW),
         Tile::Stone => Some(STONE),
         Tile::CoalOre => Some(COAL),
         Tile::CopperOre => Some(COPPER_ORE),
@@ -262,7 +276,8 @@ mod tests {
         assert_eq!(def(DIRT).name, "Dirt Block");
         assert_eq!(def(STONE).name, "Stone Block");
         assert_eq!(def(GOLD_PICKAXE).name, "Gold Pickaxe");
-        assert_eq!(ITEMS.len(), 13, "constants must cover the whole table");
+        assert_eq!(def(SNOW).name, "Snow Block");
+        assert_eq!(ITEMS.len(), 15, "constants must cover the whole table");
     }
 
     #[test]
