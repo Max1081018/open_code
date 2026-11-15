@@ -21,13 +21,14 @@ const WorldFX := preload("res://world_fx.gd")
 const Sfx := preload("res://sfx.gd")
 const Zombie := preload("res://zombie.gd")
 const UITheme := preload("res://ui_theme.gd")
+const IconBaker := preload("res://icon_baker.gd")
 
 # --- world shape --------------------------------------------------------------
 const CHUNK := 48.0               # metres across one patch of ground
 const CHUNK_GRID := 24            # quads across that patch
 const VIEW_CHUNKS := 2            # rings of chunks kept around you
-const TOWN_R := 46.0              # the clearing the town sits in
-const SPAWN := Vector3(6, 0, 18)
+const TOWN_R := 44.0              # the clearing the town sits in
+const SPAWN := Vector3(0, 0, 6)
 
 const EYE := 1.62
 const DAY_LENGTH := 420.0         # seconds for a full day/night turn
@@ -44,7 +45,8 @@ const ITEMS := {
 		"model": "res://assets/loot/Axe.fbx", "loot": 0.09},
 	"knife": {"name": "Knife", "kind": "melee", "dmg": 26.0, "rate": 0.38,
 		"model": "res://assets/loot/Knife.fbx", "loot": 0.12},
-	"9mm": {"name": "9mm Ammo", "kind": "ammo", "stack": 60, "loot": 0.34},
+	"9mm": {"name": "9mm Ammo", "kind": "ammo", "stack": 60, "loot": 0.34,
+		"model": "res://assets/loot/Battery_Small.fbx"},
 	"bandage": {"name": "Bandage", "kind": "heal", "heal": 28.0, "stack": 6, "loot": 0.26,
 		"model": "res://assets/loot/Bandages.fbx"},
 	"medkit": {"name": "First Aid Kit", "kind": "heal", "heal": 70.0, "stack": 3, "loot": 0.09,
@@ -60,14 +62,38 @@ const ITEMS := {
 const SLOTS := 6
 
 # --- scenery ------------------------------------------------------------------
-const TREES := ["CommonTree_1", "CommonTree_2", "CommonTree_3", "CommonTree_4", "CommonTree_5",
-	"PineTree_1", "PineTree_2", "PineTree_3", "PineTree_4", "PineTree_5",
-	"BirchTree_1", "BirchTree_2", "BirchTree_3"]
-const DEAD_TREES := ["CommonTree_Dead_1", "CommonTree_Dead_2", "CommonTree_Dead_3", "BirchTree_Dead_1"]
-const ROCKS := ["Rock_1", "Rock_2", "Rock_3", "Rock_4", "Rock_5",
-	"Rock_Moss_1", "Rock_Moss_2", "Rock_Moss_3"]
-const BUSHES := ["Bush_1", "Bush_2", "BushBerries_1", "Plant_1", "Plant_2", "Plant_3", "TreeStump"]
-const GRASS := ["Grass", "Grass_2", "Grass_Short", "Wheat", "Flowers"]
+# Two packs' worth, mixed: Quaternius (fbx, nature/) and the CC0 starter pack
+# (glb, nature2/). Each entry is [model, folder]. JUNGLE and DEAD are the
+# other two biomes: the world is overgrown in the low wet ground and bare
+# where the ruins are.
+const JUNGLE := [["PalmTree_1", "nature"], ["PalmTree_2", "nature"], ["PalmTree_3", "nature"],
+	["PalmTree_4", "nature"], ["Willow_1", "nature"], ["Willow_3", "nature"],
+	["nature_tree_palm_01", "nature2"], ["nature_tree_deciduous_02", "nature2"]]
+const JUNGLE_FLOOR := [["Plant_4", "nature"], ["Plant_5", "nature"], ["BushBerries_2", "nature"],
+	["Bush_2", "nature"], ["nature_bush_02", "nature2"], ["nature_bush_04", "nature2"],
+	["nature_bush_06", "nature2"]]
+const DEAD := [["Willow_Dead_1", "nature"], ["Willow_Dead_3", "nature"], ["dead_tree", "apoc"],
+	["CommonTree_Dead_1", "nature"], ["nature_tree_dead_01", "nature2"]]
+const RUINS := ["collapsed_house", "ruined_shop", "survivor_tent", "rubble_pile", "wrecked_car",
+	"bunker_entrance", "guard_tower", "water_tank", "ruined_apartment", "burnt_bus"]
+const TREES := [["CommonTree_1", "nature"], ["CommonTree_3", "nature"], ["CommonTree_5", "nature"],
+	["PineTree_1", "nature"], ["PineTree_3", "nature"], ["PineTree_5", "nature"],
+	["BirchTree_1", "nature"], ["BirchTree_3", "nature"],
+	["nature_tree_pine_01", "nature2"], ["nature_tree_pine_02", "nature2"], ["nature_tree_pine_03", "nature2"],
+	["nature_tree_deciduous_01", "nature2"], ["nature_tree_deciduous_02", "nature2"],
+	["nature_tree_deciduous_03", "nature2"]]
+const DEAD_TREES := [["CommonTree_Dead_1", "nature"], ["CommonTree_Dead_3", "nature"],
+	["BirchTree_Dead_1", "nature"], ["nature_tree_dead_01", "nature2"], ["dead_tree", "apoc"]]
+const ROCKS := [["Rock_1", "nature"], ["Rock_3", "nature"], ["Rock_5", "nature"], ["Rock_Moss_2", "nature"],
+	["nature_rock_01", "nature2"], ["nature_rock_03", "nature2"], ["nature_rock_05", "nature2"],
+	["nature_rock_07", "nature2"]]
+const BUSHES := [["Bush_1", "nature"], ["Bush_2", "nature"], ["BushBerries_1", "nature"],
+	["Plant_1", "nature"], ["TreeStump", "nature"], ["nature_bush_01", "nature2"],
+	["nature_bush_03", "nature2"], ["nature_bush_05", "nature2"], ["nature_stump_01", "nature2"],
+	["nature_log_01", "nature2"]]
+const GRASS := [["Grass", "nature"], ["Grass_2", "nature"], ["Wheat", "nature"], ["Flowers", "nature"],
+	["nature_grass_01", "nature2"], ["nature_grass_03", "nature2"], ["nature_grass_05", "nature2"],
+	["nature_flower_01", "nature2"], ["nature_flower_03", "nature2"]]
 
 # --- graphics presets ---------------------------------------------------------
 const Q_NAMES := ["Low", "Medium", "High", "Ultra"]
@@ -86,6 +112,7 @@ var camera: Camera3D
 var hands: Node3D
 var touch
 var status
+var icons
 var render_view
 var fx
 var sun: DirectionalLight3D
@@ -218,6 +245,7 @@ func _build_world() -> void:
 	fx = WorldFX.new()
 	add_child(fx)
 
+	_build_town()
 	_build_loot_spots()
 	_update_chunks(SPAWN, true)
 
@@ -238,6 +266,23 @@ func _town_level() -> float:
 	return _noise.get_noise_2d(0.0, 0.0) * 17.0
 
 
+## Which biome a point is in: 0 pine forest, 1 jungle (low, wet), 2 dead
+## ground (round ruins). Low ground goes to jungle; a second noise field
+## carves the dead patches.
+var _biome_noise: FastNoiseLite
+
+func _biome(x: float, z: float) -> int:
+	if _biome_noise == null:
+		_biome_noise = FastNoiseLite.new()
+		_biome_noise.seed = 555
+		_biome_noise.frequency = 0.0045
+	var dead: float = _biome_noise.get_noise_2d(x + 900.0, z - 400.0)
+	if dead > 0.34:
+		return 2
+	var h := terrain_y(x, z)
+	return 1 if h < -3.0 else 0
+
+
 func _ground_normal(x: float, z: float) -> Vector3:
 	var e := 0.6
 	return Vector3(terrain_y(x - e, z) - terrain_y(x + e, z), 2.0 * e,
@@ -247,7 +292,7 @@ func _ground_normal(x: float, z: float) -> Vector3:
 func _model(name: String, dir := "nature") -> PackedScene:
 	if _models.has(name):
 		return _models[name]
-	var ext := ".fbx" if dir != "props" else ".glb"
+	var ext := ".fbx" if dir in ["nature", "loot"] else ".glb"
 	var path := "res://assets/%s/%s%s" % [dir, name, ext]
 	var ps: PackedScene = load(path) if ResourceLoader.exists(path) else null
 	_models[name] = ps
@@ -327,12 +372,15 @@ func _wind_mat(kind: String) -> ShaderMaterial:
 
 
 func _plant_kind(name: String) -> String:
-	if name in GRASS:
-		return "grass"
-	if name in BUSHES:
-		return "bush"
-	if name in ROCKS:
-		return "rock"
+	for g in GRASS:
+		if g[0] == name:
+			return "grass"
+	for b in BUSHES:
+		if b[0] == name:
+			return "bush"
+	for r in ROCKS:
+		if r[0] == name:
+			return "rock"
 	return "tree"
 
 ## The mesh inside a model file, with whatever transform the pack baked into
@@ -408,6 +456,9 @@ func _build_chunk(k: Vector2i) -> Node3D:
 		var n := _ground_normal(v.x, v.z)
 		var slope := 1.0 - n.y
 		var c: Color = grass_col.lerp(rock, clampf(slope * 3.4, 0.0, 1.0))
+		match _biome(v.x, v.z):
+			1: c = c.lerp(Color(0.22, 0.38, 0.18), 0.55)      # jungle: deeper green
+			2: c = c.lerp(Color(0.40, 0.35, 0.28), 0.75)      # dead ground: dust
 		var d := Vector2(v.x, v.z).length()
 		if d < TOWN_R:
 			c = c.lerp(dirt, clampf((TOWN_R - d) / 16.0, 0.0, 0.75))
@@ -435,6 +486,7 @@ func _build_chunk(k: Vector2i) -> Node3D:
 	mi.create_trimesh_collision()
 
 	_scatter(root, k, x0, z0)
+	_ruins(root, k, x0, z0)
 	return root
 
 
@@ -456,7 +508,7 @@ func _scatter(root: Node3D, k: Vector2i, x0: float, z0: float) -> void:
 			batches[name] = [mm, [], pair[1]]
 		(batches[name][1] as Array).append(xf * (batches[name][2] as Transform3D))
 
-	var density: int = 44
+	var density: int = 70
 	for i in density:
 		var x := x0 + rng.randf() * CHUNK
 		var z := z0 + rng.randf() * CHUNK
@@ -471,19 +523,44 @@ func _scatter(root: Node3D, k: Vector2i, x0: float, z0: float) -> void:
 		var yaw := rng.randf() * TAU
 		var s := rng.randf_range(0.85, 1.3)
 		var xf := Transform3D(Basis(Vector3.UP, yaw).scaled(Vector3(s, s, s)), Vector3(x, y, z))
-		if roll < 0.52:
-			var t: String = TREES[rng.randi() % TREES.size()]
-			place.call(t, "nature", xf)
+		var pick: Array
+		var biome := _biome(x, z)
+		if biome == 1:
+			# jungle: palms and willows close together, thick undergrowth
+			if roll < 0.45:
+				pick = JUNGLE[rng.randi() % JUNGLE.size()]
+				if d < 170.0:
+					_trunk(root, Vector3(x, y, z), 0.3 * s, 6.0 * s)
+			elif roll < 0.85:
+				pick = JUNGLE_FLOOR[rng.randi() % JUNGLE_FLOOR.size()]
+			else:
+				pick = ROCKS[rng.randi() % ROCKS.size()]
+		elif biome == 2:
+			# dead ground: bare trees, rubble, the odd ruin
+			if roll < 0.40:
+				pick = DEAD[rng.randi() % DEAD.size()]
+				if d < 170.0:
+					_trunk(root, Vector3(x, y, z), 0.3 * s, 4.0 * s)
+			elif roll < 0.70:
+				pick = ROCKS[rng.randi() % ROCKS.size()]
+			else:
+				pick = [["rubble_pile", "apoc"], ["bone_pile", "apoc"], ["tire_stack", "apoc"],
+					["toxic_barrel", "apoc"]][rng.randi() % 4]
+		elif roll < 0.50:
+			pick = TREES[rng.randi() % TREES.size()]
 			if d < 170.0:
 				_trunk(root, Vector3(x, y, z), 0.34 * s, 5.0 * s)
-		elif roll < 0.62:
-			place.call(DEAD_TREES[rng.randi() % DEAD_TREES.size()], "nature", xf)
+		elif roll < 0.58:
+			pick = DEAD_TREES[rng.randi() % DEAD_TREES.size()]
 			if d < 170.0:
 				_trunk(root, Vector3(x, y, z), 0.3 * s, 4.0 * s)
-		elif roll < 0.76:
-			place.call(ROCKS[rng.randi() % ROCKS.size()], "nature", xf)
+		elif roll < 0.72:
+			pick = ROCKS[rng.randi() % ROCKS.size()]
+			if d < 170.0:
+				_trunk(root, Vector3(x, y, z), 0.7 * s, 0.9 * s)
 		else:
-			place.call(BUSHES[rng.randi() % BUSHES.size()], "nature", xf)
+			pick = BUSHES[rng.randi() % BUSHES.size()]
+		place.call(str(pick[0]), str(pick[1]), xf)
 
 	# Ground cover: cheap, dense, and gone in the distance.
 	var blades: int = Q_GRASS[quality]
@@ -497,9 +574,13 @@ func _scatter(root: Node3D, k: Vector2i, x0: float, z0: float) -> void:
 			if _ground_normal(x, z).y < 0.82:
 				continue
 			var s := rng.randf_range(0.7, 1.4)
-			place.call(GRASS[rng.randi() % GRASS.size()], "nature",
+			var g: Array = GRASS[rng.randi() % GRASS.size()]
+			place.call(str(g[0]), str(g[1]),
 				Transform3D(Basis(Vector3.UP, rng.randf() * TAU).scaled(Vector3(s, s, s)),
 					Vector3(x, y, z)))
+		# And the proper grass: tufted clumps with the EmacEArt wind shader,
+		# thick near you and gone a short way off.
+		_grass_carpet(root, rng, x0, z0, blades * 3)
 
 	for name in batches:
 		var mm: MultiMesh = batches[name][0]
@@ -513,13 +594,67 @@ func _scatter(root: Node3D, k: Vector2i, x0: float, z0: float) -> void:
 		mmi.material_override = _wind_mat(kind)
 		mmi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_ON if kind == "tree" \
 			else GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
-		if str(name) in GRASS:
+		if kind == "grass":
 			mmi.visibility_range_end = 38.0
 			mmi.visibility_range_end_margin = 6.0
 		else:
 			mmi.visibility_range_end = Q_DRAW[quality]
 			mmi.visibility_range_end_margin = 14.0
 		root.add_child(mmi)
+
+
+var _grass_mat: ShaderMaterial
+var _grass_mesh: Mesh
+
+## A carpet of grass clumps over a chunk, drawn as one instanced batch with
+## the EmacEArt wind shader (textured, alpha-cut, gusting). It is what makes
+## the ground read as ground instead of a green sheet.
+func _grass_carpet(root: Node3D, rng: RandomNumberGenerator, x0: float, z0: float, count: int) -> void:
+	if count <= 0:
+		return
+	if _grass_mesh == null:
+		_grass_mesh = load("res://assets/grass/EA_Grass_Clump.mesh")
+		_grass_mat = ShaderMaterial.new()
+		_grass_mat.shader = load("res://assets/grass/EA_GrassWind.gdshader")
+		_grass_mat.set_shader_parameter("albedo_texture", load("res://assets/grass/GRASS_DIFF.tga"))
+		_grass_mat.set_shader_parameter("normal_texture", load("res://assets/grass/GRASS_NMAP.tga"))
+		_grass_mat.set_shader_parameter("base_color", Color(0.62, 0.78, 0.30))
+		_grass_mat.set_shader_parameter("alpha_cutoff", 0.55)
+		_grass_mat.set_shader_parameter("normal_strength", 0.5)
+		_grass_mat.set_shader_parameter("wind_strength", 0.28)
+		_grass_mat.set_shader_parameter("wind_speed", 1.1)
+		_grass_mat.set_shader_parameter("wind_frequency", 0.7)
+		_grass_mat.set_shader_parameter("gust_strength", 0.5)
+		_grass_mat.set_shader_parameter("anchor_height", 1.0)
+	if _grass_mesh == null:
+		return
+	var mm := MultiMesh.new()
+	mm.transform_format = MultiMesh.TRANSFORM_3D
+	mm.mesh = _grass_mesh
+	var xfs: Array = []
+	for i in count:
+		var x := x0 + rng.randf() * CHUNK
+		var z := z0 + rng.randf() * CHUNK
+		if Vector2(x, z).length() < TOWN_R * 0.75:
+			continue
+		if _ground_normal(x, z).y < 0.84:
+			continue
+		# Dead ground is bare: no grass grows round the ruins.
+		if _biome(x, z) == 2:
+			continue
+		var sc := rng.randf_range(0.45, 0.85)
+		xfs.append(Transform3D(Basis(Vector3.UP, rng.randf() * TAU).scaled(Vector3(sc, sc * rng.randf_range(0.8, 1.3), sc)),
+			Vector3(x, terrain_y(x, z) - 0.03, z)))
+	mm.instance_count = xfs.size()
+	for i in xfs.size():
+		mm.set_instance_transform(i, xfs[i])
+	var mmi := MultiMeshInstance3D.new()
+	mmi.multimesh = mm
+	mmi.material_override = _grass_mat
+	mmi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	mmi.visibility_range_end = 34.0
+	mmi.visibility_range_end_margin = 8.0
+	root.add_child(mmi)
 
 
 func _trunk(root: Node3D, at: Vector3, r: float, h: float) -> void:
@@ -537,8 +672,8 @@ func _trunk(root: Node3D, at: Vector3, r: float, h: float) -> void:
 # --- the town -----------------------------------------------------------------
 
 ## Drops a model from one of the packs into the world.
-func _prop(parent: Node3D, name: String, at: Vector3, yaw: float, scale := 1.0) -> Node3D:
-	var ps := _model(name, "props")
+func _prop(parent: Node3D, name: String, at: Vector3, yaw: float, scale := 1.0, dir := "props") -> Node3D:
+	var ps := _model(name, dir)
 	if ps == null:
 		return null
 	var n: Node3D = ps.instantiate()
@@ -563,6 +698,43 @@ func _flat_mat(c: Color, rough := 0.95, emit := 0.0) -> StandardMaterial3D:
 	return m
 
 
+## A collider cut to the model: its own triangles for things with gaps you
+## should be able to walk into (buildings, fences, barricades), its convex hull
+## for solid lumps (vehicles, barrels, rocks). Nothing here is a box.
+func _solid_shape(n: Node3D, exact := true) -> void:
+	var body := StaticBody3D.new()
+	add_child(body)
+	body.global_transform = n.global_transform
+	var inv := body.global_transform.affine_inverse()
+	for node in n.find_children("*", "MeshInstance3D", true, false):
+		var mi := node as MeshInstance3D
+		if mi.mesh == null:
+			continue
+		var xf: Transform3D = inv * mi.global_transform
+		var col := CollisionShape3D.new()
+		if exact:
+			var faces: PackedVector3Array = mi.mesh.get_faces()
+			if faces.size() < 3:
+				continue
+			for i in faces.size():
+				faces[i] = xf * faces[i]
+			var tri := ConcavePolygonShape3D.new()
+			tri.backface_collision = true
+			tri.set_faces(faces)
+			col.shape = tri
+		else:
+			var hull := mi.mesh.create_convex_shape(true, true) as ConvexPolygonShape3D
+			if hull == null or hull.points.size() < 4:
+				continue
+			var pts: PackedVector3Array = hull.points
+			for i in pts.size():
+				pts[i] = xf * pts[i]
+			var cv := ConvexPolygonShape3D.new()
+			cv.points = pts
+			col.shape = cv
+		body.add_child(col)
+
+
 ## A box collider around a prop so you cannot walk through it.
 func _solidify(n: Node3D, at: Vector3, r: float, h: float) -> void:
 	var b := StaticBody3D.new()
@@ -575,18 +747,127 @@ func _solidify(n: Node3D, at: Vector3, r: float, h: float) -> void:
 	add_child(b)
 
 
+# Every piece of the Apocalypse pack that is big enough to walk round or climb
+# on, with how its collider is cut: true = its own triangles, false = hull.
+const APOC_SOLID := {
+	"ruined_apartment": true, "ruined_shop": true, "collapsed_house": true, "ruined_tower": true,
+	"guard_tower": true, "bunker_entrance": true, "water_tank": false, "radio_antenna": false,
+	"burnt_bus": false, "overturned_truck": false, "wrecked_car": false, "tipped_motorbike": false,
+	"concrete_barrier": false, "sandbag_wall": false, "wooden_barricade": true, "barbed_fence": true,
+	"rubble_pile": false, "tire_stack": false, "toxic_barrel": false, "burning_barrel": false,
+	"supply_crate": false, "survivor_tent": false, "abandoned_shopping_cart": false,
+	"broken_streetlight": false, "gas_mask_post": false, "dead_tree": false, "bone_pile": false,
+	"traffic_light_fallen": false,
+}
+
+## The ruined town you start in: a cracked road through the middle, blocks of
+## wrecked buildings either side, vehicles where they stopped, barricades
+## where someone made a stand, and the things they left behind to search.
+func _build_town() -> void:
+	var y := _town_level()
+	var town := Node3D.new()
+	add_child(town)
+	var rng := RandomNumberGenerator.new()
+	rng.seed = 4242
+	var put := func(name: String, x: float, z: float, yaw: float, lootable := false) -> Node3D:
+		var n := _prop(town, name, Vector3(x, y + 0.01, z), yaw, 1.0, "apoc")
+		if n == null:
+			return null
+		if APOC_SOLID.has(name):
+			_solid_shape(n, bool(APOC_SOLID[name]))
+		if lootable:
+			_make_lootable(n, Vector3(x, y + 0.45, z), 1.0, rng)
+		return n
+
+	# Road: slabs end to end along both axes, and the kerb-side wreckage.
+	for i in range(-14, 15):
+		put.call("cracked_road_slab", float(i) * 3.0, 0.0, 0.0)
+		put.call("cracked_road_slab", 0.0, float(i) * 3.0, PI * 0.5)
+	# Buildings, set back from the road and facing it.
+	var blocks := [
+		["ruined_apartment", -14.0, -12.0, 0.0], ["ruined_shop", 12.0, -10.0, PI],
+		["collapsed_house", -12.0, 11.0, PI * 0.5], ["ruined_apartment", 15.0, 12.0, -PI * 0.5],
+		["ruined_shop", -24.0, -2.0, PI * 0.5], ["ruined_tower", 24.0, -24.0, 0.0],
+		["guard_tower", -26.0, 22.0, 0.0], ["bunker_entrance", 8.0, 26.0, PI],
+		["water_tank", 26.0, 4.0, 0.0], ["radio_antenna", -22.0, -24.0, 0.0],
+		["collapsed_house", 22.0, 24.0, PI * 0.25], ["survivor_tent", -10.0, 24.0, 0.4],
+		["survivor_tent", -6.0, 26.0, -0.5],
+	]
+	for b in blocks:
+		put.call(str(b[0]), float(b[1]), float(b[2]), float(b[3]))
+	# Vehicles on and beside the road.
+	for v in [["burnt_bus", 6.0, -5.0, 0.3], ["wrecked_car", -8.0, 4.0, 1.3],
+			["overturned_truck", 5.0, 16.0, PI * 0.5 + 0.2], ["wrecked_car", -5.0, -16.0, -0.4],
+			["tipped_motorbike", 10.0, 6.0, 2.0], ["abandoned_shopping_cart", 14.0, -3.0, 1.0]]:
+		put.call(str(v[0]), float(v[1]), float(v[2]), float(v[3]))
+	# Someone's last stand across the north road, and street furniture.
+	for k in [["sandbag_wall", -3.0, -20.0, 0.0], ["sandbag_wall", 3.0, -20.0, 0.0],
+			["concrete_barrier", 0.0, -22.0, 0.0], ["wooden_barricade", -3.0, 20.0, 0.0],
+			["barbed_fence", 3.0, 20.0, 0.0], ["broken_streetlight", -4.5, -8.0, 0.0],
+			["broken_streetlight", 4.5, 8.0, PI], ["traffic_light_fallen", 5.0, -12.0, 0.8],
+			["gas_mask_post", -4.5, 12.0, 0.0], ["bone_pile", 9.0, -14.0, 1.1],
+			["rubble_pile", -16.0, -6.0, 0.5], ["rubble_pile", 17.0, 15.0, 2.2],
+			["tire_stack", 13.0, 1.0, 0.0], ["dead_tree", -18.0, 16.0, 0.0], ["dead_tree", 19.0, -16.0, 1.5]]:
+		put.call(str(k[0]), float(k[1]), float(k[2]), float(k[3]))
+	# Things worth searching, spread between the buildings.
+	for i in 22:
+		var a := rng.randf() * TAU
+		var r := rng.randf_range(6.0, 30.0)
+		var x := cos(a) * r
+		var z := sin(a) * r
+		if absf(x) < 2.0 or absf(z) < 2.0:
+			continue
+		var kind: String = ["supply_crate", "toxic_barrel", "burning_barrel", "supply_crate"][rng.randi() % 4]
+		put.call(kind, x, z, rng.randf() * TAU, true)
+	print("TOWN: %d lootable containers" % _lootables.size())
+
+
 ## Crates, barrels and a tent or two dropped around the start area. This is
 ## the stand-in for buildings and their contents until there are models for
 ## them: somewhere to walk to, something to search, and a reason to be out in
 ## the open where the zombies are.
+## Ruins out in the world: a wrecked house or two, a camp, a bunker, every
+## few hundred metres, each with something to search. Placed by a hash of
+## the chunk so they are always in the same place.
+func _ruins(root: Node3D, k: Vector2i, x0: float, z0: float) -> void:
+	var rng := RandomNumberGenerator.new()
+	rng.seed = hash(k) * 31 + 7
+	if rng.randf() > 0.38:
+		return
+	var x := x0 + rng.randf_range(8.0, CHUNK - 8.0)
+	var z := z0 + rng.randf_range(8.0, CHUNK - 8.0)
+	if Vector2(x, z).length() < TOWN_R + 20.0 or _ground_normal(x, z).y < 0.9:
+		return
+	var y := terrain_y(x, z)
+	var yaw := rng.randf() * TAU
+	var main: String = RUINS[rng.randi() % RUINS.size()]
+	var n := _prop(root, main, Vector3(x, y, z), yaw, 1.0, "apoc")
+	if n and APOC_SOLID.has(main):
+		_solid_shape(n, bool(APOC_SOLID[main]))
+	for i in rng.randi_range(1, 3):
+		var a := rng.randf() * TAU
+		var r := rng.randf_range(4.0, 9.0)
+		var px := x + cos(a) * r
+		var pz := z + sin(a) * r
+		var kind: String = ["supply_crate", "toxic_barrel", "burning_barrel", "survivor_tent",
+			"wooden_barricade", "sandbag_wall", "abandoned_shopping_cart"][rng.randi() % 7]
+		var p := _prop(root, kind, Vector3(px, terrain_y(px, pz), pz), rng.randf() * TAU, 1.0, "apoc")
+		if p == null:
+			continue
+		if APOC_SOLID.has(kind):
+			_solid_shape(p, bool(APOC_SOLID[kind]))
+		if kind in ["supply_crate", "toxic_barrel"]:
+			_make_lootable(p, Vector3(px, terrain_y(px, pz) + 0.45, pz), 1.0, rng)
+
+
 func _build_loot_spots() -> void:
 	var rng := RandomNumberGenerator.new()
 	rng.seed = 4242
 	var holder := Node3D.new()
 	add_child(holder)
-	for i in 34:
+	for i in 18:
 		var a := rng.randf() * TAU
-		var r := rng.randf_range(8.0, 90.0)
+		var r := rng.randf_range(48.0, 110.0)
 		var x := cos(a) * r
 		var z := sin(a) * r
 		if _ground_normal(x, z).y < 0.88:
@@ -669,6 +950,11 @@ func _build_ui() -> void:
 			player.jump())
 	status = StatusUI.new()
 	add_child(status)
+	# Hotbar pictures are rendered from the items' own models, one at a time
+	# in a tiny off-screen viewport, so a slot shows the thing you are holding.
+	icons = IconBaker.new()
+	add_child(icons)
+	icons.baked.connect(func(_k: String) -> void: _sync_hotbar())
 	status.respawn_pressed.connect(_respawn)
 
 
@@ -684,6 +970,14 @@ func _build_audio() -> void:
 		p.stream = streams[key]
 		add_child(p)
 		players[key] = p
+	# The world is never silent: wind, all the time, louder at night.
+	var amb := AudioStreamPlayer.new()
+	amb.stream = Sfx.wind_loop()
+	amb.volume_db = -22.0
+	amb.autoplay = true
+	add_child(amb)
+	amb.play()
+	players["wind"] = amb
 	players["moan"].volume_db = -14.0
 	players["moan_near"].volume_db = -7.0
 	players["step"].volume_db = -12.0
@@ -829,19 +1123,28 @@ func _update_sky() -> void:
 	var ang := (t - 0.25) * TAU
 	# A tilted arc, so the light sweeps across the town instead of straight
 	# over it, and shadows stretch out morning and evening.
-	sun.rotation = Vector3(-ang, 0.55 + sin(ang) * 0.25, 0.0)
 	var up: float = clampf(sin(ang) * 1.5, -1.0, 1.0)
 	var light: float = clampf(up * 0.5 + 0.5, 0.0, 1.0)
 	var low: float = clampf(1.0 - absf(up) * 2.2, 0.0, 1.0)      # near the horizon
-	sun.light_energy = lerpf(0.0, 1.15, clampf(up * 2.2, 0.0, 1.0))
-	sun.light_color = Color(1.0, 0.95, 0.86).lerp(Color(1.0, 0.56, 0.30), low)
+	if up > 0.0:
+		sun.rotation = Vector3(-ang, 0.55 + sin(ang) * 0.25, 0.0)
+		sun.light_energy = lerpf(0.0, 1.15, clampf(up * 2.2, 0.0, 1.0))
+		sun.light_color = Color(1.0, 0.95, 0.86).lerp(Color(1.0, 0.56, 0.30), low)
+	else:
+		# After dark the one light is the moon, opposite the sun, cold and
+		# faint - enough to make out shapes, not enough to see colour.
+		sun.rotation = Vector3(-ang + PI, 0.55, 0.0)
+		sun.light_energy = 0.16 * clampf(-up * 2.5, 0.0, 1.0)
+		sun.light_color = Color(0.62, 0.70, 0.95)
 	sun.light_angular_distance = lerpf(0.6, 3.0, low)
-	world_env.ambient_light_energy = lerpf(0.22, 0.85, light)
+	world_env.ambient_light_energy = lerpf(0.34, 0.85, light)
 	var fog_day := Color(0.62, 0.70, 0.76)
-	var fog_night := Color(0.06, 0.08, 0.14)
+	var fog_night := Color(0.09, 0.11, 0.18)
 	var fog_dusk := Color(0.55, 0.34, 0.26)
 	world_env.fog_light_color = fog_night.lerp(fog_day, light).lerp(fog_dusk, low * 0.7)
 	world_env.fog_density = lerpf(0.026, 0.0062, light)
+	if players.has("wind"):
+		players["wind"].volume_db = lerpf(-16.0, -23.0, light)
 	if sky_mat:
 		sky_mat.set_shader_parameter("hour", hour)
 		sky_mat.set_shader_parameter("cloud_cover", 0.38 + 0.2 * sin(elapsed * 0.012))
@@ -913,7 +1216,7 @@ func zombie_moan(at: Vector3, near: bool) -> void:
 
 func zombie_hurt(z: Node, where: String, amount: float) -> void:
 	if fx:
-		fx.hit_burst(z.global_position + Vector3(0, 1.1, 0), where == "head")
+		fx.blood(z.global_position + Vector3(0, 1.2 if where == "head" else 0.9, 0), where == "head")
 	players["hit"].pitch_scale = randf_range(0.9, 1.2) * (1.3 if where == "head" else 1.0)
 	players["hit"].play()
 	if where == "head" and amount > 40.0:
@@ -999,6 +1302,7 @@ func _shoot() -> void:
 	players["shot"].play()
 	if hands:
 		hands.play_fire()
+		hands.muzzle_flash()
 	# Everything within earshot comes to look.
 	for z in _zombies:
 		if is_instance_valid(z):
@@ -1232,7 +1536,7 @@ func _apply_held() -> void:
 	holder.add_child(m)
 	m.transform = _grip_of(id)
 	hands.mount(holder)
-	hands.aim_offset(Vector3(0.075, 0.105, -0.06))
+	hands.aim_offset(Vector3(0.0, 0.015, -0.03))
 
 
 ## How each item sits in the fist. Every pack models at its own size and
@@ -1292,10 +1596,31 @@ func _sync_hotbar() -> void:
 			arr.append({})
 		else:
 			var id := str(it["id"])
-			arr.append({"icon": _icon_for(id), "count": int(it["n"]),
-				"tint": Color(1, 1, 1, 0.95)})
+			if icons and not icons.has_icon(id):
+				var m := _item_model(id)
+				if m:
+					icons.request(id, m)
+			var entry := {"icon": _icon_for(id), "count": int(it["n"]), "tint": Color(1, 1, 1, 0.95)}
+			if icons and icons.has_icon(id):
+				entry["tex"] = icons.get_icon(id)
+			arr.append(entry)
 	touch.slots = arr
 	touch.selected = sel
+
+
+## A fresh copy of an item's model, for its hotbar picture.
+func _item_model(id: String) -> Node3D:
+	var path := str(ITEMS[id].get("model", ""))
+	if path == "" or not ResourceLoader.exists(path):
+		return null
+	var m: Node3D = (load(path) as PackedScene).instantiate()
+	if id == "pistol":
+		for extra in ["Mag", "45 ACP", "45 ACP Blank"]:
+			var e := m.find_child(extra, true, false)
+			if e:
+				e.get_parent().remove_child(e)
+				e.queue_free()
+	return m
 
 
 func _icon_for(id: String) -> String:
@@ -1433,8 +1758,26 @@ func _basics_step() -> void:
 				print("AUTOTEST basics FAIL nothing died (hp left %.0f)" % z.health)
 				_basics = 99
 		4:
-			# stand still and let one reach you
+			# stand still and let one reach you; if none is about, send one
 			touch.move = Vector2.ZERO
+			var near: Node3D = _nearest_zombie() as Node3D
+			var far_off: bool = near == null \
+				or near.global_position.distance_to(player.global_position) > 20.0
+			if frame % 180 == 0 and far_off:
+				var ang := randf() * TAU
+				var at := player.global_position + Vector3(cos(ang), 0, sin(ang)) * 6.0
+				at.y = terrain_y(at.x, at.z)
+				var zz = Zombie.new()
+				add_child(zz)
+				zz.setup(self, at, 77, false)
+				_zombies.append(zz)
+			if frame % 120 == 0:
+				print("AUTOTEST stage4 f=%d zombies=%d near=%s state=%s vel=%.2f you=%s" % [
+					frame, _zombies.size(),
+					"%.1fm" % near.global_position.distance_to(player.global_position) if near else "none",
+					near.state if near else "-",
+					Vector2(near.velocity.x, near.velocity.z).length() if near else 0.0,
+					player.global_position.snapped(Vector3.ONE * 0.1)])
 			if health < 100.0:
 				print("AUTOTEST basics: took a hit, hp=%.0f" % health)
 				_basics = 5

@@ -13,6 +13,9 @@ swapped out before the game is published.
 | `props/*.glb` | crates, barrels, chests, camps | Kenney Survival Kit | CC0 1.0 |
 | `loot/*.fbx` | guns, tools, food, medical | Survival Pack (Sept 2020), Quaternius | CC0 1.0 |
 | `models/guns/pistol_1911.*` | the starting pistol | Free Guns Pack 1.2 | pack ships no licence file — **verify before release** |
+| `apoc/*.glb` | the ruined town and the wrecks out in the world | Low Poly Apocalypse Pack, reodesuxz | free for commercial use, no redistribution of the files as assets (`apoc/LICENSE.txt`) |
+| `nature2/*.glb` | trees, rocks, bushes, grass, flowers | Low-Poly Nature Starter Pack | CC0 |
+| `grass/*` | grass clump mesh, textures and wind shader | EmacEArt Stylized Grass | free for commercial use, no redistribution of the files as assets (`grass/LICENSE.txt`) |
 | `shaders/sky.gdshader` | day/night sky | written here, following the palette and structure of "Day and Night Sky" by Dimension Almios | MIT (see `shaders/day_night_sky_LICENSE.txt`) |
 | `shaders/wind.gdshader` | grass and foliage movement | written here | — |
 

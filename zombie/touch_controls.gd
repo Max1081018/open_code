@@ -369,14 +369,6 @@ class Painter extends Control:
 			_pill(crect, UITheme.PANEL, 23, Color(1, 0.8, 0.3, 0.35))
 			_centred(font, ui.carry_info, crect.position + crect.size * 0.5, 22, UITheme.GOLD)
 
-		# ---- Coins (top right) ----
-		var ct := "%d" % ui.coins
-		var cw := font.get_string_size(ct, HORIZONTAL_ALIGNMENT_LEFT, -1, 24).x
-		var crect2 := Rect2(Vector2(vp.x - cw - 86, 26), Vector2(cw + 62, 44))
-		_pill(crect2, UITheme.PANEL, 22)
-		UIDraw.icon(self, "coin", crect2.position + Vector2(24, 22), 15, UITheme.GOLD)
-		draw_string(font, crect2.position + Vector2(44, 22 + 24 * 0.35), ct, HORIZONTAL_ALIGNMENT_LEFT, -1, 24, UITheme.GOLD)
-
 		# ---- Boss health bar ----
 		if ui.boss_hp >= 0.0:
 			var bw: float = minf(vp.x * 0.42, 460.0)

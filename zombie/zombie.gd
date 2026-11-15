@@ -24,7 +24,7 @@ const REACH := 1.75
 const ATTACK_DAMAGE := 11.0
 const ATTACK_TIME := 0.42         # when in the swing the blow lands
 const GRAVITY := 22.0
-const STEP := 0.45
+const STEP := 0.95                # they climb rubble, kerbs and sandbags
 
 var game: Node                    # who to tell about damage and death
 var state := "idle"
@@ -51,6 +51,10 @@ var _skip := 0
 var _rng := RandomNumberGenerator.new()
 var _home := Vector3.ZERO
 var _moan := 0.0
+var _stuck := 0.0                 # how long it has been trying to move and failing
+var _dodge := 0.0                 # seconds left of sidestepping round something
+var _dodge_dir := Vector3.ZERO
+var _was_at := Vector3.ZERO
 
 
 func setup(g: Node, at: Vector3, seed_v: int, crawler := false) -> void:
@@ -62,8 +66,11 @@ func setup(g: Node, at: Vector3, seed_v: int, crawler := false) -> void:
 	_yaw = _rng.randf() * TAU
 	rotation.y = _yaw
 
-	collision_layer = 2          # zombies have a layer of their own, so shots
-	collision_mask = 1 | 2       # and the crosshair can pick them out
+	collision_layer = 2          # their own layer, so shots and the crosshair
+	# They walk through one another on purpose. With zombies solid to each
+	# other a crowd converging on you jams into a knot a few metres out and
+	# stops dead - which is exactly what a packed street should not do.
+	collision_mask = 1
 	_shape = CapsuleShape3D.new()
 	_shape.radius = 0.36
 	_shape.height = 1.65
@@ -251,6 +258,11 @@ func hear(at: Vector3, loud: float) -> void:
 
 
 func _move(delta: float) -> void:
+	# Anything can box a shambling thing in - a crate in a doorway, a car and
+	# a wall. If it has been asking to move and going nowhere, it picks a side
+	# and commits to it for a moment, which is enough to get round almost
+	# anything without a navigation mesh.
+	_dodge = maxf(_dodge - delta, 0.0)
 	var want := Vector3.ZERO
 	if _has_target:
 		var to := _target - global_position
@@ -262,6 +274,20 @@ func _move(delta: float) -> void:
 			_face(global_position + dir, delta * (7.0 if state == "chase" else 3.0))
 		elif state == "wander":
 			_enter("idle")
+	if want.length() > 0.5 and _dodge <= 0.0:
+		if global_position.distance_to(_was_at) < 0.12:
+			_stuck += delta
+			if _stuck > 0.5:
+				_stuck = 0.0
+				_dodge = 0.9
+				var side := Vector3(-want.z, 0.0, want.x).normalized()
+				_dodge_dir = (side * (1.0 if randf() < 0.5 else -1.0) + want.normalized() * 0.35).normalized()
+		else:
+			_stuck = 0.0
+			_was_at = global_position
+	else:
+		_stuck = 0.0
+		_was_at = global_position
 	velocity.x = move_toward(velocity.x, want.x, 9.0 * delta)
 	velocity.z = move_toward(velocity.z, want.z, 9.0 * delta)
 	if is_on_floor():
@@ -271,39 +297,53 @@ func _move(delta: float) -> void:
 		velocity.y -= GRAVITY * delta
 	body.speed = Vector2(velocity.x, velocity.z).length()
 	move_and_slide()
-	# Shuffle up kerbs and roots rather than sticking on them.
+	if OS.get_environment("ZDBG") != "" and Engine.get_physics_frames() % 120 == 0:
+		var hit := ""
+		for i in get_slide_collision_count():
+			hit += str((get_slide_collision(i).get_collider() as Node).name) + " "
+		print("ZDBG st=%s tgt=%s want=%.2f vel=%.2f floor=%s wall=%s pos=%s hits=[%s]" % [
+			state, _has_target, want.length(), Vector2(velocity.x, velocity.z).length(),
+			is_on_floor(), is_on_wall(), global_position.snapped(Vector3.ONE * 0.1), hit])
+	# Shuffle up kerbs, roots and low rubble rather than sticking on them.
 	if is_on_wall() and want.length() > 0.2:
-		var ahead := want.normalized() * 0.3
+		var ahead := want.normalized() * 0.35
 		var up := Vector3(0, STEP, 0)
 		var t := global_transform
 		if test_move(t, ahead) and not test_move(t, up) and not test_move(t.translated(up), ahead):
 			global_position += up + ahead * 0.5
 
 
-## Three short rays: straight ahead and a little to each side. If the way is
-## blocked it slides along whichever side is open, which is enough to get a
-## shambling thing round a tree or along a wall.
+## Feeling the way round things. A ray straight ahead, and if that is blocked,
+## a fan of them to either side at widening angles - the first open one wins,
+## nearest the way it wanted to go. A single pair of side probes was not
+## enough: in a street full of wreckage both sides are often blocked and the
+## thing would stand there grinding against a crate.
 func _steer(dir: Vector3) -> Vector3:
 	var space := get_world_3d().direct_space_state
 	var from := global_position + Vector3(0, 0.9, 0)
-	var probe := func(d: Vector3) -> bool:
-		var q := PhysicsRayQueryParameters3D.create(from, from + d * 1.5)
-		q.exclude = [get_rid()]
-		q.collision_mask = 1
-		return not space.intersect_ray(q).is_empty()
-	if not probe.call(dir):
+	var knee := global_position + Vector3(0, 0.35, 0)
+	# Two heights: chest and knee. One ray at chest height sails straight over
+	# a sandbag wall or a crate, and the zombie walks into it and grinds.
+	var probe := func(d: Vector3, far: float) -> bool:
+		for start in [from, knee]:
+			var q := PhysicsRayQueryParameters3D.create(start, start + d * far)
+			q.exclude = [get_rid()]
+			q.collision_mask = 1
+			if not space.intersect_ray(q).is_empty():
+				return true
+		return false
+	if _dodge > 0.0:
+		return _dodge_dir
+	if not probe.call(dir, 1.6):
 		return dir
-	var left := dir.rotated(Vector3.UP, 0.9)
-	var right := dir.rotated(Vector3.UP, -0.9)
-	var l: bool = probe.call(left)
-	var r: bool = probe.call(right)
-	if not l and r:
-		return left
-	if not r and l:
-		return right
-	if not l and not r:
-		return left if (int(get_instance_id()) % 2 == 0) else right
-	return dir.rotated(Vector3.UP, PI * 0.5)
+	var side := 1.0 if (int(get_instance_id()) % 2 == 0) else -1.0
+	for a in [0.5, 0.9, 1.4, 2.0]:
+		for s2 in [side, -side]:
+			var d2 := dir.rotated(Vector3.UP, a * s2)
+			if not probe.call(d2, 1.2):
+				return d2
+	# Boxed in: back out the way it came rather than grind.
+	return -dir
 
 
 func _face(at: Vector3, amount: float) -> void:

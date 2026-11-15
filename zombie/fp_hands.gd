@@ -21,7 +21,11 @@ const LIB := "res://assets/chars/zombie_anims.res"
 # Where the model sits relative to the camera. The rig's own head bone is the
 # thing that should land on the camera, so this is worked out from the rest
 # pose at start-up and then nudged by these.
-const OFFSET := Vector3(0.0, 0.15, 0.21)    # where the head bone sits, from the eye
+const OFFSET := Vector3(0.0, 0.10, 0.0)      # first guess for the head, before the hand is pinned
+# Where the gun hand should sit in view: a little right of centre, below the
+# crosshair, a forearm's length out. The whole rig is moved to put it there.
+const HAND_AT := Vector3(0.21, -0.21, -0.40)
+const RIG_SCALE := 0.45
 const SKIN_HIDE := 0.001          # bone scale that makes a limb vanish
 
 var mode := "bare"                # bare / gun / melee
@@ -44,6 +48,7 @@ var _hidden: Array[int] = []
 var _scale := 1.0
 var _rng := RandomNumberGenerator.new()
 var _held: Node3D
+var _pin := 3
 var _align := -1
 var _aim_off := Vector3.ZERO
 
@@ -68,7 +73,7 @@ func _ready() -> void:
 	_base = Transform3D(turn, OFFSET - turn * head_local)
 	# Slightly slimmed: these are blocky, heavy-set arms, and at this distance
 	# from the eye a life-size pair fills half the screen.
-	_base.basis = _base.basis.scaled(Vector3.ONE * 0.88)
+	_base.basis = _base.basis.scaled(Vector3.ONE * RIG_SCALE)
 	_model.transform = _base
 
 	_hand_r = BoneAttachment3D.new()
@@ -89,7 +94,24 @@ func _ready() -> void:
 	var look := ZChar.new()
 	look._model = _model
 	look.randomize_look(_rng, true)
+	# Only the arms are wanted in shot. The body is one skinned mesh, so the
+	# rest of it is hidden by its materials: everything that is not skin goes
+	# fully transparent, which leaves a pair of bare arms and nothing else.
+	for mi in _model.find_children("*", "MeshInstance3D", true, false):
+		var m := mi as MeshInstance3D
+		for si in m.mesh.get_surface_count():
+			var src := m.mesh.surface_get_material(si)
+			var who := str(src.resource_name) if src else ""
+			if "Skin" in who:
+				continue
+			var hide := StandardMaterial3D.new()
+			hide.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+			hide.albedo_color = Color(0, 0, 0, 0)
+			hide.no_depth_test = true
+			hide.render_priority = -10
+			m.set_surface_override_material(si, hide)
 	_hide_parts()
+	_build_flash()
 	_ap.play("z/hold_idle")
 
 
@@ -101,6 +123,61 @@ func _hide_parts() -> void:
 		if b >= 0:
 			_skel.set_bone_pose_scale(b, Vector3.ONE * SKIN_HIDE)
 			_hidden.append(b)
+
+
+var _flash: MeshInstance3D
+var _flash_t := 0.0
+
+## A short bright flare at the muzzle on every shot: two crossed additive
+## quads that spin to a random angle each time.
+func _build_flash() -> void:
+	_flash = MeshInstance3D.new()
+	var grad := Gradient.new()
+	grad.offsets = PackedFloat32Array([0.0, 0.3, 0.7, 1.0])
+	grad.colors = PackedColorArray([Color(1, 1, 0.85, 1), Color(1, 0.8, 0.35, 0.9),
+		Color(1, 0.45, 0.1, 0.35), Color(1, 0.3, 0, 0)])
+	var tex := GradientTexture2D.new()
+	tex.gradient = grad
+	tex.fill = GradientTexture2D.FILL_RADIAL
+	tex.fill_from = Vector2(0.5, 0.5)
+	tex.fill_to = Vector2(1.0, 0.5)
+	tex.width = 64
+	tex.height = 64
+	var fm := StandardMaterial3D.new()
+	fm.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	fm.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+	fm.blend_mode = BaseMaterial3D.BLEND_MODE_ADD
+	fm.albedo_texture = tex
+	fm.cull_mode = BaseMaterial3D.CULL_DISABLED
+	fm.billboard_mode = BaseMaterial3D.BILLBOARD_ENABLED
+	var q := QuadMesh.new()
+	q.size = Vector2(0.16, 0.16)
+	q.material = fm
+	_flash.mesh = q
+	_flash.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	_flash.visible = false
+	add_child(_flash)
+	var light := OmniLight3D.new()
+	light.light_color = Color(1.0, 0.75, 0.4)
+	light.omni_range = 5.0
+	light.light_energy = 3.0
+	light.shadow_enabled = false
+	_flash.add_child(light)
+
+
+func muzzle_flash() -> void:
+	if _flash == null:
+		return
+	_flash_t = 0.06
+	_flash.visible = true
+	_flash.rotation.z = randf() * TAU
+	var sz := randf_range(0.8, 1.3)
+	_flash.scale = Vector3(sz, sz, sz)
+	# At the end of the barrel: a little ahead of and above the hand.
+	if _held and is_instance_valid(_held):
+		_flash.global_position = _held.global_transform * Vector3(0.0, 0.05, -0.22)
+	else:
+		_flash.position = Vector3(0.1, -0.1, -0.5)
 
 
 func set_shown(on: bool) -> void:
@@ -141,7 +218,8 @@ func _align_weapon() -> void:
 	# The nudge is given in view space - right, up, forward - and brought into
 	# the hand's frame here, since the hand itself is at some arbitrary angle.
 	var off: Vector3 = hand_b.inverse() * (cam.global_transform.basis.orthonormalized() * _aim_off)
-	_held.transform = Transform3D((hand_b.inverse() * want).scaled(scale_v), off * _scale)
+	# The mount already undoes the skeleton's scale, so this is in metres.
+	_held.transform = Transform3D((hand_b.inverse() * want).scaled(scale_v), off)
 
 
 func mount_point() -> Node3D:
@@ -184,12 +262,28 @@ func _process(delta: float) -> void:
 		return
 	_t += delta
 	_busy = maxf(_busy - delta, 0.0)
+	if _flash_t > 0.0:
+		_flash_t -= delta
+		if _flash_t <= 0.0:
+			_flash.visible = false
 	visible = show_hands
 	# Bones set to nothing are re-posed by the animation every frame, so they
 	# have to be folded away again after it has had its say.
 	for b in _hidden:
 		_skel.set_bone_pose_scale(b, Vector3.ONE * SKIN_HIDE)
 
+	# Once the idle pose is on the skeleton, slide the whole rig so the gun
+	# hand lands exactly on HAND_AT. Pinning the hand rather than the head is
+	# what keeps the arms the same place in view whatever the clip does with
+	# the shoulders.
+	if _pin > 0:
+		_pin -= 1
+		if _pin == 0 and _hand_r:
+			var cam1 := get_parent() as Node3D
+			if cam1:
+				var hand_now: Vector3 = cam1.to_local(_hand_r.global_position)
+				_base.origin += HAND_AT - hand_now
+				_model.transform = _base
 	# The weapon is squared up a frame after it is mounted, once the skeleton
 	# has actually been posed.
 	if _align >= 0:
@@ -210,6 +304,15 @@ func _process(delta: float) -> void:
 		if _ap.current_animation != want:
 			_ap.play(want, 0.2)
 
+	if OS.get_environment("HANDDBG") != "" and Engine.get_process_frames() % 60 == 30:
+		var c0 := get_parent() as Node3D
+		var g: Node3D = _held if (_held and is_instance_valid(_held)) else null
+		print("HANDDBG hand=%s gun=%s gun_fwd=%s gun_scale=%s vis=%s meshes=%d" % [
+			c0.to_local(_hand_r.global_position).snapped(Vector3.ONE * 0.01),
+			c0.to_local(g.global_position).snapped(Vector3.ONE * 0.01) if g else "none",
+			(c0.global_basis.inverse() * (-g.global_basis.z)).normalized().snapped(Vector3.ONE * 0.01) if g else "none",
+			g.global_transform.basis.get_scale().snapped(Vector3.ONE * 0.001) if g else "none",
+			g.visible if g else false, g.find_children("*", "MeshInstance3D", true, false).size() if g else 0])
 	# Walk bob, breathing, and the hands trailing a quick look.
 	_phase += delta * (2.0 + move_speed * 2.2)
 	var walk: float = clampf(move_speed / 3.0, 0.0, 1.0)
@@ -228,6 +331,6 @@ func _process(delta: float) -> void:
 	_lag = _lag.lerp(Vector2.ZERO, clampf(delta * 6.0, 0.0, 1.0))
 	off += Vector3(_lag.x * 0.10, -_lag.y * 0.08, 0.0)
 	var want_xf := Transform3D(
-		Basis(Vector3.RIGHT, -_lag.y * 0.6) * Basis(Vector3.UP, PI - _lag.x * 0.6),
+		(Basis(Vector3.RIGHT, -_lag.y * 0.6) * Basis(Vector3.UP, PI - _lag.x * 0.6)).scaled(Vector3.ONE * RIG_SCALE),
 		_base.origin + off)
 	_model.transform = _model.transform.interpolate_with(want_xf, clampf(delta * 18.0, 0.0, 1.0))

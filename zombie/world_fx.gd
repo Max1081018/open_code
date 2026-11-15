@@ -203,6 +203,19 @@ func dust(pos: Vector3, size := 1.0) -> void:
 	p.emitting = true
 
 
+## Blood where a shot lands: dark red, short-lived, more of it for a head.
+func blood(pos: Vector3, head := false) -> void:
+	var p := _hits[_hit_next]
+	_hit_next = (_hit_next + 1) % _hits.size()
+	p.global_position = pos
+	p.color = Color(0.55, 0.05, 0.04) if not head else Color(0.70, 0.08, 0.05)
+	p.amount = 26 if head else 14
+	p.initial_velocity_max = 4.5 if head else 3.2
+	p.gravity = Vector3(0, -14.0, 0)
+	p.restart()
+	p.emitting = true
+
+
 ## A burst of little stars where a blow lands; gold and bigger for a knockout.
 func hit_burst(pos: Vector3, ko := false) -> void:
 	var p := _hits[_hit_next]

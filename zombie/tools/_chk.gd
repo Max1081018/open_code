@@ -3,7 +3,7 @@ func _initialize() -> void:
 	var bad := 0
 	for f in ["game.gd", "zombie.gd", "zchar.gd", "fp_hands.gd", "player.gd",
 			"touch_controls.gd", "ui_draw.gd", "ui_theme.gd", "status_ui.gd",
-			"render_view.gd", "sfx.gd", "world_fx.gd"]:
+			"render_view.gd", "sfx.gd", "world_fx.gd", "icon_baker.gd"]:
 		if load("res://" + f) == null:
 			print(f, " FAILED")
 			bad += 1
