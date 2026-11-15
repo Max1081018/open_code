@@ -6,12 +6,14 @@
 
 pub mod art;
 pub mod craft;
+pub mod daynight;
 pub mod enemy;
 pub mod interact;
 pub mod item;
 pub mod noise;
 pub mod physics;
 pub mod png;
+pub mod spawn;
 pub mod tilemap;
 pub mod view;
 pub mod world;

@@ -9,7 +9,7 @@ use crate::world::World;
 pub const INVULNERABLE_SECONDS: f32 = 0.8;
 
 /// Index into [`ENEMIES`].
-#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+#[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Debug, Hash)]
 pub struct EnemyKindId(pub u16);
 
 /// Static definition of one enemy type.
