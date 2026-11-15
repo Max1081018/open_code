@@ -252,7 +252,7 @@ mod tests {
     fn a_stronger_tool_breaks_rock_in_fewer_swings() {
         let body = nearby_body();
 
-        let mut count_frames = |power: f32| {
+        let count_frames = |power: f32| {
             let mut world = world_of_stone();
             let mut state = MiningState::new();
             for frame in 1..=600 {

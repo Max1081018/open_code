@@ -310,27 +310,6 @@ mod tests {
         ((a[0] - b[0]).powi(2) + (a[1] - b[1]).powi(2) + (a[2] - b[2]).powi(2)).sqrt()
     }
 
-    /// Mean luminance of `rows`, taken from the top if `from_top`.
-    fn band_luminance(texture: &Texture, rows: u32, from_top: bool) -> f32 {
-        let mut total = 0.0;
-        let mut count = 0.0;
-
-        for row in 0..rows {
-            let y = if from_top {
-                row
-            } else {
-                texture.height - 1 - row
-            };
-            for x in 0..texture.width {
-                let p = texture.pixel(x, y);
-                total += luminance([p[0] as f32, p[1] as f32, p[2] as f32]);
-                count += 1.0;
-            }
-        }
-
-        total / count
-    }
-
     fn channel_variance(texture: &Texture) -> f32 {
         let mean = texture.average_rgb();
         let mut sum = 0.0;

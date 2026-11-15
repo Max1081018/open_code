@@ -1,7 +1,7 @@
 //! Crafting recipes and the rules for turning materials into items.
 
 use crate::item::{
-    def, Inventory, ItemId, COAL, COPPER_BAR, COPPER_ORE, COPPER_PICKAXE, GOLD_BAR, GOLD_ORE,
+    Inventory, ItemId, COAL, COPPER_BAR, COPPER_ORE, COPPER_PICKAXE, GOLD_BAR, GOLD_ORE,
     GOLD_PICKAXE, IRON_BAR, IRON_ORE, IRON_PICKAXE, STONE,
 };
 
@@ -125,6 +125,7 @@ pub fn craft(inventory: &mut Inventory, index: usize, stations: &[Station]) -> b
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::item::def;
 
     const COPPER_BAR_RECIPE: usize = 0;
     const IRON_PICKAXE_RECIPE: usize = 4;
