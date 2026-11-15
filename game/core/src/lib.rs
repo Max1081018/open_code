@@ -6,6 +6,7 @@
 
 pub mod art;
 pub mod interact;
+pub mod item;
 pub mod noise;
 pub mod physics;
 pub mod png;
