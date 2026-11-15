@@ -76,7 +76,13 @@ const JUNGLE_FLOOR := [["Plant_4", "nature"], ["Plant_5", "nature"], ["BushBerri
 	["Bush_2", "nature"], ["nature_bush_02", "nature2"], ["nature_bush_04", "nature2"],
 	["nature_bush_06", "nature2"]]
 const DEAD := [["Willow_Dead_1", "nature"], ["Willow_Dead_3", "nature"], ["dead_tree", "apoc"],
-	["CommonTree_Dead_1", "nature"], ["nature_tree_dead_01", "nature2"]]
+	["CommonTree_Dead_1", "nature"], ["nature_tree_dead_01", "nature2"],
+	["EA04_Env_Tree_Trunk_01a", "raft"], ["EA04_Env_Tree_Trunk_01c", "raft"],
+	["EA04_Env_Tree_Beam_01a", "raft"], ["EA04_Env_Tree_Root_01a", "raft"]]
+# Bleached wood, stone and dry scrub for the dead ground.
+const DEAD_FLOOR := [["EA04_Env_Tree_Root_01c", "raft"], ["EA04_Env_Stone_Gray_01a", "raft"],
+	["EA04_Env_Stone_Sand_01a", "raft"], ["EA04_Env_Plants_Grass_Dry_01a", "raft"],
+	["EA04_Env_Plants_Grass_Dry_01c", "raft"], ["EA04_Env_Rocks_Sand_01c", "raft"]]
 const RUINS := ["collapsed_house", "ruined_shop", "survivor_tent", "rubble_pile", "wrecked_car",
 	"bunker_entrance", "guard_tower", "water_tank", "ruined_apartment", "burnt_bus"]
 const TREES := [["CommonTree_1", "nature"], ["CommonTree_3", "nature"], ["CommonTree_5", "nature"],
@@ -89,7 +95,8 @@ const DEAD_TREES := [["CommonTree_Dead_1", "nature"], ["CommonTree_Dead_3", "nat
 	["BirchTree_Dead_1", "nature"], ["nature_tree_dead_01", "nature2"], ["dead_tree", "apoc"]]
 const ROCKS := [["Rock_1", "nature"], ["Rock_3", "nature"], ["Rock_5", "nature"], ["Rock_Moss_2", "nature"],
 	["nature_rock_01", "nature2"], ["nature_rock_03", "nature2"], ["nature_rock_05", "nature2"],
-	["nature_rock_07", "nature2"]]
+	["nature_rock_07", "nature2"], ["EA04_Env_Rocks_Gray_01a", "raft"],
+	["EA04_Env_Rocks_Gray_02a", "raft"], ["EA04_Env_Rocks_Sand_01a", "raft"]]
 const BUSHES := [["Bush_1", "nature"], ["Bush_2", "nature"], ["BushBerries_1", "nature"],
 	["Plant_1", "nature"], ["TreeStump", "nature"], ["nature_bush_01", "nature2"],
 	["nature_bush_03", "nature2"], ["nature_bush_05", "nature2"], ["nature_stump_01", "nature2"],
@@ -322,6 +329,8 @@ func _model(name: String, dir := "nature") -> PackedScene:
 	if _models.has(name):
 		return _models[name]
 	var ext := ".fbx" if dir in ["nature", "loot"] else ".glb"
+	if dir == "raft":
+		pass
 	var path := "res://assets/%s/%s%s" % [dir, name, ext]
 	var ps: PackedScene = load(path) if ResourceLoader.exists(path) else null
 	_models[name] = ps
@@ -353,6 +362,11 @@ func _bake_colours(mesh: Mesh) -> ArrayMesh:
 		var verts: PackedVector3Array = arr[Mesh.ARRAY_VERTEX]
 		var norms: PackedVector3Array = arr[Mesh.ARRAY_NORMAL] if arr[Mesh.ARRAY_NORMAL] else PackedVector3Array()
 		var cols: PackedColorArray = arr[Mesh.ARRAY_COLOR] if arr[Mesh.ARRAY_COLOR] else PackedColorArray()
+		# Keep the texture coordinates. Dropping them was invisible for models
+		# that carry only flat colours, but anything drawn on a shared atlas
+		# then sampled the same corner pixel - which is how a field of rocks
+		# came out solid black.
+		var uvs: PackedVector2Array = arr[Mesh.ARRAY_TEX_UV] if arr[Mesh.ARRAY_TEX_UV] else PackedVector2Array()
 		var idx: PackedInt32Array = arr[Mesh.ARRAY_INDEX] if arr[Mesh.ARRAY_INDEX] else PackedInt32Array()
 		var count: int = idx.size() if idx.size() > 0 else verts.size()
 		for k in count:
@@ -363,6 +377,8 @@ func _bake_colours(mesh: Mesh) -> ArrayMesh:
 			st.set_color(c)
 			if norms.size() > vi:
 				st.set_normal(norms[vi])
+			if uvs.size() > vi:
+				st.set_uv(uvs[vi])
 			st.add_vertex(verts[vi])
 	if st.get_aabb().size == Vector3.ZERO:
 		return null
@@ -374,14 +390,18 @@ func _bake_colours(mesh: Mesh) -> ArrayMesh:
 func _wind_mat(kind: String) -> ShaderMaterial:
 	if _wind_mats.has(kind):
 		return _wind_mats[kind]
+	# Raft models share one atlas, so their batches need it on the material.
+	var raft := kind.ends_with("_raft")
+	kind = kind.replace("_raft", "")
 	var m := ShaderMaterial.new()
-	m.shader = load("res://assets/shaders/wind.gdshader")
+	m.shader = load("res://assets/shaders/toon_world.gdshader")
 	match kind:
 		"grass":
 			m.set_shader_parameter("sway_strength", 0.26)
 			m.set_shader_parameter("sway_speed", 2.1)
 			m.set_shader_parameter("height_scale", 0.6)
 			m.set_shader_parameter("ao_strength", 0.45)
+			m.set_shader_parameter("rim_strength", 0.5)
 		"bush":
 			m.set_shader_parameter("sway_strength", 0.10)
 			m.set_shader_parameter("sway_speed", 1.4)
@@ -392,15 +412,43 @@ func _wind_mat(kind: String) -> ShaderMaterial:
 			m.set_shader_parameter("sway_speed", 0.75)
 			m.set_shader_parameter("height_scale", 7.0)
 			m.set_shader_parameter("ao_strength", 0.28)
+			m.set_shader_parameter("bands", 3)
 		_:
 			m.set_shader_parameter("sway_strength", 0.0)
 			m.set_shader_parameter("height_scale", 2.0)
 			m.set_shader_parameter("ao_strength", 0.25)
-	_wind_mats[kind] = m
+			m.set_shader_parameter("bands", 4)
+	if raft:
+		if _raft_tex == null:
+			_raft_tex = load("res://assets/raft/texture.png")
+		m.set_shader_parameter("use_texture", true)
+		m.set_shader_parameter("albedo_texture", _raft_tex)
+		m.set_shader_parameter("tint", Color(1, 1, 1))
+	_wind_mats[kind + ("_raft" if raft else "")] = m
 	return m
 
 
+## How tall each kind of thing should end up, in metres. Packs disagree
+## wildly about scale - one pack's boulder is five metres across, another's
+## is knee high - so nothing is trusted to arrive at a sensible size. Every
+## scattered model is measured and scaled to land near these.
+const PLANT_HEIGHT := {"tree": 6.5, "bush": 1.4, "grass": 0.55, "rock": 1.3}
+
+func _natural_height(name: String, dir: String) -> float:
+	var pair := _mesh_of(name, dir)
+	if pair[0] == null:
+		return 1.0
+	var box: AABB = (pair[1] as Transform3D) * (pair[0] as Mesh).get_aabb()
+	return maxf(box.size.y, 0.05)
+
+
 func _plant_kind(name: String) -> String:
+	if name.begins_with("EA04_Env_Plants_Grass"):
+		return "grass"
+	if name.begins_with("EA04_Env_Rocks") or name.begins_with("EA04_Env_Stone"):
+		return "rock"
+	if name.begins_with("EA04_Env_Tree") or name.begins_with("EA04_Env_Plants_Cactus"):
+		return "bush"
 	for g in GRASS:
 		if g[0] == name:
 			return "grass"
@@ -470,8 +518,8 @@ func _build_chunk(k: Vector2i) -> Node3D:
 
 	var st := SurfaceTool.new()
 	st.begin(Mesh.PRIMITIVE_TRIANGLES)
-	var grass_col := Color(0.33, 0.42, 0.24)
-	var dirt := Color(0.40, 0.35, 0.26)
+	var grass_col := Color(0.29, 0.44, 0.22)
+	var dirt := Color(0.36, 0.30, 0.22)
 	var rock := Color(0.42, 0.42, 0.44)
 	var grid: Array = []
 	for i in CHUNK_GRID + 1:
@@ -489,8 +537,8 @@ func _build_chunk(k: Vector2i) -> Node3D:
 			1: c = c.lerp(Color(0.22, 0.38, 0.18), 0.55)      # jungle: deeper green
 			2: c = c.lerp(Color(0.40, 0.35, 0.28), 0.75)      # dead ground: dust
 		var d := Vector2(v.x, v.z).length()
-		if d < TOWN_R:
-			c = c.lerp(dirt, clampf((TOWN_R - d) / 16.0, 0.0, 0.75))
+		if d < TOWN_R * 0.8:
+			c = c.lerp(dirt, clampf((TOWN_R * 0.8 - d) / 22.0, 0.0, 0.55))
 		var n2: float = _rough.get_noise_2d(v.x * 2.0, v.z * 2.0)
 		st.set_color(c.lightened(maxf(n2, 0.0) * 0.12).darkened(maxf(-n2, 0.0) * 0.14))
 		st.set_normal(n)
@@ -530,7 +578,7 @@ func _scatter(root: Node3D, k: Vector2i, x0: float, z0: float) -> void:
 			var mm := MultiMesh.new()
 			mm.transform_format = MultiMesh.TRANSFORM_3D
 			mm.mesh = pair[0]
-			batches[name] = [mm, [], pair[1]]
+			batches[name] = [mm, [], pair[1], dir]
 		(batches[name][1] as Array).append(xf * (batches[name][2] as Transform3D))
 
 	# Trees come in stands rather than evenly spread: a few seed points per
@@ -568,37 +616,42 @@ func _scatter(root: Node3D, k: Vector2i, x0: float, z0: float) -> void:
 			# jungle: palms and willows close together, thick undergrowth
 			if roll < 0.45:
 				pick = JUNGLE[rng.randi() % JUNGLE.size()]
-				if d < 170.0:
-					_trunk(root, Vector3(x, y, z), 0.3 * s, 6.0 * s)
+				_trunk(root, Vector3(x, y, z), 0.3, 6.0)
 			elif roll < 0.85:
 				pick = JUNGLE_FLOOR[rng.randi() % JUNGLE_FLOOR.size()]
 			else:
 				pick = ROCKS[rng.randi() % ROCKS.size()]
 		elif biome == 2:
 			# dead ground: bare trees, rubble, the odd ruin
-			if roll < 0.40:
+			if roll < 0.46:
 				pick = DEAD[rng.randi() % DEAD.size()]
-				if d < 170.0:
-					_trunk(root, Vector3(x, y, z), 0.3 * s, 4.0 * s)
-			elif roll < 0.70:
+				_trunk(root, Vector3(x, y, z), 0.3, 4.0)
+			elif roll < 0.56:
 				pick = ROCKS[rng.randi() % ROCKS.size()]
+			elif roll < 0.80:
+				pick = DEAD_FLOOR[rng.randi() % DEAD_FLOOR.size()]
 			else:
 				pick = [["rubble_pile", "apoc"], ["bone_pile", "apoc"], ["tire_stack", "apoc"],
 					["toxic_barrel", "apoc"]][rng.randi() % 4]
 		elif roll < 0.50:
+			# Trunks are solid wherever they are. They used to be solid only
+			# near the middle of the map, so anywhere else you walked through
+			# the forest as if it were painted on.
 			pick = TREES[rng.randi() % TREES.size()]
-			if d < 170.0:
-				_trunk(root, Vector3(x, y, z), 0.34 * s, 5.0 * s)
+			_trunk(root, Vector3(x, y, z), 0.34, 5.0)
 		elif roll < 0.58:
 			pick = DEAD_TREES[rng.randi() % DEAD_TREES.size()]
-			if d < 170.0:
-				_trunk(root, Vector3(x, y, z), 0.3 * s, 4.0 * s)
+			_trunk(root, Vector3(x, y, z), 0.3, 4.0)
 		elif roll < 0.72:
 			pick = ROCKS[rng.randi() % ROCKS.size()]
-			if d < 170.0:
-				_trunk(root, Vector3(x, y, z), 0.7 * s, 0.9 * s)
+			_trunk(root, Vector3(x, y, z), 0.55, 1.0)
 		else:
 			pick = BUSHES[rng.randi() % BUSHES.size()]
+		# Scale it to the height its kind should be, give or take.
+		var kind0 := _plant_kind(str(pick[0]))
+		var want_h: float = float(PLANT_HEIGHT.get(kind0, 1.5)) * rng.randf_range(0.75, 1.3)
+		var fit: float = want_h / _natural_height(str(pick[0]), str(pick[1]))
+		xf = Transform3D(Basis(Vector3.UP, yaw).scaled(Vector3.ONE * fit), xf.origin)
 		place.call(str(pick[0]), str(pick[1]), xf)
 
 	# Ground cover: cheap, dense, and gone in the distance.
@@ -612,10 +665,10 @@ func _scatter(root: Node3D, k: Vector2i, x0: float, z0: float) -> void:
 			var y := terrain_y(x, z)
 			if _ground_normal(x, z).y < 0.82:
 				continue
-			var s := rng.randf_range(0.7, 1.4)
 			var g: Array = GRASS[rng.randi() % GRASS.size()]
+			var gh: float = 0.55 * rng.randf_range(0.7, 1.4) / _natural_height(str(g[0]), str(g[1]))
 			place.call(str(g[0]), str(g[1]),
-				Transform3D(Basis(Vector3.UP, rng.randf() * TAU).scaled(Vector3(s, s, s)),
+				Transform3D(Basis(Vector3.UP, rng.randf() * TAU).scaled(Vector3(gh, gh, gh)),
 					Vector3(x, y, z)))
 		# And the proper grass: tufted clumps with the EmacEArt wind shader,
 		# thick near you and gone a short way off.
@@ -630,7 +683,8 @@ func _scatter(root: Node3D, k: Vector2i, x0: float, z0: float) -> void:
 		var mmi := MultiMeshInstance3D.new()
 		mmi.multimesh = mm
 		var kind := _plant_kind(str(name))
-		mmi.material_override = _wind_mat(kind)
+		var dir2 := str(batches[name][3])
+		mmi.material_override = _wind_mat(kind + ("_raft" if dir2 == "raft" else ""))
 		mmi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_ON if kind == "tree" \
 			else GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 		if kind == "grass":
@@ -732,8 +786,47 @@ func _prop(parent: Node3D, name: String, at: Vector3, yaw: float, scale := 1.0, 
 	n.scale = Vector3.ONE * scale
 	parent.add_child(n)
 	for mi in n.find_children("*", "MeshInstance3D", true, false):
-		(mi as MeshInstance3D).cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+		var m3 := mi as MeshInstance3D
+		m3.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_ON if dir == "apoc" \
+			else GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+		_toonify(m3, dir)
 	return n
+
+
+var _toon_cache := {}
+var _raft_tex: Texture2D
+
+## Re-dresses a model in the cel shader: its own colour and texture, lit in
+## bands with a rim, so a crate out of one pack and a ruin out of another sit
+## in the same world. Materials are shared by colour, so a street of props
+## costs a handful of them.
+func _toonify(m3: MeshInstance3D, dir: String) -> void:
+	if m3.mesh == null:
+		return
+	if _raft_tex == null and dir == "raft":
+		_raft_tex = load("res://assets/raft/texture.png")
+	for si in m3.mesh.get_surface_count():
+		var src := m3.mesh.surface_get_material(si) as BaseMaterial3D
+		var col := src.albedo_color if src else Color.WHITE
+		var tex: Texture2D = src.albedo_texture if src else null
+		# The Raft models are drawn on one shared atlas that does not travel
+		# inside the file, so it is put back on here.
+		if tex == null and dir == "raft":
+			tex = _raft_tex
+		var key := "%s|%s" % [col, tex.resource_path if tex else "-"]
+		if not _toon_cache.has(key):
+			var tm := ShaderMaterial.new()
+			tm.shader = load("res://assets/shaders/toon_world.gdshader")
+			tm.set_shader_parameter("tint", col)
+			tm.set_shader_parameter("sway_strength", 0.0)
+			tm.set_shader_parameter("ao_strength", 0.12)
+			tm.set_shader_parameter("bands", 4)
+			tm.set_shader_parameter("rim_strength", 0.30)
+			if tex:
+				tm.set_shader_parameter("use_texture", true)
+				tm.set_shader_parameter("albedo_texture", tex)
+			_toon_cache[key] = tm
+		m3.set_surface_override_material(si, _toon_cache[key])
 
 
 func _flat_mat(c: Color, rough := 0.95, emit := 0.0) -> StandardMaterial3D:
@@ -1962,6 +2055,28 @@ func _drive_test() -> void:
 		if frame > autotest_frames:
 			print("AUTOTEST basics done kills=%d hp=%.0f items=%s" % [kills, health, inv])
 			get_tree().quit()
+		return
+
+	# A look at the world from a chosen spot, in each direction. Walking there
+	# is no good for pictures: you end up nose-first against a bus.
+	if start_screen == "scenic":
+		if frame == 2:
+			var a0: float = test_yaw if test_yaw < 900.0 else 1.0
+			var r0: float = float(test_walk) if test_walk > 0 else 150.0
+			var at := Vector3(cos(a0) * r0, 0, sin(a0) * r0)
+			player.global_position = Vector3(at.x, terrain_y(at.x, at.z) + 1.2, at.z)
+			cam_yaw = a0 + PI
+			cam_pitch = -0.06
+		if frame > 40 and (frame - 40) % 30 == 0 and autotest_shot != "":
+			var i := (frame - 40) / 30 - 1
+			if i >= 0 and i < 4:
+				get_viewport().get_texture().get_image().save_png(
+					autotest_shot.replace(".png", "_%d.png" % i))
+				cam_yaw += PI * 0.5
+			if i >= 4:
+				print("AUTOTEST scenic done at %s biome=%d" % [
+					player.global_position.snapped(Vector3.ONE), _biome(player.global_position.x, player.global_position.z)])
+				get_tree().quit()
 		return
 
 	# The map, open, with the island on it.

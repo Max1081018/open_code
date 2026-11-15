@@ -16,6 +16,8 @@ swapped out before the game is published.
 | `apoc/*.glb` | the ruined town and the wrecks out in the world | Low Poly Apocalypse Pack, reodesuxz | free for commercial use, no redistribution of the files as assets (`apoc/LICENSE.txt`) |
 | `nature2/*.glb` | trees, rocks, bushes, grass, flowers | Low-Poly Nature Starter Pack | CC0 |
 | `grass/*` | grass clump mesh, textures and wind shader | EmacEArt Stylized Grass | free for commercial use, no redistribution of the files as assets (`grass/LICENSE.txt`) |
+| `raft/*.glb` + `raft/texture.png` | dead trunks, roots, stones, rocks and dry scrub | Raft on the Desert, EmacEArt | free for commercial use, no redistribution of the files as assets (`raft/LICENSE.txt`) |
+| `shaders/toon_world.gdshader` | cel shading for everything in the world | lighting from "Toon Shader", godotlearning.com (supplied in the toon-shader pack) | CC0 1.0 |
 | `shaders/sky.gdshader` | day/night sky | written here, following the palette and structure of "Day and Night Sky" by Dimension Almios | MIT (see `shaders/day_night_sky_LICENSE.txt`) |
 | `shaders/wind.gdshader` | grass and foliage movement | written here | — |
 

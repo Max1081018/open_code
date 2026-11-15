@@ -16,21 +16,31 @@ shader_type spatial;
 // All of it is a handful of hashes per pixel - the same cost whatever the
 // terrain is doing.
 
-render_mode diffuse_lambert, specular_disabled;
+render_mode specular_disabled;
 
 uniform float blotch_scale = 0.045;      // big patches, metres
-uniform float blotch_strength : hint_range(0.0, 1.0) = 0.22;
+uniform float blotch_strength : hint_range(0.0, 1.0) = 0.30;
 uniform float grain_scale = 2.6;         // fine grain, metres
-uniform float grain_strength : hint_range(0.0, 1.0) = 0.13;
+uniform float grain_strength : hint_range(0.0, 1.0) = 0.18;
 uniform float grain_fade = 26.0;         // metres: grain gone past this
 uniform vec4 dirt_color : source_color = vec4(0.33, 0.27, 0.19, 1.0);
-uniform float dirt_strength : hint_range(0.0, 1.0) = 0.35;
+uniform float dirt_strength : hint_range(0.0, 1.0) = 0.42;
 uniform vec4 rock_color : source_color = vec4(0.42, 0.41, 0.40, 1.0);
 uniform float slope_start : hint_range(0.0, 1.0) = 0.62;
 uniform vec4 haze_color : source_color = vec4(0.58, 0.66, 0.72, 1.0);
 uniform float haze_start = 130.0;
 uniform float haze_end = 420.0;
 uniform float haze_strength : hint_range(0.0, 1.0) = 0.22;
+
+// Cel lighting, to match the vegetation: the ground is banded too, or it
+// reads as a different world to everything standing on it.
+uniform int bands : hint_range(2, 6) = 4;
+uniform float band_softness : hint_range(0.0, 0.3, 0.005) = 0.06;
+// How much light the darkest band keeps. At zero the unlit side of
+// everything goes to pure ambient and reads as a hole; this lifts it.
+uniform float shade_floor : hint_range(0.0, 0.8) = 0.34;
+uniform float shade_warmth : hint_range(0.0, 1.0) = 0.28;
+uniform vec4 shade_tint : source_color = vec4(0.40, 0.48, 0.66, 1.0);
 
 varying vec3 v_world;
 varying vec3 v_normal;
@@ -69,9 +79,12 @@ void fragment() {
 	float rock = smoothstep(1.0 - slope_start, 1.0 - slope_start + 0.22, slope);
 	base = mix(base, rock_color.rgb, rock * 0.85);
 
-	// Big patches of lighter and darker ground.
+	// Big patches of lighter and darker ground, and a second, slower drift
+	// between two greens so a field is never one colour from edge to edge.
 	float blotch = fbm(v_world.xz * blotch_scale);
 	base *= 1.0 + (blotch - 0.5) * 2.0 * blotch_strength;
+	float drift = fbm(v_world.xz * blotch_scale * 0.31 + vec2(37.0, 11.0));
+	base = mix(base, base * vec3(0.84, 1.06, 0.74), smoothstep(0.42, 0.75, drift) * 0.55);
 
 	// Dirt in the hollows: where the surface turns over, soil gathers and
 	// grass thins out. Crests bleach instead.
@@ -96,4 +109,29 @@ void fragment() {
 	base = clamp(mix(vec3(grey), base, 1.25), vec3(0.0), vec3(1.0));
 	ALBEDO = base;
 	ROUGHNESS = 1.0;
+	SPECULAR = 0.0;
+}
+
+float band(float amount) {
+	float slices = float(bands);
+	float half_soft = max(band_softness, 0.0001) * 0.5;
+	float level = 0.0;
+	for (int i = 1; i < bands; i++) {
+		float edge = float(i) / slices;
+		level += smoothstep(edge - half_soft, edge + half_soft, amount);
+	}
+	return level / max(slices - 1.0, 1.0);
+}
+
+void light() {
+	vec3 light_rgb = LIGHT_COLOR / PI;
+	float strength = max(max(light_rgb.r, light_rgb.g), light_rgb.b);
+	vec3 col = light_rgb / max(strength, 0.0001);
+	float n_dot_l = clamp(dot(NORMAL, LIGHT), 0.0, 1.0);
+	// More bands than the foliage and a softer edge: hard steps across open
+	// ground would march about as you walk.
+	float level = band(n_dot_l * ATTENUATION * max(strength, 1.0)) * min(strength, 1.0);
+	level = mix(shade_floor, 1.0, level);
+	vec3 shaded = mix(col, shade_tint.rgb, shade_warmth * (1.0 - level));
+	DIFFUSE_LIGHT += shaded * level;
 }
