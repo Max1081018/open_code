@@ -1,0 +1,57 @@
+plugins {
+    id 'com.android.application'
+}
+
+android {
+    namespace 'com.deepdelve.game'
+    compileSdk 35
+
+    defaultConfig {
+        applicationId "com.deepdelve.game"
+        // Vulkan through wgpu wants a reasonably modern device.
+        minSdk 28
+        targetSdk 35
+        versionCode 1
+        versionName "0.1.0"
+    }
+
+    sourceSets {
+        main {
+            // Populated by build-apk.sh from cargo-ndk output.
+            jniLibs.srcDirs = ['src/main/jniLibs']
+        }
+    }
+
+    buildTypes {
+        debug {
+            // Debug builds of a Bevy game are enormous and slow; prefer
+            // ./build-apk.sh release for anything you actually play.
+            signingConfig signingConfigs.debug
+        }
+        release {
+            minifyEnabled false
+            // Signed with the debug key so the APK can be sideloaded without
+            // extra setup. Replace this before any public distribution.
+            signingConfig signingConfigs.debug
+        }
+    }
+
+    compileOptions {
+        sourceCompatibility JavaVersion.VERSION_17
+        targetCompatibility JavaVersion.VERSION_17
+    }
+
+    // The Rust .so files are already stripped and compressed; letting Gradle
+    // compress them again breaks loading on some devices.
+    packagingOptions {
+        jniLibs {
+            useLegacyPackaging false
+        }
+    }
+}
+
+dependencies {
+    // Supplies com.google.androidgamesdk.GameActivity, the Java entry point
+    // that calls into android_main.
+    implementation 'androidx.games:games-activity:3.0.5'
+}

@@ -5,6 +5,22 @@ edition.workspace = true
 license.workspace = true
 description = "Bevy frontend for Deepdelve: rendering, input, and camera."
 
+[lib]
+name = "deepdelve_app"
+# "lib" for the desktop binary to link against, "cdylib" so Android gets a
+# shared object exporting android_main.
+crate-type = ["lib", "cdylib"]
+path = "src/lib.rs"
+
+[[bin]]
+name = "deepdelve-app"
+path = "src/main.rs"
+
 [dependencies]
 deepdelve-core = { path = "../core" }
 bevy = "0.20.1"
+
+# GameActivity is the entry point android_main is generated against. Not a
+# default feature, so it must be asked for explicitly.
+[target.'cfg(target_os = "android")'.dependencies]
+bevy = { version = "0.20.1", features = ["android-game-activity"] }
