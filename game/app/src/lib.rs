@@ -11,6 +11,7 @@ use std::collections::HashSet;
 
 use bevy::prelude::*;
 use bevy::asset::RenderAssetUsages;
+use bevy::image::ImageSampler;
 use bevy::render::render_resource::{Extent3d, TextureDimension, TextureFormat};
 use bevy::render::view::screenshot::{save_to_disk, Screenshot};
 use bevy::window::WindowResolution;
@@ -21,6 +22,7 @@ use deepdelve_core::enemy::{bodies_overlap, chase_intent, kind, Combat, Enemy, E
 use deepdelve_core::spawn::{choose_kind, find_standing_spot};
 use deepdelve_core::touch::{Controls, Zone};
 use deepdelve_core::interact::{can_reach, place, MiningState, REACH_TILES};
+use deepdelve_core::light::{compute_sky_light, LightMap};
 use deepdelve_core::noise::hash01;
 use deepdelve_core::item::{def, drop_from, Inventory, ItemId, ItemKind};
 use deepdelve_core::physics::{Body, Intent};
@@ -136,6 +138,126 @@ struct ChunkTile {
     cy: usize,
 }
 
+/// How far sky light reaches, recomputed whenever tiles change.
+#[derive(Resource)]
+struct Lighting(LightMap);
+
+/// Floor on darkness, so unlit rock reads as very dim rather than invisible.
+const AMBIENT_LIGHT: f32 = 0.15;
+
+/// A darkness layer drawn over one chunk, one texel per tile.
+///
+/// Kept separate from the chunk's tile texture because the two change at very
+/// different rates: a 768px tile texture is expensive to re-composite, while
+/// a 16px light texture is nearly free and must update whenever light moves.
+#[derive(Component)]
+struct LightOverlay {
+    cx: usize,
+    cy: usize,
+}
+
+/// Set when the light map has changed and every overlay needs redrawing.
+#[derive(Resource, Default)]
+struct LightingStale(bool);
+
+/// Light texture size: one texel per tile plus a one-texel border each side.
+const LIGHT_TEXELS: u32 = CHUNK_TILES as u32 + 2;
+
+/// The sub-region of the light texture that maps onto the chunk, skipping
+/// the border ring.
+fn light_source_rect() -> Rect {
+    Rect::new(1.0, 1.0, (CHUNK_TILES + 1) as f32, (CHUNK_TILES + 1) as f32)
+}
+
+/// Build the darkness overlay for one chunk.
+///
+/// The texture carries a one-texel border of the neighbouring chunks' light.
+/// Without it, bilinear sampling clamps at the chunk edge and each chunk ends
+/// on a different value, which shows up as a hard seam running through the
+/// darkness. With the border, both sides of a seam interpolate between the
+/// same two tiles and agree exactly.
+fn light_image(light: &LightMap, cx: usize, cy: usize) -> Image {
+    let size = LIGHT_TEXELS;
+    let mut pixels = Vec::with_capacity((size * size * 4) as usize);
+
+    let base_x = (cx * CHUNK_TILES) as isize;
+    let base_y = (cy * CHUNK_TILES) as isize;
+
+    for ty in 0..size as isize {
+        for tx in 0..size as isize {
+            // Offset by one so index 1 is the chunk's first real tile.
+            let world_x = (base_x + tx - 1).clamp(0, light.width() as isize - 1) as usize;
+            let world_y = (base_y + ty - 1).clamp(0, light.height() as isize - 1) as usize;
+
+            let brightness = light.brightness(world_x, world_y).max(AMBIENT_LIGHT);
+            let darkness = ((1.0 - brightness) * 255.0) as u8;
+            pixels.extend_from_slice(&[0, 0, 0, darkness]);
+        }
+    }
+
+    let mut image = Image::new(
+        Extent3d {
+            width: size,
+            height: size,
+            depth_or_array_layers: 1,
+        },
+        TextureDimension::D2,
+        pixels,
+        TextureFormat::Rgba8UnormSrgb,
+        RenderAssetUsages::RENDER_WORLD,
+    );
+
+    // Linear, unlike the tiles: light should be a gradient, not a staircase
+    // of lit squares.
+    image.sampler = ImageSampler::linear();
+    image
+}
+
+/// Recompute sky light after tiles change, before the dirty set is consumed.
+fn refresh_lighting(
+    game: Res<Game>,
+    dirty: Res<DirtyChunks>,
+    mut lighting: ResMut<Lighting>,
+    mut stale: ResMut<LightingStale>,
+) {
+    if dirty.0.is_empty() {
+        return;
+    }
+
+    lighting.0 = compute_sky_light(&game.world);
+    stale.0 = true;
+}
+
+/// Redraw every overlay when the light map has moved.
+fn refresh_light_overlays(
+    mut images: ResMut<Assets<Image>>,
+    lighting: Res<Lighting>,
+    mut stale: ResMut<LightingStale>,
+    mut overlays: Query<(&LightOverlay, &mut Sprite)>,
+) {
+    if !stale.0 {
+        return;
+    }
+    stale.0 = false;
+
+    for (overlay, mut sprite) in &mut overlays {
+        sprite.image = images.add(light_image(&lighting.0, overlay.cx, overlay.cy));
+    }
+}
+
+/// Dim the world with the time of day.
+fn apply_sky_tint(
+    clock: Res<Clock>,
+    mut chunks: Query<&mut Sprite, (With<ChunkTile>, Without<LightOverlay>)>,
+) {
+    let brightness = clock.0.sky_brightness();
+    let tint = Color::srgb(brightness, brightness, brightness);
+
+    for mut sprite in &mut chunks {
+        sprite.color = tint;
+    }
+}
+
 #[derive(Component)]
 struct PlayerSprite;
 
@@ -189,7 +311,10 @@ pub fn main() {
                 spawn_monsters,
                 step_monsters,
                 sync_monster_sprites,
+                refresh_lighting,
                 stream_chunks,
+                refresh_light_overlays,
+                apply_sky_tint,
                 follow_camera,
                 update_hud,
                 layout_touch_controls,
@@ -303,6 +428,8 @@ fn setup(mut commands: Commands) {
         ));
     }
 
+    commands.insert_resource(Lighting(compute_sky_light(&world)));
+    commands.insert_resource(LightingStale::default());
     commands.insert_resource(Game { world, atlas });
     commands.insert_resource(Player {
         body,
@@ -835,6 +962,7 @@ fn stream_chunks(
     mut commands: Commands,
     mut images: ResMut<Assets<Image>>,
     game: Res<Game>,
+    lighting: Res<Lighting>,
     player: Res<Player>,
     mut dirty: ResMut<DirtyChunks>,
     existing: Query<(Entity, &ChunkTile)>,
@@ -873,20 +1001,36 @@ fn stream_chunks(
         }
 
         let handle = images.add(to_image(chunk_texture(&game.world, &game.atlas, cx, cy)));
+        let light_handle = images.add(light_image(&lighting.0, cx, cy));
 
-        commands.spawn((
-            Sprite {
-                image: handle,
-                custom_size: Some(Vec2::splat(CHUNK_UNITS)),
-                ..default()
-            },
-            Transform::from_xyz(
-                cx as f32 * CHUNK_UNITS + CHUNK_UNITS / 2.0,
-                -(cy as f32 * CHUNK_UNITS + CHUNK_UNITS / 2.0),
-                0.0,
-            ),
-            ChunkTile { cx, cy },
-        ));
+        commands
+            .spawn((
+                Sprite {
+                    image: handle,
+                    custom_size: Some(Vec2::splat(CHUNK_UNITS)),
+                    ..default()
+                },
+                Transform::from_xyz(
+                    cx as f32 * CHUNK_UNITS + CHUNK_UNITS / 2.0,
+                    -(cy as f32 * CHUNK_UNITS + CHUNK_UNITS / 2.0),
+                    0.0,
+                ),
+                ChunkTile { cx, cy },
+            ))
+            // The overlay rides along as a child, so despawning the chunk
+            // takes its darkness layer with it.
+            .with_children(|chunk| {
+                chunk.spawn((
+                    Sprite {
+                        image: light_handle,
+                        custom_size: Some(Vec2::splat(CHUNK_UNITS)),
+                        rect: Some(light_source_rect()),
+                        ..default()
+                    },
+                    Transform::from_xyz(0.0, 0.0, 1.0),
+                    LightOverlay { cx, cy },
+                ));
+            });
     }
 }
 
