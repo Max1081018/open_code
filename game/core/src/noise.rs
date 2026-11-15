@@ -66,6 +66,67 @@ pub fn fbm_1d(seed: u64, x: f32, octaves: u32) -> f32 {
     (sum / normaliser).clamp(0.0, JUST_UNDER_ONE)
 }
 
+/// A deterministic hash of the lattice point `(x, y)` under `seed`, in `[0, 1)`.
+///
+/// `x` and `y` get different multipliers so the field is not symmetric across
+/// the diagonal, which would otherwise show up as seams in carved caves.
+pub fn hash01_2d(seed: u64, x: i64, y: i64) -> f32 {
+    let mut z = (x as u64)
+        .wrapping_mul(0x9E37_79B9_7F4A_7C15)
+        ^ (y as u64).wrapping_mul(0xC2B2_AE3D_27D4_EB4F)
+        ^ seed.wrapping_mul(0xBF58_476D_1CE4_E5B9);
+    z = (z ^ (z >> 30)).wrapping_mul(0xBF58_476D_1CE4_E5B9);
+    z = (z ^ (z >> 27)).wrapping_mul(0x94D0_49BB_1331_11EB);
+    z ^= z >> 31;
+
+    (z >> 40) as f32 / (1u32 << 24) as f32
+}
+
+/// Smooth 2-D value noise in `[0, 1)`, interpolating `hash01_2d` at lattice points.
+pub fn value_noise_2d(seed: u64, x: f32, y: f32) -> f32 {
+    let cell_x = x.floor();
+    let cell_y = y.floor();
+    let (ix, iy) = (cell_x as i64, cell_y as i64);
+
+    let corner_00 = hash01_2d(seed, ix, iy);
+    let corner_10 = hash01_2d(seed, ix + 1, iy);
+    let corner_01 = hash01_2d(seed, ix, iy + 1);
+    let corner_11 = hash01_2d(seed, ix + 1, iy + 1);
+
+    let fx = x - cell_x;
+    let fy = y - cell_y;
+    let tx = fx * fx * (3.0 - 2.0 * fx);
+    let ty = fy * fy * (3.0 - 2.0 * fy);
+
+    let upper = corner_00 + (corner_10 - corner_00) * tx;
+    let lower = corner_01 + (corner_11 - corner_01) * tx;
+
+    upper + (lower - upper) * ty
+}
+
+/// Fractal (summed-octave) 2-D noise in `[0, 1)`.
+pub fn fbm_2d(seed: u64, x: f32, y: f32, octaves: u32) -> f32 {
+    let mut sum = 0.0;
+    let mut normaliser = 0.0;
+    let mut amplitude = 0.5;
+    let mut frequency = 1.0;
+
+    for octave in 0..octaves {
+        let octave_seed = seed ^ (octave as u64 + 1).wrapping_mul(0x9E37_79B9_7F4A_7C15);
+        sum += value_noise_2d(octave_seed, x * frequency, y * frequency) * amplitude;
+        normaliser += amplitude;
+
+        amplitude *= 0.5;
+        frequency *= 2.0;
+    }
+
+    if normaliser == 0.0 {
+        return 0.0;
+    }
+
+    (sum / normaliser).clamp(0.0, JUST_UNDER_ONE)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -121,6 +182,94 @@ mod tests {
                 "value noise jumped from {previous} to {current} at x={x}"
             );
             previous = current;
+        }
+    }
+
+    #[test]
+    fn hash01_2d_is_deterministic_for_the_same_inputs() {
+        for x in -20..20 {
+            for y in -20..20 {
+                assert_eq!(
+                    hash01_2d(42, x, y),
+                    hash01_2d(42, x, y),
+                    "hash01_2d(42, {x}, {y}) changed"
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn hash01_2d_stays_within_the_unit_range() {
+        for x in -60..60 {
+            for y in -60..60 {
+                let v = hash01_2d(9, x, y);
+                assert!(
+                    (0.0..1.0).contains(&v),
+                    "hash01_2d(9, {x}, {y}) = {v} out of range"
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn hash01_2d_is_not_symmetric_across_the_diagonal() {
+        // A hash that treats (x, y) and (y, x) alike paints visible diagonal
+        // seams through the caves, so pin the asymmetry.
+        let differing = (1..100)
+            .filter(|&i| hash01_2d(4, i, i * 2) != hash01_2d(4, i * 2, i))
+            .count();
+
+        assert!(
+            differing > 95,
+            "swapped coordinates should hash differently; only {differing}/99 differed"
+        );
+    }
+
+    #[test]
+    fn value_noise_2d_matches_hash_at_lattice_points() {
+        for x in 0..12 {
+            for y in 0..12 {
+                let noise = value_noise_2d(5, x as f32, y as f32);
+                let hash = hash01_2d(5, x, y);
+
+                assert!(
+                    (noise - hash).abs() < 1e-5,
+                    "at ({x}, {y}), value noise {noise} should anchor to hash {hash}"
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn value_noise_2d_is_continuous_along_both_axes() {
+        for axis in 0..2 {
+            let mut previous = value_noise_2d(11, 0.0, 0.0);
+
+            for step in 1..=400 {
+                let d = step as f32 * 0.01;
+                let (x, y) = if axis == 0 { (d, 0.0) } else { (0.0, d) };
+                let current = value_noise_2d(11, x, y);
+
+                assert!(
+                    (current - previous).abs() < 0.05,
+                    "2-D noise jumped from {previous} to {current} at ({x}, {y})"
+                );
+                previous = current;
+            }
+        }
+    }
+
+    #[test]
+    fn fbm_2d_stays_within_the_unit_range() {
+        for step in 0..1500 {
+            let x = step as f32 * 0.31;
+            let y = step as f32 * 0.17;
+            let v = fbm_2d(3, x, y, 5);
+
+            assert!(
+                (0.0..1.0).contains(&v),
+                "fbm_2d(3, {x}, {y}, 5) = {v} out of range"
+            );
         }
     }
 
