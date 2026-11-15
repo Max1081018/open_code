@@ -15,5 +15,6 @@ pub mod physics;
 pub mod png;
 pub mod spawn;
 pub mod tilemap;
+pub mod touch;
 pub mod view;
 pub mod world;

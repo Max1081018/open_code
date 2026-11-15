@@ -13,11 +13,13 @@ use bevy::prelude::*;
 use bevy::asset::RenderAssetUsages;
 use bevy::render::render_resource::{Extent3d, TextureDimension, TextureFormat};
 use bevy::render::view::screenshot::{save_to_disk, Screenshot};
+use bevy::window::WindowResolution;
 
 use deepdelve_core::art::Texture;
 use deepdelve_core::daynight::{TimeOfDay, DAY_LENGTH};
 use deepdelve_core::enemy::{bodies_overlap, chase_intent, kind, Combat, Enemy, EnemyKindId};
 use deepdelve_core::spawn::{choose_kind, find_standing_spot};
+use deepdelve_core::touch::{Controls, Zone};
 use deepdelve_core::interact::{can_reach, place, MiningState, REACH_TILES};
 use deepdelve_core::noise::hash01;
 use deepdelve_core::item::{def, drop_from, Inventory, ItemId, ItemKind};
@@ -116,6 +118,14 @@ struct TargetHighlight;
 #[derive(Component)]
 struct HudText;
 
+/// One of the on-screen thumb controls.
+#[derive(Component, Clone, Copy)]
+enum TouchControl {
+    Stick,
+    Jump,
+    Build,
+}
+
 /// Chunks whose tiles changed and which must be re-composited.
 #[derive(Resource, Default)]
 struct DirtyChunks(HashSet<(usize, usize)>);
@@ -155,7 +165,7 @@ fn main() {
                 .set(WindowPlugin {
                     primary_window: Some(Window {
                         title: "Deepdelve".into(),
-                        resolution: (1280u32, 720u32).into(),
+                        resolution: window_resolution(),
                         ..default()
                     }),
                     ..default()
@@ -177,6 +187,7 @@ fn main() {
                 stream_chunks,
                 follow_camera,
                 update_hud,
+                layout_touch_controls,
             )
                 .chain(),
         )
@@ -207,6 +218,17 @@ fn capture_and_exit(
     if capture.frames >= capture.at_frame + CAPTURE_TAIL_FRAMES {
         exit.write(AppExit::Success);
     }
+}
+
+/// Window size, overridable with `DEEPDELVE_RES=<width>x<height>` so phone
+/// aspect ratios can be checked on a desktop.
+fn window_resolution() -> WindowResolution {
+    let parsed = std::env::var("DEEPDELVE_RES").ok().and_then(|value| {
+        let (width, height) = value.split_once('x')?;
+        Some((width.parse::<u32>().ok()?, height.parse::<u32>().ok()?))
+    });
+
+    parsed.unwrap_or((1280, 720)).into()
 }
 
 fn setup(mut commands: Commands) {
@@ -247,7 +269,9 @@ fn setup(mut commands: Commands) {
     commands.spawn((
         Text::new(""),
         TextFont {
-            font_size: FontSize::Px(22.0),
+            // Viewport-relative, so the HUD stays readable on a phone
+            // instead of shrinking to nothing at high resolution.
+            font_size: FontSize::Vh(2.6),
             ..default()
         },
         TextColor(Color::WHITE),
@@ -259,6 +283,20 @@ fn setup(mut commands: Commands) {
         },
         HudText,
     ));
+
+    // On-screen controls. Positions and sizes are laid out each frame from
+    // the real window size, so they follow rotation and screen size.
+    for control in [TouchControl::Stick, TouchControl::Jump, TouchControl::Build] {
+        commands.spawn((
+            Node {
+                position_type: PositionType::Absolute,
+                border_radius: BorderRadius::MAX,
+                ..default()
+            },
+            BackgroundColor(Color::srgba(1.0, 1.0, 1.0, 0.16)),
+            control,
+        ));
+    }
 
     commands.insert_resource(Game { world, atlas });
     commands.insert_resource(Player {
@@ -295,11 +333,44 @@ fn setup(mut commands: Commands) {
     }
 }
 
+/// Lay the thumb controls out for the current window size.
+fn layout_touch_controls(
+    windows: Query<&Window>,
+    mut controls_ui: Query<(&mut Node, &TouchControl)>,
+) {
+    let Ok(window) = windows.single() else {
+        return;
+    };
+    let controls = Controls::new(window.width(), window.height());
+
+    for (mut node, which) in &mut controls_ui {
+        let (centre, radius) = match which {
+            TouchControl::Stick => (controls.stick_centre(), controls.stick_radius()),
+            TouchControl::Jump => (controls.jump_centre(), controls.button_radius()),
+            TouchControl::Build => (controls.build_centre(), controls.button_radius()),
+        };
+
+        node.left = Val::Px(centre.0 - radius);
+        node.top = Val::Px(centre.1 - radius);
+        node.width = Val::Px(radius * 2.0);
+        node.height = Val::Px(radius * 2.0);
+    }
+}
+
+/// The control layout for the current window, if there is one.
+fn controls_for(windows: &Query<&Window>) -> Option<Controls> {
+    windows
+        .single()
+        .ok()
+        .map(|window| Controls::new(window.width(), window.height()))
+}
+
 /// Translate keyboard and touch into an `Intent`, then advance the body.
 fn step_player(
     time: Res<Time>,
     keys: Res<ButtonInput<KeyCode>>,
     touches: Res<Touches>,
+    windows: Query<&Window>,
     game: Res<Game>,
     mut player: ResMut<Player>,
     mut sprites: Query<&mut Transform, With<PlayerSprite>>,
@@ -316,16 +387,15 @@ fn step_player(
         || keys.pressed(KeyCode::KeyW)
         || keys.pressed(KeyCode::ArrowUp);
 
-    // Provisional touch scheme until the on-screen controls land: the left
-    // third of the screen steers, the right third jumps.
-    for touch in touches.iter() {
-        let x = touch.position().x;
-        if x < 240.0 {
-            move_dir -= 1.0;
-        } else if x < 480.0 {
-            move_dir += 1.0;
-        } else {
-            jump = true;
+    if let Some(controls) = controls_for(&windows) {
+        for touch in touches.iter() {
+            let point = touch.position();
+
+            match controls.zone_at(point.x, point.y) {
+                Zone::Stick => move_dir += controls.stick_axis(point.x, point.y),
+                Zone::Jump => jump = true,
+                Zone::Build | Zone::World => {}
+            }
         }
     }
 
@@ -575,10 +645,14 @@ fn aim_at_tile(
         return;
     };
 
+    // Only touches outside the thumb controls aim at the world, so steering
+    // with the stick does not also swing the pick.
+    let controls = Controls::new(window.width(), window.height());
+
     let screen = touches
         .iter()
-        .next()
         .map(|touch| touch.position())
+        .find(|point| controls.zone_at(point.x, point.y) == Zone::World)
         .or_else(|| window.cursor_position());
 
     let Some(screen) = screen else {
@@ -622,6 +696,7 @@ fn dig_or_build(
     mouse: Res<ButtonInput<MouseButton>>,
     keys: Res<ButtonInput<KeyCode>>,
     touches: Res<Touches>,
+    windows: Query<&Window>,
     target: Res<Target>,
     mut game: ResMut<Game>,
     mut player: ResMut<Player>,
@@ -649,9 +724,25 @@ fn dig_or_build(
     // Body is Copy, so take a snapshot and avoid borrowing player twice.
     let body = player.body;
 
-    // Touch digs for now; the on-screen controls in the mobile pass will
-    // separate "steer" from "dig" properly.
-    let digging = mouse.pressed(MouseButton::Left) || touches.iter().next().is_some();
+    let controls = controls_for(&windows);
+
+    let touch_in = |zone: Zone| {
+        controls.is_some_and(|controls| {
+            touches
+                .iter()
+                .any(|touch| controls.zone_at(touch.position().x, touch.position().y) == zone)
+        })
+    };
+
+    let touch_started_in = |zone: Zone| {
+        controls.is_some_and(|controls| {
+            touches
+                .iter_just_pressed()
+                .any(|touch| controls.zone_at(touch.position().x, touch.position().y) == zone)
+        })
+    };
+
+    let digging = mouse.pressed(MouseButton::Left) || touch_in(Zone::World);
 
     if digging {
         let dt = time.delta_secs().min(MAX_FRAME);
@@ -670,7 +761,7 @@ fn dig_or_build(
         player.mining.cancel();
     }
 
-    if mouse.just_pressed(MouseButton::Right) {
+    if mouse.just_pressed(MouseButton::Right) || touch_started_in(Zone::Build) {
         let held = HOTBAR[player.hotbar_slot];
 
         if let ItemKind::Block(tile) = def(held).kind {
