@@ -5,4 +5,6 @@
 //! only draws what lives here and feeds input into it.
 
 pub mod noise;
+pub mod physics;
+pub mod view;
 pub mod world;

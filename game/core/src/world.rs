@@ -211,6 +211,23 @@ impl World {
         (0..self.height).find(|&y| self.tile(x, y) != Tile::Air)
     }
 
+    /// Build a world directly from a tile grid, row-major, `y = 0` at the top.
+    ///
+    /// Used by tests and, later, by save-file loading.
+    pub fn from_tiles(width: usize, height: usize, tiles: Vec<Tile>) -> World {
+        assert_eq!(
+            tiles.len(),
+            width * height,
+            "tile grid must hold exactly width * height tiles"
+        );
+
+        World {
+            width,
+            height,
+            tiles,
+        }
+    }
+
     pub fn width(&self) -> usize {
         self.width
     }
@@ -302,6 +319,18 @@ mod tests {
             "underground should be caved but not hollow; {:.1}% of deep rock is open",
             open_fraction * 100.0
         );
+    }
+
+    #[test]
+    fn from_tiles_preserves_the_supplied_grid() {
+        let world = World::from_tiles(2, 2, vec![Tile::Air, Tile::Stone, Tile::Dirt, Tile::Grass]);
+
+        assert_eq!(world.width(), 2);
+        assert_eq!(world.height(), 2);
+        assert_eq!(world.tile(0, 0), Tile::Air);
+        assert_eq!(world.tile(1, 0), Tile::Stone);
+        assert_eq!(world.tile(0, 1), Tile::Dirt);
+        assert_eq!(world.tile(1, 1), Tile::Grass);
     }
 
     #[test]
