@@ -1,0 +1,8 @@
+[package]
+name = "deepdelve-core"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "Engine-agnostic game logic for Deepdelve: world generation, tiles, simulation."
+
+[dependencies]
