@@ -5,6 +5,7 @@
 //! only draws what lives here and feeds input into it.
 
 pub mod art;
+pub mod craft;
 pub mod interact;
 pub mod item;
 pub mod noise;
