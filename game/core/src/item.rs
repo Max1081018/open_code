@@ -145,7 +145,7 @@ pub struct Stack {
 }
 
 /// Fixed-size slot storage.
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Inventory {
     slots: Vec<Option<Stack>>,
 }
@@ -163,6 +163,16 @@ impl Inventory {
 
     pub fn slot(&self, index: usize) -> Option<Stack> {
         self.slots.get(index).copied().flatten()
+    }
+
+    /// Overwrite one slot outright, ignoring stacking rules.
+    ///
+    /// Used when restoring a save, where the exact slot layout must come back
+    /// as it was rather than being re-packed by `add`.
+    pub fn set_slot(&mut self, index: usize, stack: Option<Stack>) {
+        if let Some(slot) = self.slots.get_mut(index) {
+            *slot = stack;
+        }
     }
 
     /// Total held across every slot.
@@ -294,6 +304,38 @@ mod tests {
     #[test]
     fn empty_space_drops_nothing() {
         assert_eq!(drop_from(Tile::Air), None);
+    }
+
+    #[test]
+    fn set_slot_places_a_stack_exactly_where_told() {
+        let mut inventory = Inventory::new(5);
+
+        inventory.set_slot(3, Some(Stack { item: STONE, count: 7 }));
+
+        assert_eq!(inventory.slot(3), Some(Stack { item: STONE, count: 7 }));
+        assert_eq!(inventory.slot(0), None, "earlier slots stay untouched");
+        assert_eq!(inventory.count(STONE), 7);
+    }
+
+    #[test]
+    fn set_slot_can_clear_a_slot() {
+        let mut inventory = Inventory::new(5);
+        inventory.add(STONE, 4);
+
+        inventory.set_slot(0, None);
+
+        assert_eq!(inventory.slot(0), None);
+        assert_eq!(inventory.count(STONE), 0);
+    }
+
+    #[test]
+    fn set_slot_outside_the_inventory_is_ignored() {
+        let mut inventory = Inventory::new(2);
+
+        inventory.set_slot(99, Some(Stack { item: STONE, count: 1 }));
+
+        assert_eq!(inventory.count(STONE), 0, "nothing should have been stored");
+        assert_eq!(inventory.slot_count(), 2, "and the inventory must not grow");
     }
 
     #[test]

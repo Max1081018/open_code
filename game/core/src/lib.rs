@@ -13,6 +13,7 @@ pub mod item;
 pub mod noise;
 pub mod physics;
 pub mod png;
+pub mod save;
 pub mod spawn;
 pub mod tilemap;
 pub mod touch;

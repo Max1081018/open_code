@@ -99,6 +99,35 @@ impl Tile {
         self != Tile::Air
     }
 
+    /// Stable numeric id for save files. Values must never be reassigned.
+    pub fn to_id(self) -> u8 {
+        match self {
+            Tile::Air => 0,
+            Tile::Dirt => 1,
+            Tile::Grass => 2,
+            Tile::Stone => 3,
+            Tile::CoalOre => 4,
+            Tile::CopperOre => 5,
+            Tile::IronOre => 6,
+            Tile::GoldOre => 7,
+        }
+    }
+
+    /// Recover a tile from its save-file id, or `None` if unrecognised.
+    pub fn from_id(id: u8) -> Option<Tile> {
+        Some(match id {
+            0 => Tile::Air,
+            1 => Tile::Dirt,
+            2 => Tile::Grass,
+            3 => Tile::Stone,
+            4 => Tile::CoalOre,
+            5 => Tile::CopperOre,
+            6 => Tile::IronOre,
+            7 => Tile::GoldOre,
+            _ => return None,
+        })
+    }
+
     /// How much work it takes to break this tile, or `None` if there is
     /// nothing there to break.
     pub fn hardness(self) -> Option<f32> {
@@ -123,7 +152,7 @@ impl Tile {
 }
 
 /// A generated tile world, addressed by `(x, y)` with `y = 0` at the top.
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub struct World {
     width: usize,
     height: usize,
@@ -341,6 +370,50 @@ mod tests {
             "underground should be caved but not hollow; {:.1}% of deep rock is open",
             open_fraction * 100.0
         );
+    }
+
+    #[test]
+    fn every_tile_round_trips_through_its_save_id() {
+        for tile in [
+            Tile::Air,
+            Tile::Dirt,
+            Tile::Grass,
+            Tile::Stone,
+            Tile::CoalOre,
+            Tile::CopperOre,
+            Tile::IronOre,
+            Tile::GoldOre,
+        ] {
+            assert_eq!(
+                Tile::from_id(tile.to_id()),
+                Some(tile),
+                "{tile:?} did not survive its id"
+            );
+        }
+    }
+
+    #[test]
+    fn distinct_tiles_have_distinct_save_ids() {
+        let ids: std::collections::BTreeSet<u8> = [
+            Tile::Air,
+            Tile::Dirt,
+            Tile::Grass,
+            Tile::Stone,
+            Tile::CoalOre,
+            Tile::CopperOre,
+            Tile::IronOre,
+            Tile::GoldOre,
+        ]
+        .into_iter()
+        .map(|tile| tile.to_id())
+        .collect();
+
+        assert_eq!(ids.len(), 8, "ids must be unique, got {ids:?}");
+    }
+
+    #[test]
+    fn an_unrecognised_save_id_is_rejected() {
+        assert_eq!(Tile::from_id(250), None);
     }
 
     #[test]
