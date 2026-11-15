@@ -173,6 +173,7 @@ var players := {}
 var autotest := false
 var autotest_frames := 600
 var autotest_shot := ""
+var autotest_hold := ""
 var start_screen := "play"
 var test_yaw := 999.0
 var test_walk := 0
@@ -198,6 +199,7 @@ func _parse_args() -> void:
 		elif a.begins_with("--frames="): autotest_frames = int(a.get_slice("=", 1))
 		elif a.begins_with("--shot="): autotest_shot = a.get_slice("=", 1)
 		elif a.begins_with("--screen="): start_screen = a.get_slice("=", 1)
+		elif a.begins_with("--hold="): autotest_hold = a.get_slice("=", 1)
 		elif a.begins_with("--yaw="): test_yaw = float(a.get_slice("=", 1))
 		elif a.begins_with("--walk="): test_walk = int(a.get_slice("=", 1))
 		elif a.begins_with("--quality="): quality = clampi(Q_NAMES.find(a.get_slice("=", 1)), 0, 3)
@@ -460,14 +462,17 @@ func _wind_mat(kind: String) -> ShaderMaterial:
 ## wildly about scale - one pack's boulder is five metres across, another's
 ## is knee high - so nothing is trusted to arrive at a sensible size. Every
 ## scattered model is measured and scaled to land near these.
-const PLANT_HEIGHT := {"tree": 6.5, "bush": 1.4, "grass": 0.55, "rock": 1.3}
+const PLANT_HEIGHT := {"tree": 8.0, "bush": 1.4, "grass": 0.55, "rock": 1.3}
 
 func _natural_height(name: String, dir: String) -> float:
 	var pair := _mesh_of(name, dir)
 	if pair[0] == null:
 		return 1.0
 	var box: AABB = (pair[1] as Transform3D) * (pair[0] as Mesh).get_aabb()
-	return maxf(box.size.y, 0.05)
+	# A fallen trunk is long, not tall: judging it by height alone blew a
+	# half-metre log up into a nine-metre one. The long side has a say too.
+	var long_side: float = maxf(box.size.x, box.size.z)
+	return maxf(maxf(box.size.y, long_side * 0.45), 0.05)
 
 
 func _plant_kind(name: String) -> String:
@@ -680,7 +685,7 @@ func _scatter(root: Node3D, k: Vector2i, x0: float, z0: float) -> void:
 		# Scale it to the height its kind should be, give or take.
 		var kind0 := _plant_kind(str(pick[0]))
 		var want_h: float = float(PLANT_HEIGHT.get(kind0, 1.5)) * rng.randf_range(0.75, 1.3)
-		var fit: float = want_h / _natural_height(str(pick[0]), str(pick[1]))
+		var fit: float = clampf(want_h / _natural_height(str(pick[0]), str(pick[1])), 0.2, 4.0)
 		xf = Transform3D(Basis(Vector3.UP, yaw).scaled(Vector3.ONE * fit), xf.origin)
 		place.call(str(pick[0]), str(pick[1]), xf)
 
@@ -805,7 +810,17 @@ func _trunk(root: Node3D, at: Vector3, r: float, h: float) -> void:
 
 # --- the town -----------------------------------------------------------------
 
-## Drops a model from one of the packs into the world.
+# What each prop should measure in the world, in metres of height. The kit
+# models at roughly quarter scale: next to a 1.75 m player its "barrel" was a
+# bucket and its tent would not have slept a dog.
+const PROP_HEIGHT := {
+	"barrel": 0.95, "barrel-open": 0.95, "box": 0.55, "box-open": 0.58, "box-large": 0.55,
+	"chest": 0.6, "tent": 1.7, "campfire-pit": 0.28, "bedroll": 0.35, "workbench": 0.95,
+	"signpost": 2.1, "fence": 1.1, "bucket": 0.4, "resource-planks": 0.4,
+}
+
+## Drops a model from one of the packs into the world, at the size that thing
+## really is rather than the size the pack happened to save it.
 func _prop(parent: Node3D, name: String, at: Vector3, yaw: float, scale := 1.0, dir := "props") -> Node3D:
 	var ps := _model(name, dir)
 	if ps == null:
@@ -813,6 +828,10 @@ func _prop(parent: Node3D, name: String, at: Vector3, yaw: float, scale := 1.0, 
 	var n: Node3D = ps.instantiate()
 	n.position = at
 	n.rotation.y = yaw
+	if PROP_HEIGHT.has(name):
+		var h := _node_box(n).size.y
+		if h > 0.001:
+			scale *= float(PROP_HEIGHT[name]) / h
 	n.scale = Vector3.ONE * scale
 	parent.add_child(n)
 	for mi in n.find_children("*", "MeshInstance3D", true, false):
@@ -955,9 +974,12 @@ func _build_town() -> void:
 		return n
 
 	# Road: slabs end to end along both axes, and the kerb-side wreckage.
+	# Two slabs abreast: one row was a three-metre path pretending to be a
+	# street. Six metres reads as a road a bus once used.
 	for i in range(-14, 15):
-		put.call("cracked_road_slab", float(i) * 3.0, 0.0, 0.0)
-		put.call("cracked_road_slab", 0.0, float(i) * 3.0, PI * 0.5)
+		for lane in [-1.5, 1.5]:
+			put.call("cracked_road_slab", float(i) * 3.0, lane, 0.0)
+			put.call("cracked_road_slab", lane, float(i) * 3.0, PI * 0.5)
 	# Buildings, set back from the road and facing it.
 	var blocks := [
 		["ruined_apartment", -14.0, -12.0, 0.0], ["ruined_shop", 12.0, -10.0, PI],
@@ -1773,6 +1795,15 @@ func _apply_held() -> void:
 	var holder := Node3D.new()
 	holder.add_child(m)
 	m.transform = _grip_of(id)
+	# Size what is in the fist by measuring it. The loot pack saves its knife
+	# one centimetre long and its axe at a third of size; trusted raw, the
+	# knife in your hand was literally invisible.
+	if id != "pistol":
+		var box := _node_box(m)
+		var longest: float = maxf(box.size.x, maxf(box.size.y, box.size.z))
+		var want: float = {"knife": 0.34, "axe": 0.82, "revolver": 0.28}.get(id, 0.4)
+		if longest > 0.0005:
+			m.scale *= want / longest
 	hands.mount(holder)
 	hands.aim_offset(Vector3(0.0, 0.015, -0.03))
 
@@ -1785,10 +1816,10 @@ func _grip_of(id: String) -> Transform3D:
 			# the pack models it barrel-forward with the grip off the origin
 			return Transform3D(Basis(Vector3.UP, PI), Basis(Vector3.UP, PI) * -Vector3(-0.0124, 0.062, -0.034))
 		"revolver":
-			return Transform3D(Basis.from_euler(Vector3(0, PI, 0)).scaled(Vector3.ONE * 0.011), Vector3.ZERO)
+			return Transform3D(Basis.from_euler(Vector3(0, PI, 0)), Vector3.ZERO)
 		"axe", "knife":
-			return Transform3D(Basis.from_euler(Vector3(0, PI * 0.5, 0)).scaled(Vector3.ONE * 0.011), Vector3.ZERO)
-	return Transform3D(Basis().scaled(Vector3.ONE * 0.01), Vector3.ZERO)
+			return Transform3D(Basis.from_euler(Vector3(0, PI * 0.5, 0)), Vector3.ZERO)
+	return Transform3D()
 
 
 func _damage(amount: float, cause: String) -> void:
@@ -2212,6 +2243,12 @@ func _nearest_zombie() -> Node:
 
 
 func _setup_test() -> void:
+	if autotest_hold != "":
+		_give(autotest_hold, 1)
+		for i in SLOTS:
+			if not inv[i].is_empty() and str(inv[i]["id"]) == autotest_hold:
+				_select_slot(i)
+				break
 	match start_screen:
 		"basics", "zombies":
 			for i in (2 if start_screen == "basics" else 6):

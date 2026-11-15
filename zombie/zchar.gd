@@ -253,7 +253,7 @@ func randomize_look(rng: RandomNumberGenerator, human := false) -> void:
 	if human:
 		return
 	var wide: float = rng.randf_range(1.10, 1.26)
-	var tall: float = rng.randf_range(0.94, 1.06)
+	var tall: float = rng.randf_range(0.99, 1.10)
 	_model.scale = Vector3(wide, tall, wide * rng.randf_range(0.92, 1.0))
 
 
