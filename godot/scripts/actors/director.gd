@@ -50,6 +50,12 @@ func _try_spawn() -> void:
 	var world := level.world
 	var data := level.data
 	var player := level.player
+	# The meadow is safe while Wren is teaching: nothing hunts the player on
+	# the surface until the first quest is done. Below ground is another matter.
+	if level.quests and level.quests.state.get("first_light", {}).get("state", "") != "done":
+		var at := World.cell_of(player.global_position)
+		if at.y <= data.surface[clampi(at.x, 0, data.width - 1)] + 6:
+			return
 	var view := world.visible_cells()
 	var pcell := World.cell_of(player.global_position - Vector2(0, 60))
 	var desperate := player.glow <= 0.0 and pcell.y > data.surface[clampi(pcell.x, 0, data.width - 1)] + 6

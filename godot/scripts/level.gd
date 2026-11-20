@@ -40,6 +40,7 @@ func start(seed_value: int, saved := {}) -> void:
 	if saved.is_empty():
 		data = WorldData.new()
 		data.generate(seed_value)
+		_raise_outcrop(data)
 	else:
 		data = WorldData.from_dict(saved.world)
 
@@ -126,6 +127,33 @@ func _starting_kit() -> void:
 	player.inventory.add("wood_sword", 1)
 	player.inventory.add("torch", 6)
 	player.inventory.add("apple", 2)
+
+
+## New worlds get a small rock outcrop a short walk from the start, so the
+## tutorial's "mine stone" is a few swings on the surface, not a dig through
+## ten tiles of soil. Clear of the cottage, the NPCs and any object.
+static func _raise_outcrop(data: WorldData) -> void:
+	var start := data.spawn.x + 8
+	for x0 in range(start, start + 12):
+		var clear := true
+		for dx in 3:
+			var x := x0 + dx
+			var y: int = data.surface[x]
+			for dy in range(-3, 1):
+				if data.objects.has(data.idx(x, y + dy)):
+					clear = false
+		if not clear:
+			continue
+		# A low mound: 2-3-2 rocks, sitting on the ground.
+		for dx in 3:
+			var x := x0 + dx
+			var ground: int = data.surface[x]
+			var height := 2 if dx == 1 else 1
+			for h in height:
+				data.set_tile(x, ground - 1 - h, WorldData.ROCK)
+			data.set_tile(x, ground, WorldData.ROCK)
+			data.surface[x] = ground - height
+		return
 
 
 ## The people of the meadow: Wren by the spawn, Mira at the cottage, Bram

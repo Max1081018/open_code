@@ -449,11 +449,31 @@ func _tutorial_bot() -> void:
 			if not input.use_held:
 				input.move = 1.0
 		"break":
-			# Dig a staircase down, so the way back up is a walk.
+			# Go where the guide arrow points: the nearest exposed rock.
 			input.hotbar_select = 0
-			input.use_held = true
-			input.move = 0.4 if _frames % 60 < 20 else 0.0
-			input.aim = player.global_position + Vector2(150, 40 if _frames % 60 < 40 else -60)
+			var data := level.data
+			var at := World.cell_of(player.global_position)
+			var rock := Vector2i(-1, -1)
+			for r in range(0, 40):
+				for side in [1, -1]:
+					var x: int = at.x + r * side
+					for y in range(at.y - 4, at.y + 4):
+						if data.get_tile(x, y) == WorldData.ROCK and not data.is_solid(x, y - 1):
+							rock = Vector2i(x, y)
+							break
+					if rock.x >= 0:
+						break
+				if rock.x >= 0:
+					break
+			if rock.x >= 0:
+				var dx := World.centre_of(rock).x - player.global_position.x
+				if absf(dx) > 300:
+					input.move = signf(dx)
+					input.jump_pressed = player.is_on_wall() and _frames % 20 == 0
+					input.jump_held = input.jump_pressed
+				else:
+					input.use_held = true
+					input.aim = World.centre_of(rock)
 		"build":
 			for i in Inventory.HOTBAR_SIZE:
 				var stack = player.inventory.get_slot(i)

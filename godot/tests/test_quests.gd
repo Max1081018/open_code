@@ -134,3 +134,24 @@ func test_a_crafting_step_says_what_is_missing() -> void:
 	level.player.inventory.add("wood", 3)
 	check_eq(q.missing_for("wood_axe"), "", "nothing missing")
 	level.free()
+
+
+func test_a_new_world_has_rock_to_mine_near_the_start() -> void:
+	var level := _make_level()
+	var data := level.data
+	var found := 0
+	for x in range(data.spawn.x + 4, data.spawn.x + 30):
+		for y in range(data.surface[x] - 1, data.surface[x] + 3):
+			if data.get_tile(x, y) == WorldData.ROCK and not data.is_solid(x, y - 1):
+				found += 1
+	check(found >= 2, "exposed rock within a short walk (found %d)" % found)
+	level.free()
+
+
+func test_the_meadow_is_safe_during_the_tutorial() -> void:
+	var level := _make_level()
+	var before: int = Engine.get_main_loop().get_nodes_in_group("enemies").size()
+	for i in 20:
+		level.director._try_spawn()
+	check_eq(Engine.get_main_loop().get_nodes_in_group("enemies").size(), before, "nothing spawns on the surface yet")
+	level.free()
