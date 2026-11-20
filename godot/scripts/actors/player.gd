@@ -17,7 +17,7 @@ const AIR_ACCEL := 2600.0
 const FRICTION := 5200.0
 const GRAVITY := 2700.0
 const FALL_LIMIT := 1900.0
-const JUMP_SPEED := 1240.0
+const JUMP_SPEED := 1480.0  ## apex ~3.2 tiles: clears the 3-tile ledges common in the terrain
 ## Releasing jump early cuts the rise, so taps hop and holds leap.
 const JUMP_CUT := 0.45
 ## Grace after walking off a ledge during which a jump still counts.
