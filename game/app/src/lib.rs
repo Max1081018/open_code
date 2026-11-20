@@ -16,7 +16,7 @@ use bevy::render::render_resource::{Extent3d, TextureDimension, TextureFormat};
 use bevy::render::view::screenshot::{save_to_disk, Screenshot};
 use bevy::window::WindowResolution;
 
-use deepdelve_core::art::Texture;
+use deepdelve_core::art::{tile_base_colour, Texture};
 use deepdelve_core::daynight::{TimeOfDay, DAY_LENGTH};
 use deepdelve_core::enemy::{bodies_overlap, chase_intent, kind, Combat, Enemy, EnemyKindId};
 use deepdelve_core::spawn::{choose_kind, find_standing_spot};
@@ -25,6 +25,7 @@ use deepdelve_core::sprite::{
     CHAR_H, CHAR_W,
 };
 use deepdelve_core::touch::{Controls, Zone};
+use deepdelve_core::vfx::{Particles, ScreenShake};
 use deepdelve_core::interact::{can_reach, place, MiningState};
 use deepdelve_core::boss::{
     boss_intent, kind as boss_kind_of, summoned_by as boss_summoned_by, Attack as BossAttack, Boss,
@@ -115,6 +116,20 @@ impl FrameSet {
             .cloned()
     }
 }
+
+/// Live visual effects.
+#[derive(Resource)]
+struct Effects {
+    particles: Particles,
+    shake: ScreenShake,
+}
+
+/// Particle budget. Sprites for these are allocated once at startup and
+/// reused, so effects never spawn or despawn entities while playing.
+const PARTICLE_CAPACITY: usize = 180;
+
+#[derive(Component)]
+struct ParticleSprite(usize);
 
 /// Scenery textures, generated once at startup like the character frames.
 #[derive(Resource, Default)]
@@ -581,6 +596,7 @@ pub fn main() {
                     .chain(),
                 // Everything that follows the simulation.
                 (
+                    run_effects,
                     animate_player,
                     sync_monster_sprites,
                     sync_boss_sprites,
@@ -600,6 +616,8 @@ pub fn main() {
 fn capture_and_exit(
     mut commands: Commands,
     capture: Option<ResMut<CaptureRun>>,
+    player: Option<Res<Player>>,
+    mut effects: Option<ResMut<Effects>>,
     mut exit: MessageWriter<AppExit>,
 ) {
     let Some(mut capture) = capture else {
@@ -607,6 +625,21 @@ fn capture_and_exit(
     };
 
     capture.frames += 1;
+
+    // In capture mode only, keep effects firing so a still frame can show
+    // them. Without this, catching a 0.2s spark in a screenshot is luck.
+    if let (Some(player), Some(effects)) = (player.as_ref(), effects.as_mut()) {
+        if capture.frames % 10 == 0 {
+            let x = player.body.x;
+            let y = player.body.y;
+
+            effects
+                .particles
+                .burst_mining(x + 1.5, y - 0.5, [150.0, 118.0, 86.0]);
+            effects.particles.burst_hit(x - 1.5, y - 1.0);
+            effects.shake.add(0.06);
+        }
+    }
 
     if capture.frames >= capture.at_frame && !capture.captured {
         capture.captured = true;
@@ -678,6 +711,24 @@ fn setup(mut commands: Commands, mut images: ResMut<Assets<Image>>) {
 
     commands.insert_resource(bank);
     commands.insert_resource(PropBank::build(&mut images));
+
+    commands.insert_resource(Effects {
+        particles: Particles::new(PARTICLE_CAPACITY),
+        shake: ScreenShake::new(),
+    });
+
+    // Pre-allocate the particle sprites so none are created mid-play.
+    for index in 0..PARTICLE_CAPACITY {
+        commands.spawn((
+            Sprite {
+                custom_size: Some(Vec2::splat(4.0)),
+                ..default()
+            },
+            Transform::from_xyz(0.0, 0.0, 12.0),
+            Visibility::Hidden,
+            ParticleSprite(index),
+        ));
+    }
 
     // Translucent square showing which tile the pick will hit.
     commands.spawn((
@@ -931,6 +982,7 @@ fn step_monsters(
     game: Res<Game>,
     mut monsters: ResMut<Monsters>,
     mut player: ResMut<Player>,
+    mut effects: ResMut<Effects>,
 ) {
     let dt = time.delta_secs().min(MAX_FRAME);
 
@@ -970,6 +1022,11 @@ fn step_monsters(
         if bodies_overlap(&enemy.body, &player_body) {
             if player.combat.take_damage(kind(enemy.kind).contact_damage) {
                 player.anim.request(AnimState::Hurt);
+                // A hit you take should be felt, not just read off the bar.
+                effects.shake.add(0.3);
+                effects
+                    .particles
+                    .burst_hit(player_body.x, player_body.y - 0.9);
             }
             enemy.anim.request(AnimState::Attack);
         }
@@ -996,6 +1053,7 @@ fn attack_monsters(
     target: Res<Target>,
     mut monsters: ResMut<Monsters>,
     mut player: ResMut<Player>,
+    mut effects: ResMut<Effects>,
 ) {
     if !mouse.just_pressed(MouseButton::Left) {
         return;
@@ -1030,6 +1088,10 @@ fn attack_monsters(
 
     if landed {
         enemy.anim.request(AnimState::Hurt);
+
+        let centre_y = enemy.body.y - enemy.body.height() / 2.0;
+        effects.particles.burst_hit(enemy.body.x, centre_y);
+        effects.shake.add(0.14);
     }
 
     if landed && !enemy.is_alive() {
@@ -1229,6 +1291,57 @@ fn sync_boss_sprites(
             ),
             BossSprite(index),
         ));
+    }
+}
+
+/// Advance particles and shake, then draw the pool.
+fn run_effects(
+    time: Res<Time>,
+    lighting: Res<Lighting>,
+    clock: Res<Clock>,
+    mut effects: ResMut<Effects>,
+    mut sprites: Query<(&ParticleSprite, &mut Transform, &mut Sprite, &mut Visibility)>,
+) {
+    let dt = time.delta_secs().min(MAX_FRAME);
+    effects.particles.step(dt);
+    effects.shake.step(dt);
+
+    let live = effects.particles.live();
+
+    for (marker, mut transform, mut sprite, mut visibility) in &mut sprites {
+        let Some(particle) = live.get(marker.0) else {
+            // Hidden rather than despawned: the pool is reused, not rebuilt.
+            *visibility = Visibility::Hidden;
+            continue;
+        };
+
+        *visibility = Visibility::Visible;
+
+        transform.translation.x = particle.x * PX;
+        transform.translation.y = -particle.y * PX;
+
+        let size = particle.size * PX;
+        sprite.custom_size = Some(Vec2::splat(size));
+
+        // Particles sit in the world's light like everything else, except
+        // sparks, which are their own light source.
+        let lit = if particle.kind == deepdelve_core::vfx::ParticleKind::Spark {
+            1.0
+        } else {
+            lit_brightness(
+                &lighting.0,
+                &clock.0,
+                particle.x.max(0.0) as usize,
+                particle.y.max(0.0) as usize,
+            )
+        };
+
+        sprite.color = Color::srgba(
+            particle.colour[0] / 255.0 * lit,
+            particle.colour[1] / 255.0 * lit,
+            particle.colour[2] / 255.0 * lit,
+            particle.alpha(),
+        );
     }
 }
 
@@ -1443,6 +1556,7 @@ fn dig_or_build(
     mut game: ResMut<Game>,
     mut player: ResMut<Player>,
     mut dirty: ResMut<DirtyChunks>,
+    mut effects: ResMut<Effects>,
 ) {
     for (index, key) in [
         KeyCode::Digit1,
@@ -1500,6 +1614,13 @@ fn dig_or_build(
                 player.inventory.add(item, 1);
             }
             mark_dirty(&mut dirty, tile_pos);
+
+            effects.particles.burst_mining(
+                tile_pos.0 as f32 + 0.5,
+                tile_pos.1 as f32 + 0.5,
+                tile_base_colour(broken),
+            );
+            effects.shake.add(0.05);
         }
     } else {
         player.mining.cancel();
@@ -1775,12 +1896,17 @@ fn stream_chunks(
 }
 
 fn follow_camera(
+    time: Res<Time>,
     player: Res<Player>,
+    effects: Res<Effects>,
     mut cameras: Query<&mut Transform, (With<Camera2d>, Without<PlayerSprite>)>,
 ) {
+    let (shake_x, shake_y) = effects.shake.offset(time.elapsed_secs());
+
     for mut transform in &mut cameras {
-        transform.translation.x = player.body.x * PX;
-        transform.translation.y = -(player.body.y - PLAYER_HEIGHT_TILES / 2.0) * PX;
+        transform.translation.x = (player.body.x + shake_x) * PX;
+        transform.translation.y =
+            -(player.body.y - PLAYER_HEIGHT_TILES / 2.0 + shake_y) * PX;
     }
 }
 

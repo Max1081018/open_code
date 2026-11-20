@@ -217,6 +217,15 @@ fn palette_for(tile: Tile) -> Palette {
     }
 }
 
+/// The body colour of a material, for effects that should match the tile
+/// they came from, such as mining debris.
+pub fn tile_base_colour(tile: Tile) -> [f32; 3] {
+    let palette = palette_for(tile);
+
+    // Grass chips should look like turf, not the soil underneath.
+    palette.crown.unwrap_or(palette.base)
+}
+
 /// Distinct per material, so two materials never share a noise field.
 fn material_salt(tile: Tile) -> u64 {
     match tile {

@@ -24,5 +24,6 @@ pub mod spawn;
 pub mod sprite;
 pub mod tilemap;
 pub mod touch;
+pub mod vfx;
 pub mod view;
 pub mod world;
