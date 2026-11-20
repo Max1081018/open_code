@@ -138,3 +138,33 @@ func test_tool_tiers_strictly_improve() -> void:
 	for i in range(1, swords.size()):
 		check(Items.def(swords[i]).damage > Items.def(swords[i - 1]).damage,
 			"%s outhits %s" % [swords[i], swords[i - 1]])
+
+
+func test_sorting_merges_and_orders_the_bag_but_not_the_hotbar() -> void:
+	var inv := Inventory.new()
+	inv.slots[0] = {"id": "torch", "count": 3}
+	inv.slots[10] = {"id": "stone", "count": 30}
+	inv.slots[20] = {"id": "iron_pickaxe", "count": 1}
+	inv.slots[25] = {"id": "stone", "count": 50}
+	inv.slots[30] = {"id": "wood_pickaxe", "count": 1}
+	inv.sort_bag()
+	check_eq(inv.slots[0], {"id": "torch", "count": 3}, "the hotbar is left alone")
+	check_eq(inv.count("stone"), 80, "nothing lost")
+	var stone_stacks := 0
+	var order := []
+	for i in range(Inventory.HOTBAR_SIZE, inv.size()):
+		if inv.slots[i] != null:
+			order.append(inv.slots[i].id)
+			if inv.slots[i].id == "stone":
+				stone_stacks += 1
+	check_eq(stone_stacks, 1, "stone merged into one stack")
+	check(order.find("iron_pickaxe") < order.find("wood_pickaxe"), "better tools first")
+	check_eq(inv.slots[Inventory.HOTBAR_SIZE + order.size()], null, "packed together, no gaps")
+
+
+func test_rarity_rises_with_the_good_stuff() -> void:
+	check_eq(Items.rarity("wood"), 0, "wood is common")
+	check(Items.rarity("iron_pickaxe") > Items.rarity("wood_pickaxe"), "iron beats wood")
+	check_eq(Items.rarity("lumen_core"), 4, "a Lumen Core is legendary")
+	for id in Items.defs:
+		check(Items.rarity(id) >= 0 and Items.rarity(id) < Items.RARITY_NAMES.size(), "%s has a valid rarity" % id)

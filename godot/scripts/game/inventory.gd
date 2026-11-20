@@ -188,3 +188,39 @@ func from_array(data: Array) -> void:
 		if slot != null and Items.exists(str(slot.get("id", ""))):
 			slots[i] = {"id": str(slot.id), "count": int(slot.count)}
 	changed.emit()
+
+
+
+## Tidy the bag (not the hotbar): merge partial stacks of the same thing,
+## then order by kind, best first, then name.
+func sort_bag() -> void:
+	var stacks := []
+	for i in range(HOTBAR_SIZE, slots.size()):
+		if slots[i] != null:
+			stacks.append(slots[i])
+		slots[i] = null
+	var merged := {}
+	var order := []
+	for stack in stacks:
+		if not merged.has(stack.id):
+			merged[stack.id] = 0
+			order.append(stack.id)
+		merged[stack.id] += stack.count
+	order.sort_custom(func(a, b):
+		var da: Dictionary = Items.def(a)
+		var db: Dictionary = Items.def(b)
+		if da.get("kind", 0) != db.get("kind", 0):
+			return da.get("kind", 0) < db.get("kind", 0)
+		if da.get("tier", 0) != db.get("tier", 0):
+			return da.get("tier", 0) > db.get("tier", 0)
+		return Items.item_name(a) < Items.item_name(b))
+	var index := HOTBAR_SIZE
+	for id in order:
+		var left: int = merged[id]
+		var limit := Items.stack_size(id)
+		while left > 0 and index < slots.size():
+			var n := mini(left, limit)
+			slots[index] = {"id": id, "count": n}
+			left -= n
+			index += 1
+	changed.emit()

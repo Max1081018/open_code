@@ -269,6 +269,11 @@ func _run_scenario() -> void:
 		"dodge":
 			input.move = 1.0 if _frames > 15 else 0.0
 			input.dodge_pressed = _frames == 24
+		"pack":
+			if _frames == 20:
+				for id in ["iron_sword", "lumen_pickaxe", "heart_crystal", "glowshard", "iron_shield", "copper_ore", "stew", "ruby", "planks"]:
+					level.player.inventory.add(id, 5)
+				level.hud.toggle_inventory()
 		"die":
 			if _frames == 20:
 				level.player.hurt(9999.0, level.player.global_position + Vector2(100, 0))

@@ -258,3 +258,19 @@ func drop_for_ore(ore: int) -> String:
 	if ore <= 0 or ore > ORE_DROPS.size():
 		return ""
 	return ORE_DROPS[ore - 1]
+
+
+
+## Rarity, from an item's tier and kind: how special it is, at a glance.
+const RARITY_NAMES := ["Common", "Uncommon", "Rare", "Epic", "Legendary"]
+const RARITY_COLORS := [Color(0.78, 0.76, 0.72), Color(0.45, 0.85, 0.45), Color(0.40, 0.70, 1.0),
+	Color(0.78, 0.50, 1.0), Color(1.0, 0.78, 0.25)]
+const SPECIAL := {"lumen_core": 4, "heart_crystal": 3, "vault_key": 3, "lumen_pickaxe": 4,
+	"lumen_sword": 4, "wardstone": 2, "glow_flask": 1, "ruby": 2, "emerald": 2}
+
+
+func rarity(id: String) -> int:
+	if SPECIAL.has(id):
+		return SPECIAL[id]
+	var tier: int = def(id).get("tier", 0)
+	return clampi(tier - 1, 0, 4) if tier > 0 else 0

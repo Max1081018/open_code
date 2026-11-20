@@ -24,18 +24,16 @@ Engine: Godot 4.4.1, GL Compatibility renderer, Android-first.
 - **Audio is unheard**: there is no sound device here. Clips are checked by
   length/loudness only. Piper may mispronounce names.
 - Robot keeps a front-facing head (its three-quarter cut lost the face).
-- Dodge roll, running vs walking as separate gaits, pick-up animation:
+- Running vs walking as separate gaits, pick-up animation:
   not done (the brief asks for them).
-- Inventory redesign (drag and drop, tooltips, rarity, equipment slots):
-  not done; current pack is tap-to-move.
+- Inventory: drag and drop, rarity, sort and richer details are done; equipment slots (shield/lantern) are not:
+  the best shield carried is used automatically.
 - More NPCs/quests, map/minimap, armour, liquids flowing: not done.
 
 ## Exact next tasks
 
-1. Dodge roll (keyboard + touch button) with invulnerability frames and a
-   rig pose; running gait above walking speed.
-2. Inventory redesign (stage E): drag and drop, tooltips with stats and
-   rarity colours, sort, equipment slots for shield and lantern.
+1. (done: dodge roll) Running gait above walking speed; pick-up gesture.
+2. Equipment slots for shield and lantern (drag and drop, rarity, sort done).
 3. Pooled VFX (stage D): material chips per tile type, enemy death bursts.
 4. A second region of story content (Bram's mine as a built location,
    more voiced lines; re-run `python3 tools/bake_voices.py`).

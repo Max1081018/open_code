@@ -16,8 +16,21 @@ static func build(hud: Node, player: Player, focus: String) -> Control:
 	var left := VBoxContainer.new()
 	left.add_theme_constant_override("separation", 12)
 	row.add_child(left)
-	left.add_child(UITheme.text("Tap a stack, then tap where it goes. The top row is your hotbar.",
-		26, UITheme.MUTED))
+	var top := HBoxContainer.new()
+	top.add_theme_constant_override("separation", 16)
+	left.add_child(top)
+	var hint := UITheme.text("Drag a stack, or tap it then tap where it goes. Top row: hotbar.",
+		26, UITheme.MUTED)
+	hint.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	top.add_child(hint)
+	var sort := Button.new()
+	sort.text = "Sort"
+	sort.custom_minimum_size = Vector2(150, 64)
+	sort.pressed.connect(func():
+		player.inventory.sort_bag()
+		state.picked = -1
+		Sfx.play("click", -6.0))
+	top.add_child(sort)
 	var grid := GridContainer.new()
 	grid.columns = 8
 	grid.add_theme_constant_override("h_separation", 8)
@@ -28,6 +41,11 @@ static func build(hud: Node, player: Player, focus: String) -> Control:
 		grid.add_child(slot)
 		state.slots.append(slot)
 		slot.pressed.connect(func(): _tap(state, i))
+		slot.index = i
+		slot.on_drop = func(from: int, to: int):
+			player.inventory.move(from, to)
+			state.picked = -1
+			Sfx.play("land", -8.0)
 
 	var details := VBoxContainer.new()
 	details.add_theme_constant_override("separation", 8)
@@ -99,9 +117,16 @@ static func _refresh(state: Dictionary) -> void:
 	var picked = inventory.get_slot(state.picked) if state.picked >= 0 else null
 	if picked != null:
 		var d := Items.def(picked.id)
-		var title := UITheme.title(Items.item_name(picked.id), 40, UITheme.GOLD)
+		var rarity := Items.rarity(picked.id)
+		var heading := HBoxContainer.new()
+		heading.add_theme_constant_override("separation", 16)
+		details.add_child(heading)
+		var title := UITheme.title(Items.item_name(picked.id), 40, Items.RARITY_COLORS[rarity] if rarity > 0 else UITheme.GOLD)
 		title.horizontal_alignment = HORIZONTAL_ALIGNMENT_LEFT
-		details.add_child(title)
+		heading.add_child(title)
+		var tag := UITheme.text(Items.RARITY_NAMES[rarity], 24, Items.RARITY_COLORS[rarity].darkened(0.25))
+		tag.size_flags_vertical = Control.SIZE_SHRINK_END
+		heading.add_child(tag)
 		var info := []
 		if d.has("power"):
 			info.append("Mining power %d" % d.power)
@@ -111,6 +136,10 @@ static func _refresh(state: Dictionary) -> void:
 			info.append("Heals %d" % d.heal)
 		if d.has("glow"):
 			info.append("Lantern +%d" % d.glow)
+		if d.has("block"):
+			info.append("Blocks %d%% from the front" % int(d.block * 100))
+		if d.has("speed") and d.get("kind", -1) in [Items.Kind.PICKAXE, Items.Kind.AXE, Items.Kind.SWORD]:
+			info.append("%.1f swings/s" % (1.0 / float(d.speed)))
 		var text: String = d.get("desc", "")
 		if not info.is_empty():
 			text = " · ".join(info) + "\n" + text
