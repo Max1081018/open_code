@@ -12,7 +12,7 @@ static var _material: CanvasItemMaterial
 
 static func make(color: Color, radius_tiles: float, pulse := true) -> Sprite2D:
 	if _texture == null:
-		_texture = load("res://assets/fx/light_02.png")
+		_texture = load("res://assets/fx/light_01.png")  # a soft falloff, not a ring
 		_material = CanvasItemMaterial.new()
 		_material.blend_mode = CanvasItemMaterial.BLEND_MODE_ADD
 	var halo := Sprite2D.new()

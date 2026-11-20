@@ -21,6 +21,7 @@ var actors: Node2D
 var hud: Node
 var controls: Node
 var director: Director
+var life: WorldLife
 var boss: Enemy = null
 
 var _shake := 0.0
@@ -84,6 +85,10 @@ func start(seed_value: int, saved := {}) -> void:
 	atmosphere.setup(world, camera)
 
 	player.died.connect(_on_player_died)
+
+	life = WorldLife.new()
+	add_child(life)
+	life.setup(self)
 
 	director = Director.new()
 	director.level = self

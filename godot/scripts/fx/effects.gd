@@ -179,6 +179,18 @@ static func burst(parent: Node, position: Vector2, kind: String, color := Color.
 			p.scale_amount_min = 0.2
 			p.scale_amount_max = 0.4
 			p.color_ramp = _fade(Color(color, 0.7), Color(color, 0.0))
+		"splash":
+			p.texture = tex("circle_05")
+			p.amount = _budget(5)
+			p.lifetime = 0.35
+			p.direction = Vector2.UP
+			p.spread = 60.0
+			p.initial_velocity_min = 80.0
+			p.initial_velocity_max = 200.0
+			p.gravity = Vector2(0, 1400)
+			p.scale_amount_min = 0.012
+			p.scale_amount_max = 0.022
+			p.color = Color(0.75, 0.88, 1.0, 0.9)
 		"slash":
 			p.texture = tex("slash_03")
 			p.material = additive()

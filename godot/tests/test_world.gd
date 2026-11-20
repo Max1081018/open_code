@@ -249,3 +249,37 @@ func test_a_loaded_world_rebuilds_its_sunlight_depths() -> void:
 	a.generate(5)
 	var b := WorldData.from_dict(bytes_to_var(var_to_bytes(a.to_dict())))
 	check(a.sky_depth == b.sky_depth, "derived state rebuilt identically on load")
+
+
+func test_cave_mushrooms_glow_but_surface_ones_do_not() -> void:
+	var deep := Vector2i(10, WorldData.SURFACE_Y + 40)
+	var glowing := 0
+	for x in 30:
+		if ObjectArt.glows({"type": "shrub", "art": "mushroom_brown"}, deep + Vector2i(x, 0)):
+			glowing += 1
+	check(glowing > 10 and glowing < 30, "about two in three cave mushrooms glow (got %d)" % glowing)
+	check(not ObjectArt.glows({"type": "shrub", "art": "mushroom_red"}, Vector2i(10, WorldData.SURFACE_Y - 2)),
+		"surface mushrooms stay plain")
+	check(ObjectArt.glows({"type": "shrub", "art": "gem_blue"}, deep), "crystals always glow")
+	check(not ObjectArt.glows({"type": "shrub", "art": "bush1"}, deep), "bushes never glow")
+
+
+func test_the_generated_world_has_glowing_decor_underground() -> void:
+	var w := world()
+	var count := 0
+	for key in w.objects:
+		if ObjectArt.glows(w.objects[key], Vector2i(key % w.width, key / w.width)):
+			count += 1
+	check(count > 50, "plenty of glowing decor (got %d)" % count)
+
+
+func test_weather_dims_the_sky_only_while_enabled() -> void:
+	var life := WorldLife.new()
+	var was: bool = Settings.weather
+	Settings.weather = true
+	life.set_weather(WorldLife.Weather.RAIN, 1.0)
+	check(life.overcast() > 0.3, "heavy rain darkens the sky")
+	Settings.weather = false
+	check(life.overcast() == 0.0, "weather off means a clear sky")
+	Settings.weather = was
+	life.free()

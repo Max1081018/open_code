@@ -322,6 +322,10 @@ func _process(delta: float) -> void:
 	fog = night_fog.lerp(fog.lerp(Color(1.0, 0.62, 0.45), dusk * 0.55), daylight)
 	sky_top = Color(0.03, 0.04, 0.10).lerp(sky_top.lerp(Color(0.42, 0.36, 0.62), dusk * 0.6), daylight)
 	sky_low = Color(0.10, 0.12, 0.24).lerp(sky_low.lerp(Color(1.0, 0.58, 0.40), dusk), daylight)
+	var overcast: float = Game.level.life.overcast() if Game.level and Game.level.life else 0.0
+	fog = fog.lerp(Color(0.46, 0.50, 0.55) * daylight, overcast)
+	sky_top = sky_top.lerp(Color(0.32, 0.36, 0.42) * maxf(daylight, 0.2), overcast)
+	sky_low = sky_low.lerp(Color(0.55, 0.58, 0.62) * maxf(daylight, 0.2), overcast)
 	var cave := Color(0.035, 0.03, 0.06)
 	_sky_material.set_shader_parameter("top", sky_top.lerp(cave, depth))
 	_sky_material.set_shader_parameter("bottom", sky_low.lerp(cave, depth))
@@ -362,7 +366,8 @@ func _process(delta: float) -> void:
 	var outdoors := 1.0 - depth
 	for ray in _rays:
 		ray.position = Vector2(screen.x * ray.get_meta("x") - ray.size.x * 0.5, -200)
-		ray.modulate = Color(1.0, 0.95, 0.8, outdoors * daylight * (1.0 - dusk * 0.5) * 0.85)
+		ray.modulate = Color(1.0, 0.95, 0.8, outdoors * daylight * (1.0 - dusk * 0.5) * 0.85 * (1.0 - overcast * 2.0))
+		ray.visible = Settings.background >= 2
 	_motes.emitting = outdoors > 0.2 and daylight > 0.3
 	_motes.position = screen * 0.5
 	_motes.emission_rect_extents = screen * 0.55
@@ -378,6 +383,10 @@ func _process(delta: float) -> void:
 
 	if _grade:
 		_grade.set_shader_parameter("tint", Color.WHITE.lerp(fog, 0.10).lerp(Color(0.75, 0.80, 1.0), depth * 0.25))
+
+
+func grade_material() -> ShaderMaterial:
+	return _grade
 
 
 func _biome_weights(tile_x: float) -> Dictionary:

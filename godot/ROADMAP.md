@@ -2,7 +2,7 @@
 
 ## Done and verified
 
-Verified by headless tests (44) and by screenshot captures at 2340×1080.
+Verified by headless tests (47) and by screenshot captures at 2340×1080.
 
 - World: 640×360 tiles, three surface biomes, soil/rock/basalt layers,
   caves and shafts, crystal hollows, contained water and lava pools, brick
@@ -22,6 +22,15 @@ Verified by headless tests (44) and by screenshot captures at 2340×1080.
   pickup feed, boss bar.
 - Audio: 13 recorded effects, 4 looped music tracks following location.
 - Save/load through the real level; corrupt files refused.
+- Graphics (overhaul stage A): Low/Medium/High/Ultra presets plus
+  separate lighting, particles, shader effects, background, shadows,
+  bloom and weather settings, all saved; terrain relief and detail
+  shading; per-material palette; graded colour; soft contact shadows.
+- Living world (stage B): animated water (waves, caustics, refraction on
+  High+) and flowing lava; wind-swayed ground cover; drifting leaves;
+  rain and snow that dim the sky; cave drips that splash; glowing,
+  pulsing cave mushrooms and crystals that light their surroundings;
+  underwater and lava-heat screen effects.
 - Performance budgets tested: light map ~1.5 ms, chunk load ~1.7 ms.
 
 ## Not done yet
@@ -38,6 +47,7 @@ Verified by headless tests (44) and by screenshot captures at 2340×1080.
 - **Armour and accessories**: tools and weapons progress; armour does not
   exist yet.
 - **NPCs**: the guide's art is imported but she is not in the world.
-- **Weather**: rain and snow particles.
+- **Underwater and heat effects** are written but have not been seen in
+  a capture yet (no scenario puts the player in water or beside lava).
 - **Liquids** are static: digging under a pool does not drain it.
 - **Furniture** beyond the crafting stations, chests and wardstones.

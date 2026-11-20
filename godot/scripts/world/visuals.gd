@@ -59,3 +59,22 @@ static func terrain(wall := false) -> ShaderMaterial:
 	material.set_shader_parameter("surface_px", WorldData.SURFACE_Y * 128.0)
 	material.set_shader_parameter("deep_px", WorldData.DEEP_Y * 128.0)
 	return material
+
+
+static func liquid() -> ShaderMaterial:
+	var material := ShaderMaterial.new()
+	material.shader = load("res://scripts/shaders/liquid.gdshader")
+	material.set_shader_parameter("noise_tex", noise())
+	material.set_shader_parameter("quality", mini(Settings.shader_fx, 2))
+	return material
+
+
+static var _sway: ShaderMaterial
+
+
+## One shared wind material for all ground cover.
+static func sway() -> ShaderMaterial:
+	if _sway == null:
+		_sway = ShaderMaterial.new()
+		_sway.shader = load("res://scripts/shaders/sway.gdshader")
+	return _sway

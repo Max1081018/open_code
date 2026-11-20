@@ -571,7 +571,7 @@ func _plant_surface() -> void:
 			_put_object(x, y, {"type": "shrub", "art": kinds[_rng.randi() % kinds.size()]})
 
 	# Mushrooms and crystals decorate cave floors.
-	for i in 1400:
+	for i in 4200:
 		var x := _rng.randi_range(2, width - 3)
 		var y := _rng.randi_range(SURFACE_Y + 20, height - 3)
 		if is_solid(x, y) or not is_solid(x, y + 1) or get_liquid(x, y) != DRY:

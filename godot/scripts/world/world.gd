@@ -51,6 +51,11 @@ var _loaded := {}  ## Vector2i chunk -> true
 var _object_nodes := {}  ## cell index -> Node2D
 var _objects_by_chunk := {}  ## Vector2i chunk -> Array of cell indices
 var _lit_objects := {}  ## cell index -> true
+## Glowing cave decor currently on screen: cell index -> colour. Kept apart
+## from _lit_objects, which also decides where shades are safe to walk.
+var _glow_decor := {}
+var _decor := {}  ## cell index -> Sprite2D of ground cover (not saved: derived)
+var _decor_by_chunk := {}  ## Vector2i -> Array of cell indices
 var _camera: Camera2D
 
 ## Extra light sources outside the tile grid (the lantern, projectiles):
@@ -101,7 +106,7 @@ func _build_layers() -> void:
 	liquids.tile_set = tileset
 	liquids.collision_enabled = false
 	liquids.z_index = 3
-	liquids.modulate = Color(1, 1, 1, 0.82)
+	liquids.material = Visuals.liquid()
 	add_child(liquids)
 
 	terrain = TileMapLayer.new()
@@ -264,6 +269,81 @@ func _load_chunk(chunk: Vector2i) -> void:
 			_draw_cell(Vector2i(x, y))
 	for key in _objects_by_chunk.get(chunk, []):
 		_spawn_object_node(key)
+	_grow_cover(chunk)
+
+
+const COVER := {
+	WorldData.GRASS: ["grass_a", "grass_b", "grass_c", "grass_a", "grass_b", "flower_blue",
+		"flower_purple", "flower_bell"],
+	WorldData.SAND: ["grass_c"],
+	WorldData.CRYSTAL: ["grass_purple"],
+}
+const COVER_CHANCE := {WorldData.GRASS: 0.92, WorldData.SAND: 0.10, WorldData.CRYSTAL: 0.40}
+
+static var _cover_textures := {}
+
+
+## Ground cover is derived from the tiles, so it is never saved: it grows
+## wherever its ground is exposed and is cleared when that ground is dug.
+func _grow_cover(chunk: Vector2i) -> void:
+	if Settings.shader_fx == 0 and Settings.background == 0:
+		return
+	var cells := []
+	var x0 := chunk.x * CHUNK
+	var y0 := chunk.y * CHUNK
+	for y in range(y0, min(y0 + CHUNK, data.height)):
+		for x in range(x0, min(x0 + CHUNK, data.width)):
+			var below := data.get_tile(x, y + 1)
+			if not COVER.has(below) or data.is_solid(x, y) or data.get_liquid(x, y) != WorldData.DRY:
+				continue
+			var key := data.idx(x, y)
+			if data.objects.has(key):
+				continue
+			var roll := float((x * 92821 ^ y * 68917) & 1023) / 1023.0
+			if roll > COVER_CHANCE[below]:
+				continue
+			var kinds: Array = COVER[below]
+			# Two tufts on most grassy cells, so the ground reads as a meadow
+			# rather than a lawn with the odd weed.
+			var clump := Node2D.new()
+			var count := 2 if below == WorldData.GRASS and roll < 0.7 else 1
+			for n in count:
+				var art: String = kinds[(x * 31 + y * 17 + n * 5) % kinds.size()]
+				var sprite := Sprite2D.new()
+				sprite.texture = _cover_texture(art)
+				if sprite.texture == null:
+					continue
+				sprite.centered = false
+				var height := 0.55 + fmod(roll * 7.3 + n * 0.37, 1.0) * 0.32 if art.begins_with("grass") \
+					else 0.62
+				var k := height * TILE / float(sprite.texture.get_height())
+				sprite.scale = Vector2(k, k)
+				sprite.flip_h = (x + y + n) % 2 == 0
+				var jitter := ((x * 13 + n * 57) % 70) - 35
+				sprite.position = Vector2(x * TILE + TILE * 0.5 - sprite.texture.get_width() * k * 0.5 + jitter,
+					(y + 1) * TILE - sprite.texture.get_height() * k + 8)
+				sprite.material = Visuals.sway()
+				clump.add_child(sprite)
+			object_root.add_child(clump)
+			var sprite := clump
+			_decor[key] = sprite
+			cells.append(key)
+	_decor_by_chunk[chunk] = cells
+
+
+func _cover_texture(art: String) -> Texture2D:
+	if not _cover_textures.has(art):
+		var path := "res://assets/scenery/foliage/%s.png" % art
+		if not ResourceLoader.exists(path):
+			path = "res://assets/props/%s.png" % art
+		_cover_textures[art] = load(path) if ResourceLoader.exists(path) else null
+	return _cover_textures[art]
+
+
+func _clear_cover(key: int) -> void:
+	if _decor.has(key):
+		_decor[key].queue_free()
+		_decor.erase(key)
 
 
 func _unload_chunk(chunk: Vector2i) -> void:
@@ -281,6 +361,9 @@ func _unload_chunk(chunk: Vector2i) -> void:
 		if _object_nodes.has(key):
 			_object_nodes[key].queue_free()
 			_object_nodes.erase(key)
+	for key in _decor_by_chunk.get(chunk, []):
+		_clear_cover(key)
+	_decor_by_chunk.erase(chunk)
 
 
 static func atlas_row(material: int) -> int:
@@ -319,6 +402,10 @@ func _draw_cell(cell: Vector2i) -> void:
 
 ## Redraw a cell and its neighbours, whose edge pieces depend on it.
 func refresh(cell: Vector2i) -> void:
+	# Cover on this cell, or standing on it, goes when the ground changes.
+	_clear_cover(data.idx(cell.x, cell.y))
+	if data.in_bounds(cell.x, cell.y - 1):
+		_clear_cover(data.idx(cell.x, cell.y - 1))
 	for offset in [Vector2i.ZERO, Vector2i.UP, Vector2i.DOWN, Vector2i.LEFT, Vector2i.RIGHT]:
 		var c: Vector2i = cell + offset
 		if data.in_bounds(c.x, c.y) and is_loaded(c):
@@ -393,6 +480,8 @@ func _spawn_object_node(key: int) -> void:
 		return
 	object_root.add_child(node)
 	_object_nodes[key] = node
+	if node.has_meta("glow"):
+		_glow_decor[key] = node.get_meta("glow")
 	if OBJECT_LIGHTS.has(data.objects[key].type):
 		var spec: Array = OBJECT_LIGHTS[data.objects[key].type]
 		if data.objects[key].get("lit", true):
@@ -428,6 +517,8 @@ func _update_lighting() -> void:
 	light_map.clear()
 
 	var sky := sky_light()
+	if Game.level and Game.level.life:
+		sky *= 1.0 - Game.level.life.overcast()
 	var tiles := data.tiles
 	var ores := data.ores
 	var liquids := data.liquids
@@ -461,6 +552,14 @@ func _update_lighting() -> void:
 		if view.grow(int(spec[1])).has_point(cell):
 			var flicker := 1.0 if object.type == "wardstone" else randf_range(0.92, 1.0)
 			light_map.seed_radial(Vector2(cell) + Vector2(0.5, 0.5), spec[1], spec[0] * flicker, data)
+
+	for key in _glow_decor.keys():
+		if not _object_nodes.has(key):
+			_glow_decor.erase(key)
+			continue
+		var at := Vector2i(key % data.width, key / data.width)
+		if view.has_point(at):
+			light_map.seed_radial(Vector2(at) + Vector2(0.5, 0.5), 4.5, _glow_decor[key], data)
 
 	for source in dynamic_lights:
 		if not source.is_valid():

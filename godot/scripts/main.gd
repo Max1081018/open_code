@@ -132,7 +132,7 @@ func _apply_scenario() -> void:
 	var player := level.player
 	var data := level.data
 	match _args.get("scenario", "surface"):
-		"cave", "crystal", "deep", "ruin":
+		"cave", "crystal", "deep", "ruin", "mushroom":
 			var target := _find_scenario_cell(_args.scenario)
 			player.global_position = World.foot_of(target)
 			player.glow = player.max_glow()
@@ -142,6 +142,13 @@ func _apply_scenario() -> void:
 		"cabin":
 			player.global_position = World.foot_of(data.spawn) + Vector2(-13 * 128, 0)
 			level.world.load_area(World.cell_of(player.global_position), 2)
+	if _args.has("weather"):
+		level.life.set_weather(WorldLife.Weather.RAIN if _args.weather == "rain" else WorldLife.Weather.SNOW, 1.0)
+	if _args.has("x"):
+		var target := Vector2i(int(_args.x), 0)
+		target.y = level.data.surface[target.x] - 1
+		player.global_position = World.foot_of(target)
+		level.world.load_area(target, 2)
 	if _args.has("spawn"):
 		var offset := 360.0
 		for kind in _args.spawn.split(","):
@@ -156,6 +163,13 @@ func _apply_scenario() -> void:
 
 func _find_scenario_cell(kind: String) -> Vector2i:
 	var data := level.data
+	if kind == "mushroom":
+		# Beside the first cave mushroom that glows, two cells to its left.
+		for key in data.objects:
+			var cell := Vector2i(key % data.width, key / data.width)
+			if ObjectArt.glows(data.objects[key], cell) and not data.is_solid(cell.x - 2, cell.y) \
+					and data.is_solid(cell.x - 2, cell.y + 1):
+				return cell - Vector2i(2, 0)
 	var rng := RandomNumberGenerator.new()
 	rng.seed = 5
 	for attempt in 40000:

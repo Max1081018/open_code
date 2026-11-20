@@ -360,6 +360,29 @@ def build_scenery(kenney):
     print(f"scenery: {n} images")
 
 
+def build_foliage(kenney):
+    """Ground cover from the Foliage Pack, and a leaf particle.
+
+    Three flowers and three grass tufts scatter along grassy ground. No
+    Kenney pack has a leaf at particle scale, so a small one is drawn
+    here in the same flat, outlined style.
+    """
+    source = os.path.join(kenney, "2d/Foliage Pack")
+    names = {"foliagePack_001": "flower_blue", "foliagePack_002": "flower_bell",
+             "foliagePack_003": "flower_purple", "foliagePack_018": "grass_a",
+             "foliagePack_019": "grass_b", "foliagePack_020": "grass_c"}
+    for stem, name in names.items():
+        shutil.copyfile(os.path.join(source, stem + ".png"), out("scenery", "foliage", name + ".png"))
+
+    leaf = Image.new("RGBA", (48, 48), (0, 0, 0, 0))
+    draw = ImageDraw.Draw(leaf)
+    shape = [(6, 24), (14, 12), (28, 7), (42, 12), (34, 26), (20, 36), (10, 34)]
+    draw.polygon(shape, fill=(255, 255, 255, 255))
+    draw.line([(9, 31), (38, 12)], fill=(200, 200, 200, 255), width=2)
+    leaf.save(out("fx", "leaf.png"))
+    print("foliage: 3 flowers, 3 grass tufts, leaf particle")
+
+
 def build_ui(kenney):
     adventure = os.path.join(kenney, "ui/UI Pack - Adventure/Double")
     if not os.path.isdir(adventure):
@@ -427,6 +450,7 @@ def main():
     build_items(kenney)
     build_props(kenney)
     build_scenery(kenney)
+    build_foliage(kenney)
     build_ui(kenney)
     build_fx(kenney)
     if fonts:

@@ -39,8 +39,10 @@ static func texture(path: String) -> Texture2D:
 ## Every object node sits at the bottom-centre of its cell and draws
 ## relative to that, so halos and effects added later land on it too.
 static func make(object: Dictionary, cell: Vector2i) -> Node2D:
-	var node := _build(object, absi(cell.x * 73856093 ^ cell.y * 19349663))
+	var hash_value := absi(cell.x * 73856093 ^ cell.y * 19349663)
+	var node := _build(object, hash_value)
 	if node != null:
+		_maybe_glow(node, object, cell, hash_value)
 		node.position = Vector2(cell.x * TILE + TILE * 0.5, (cell.y + 1) * TILE)
 		var width: float = SHADOW_WIDTH.get(object.get("type", ""), 0.0)
 		if width > 0.0 and Settings.shadows:
@@ -87,6 +89,89 @@ static func _build(object: Dictionary, hash_value: int) -> Node2D:
 	if ART.has(object.get("type", "")):
 		return _prop(object.type, foot)
 	return null
+
+
+## Light given off by cave decor: art -> colour. Mushrooms deep enough
+## underground glow (decided from the cell, so world generation and saves
+## are untouched); crystals always do.
+const GLOW_DECOR := {
+	"mushroom_brown": Color(0.35, 0.95, 0.85),
+	"mushroom_red": Color(0.95, 0.40, 0.85),
+	"gem_blue": Color(0.40, 0.70, 1.0),
+}
+
+
+## Marks the node with meta "glow" (a Color) when it should light its cell,
+## and gives the sprite a breathing emissive pulse.
+static func glows(object: Dictionary, cell: Vector2i) -> bool:
+	if object.get("type", "") != "shrub":
+		return false
+	var art: String = object.get("art", "")
+	if not GLOW_DECOR.has(art):
+		return false
+	if art.begins_with("mushroom"):
+		var hash_value := absi(cell.x * 73856093 ^ cell.y * 19349663)
+		return cell.y >= WorldData.SURFACE_Y + 20 and hash_value % 3 != 0
+	return true
+
+
+static func _maybe_glow(node: Node2D, object: Dictionary, cell: Vector2i, hash_value: int) -> void:
+	if not glows(object, cell):
+		return
+	var art: String = object.get("art", "")
+	var color: Color = GLOW_DECOR[art]
+	node.set_meta("glow", color)
+	if not art.begins_with("mushroom"):
+		for child in node.get_children():
+			if child is Sprite2D and child.material == null:
+				child.material = emissive_material(color, hash_value)
+	else:
+		# A cluster: the art only fills the lower half of its canvas, so
+		# the main cap is drawn larger, with two smaller ones beside it.
+		var tex := texture("res://assets/props/%s.png" % art)
+		for child in node.get_children():
+			if child is Sprite2D:
+				node.remove_child(child)
+				child.free()
+		var caps := [[Vector2(0, 6), 1.25, false], [Vector2(-34, 6), 0.8, true], [Vector2(30, 6), 0.65, false]]
+		for i in caps.size():
+			var cap: Array = caps[i]
+			var sprite := _sprite_standing(tex, cap[0], cap[1])
+			sprite.flip_h = cap[2] != (hash_value % 2 == 0)
+			sprite.material = emissive_material(color, hash_value + i * 97)
+			node.add_child(sprite)
+		node.add_child(Glow.make(color, 1.0))
+		if hash_value % 2 == 0:
+			node.add_child(Effects.motes(Vector2(0, -50), color, 1.2))
+
+
+static var _emissive: Shader
+
+
+## The sprite brightens and tints toward its glow colour on a slow pulse.
+## Drawn above the light map's darkening, it reads as the source of light.
+static func emissive_material(color: Color, hash_value: int) -> ShaderMaterial:
+	if _emissive == null:
+		_emissive = Shader.new()
+		_emissive.code = """
+shader_type canvas_item;
+uniform vec3 glow = vec3(0.4, 0.9, 0.9);
+uniform float phase = 0.0;
+uniform float speed = 1.2;
+void fragment() {
+	vec4 c = texture(TEXTURE, UV);
+	float grey = dot(c.rgb, vec3(0.299, 0.587, 0.114));
+	float pulse = 0.5 + 0.5 * sin(TIME * speed + phase);
+	vec3 lit = mix(c.rgb, glow * (0.6 + grey), 0.55) * (1.15 + pulse * 0.45);
+	COLOR = vec4(lit, c.a) * COLOR;
+}
+"""
+	var material := ShaderMaterial.new()
+	material.shader = _emissive
+	material.set_shader_parameter("glow", Vector3(color.r, color.g, color.b))
+	material.set_shader_parameter("phase", (hash_value % 628) / 100.0)
+	material.set_shader_parameter("speed", 0.9 + (hash_value % 9) / 10.0)
+	return material
 
 
 static func _sprite_standing(tex: Texture2D, foot: Vector2, height_tiles: float) -> Sprite2D:
