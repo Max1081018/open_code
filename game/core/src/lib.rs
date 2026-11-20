@@ -4,6 +4,7 @@
 //! that every rule of the game can be tested headlessly. The Bevy layer on top
 //! only draws what lives here and feeds input into it.
 
+pub mod anim;
 pub mod art;
 pub mod biome;
 pub mod boss;
@@ -18,6 +19,7 @@ pub mod physics;
 pub mod png;
 pub mod save;
 pub mod spawn;
+pub mod sprite;
 pub mod tilemap;
 pub mod touch;
 pub mod view;
