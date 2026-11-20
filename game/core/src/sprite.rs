@@ -6,7 +6,9 @@
 
 use crate::anim::AnimState;
 use crate::art::Texture;
-use crate::paint::{draw_limb, draw_part, ramp_from, rounded_inset, Canvas};
+use crate::paint::{
+    draw_disc, draw_limb, draw_part, draw_spike, draw_taper, ramp_from, rounded_inset, Canvas,
+};
 
 /// Character canvas width, in source pixels.
 pub const CHAR_W: u32 = 40;
@@ -23,6 +25,15 @@ pub enum Build {
     Blob,
     /// Broad and heavy, with oversized arms.
     Hulk,
+    /// A floating armoured eye under a hood, with no legs at all.
+    Sentinel,
+    /// A segmented serpent rearing up out of the ground in an S-curve.
+    Wyrm,
+    /// A slab of animated stone: shoulders wider than its stance, with a
+    /// head sunk between them.
+    Colossus,
+    /// A gaunt crowned figure with a cape that flares to the floor.
+    Crowned,
 }
 
 /// The colours and shape of one character.
@@ -180,12 +191,28 @@ pub fn enemy_height_tiles(kind: crate::enemy::EnemyKindId) -> f32 {
     }
 }
 
+/// How tall a boss is drawn, in tiles.
+///
+/// Each boss gets its own figure rather than one shared scale: a colossus
+/// that is merely as big as a serpent is not a colossus.
+pub fn boss_height_tiles(kind: crate::boss::BossKindId) -> f32 {
+    match kind.0 {
+        0 => 2.70, // The Warden: hangs at head height
+        1 => 3.00, // Rimewyrm: reared up tall
+        2 => 3.80, // Sand Colossus: the largest thing in the game
+        _ => 3.20, // Hollow King: tall and gaunt
+    }
+}
+
 /// How a boss looks. Indexed by `BossKindId`.
+///
+/// Every boss has its own silhouette. Four recoloured hulks read as one
+/// creature in four jerseys, which is the opposite of a set-piece fight.
 pub fn boss_style(kind: crate::boss::BossKindId) -> CharacterStyle {
     match kind.0 {
         // The Warden: slate and iron.
         0 => CharacterStyle {
-            build: Build::Hulk,
+            build: Build::Sentinel,
             skin: [142.0, 148.0, 158.0],
             cloth: [86.0, 94.0, 112.0],
             trouser: [56.0, 62.0, 78.0],
@@ -195,7 +222,7 @@ pub fn boss_style(kind: crate::boss::BossKindId) -> CharacterStyle {
         },
         // Rimewyrm: pale ice.
         1 => CharacterStyle {
-            build: Build::Hulk,
+            build: Build::Wyrm,
             skin: [206.0, 224.0, 238.0],
             cloth: [128.0, 180.0, 220.0],
             trouser: [80.0, 126.0, 170.0],
@@ -205,7 +232,7 @@ pub fn boss_style(kind: crate::boss::BossKindId) -> CharacterStyle {
         },
         // Sand Colossus: sunbaked stone.
         2 => CharacterStyle {
-            build: Build::Hulk,
+            build: Build::Colossus,
             skin: [208.0, 180.0, 128.0],
             cloth: [186.0, 150.0, 92.0],
             trouser: [132.0, 104.0, 62.0],
@@ -215,7 +242,7 @@ pub fn boss_style(kind: crate::boss::BossKindId) -> CharacterStyle {
         },
         // Hollow King: void and gold.
         _ => CharacterStyle {
-            build: Build::Hulk,
+            build: Build::Crowned,
             skin: [92.0, 80.0, 108.0],
             cloth: [56.0, 44.0, 74.0],
             trouser: [40.0, 32.0, 56.0],
@@ -429,22 +456,37 @@ pub fn character_frame(
     frame: u32,
     blinking: bool,
 ) -> Texture {
-    use layout::*;
-
     let mut canvas = Canvas::new(CHAR_W, CHAR_H);
     let pose = pose(state, frame);
+
+    match style.build {
+        Build::Blob => draw_blob(&mut canvas, style, &pose, blinking),
+        Build::Sentinel => draw_sentinel(&mut canvas, style, &pose, blinking),
+        Build::Wyrm => draw_wyrm(&mut canvas, style, &pose, blinking),
+        Build::Colossus => draw_colossus(&mut canvas, style, &pose, blinking),
+        Build::Crowned => draw_crowned(&mut canvas, style, &pose, blinking),
+        Build::Humanoid | Build::Hulk => draw_upright(&mut canvas, style, &pose, blinking),
+    }
+
+    canvas.into_texture()
+}
+
+/// A blob is one squat body that sits low, with a face on it.
+///
+/// It fills most of the canvas height so that scaling the sprite down for a
+/// small creature does not leave it a speck.
+fn draw_blob(canvas: &mut Canvas, style: &CharacterStyle, pose: &Pose, blinking: bool) {
+    use layout::*;
+
     let seed = style.seed;
 
-    if style.build == Build::Blob {
-        // A blob is one squat body that sits low, with a face on it. It
-        // fills most of the canvas height so that scaling the sprite to a
-        // creature's size does not leave it a speck.
+    {
         let w = 38;
         let h = 46;
         let x = CENTRE_X - w / 2;
         let y = CHAR_H as i32 - h + pose.body_dy.min(0);
 
-        draw_part(&mut canvas, x, y, w, h, 12.0, style.cloth, seed);
+        draw_part(canvas, x, y, w, h, 12.0, style.cloth, seed);
 
         // Eyes sit on the upper half of the blob.
         let eye_y = y + 14;
@@ -470,8 +512,15 @@ pub fn character_frame(
             }
         }
 
-        return canvas.into_texture();
     }
+}
+
+/// The standard two-arm, two-leg figure: the player, most enemies, and the
+/// hulks, which are the same skeleton carrying more mass.
+fn draw_upright(canvas: &mut Canvas, style: &CharacterStyle, pose: &Pose, blinking: bool) {
+    use layout::*;
+
+    let seed = style.seed;
 
     // Hulks are broader than the standard humanoid. Bulk goes mostly into
     // the chest: widening the arms by the same amount turns them into slabs.
@@ -495,7 +544,7 @@ pub fn character_frame(
 
     // Back to front: far limbs, near limbs, torso, near arm, neck, head.
     draw_limb(
-        &mut canvas,
+        canvas,
         ARM_FAR_X + pose.lean - arm_spread,
         ARM_Y + pose.arm_far.1 + body_dy,
         ARM_W + bulk,
@@ -513,7 +562,7 @@ pub fn character_frame(
 
     let leg_far_y = LEG_Y + pose.leg_far.1 + body_dy;
     draw_limb(
-        &mut canvas,
+        canvas,
         LEG_FAR_X,
         leg_far_y,
         LEG_W,
@@ -527,7 +576,7 @@ pub fn character_frame(
 
     let leg_near_y = LEG_Y + pose.leg_near.1 + body_dy;
     draw_limb(
-        &mut canvas,
+        canvas,
         LEG_NEAR_X,
         leg_near_y,
         LEG_W,
@@ -540,7 +589,7 @@ pub fn character_frame(
     );
 
     draw_part(
-        &mut canvas,
+        canvas,
         TORSO_X + pose.lean - torso_bulk / 2,
         TORSO_Y + body_dy,
         TORSO_W + torso_bulk,
@@ -551,7 +600,7 @@ pub fn character_frame(
     );
 
     draw_limb(
-        &mut canvas,
+        canvas,
         ARM_NEAR_X + pose.lean + arm_spread,
         ARM_Y + pose.arm_near.1 + body_dy,
         ARM_W + bulk,
@@ -565,7 +614,7 @@ pub fn character_frame(
 
     // A short neck, so the head sits on the body instead of floating.
     draw_part(
-        &mut canvas,
+        canvas,
         CENTRE_X - 4 + pose.lean,
         HEAD_Y + HEAD_H - 3 + head_dy,
         8,
@@ -576,7 +625,7 @@ pub fn character_frame(
     );
 
     draw_part(
-        &mut canvas,
+        canvas,
         HEAD_X + pose.lean,
         HEAD_Y + head_dy,
         HEAD_W,
@@ -588,7 +637,7 @@ pub fn character_frame(
 
     // Hair sits as a cap over the top of the head.
     draw_part(
-        &mut canvas,
+        canvas,
         HEAD_X + pose.lean + 1,
         HEAD_Y + head_dy,
         HEAD_W - 2,
@@ -598,9 +647,451 @@ pub fn character_frame(
         seed ^ 0x77,
     );
 
-    draw_face(&mut canvas, style, &pose, head_dy, blinking);
+    draw_face(canvas, style, pose, head_dy, blinking);
+}
 
-    canvas.into_texture()
+/// Sclera, iris, pupil and a catchlight, for a creature where one eye is the
+/// whole face. The catchlight goes upper-left like every other highlight.
+fn draw_great_eye(
+    canvas: &mut Canvas,
+    cx: i32,
+    cy: i32,
+    radius: f32,
+    style: &CharacterStyle,
+    blinking: bool,
+) {
+    let lid = ramp_from(style.cloth).shadow;
+
+    if blinking {
+        let half = radius.round() as i32;
+        for dy in -1..=1 {
+            for dx in -half..=half {
+                canvas.put(cx + dx, cy + dy, lid);
+            }
+        }
+        return;
+    }
+
+    let seed = style.seed;
+
+    draw_disc(canvas, cx, cy, radius, [236.0, 234.0, 226.0], seed ^ 0xE1);
+    draw_disc(canvas, cx, cy, (radius * 0.62).max(2.0), style.eye, seed ^ 0xE2);
+    draw_disc(
+        canvas,
+        cx,
+        cy,
+        (radius * 0.26).max(1.0),
+        [26.0, 22.0, 32.0],
+        seed ^ 0xE3,
+    );
+
+    let offset = (radius * 0.40).round() as i32;
+    for dy in 0..2 {
+        for dx in 0..2 {
+            canvas.put(cx - offset + dx, cy - offset + dy, [246.0, 244.0, 236.0]);
+        }
+    }
+}
+
+/// A hooded orb that hangs in the air, built around one great eye.
+///
+/// It is deliberately legless: a thing with no feet reads as hovering even
+/// before it moves, which is most of what sells a guardian over a brute.
+fn draw_sentinel(canvas: &mut Canvas, style: &CharacterStyle, pose: &Pose, blinking: bool) {
+    use layout::*;
+
+    let seed = style.seed;
+    let cx = CENTRE_X;
+    let cy = 34 + pose.body_dy;
+
+    // A veil hanging under the core, so the body tapers away instead of
+    // ending in a cut-off circle.
+    draw_taper(
+        canvas,
+        cx,
+        cy + 10,
+        24,
+        22,
+        8,
+        ramp_from(style.trouser).shadow,
+        seed ^ 0x01,
+    );
+
+    // Armoured shell, then a hood over its upper half. The hood is kept
+    // narrower than the shell so a rim of plate still shows at the sides;
+    // covering the whole disc turns the sentinel into a dark lozenge.
+    draw_disc(canvas, cx, cy, 15.0, style.cloth, seed ^ 0x03);
+    draw_taper(canvas, cx, cy - 16, 11, 14, 26, style.hair, seed ^ 0x04);
+
+    // Two shards mounted at either side, counter-swinging so the sentinel
+    // is never quite still even while it hovers. Drawn over the shell:
+    // behind it they are swallowed whole and read as stray dots.
+    for (side, sway) in [(-1, pose.arm_far.0), (1, pose.arm_near.0)] {
+        draw_disc(
+            canvas,
+            cx + side * 16,
+            cy + sway,
+            4.5,
+            style.skin,
+            seed ^ 0x02,
+        );
+    }
+
+    // The core, and the eye that is this creature's whole face.
+    draw_disc(canvas, cx, cy + 2, 10.0, style.skin, seed ^ 0x05);
+    draw_great_eye(canvas, cx, cy + 2, 7.5, style, blinking);
+}
+
+/// A segmented serpent reared up out of the ground in an S-curve.
+///
+/// The curve is the silhouette: a column of discs down the centre would
+/// read as a totem pole. Each segment's offset comes from a sine along the
+/// body, and the pose shifts its phase so the whole length writhes.
+fn draw_wyrm(canvas: &mut Canvas, style: &CharacterStyle, pose: &Pose, blinking: bool) {
+    use layout::*;
+
+    /// Enough segments to read as a continuous body at this size.
+    const SEGMENTS: i32 = 8;
+
+    /// How far the body swings off centre, in pixels.
+    const AMPLITUDE: f32 = 9.0;
+
+    /// Starting phase, so an idle wyrm is already curved rather than straight.
+    const REST_PHASE: f32 = std::f32::consts::FRAC_PI_4;
+
+    let seed = style.seed;
+    let phase =
+        REST_PHASE + pose.body_dy as f32 * 0.22 + pose.arm_near.0 as f32 * 0.12;
+
+    let along = |index: i32| index as f32 / (SEGMENTS - 1) as f32;
+    let centre = |t: f32| {
+        CENTRE_X + (AMPLITUDE * (t * 1.6 * std::f32::consts::PI + phase).sin()).round() as i32
+    };
+    let radius = |t: f32| 11.0 - t * 6.0;
+
+    // Tail first, so each segment overlaps the one behind it and the body
+    // reads as continuous rather than as beads on a string.
+    for index in (0..SEGMENTS).rev() {
+        let t = along(index);
+        let (x, y, r) = (centre(t), 14 + (t * 70.0).round() as i32, radius(t));
+
+        // Alternating tones give the body banding, like a snake.
+        let base = if index % 2 == 0 {
+            style.cloth
+        } else {
+            style.trouser
+        };
+        draw_disc(canvas, x, y, r, base, seed ^ (0x51 + index as u64));
+
+        // A dorsal fin on the outside of the curve, where a real spine
+        // would show through.
+        let outward = if x >= CENTRE_X { 1 } else { -1 };
+        draw_spike(
+            canvas,
+            x + outward * (r as i32 - 2),
+            y - 1,
+            2,
+            (r * 0.8) as i32,
+            style.hair,
+            seed ^ (0x61 + index as u64),
+        );
+    }
+
+    // The head: the first segment again, slightly larger, with a jaw and a
+    // pair of eyes set forward.
+    let head_x = centre(0.0);
+    let head_y = 14;
+
+    draw_disc(canvas, head_x, head_y, 12.0, style.skin, seed ^ 0x71);
+
+    // Jaw, slung below and ahead of the skull.
+    draw_taper(
+        canvas,
+        head_x + 3,
+        head_y + 6,
+        8,
+        16,
+        10,
+        ramp_from(style.skin).shadow,
+        seed ^ 0x72,
+    );
+
+    for side in [-1, 1] {
+        draw_great_eye(
+            canvas,
+            head_x + side * 5,
+            head_y - 2,
+            3.5,
+            style,
+            blinking,
+        );
+    }
+
+    // Horns, which is what tells a wyrm from an eel at a glance.
+    for side in [-1, 1] {
+        draw_spike(
+            canvas,
+            head_x + side * 8,
+            head_y - 6,
+            2,
+            9,
+            style.hair,
+            seed ^ 0x73,
+        );
+    }
+}
+
+/// A slab of animated stone: all of its mass in the shoulders.
+///
+/// The head is sunk between them rather than sitting on a neck, which is
+/// what makes it read as masonry that stood up rather than a big person.
+fn draw_colossus(canvas: &mut Canvas, style: &CharacterStyle, pose: &Pose, blinking: bool) {
+    use layout::*;
+
+    let seed = style.seed;
+    let bob = pose.body_dy;
+    let dark = ramp_from(style.trouser).shadow;
+
+    // Short, planted legs. A colossus does not stride.
+    for (x, sway, base) in [
+        (10, pose.leg_far.0, dark),
+        (22, pose.leg_near.0, style.trouser),
+    ] {
+        draw_limb(canvas, x, 58 + bob, 9, 30, sway, base, base, 5, seed ^ 0x81);
+    }
+
+    // A waist narrower than the shoulders, with daylight either side of it.
+    // Fill the midriff edge to edge and the whole figure becomes a wall:
+    // the slab only reads as a slab if something below it is slimmer.
+    draw_part(canvas, 13, 30 + bob, 14, 32, 4.0, style.cloth, seed ^ 0x82);
+
+    // The shoulder slab: the signature of the silhouette.
+    draw_part(canvas, 1, 14 + bob, 38, 18, 6.0, style.cloth, seed ^ 0x83);
+
+    // A small head, sunk down between the shoulders.
+    draw_part(
+        canvas,
+        CENTRE_X - 7,
+        7 + bob,
+        14,
+        16,
+        5.0,
+        style.skin,
+        seed ^ 0x84,
+    );
+
+    // Arms hung outside the waist, with a gap between each and the body so
+    // they read as hanging. They stop above the hips: fists level with the
+    // legs bridge the gaps and the whole figure goes back to being a wall.
+    draw_limb(
+        canvas,
+        1,
+        24 + bob + pose.arm_far.1,
+        9,
+        32,
+        pose.arm_far.0,
+        dark,
+        dark,
+        8,
+        seed ^ 0x85,
+    );
+    draw_limb(
+        canvas,
+        30,
+        24 + bob + pose.arm_near.1,
+        9,
+        32,
+        pose.arm_near.0,
+        style.cloth,
+        style.skin,
+        8,
+        seed ^ 0x86,
+    );
+
+    // Eyes are slits of molten light in the stone, not a face.
+    let eye_y = 14 + bob;
+    for side in [-1, 1] {
+        let cx = CENTRE_X + side * 4;
+
+        if blinking {
+            for dx in -2..=2 {
+                canvas.put(cx + dx, eye_y, ramp_from(style.skin).shadow);
+            }
+            continue;
+        }
+
+        for dy in 0..2 {
+            for dx in -2..=2 {
+                canvas.put(cx + dx, eye_y + dy, style.eye);
+            }
+        }
+    }
+
+    // A crack running down the chest, so the slab is not one clean shape.
+    let crack = ramp_from(style.cloth).shadow;
+    for step in 0..18 {
+        let drift = ((step / 5) % 3) - 1;
+        canvas.put(CENTRE_X + drift, 34 + bob + step, crack);
+    }
+}
+
+/// A gaunt crowned figure whose cape flares to the floor.
+///
+/// Where the colossus is mass, this is outline: a narrow body inside a wide
+/// cape, under a crown that breaks the top of the silhouette.
+fn draw_crowned(canvas: &mut Canvas, style: &CharacterStyle, pose: &Pose, blinking: bool) {
+    use layout::*;
+
+    let seed = style.seed;
+    let bob = pose.body_dy;
+    let head_dy = bob + pose.head_dy;
+    let lean = pose.lean;
+
+    // The cape goes down first, behind everything else.
+    draw_taper(
+        canvas,
+        CENTRE_X + lean,
+        26 + bob,
+        58,
+        20,
+        34,
+        ramp_from(style.cloth).shadow,
+        seed ^ 0x91,
+    );
+
+    let far_trouser = ramp_from(style.trouser).shadow;
+    let leg_height = |top_y: i32| (CHAR_H as i32 - top_y).clamp(6, 30);
+
+    // Gaunt limbs: thinner than a humanoid's, which is what "hollow" means
+    // in a silhouette.
+    for (x, swing, base) in [
+        (12, pose.leg_far, far_trouser),
+        (23, pose.leg_near, style.trouser),
+    ] {
+        let y = 58 + swing.1 + bob;
+        draw_limb(
+            canvas,
+            x,
+            y,
+            5,
+            leg_height(y),
+            swing.0,
+            base,
+            base,
+            4,
+            seed ^ 0x92,
+        );
+    }
+
+    draw_limb(
+        canvas,
+        7 + lean,
+        34 + pose.arm_far.1 + bob,
+        5,
+        26,
+        pose.arm_far.0,
+        ramp_from(style.skin).shadow,
+        ramp_from(style.skin).shadow,
+        4,
+        seed ^ 0x93,
+    );
+
+    draw_part(
+        canvas,
+        CENTRE_X - 7 + lean,
+        32 + bob,
+        14,
+        28,
+        4.0,
+        style.cloth,
+        seed ^ 0x94,
+    );
+
+    // Ribs showing through: three pale bars across the narrow chest. They
+    // have to be lighter than the cloth, not darker, or they vanish into
+    // a body this dark.
+    let rib = ramp_from(style.skin).highlight;
+    for row in 0..3 {
+        let y = 38 + bob + row * 5;
+        for dx in -5..=5 {
+            canvas.put(CENTRE_X + lean + dx, y, rib);
+        }
+    }
+
+    draw_limb(
+        canvas,
+        28 + lean,
+        34 + pose.arm_near.1 + bob,
+        5,
+        26,
+        pose.arm_near.0,
+        style.skin,
+        style.skin,
+        4,
+        seed ^ 0x95,
+    );
+
+    // A narrow skull, taller than it is wide.
+    draw_part(
+        canvas,
+        CENTRE_X - 9 + lean,
+        13 + head_dy,
+        18,
+        20,
+        6.0,
+        style.skin,
+        seed ^ 0x96,
+    );
+
+    // The crown: a band with three heavy points. Five thin spikes were
+    // tried first and read as spiky blonde hair; a band is what says metal.
+    for &(offset, height) in &[(-6, 9), (0, 14), (6, 9)] {
+        draw_spike(
+            canvas,
+            CENTRE_X + offset + lean,
+            16 + head_dy,
+            3,
+            height,
+            style.hair,
+            seed ^ 0x97,
+        );
+    }
+
+    draw_part(
+        canvas,
+        CENTRE_X - 9 + lean,
+        14 + head_dy,
+        18,
+        4,
+        1.0,
+        style.hair,
+        seed ^ 0x98,
+    );
+
+    // Sunken sockets with a point of light in each: no sclera, because a
+    // skull has none.
+    let socket = [30.0, 26.0, 36.0];
+    for side in [-1, 1] {
+        let cx = CENTRE_X + side * 4 + lean;
+        let cy = 21 + head_dy;
+
+        for dy in -2..=2i32 {
+            for dx in -2..=2i32 {
+                if dx.abs() + dy.abs() > 3 {
+                    continue;
+                }
+                canvas.put(cx + dx, cy + dy, socket);
+            }
+        }
+
+        if !blinking {
+            for dy in 0..2 {
+                for dx in 0..2 {
+                    canvas.put(cx + dx - 1, cy + dy - 1, style.eye);
+                }
+            }
+        }
+    }
 }
 
 #[cfg(test)]
@@ -911,6 +1402,278 @@ mod tests {
         );
 
         assert!(pixels_differ(&crawler, &stalker) > 200);
+    }
+
+    /// Which pixels are drawn at all, ignoring colour. Silhouette is what
+    /// tells a creature apart at a glance on a phone screen.
+    fn silhouette(texture: &Texture) -> Vec<bool> {
+        texture
+            .pixels
+            .chunks_exact(4)
+            .map(|pixel| pixel[3] > 0)
+            .collect()
+    }
+
+    /// Fraction of the canvas where two silhouettes disagree.
+    fn silhouette_difference(a: &Texture, b: &Texture) -> f32 {
+        let (a, b) = (silhouette(a), silhouette(b));
+        let differing = a.iter().zip(&b).filter(|(x, y)| x != y).count();
+
+        differing as f32 / a.len() as f32
+    }
+
+    /// Topmost row holding anything, and the width of the widest row.
+    fn top_row(texture: &Texture) -> u32 {
+        (0..CHAR_H)
+            .find(|&y| (0..CHAR_W).any(|x| texture.pixel(x, y)[3] > 0))
+            .unwrap_or(CHAR_H)
+    }
+
+    /// Pixels actually drawn on one row. Counted rather than measured
+    /// left-to-right, because a row holding two outstretched arms and
+    /// nothing between them spans the canvas without being broad.
+    fn row_mass(texture: &Texture, y: u32) -> u32 {
+        (0..CHAR_W)
+            .filter(|&x| texture.pixel(x, y)[3] > 0)
+            .count() as u32
+    }
+
+    fn heaviest_row(texture: &Texture) -> (u32, u32) {
+        (0..CHAR_H)
+            .map(|y| (y, row_mass(texture, y)))
+            .max_by_key(|&(_, mass)| mass)
+            .unwrap()
+    }
+
+    /// Horizontal centre of mass across a band of rows.
+    fn centre_x(texture: &Texture, rows: std::ops::Range<u32>) -> f32 {
+        let mut weighted = 0.0;
+        let mut total = 0.0;
+
+        for y in rows {
+            for x in 0..CHAR_W {
+                if texture.pixel(x, y)[3] > 0 {
+                    weighted += x as f32;
+                    total += 1.0;
+                }
+            }
+        }
+
+        if total == 0.0 {
+            return CHAR_W as f32 / 2.0;
+        }
+
+        weighted / total
+    }
+
+    fn boss_frame(kind: crate::boss::BossKindId) -> Texture {
+        character_frame(&boss_style(kind), AnimState::Idle, 0, false)
+    }
+
+    fn all_bosses() -> Vec<crate::boss::BossKindId> {
+        (0..crate::boss::BOSSES.len())
+            .map(|index| crate::boss::BossKindId(index as u16))
+            .collect()
+    }
+
+    #[test]
+    fn every_boss_reads_as_a_different_creature() {
+        // Not merely a different colour: a different shape. A recoloured
+        // hulk is the thing this is here to prevent.
+        let kinds = all_bosses();
+
+        for (i, &first) in kinds.iter().enumerate() {
+            for &second in &kinds[i + 1..] {
+                let difference = silhouette_difference(&boss_frame(first), &boss_frame(second));
+
+                assert!(
+                    difference > 0.12,
+                    "{} and {} share {:.0}% of their silhouette",
+                    crate::boss::kind(first).name,
+                    crate::boss::kind(second).name,
+                    (1.0 - difference) * 100.0
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn no_boss_is_shaped_like_the_player() {
+        let player = frame_of(AnimState::Idle, 0);
+
+        for kind in all_bosses() {
+            let difference = silhouette_difference(&player, &boss_frame(kind));
+
+            assert!(
+                difference > 0.15,
+                "{} has the player's outline",
+                crate::boss::kind(kind).name
+            );
+        }
+    }
+
+    #[test]
+    fn the_warden_floats_instead_of_standing() {
+        let texture = boss_frame(crate::boss::WARDEN);
+
+        assert_eq!(boss_style(crate::boss::WARDEN).build, Build::Sentinel);
+
+        let standing = (CHAR_H - 6..CHAR_H)
+            .flat_map(|y| (0..CHAR_W).map(move |x| (x, y)))
+            .filter(|&(x, y)| texture.pixel(x, y)[3] > 0)
+            .count();
+
+        assert_eq!(standing, 0, "a floating sentinel should have no feet");
+    }
+
+    #[test]
+    fn the_rimewyrm_coils_rather_than_standing_straight() {
+        let texture = boss_frame(crate::boss::RIMEWYRM);
+
+        assert_eq!(boss_style(crate::boss::RIMEWYRM).build, Build::Wyrm);
+
+        let head = centre_x(&texture, 0..CHAR_H / 3);
+        let tail = centre_x(&texture, CHAR_H * 2 / 3..CHAR_H);
+
+        assert!(
+            (head - tail).abs() > 4.0,
+            "head at {head:.1} and tail at {tail:.1}: that is a post, not a serpent"
+        );
+    }
+
+    #[test]
+    fn the_colossus_carries_its_bulk_in_its_shoulders() {
+        let texture = boss_frame(crate::boss::SAND_COLOSSUS);
+
+        assert_eq!(boss_style(crate::boss::SAND_COLOSSUS).build, Build::Colossus);
+
+        let (row, mass) = heaviest_row(&texture);
+        let (_, player_mass) = heaviest_row(&frame_of(AnimState::Idle, 0));
+
+        assert!(
+            mass > player_mass + 4,
+            "heaviest row holds {mass}px against the player's {player_mass}px"
+        );
+        assert!(
+            row < CHAR_H / 2,
+            "the bulk should sit in the shoulders, not the feet (heaviest row {row})"
+        );
+    }
+
+    #[test]
+    fn the_hollow_king_wears_a_crown_that_breaks_the_outline() {
+        let texture = boss_frame(crate::boss::HOLLOW_KING);
+
+        assert_eq!(boss_style(crate::boss::HOLLOW_KING).build, Build::Crowned);
+
+        let crowned = top_row(&texture);
+        let bare = top_row(&frame_of(AnimState::Idle, 0));
+
+        assert!(
+            crowned < bare,
+            "crown reaches row {crowned}, no higher than a bare head at {bare}"
+        );
+    }
+
+    #[test]
+    fn every_boss_animates_through_all_of_its_states() {
+        for kind in all_bosses() {
+            let style = boss_style(kind);
+            let name = crate::boss::kind(kind).name;
+
+            for state in ALL_STATES {
+                for frame in 0..clip(state).frames {
+                    let texture = character_frame(&style, state, frame, false);
+
+                    assert!(
+                        opaque_count(&texture) > 150,
+                        "{name} drew almost nothing for {state:?} frame {frame}"
+                    );
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn every_boss_moves_between_frames_of_a_walk() {
+        for kind in all_bosses() {
+            let style = boss_style(kind);
+            let first = character_frame(&style, AnimState::Walk, 0, false);
+            let third = character_frame(&style, AnimState::Walk, 2, false);
+
+            assert!(
+                pixels_differ(&first, &third) > 40,
+                "{} is a still image while walking",
+                crate::boss::kind(kind).name
+            );
+        }
+    }
+
+    #[test]
+    fn every_boss_shows_the_eyes_that_identify_it() {
+        for kind in all_bosses() {
+            let style = boss_style(kind);
+            let texture = character_frame(&style, AnimState::Idle, 0, false);
+
+            let found = texture.pixels.chunks_exact(4).any(|pixel| {
+                pixel[3] > 0
+                    && (pixel[0] as f32 - style.eye[0]).abs() < 50.0
+                    && (pixel[1] as f32 - style.eye[1]).abs() < 50.0
+                    && (pixel[2] as f32 - style.eye[2]).abs() < 50.0
+            });
+
+            assert!(
+                found,
+                "{} has no visible eye",
+                crate::boss::kind(kind).name
+            );
+        }
+    }
+
+    #[test]
+    fn bosses_loom_over_the_player_and_the_colossus_most_of_all() {
+        use crate::view::PLAYER_HEIGHT_TILES;
+
+        let heights: Vec<(&str, f32)> = all_bosses()
+            .iter()
+            .map(|&kind| (crate::boss::kind(kind).name, boss_height_tiles(kind)))
+            .collect();
+
+        for &(name, height) in &heights {
+            assert!(
+                height > PLAYER_HEIGHT_TILES * 1.2,
+                "{name} is only {height} tiles tall; a boss should loom"
+            );
+        }
+
+        let tallest = heights
+            .iter()
+            .max_by(|a, b| a.1.total_cmp(&b.1))
+            .map(|&(name, _)| name);
+
+        assert_eq!(
+            tallest,
+            Some("Sand Colossus"),
+            "the colossus should be the largest thing in the game"
+        );
+    }
+
+    #[test]
+    fn no_boss_build_is_left_unused() {
+        // Guards against adding a silhouette nothing ever draws.
+        let used: Vec<Build> = all_bosses()
+            .iter()
+            .map(|&kind| boss_style(kind).build)
+            .collect();
+
+        for build in [
+            Build::Sentinel,
+            Build::Wyrm,
+            Build::Colossus,
+            Build::Crowned,
+        ] {
+            assert!(used.contains(&build), "{build:?} is drawn by no boss");
+        }
     }
 
     #[test]

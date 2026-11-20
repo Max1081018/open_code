@@ -26,7 +26,8 @@ use deepdelve_core::sky::{
 };
 use deepdelve_core::spawn::{choose_kind, find_standing_spot};
 use deepdelve_core::sprite::{
-    boss_style, character_frame, enemy_height_tiles, enemy_style, player_style, CharacterStyle,
+    boss_height_tiles, boss_style, character_frame, enemy_height_tiles, enemy_style, player_style,
+    CharacterStyle,
     CHAR_H, CHAR_W,
 };
 use deepdelve_core::touch::{Controls, Zone};
@@ -106,8 +107,10 @@ const BOSS_DAMAGE_SHARE: f32 = 1.6;
 /// Seconds between a summoning phase calling in its minions.
 const BOSS_SUMMON_INTERVAL: f32 = 6.0;
 
-/// A boss stands head and shoulders over the player.
-const BOSS_SCALE: f32 = 2.4;
+/// Boss size now comes from `boss_height_tiles`, so each one has its own
+/// figure. Reach still scales off a single number: how far a swing lands is
+/// about the fight feeling fair, not about the sprite.
+const BOSS_REACH_SCALE: f32 = 2.4;
 
 /// Pre-generated animation frames for one character.
 #[derive(Default)]
@@ -667,6 +670,7 @@ fn capture_and_exit(
     mut game: Option<ResMut<Game>>,
     mut dirty: Option<ResMut<DirtyChunks>>,
     mut effects: Option<ResMut<Effects>>,
+    mut bosses: Option<ResMut<Bosses>>,
     mut exit: MessageWriter<AppExit>,
 ) {
     let Some(mut capture) = capture else {
@@ -674,6 +678,27 @@ fn capture_and_exit(
     };
 
     capture.frames += 1;
+
+    // With `DEEPDELVE_SHOT_BOSS=<index>`, stand that boss beside the player
+    // so a still frame shows it at the size it actually fights at. A sprite
+    // sheet says nothing about whether a colossus looms in play.
+    if capture.frames == 30 {
+        if let (Ok(index), Some(player), Some(bosses)) = (
+            std::env::var("DEEPDELVE_SHOT_BOSS").map(|value| value.parse::<u16>()),
+            player.as_ref(),
+            bosses.as_mut(),
+        ) {
+            if let Ok(index) = index {
+                if (index as usize) < deepdelve_core::boss::BOSSES.len() {
+                    bosses.0.push(Boss::new(
+                        deepdelve_core::boss::BossKindId(index),
+                        player.body.x + 4.0,
+                        player.body.y,
+                    ));
+                }
+            }
+        }
+    }
 
     // In capture mode only, cut a short tunnel so a still frame shows the
     // background walls a dug passage leaves behind.
@@ -1410,7 +1435,7 @@ fn sync_boss_sprites(
                 drawn[marker.0] = true;
                 transform.translation.x = boss.body.x * PX;
                 transform.translation.y =
-                    -(boss.body.y - PLAYER_HEIGHT_TILES * BOSS_SCALE / 2.0) * PX;
+                    -(boss.body.y - boss_height_tiles(boss.kind) / 2.0) * PX;
 
                 if let Some(handle) = appearance(boss) {
                     sprite.image = handle;
@@ -1437,13 +1462,13 @@ fn sync_boss_sprites(
         commands.spawn((
             Sprite {
                 image: handle,
-                custom_size: Some(character_size(PLAYER_HEIGHT_TILES * BOSS_SCALE)),
+                custom_size: Some(character_size(boss_height_tiles(boss.kind))),
                 flip_x: !boss.facing_right,
                 ..default()
             },
             Transform::from_xyz(
                 boss.body.x * PX,
-                -(boss.body.y - PLAYER_HEIGHT_TILES * BOSS_SCALE / 2.0) * PX,
+                -(boss.body.y - boss_height_tiles(boss.kind) / 2.0) * PX,
                 8.0,
             ),
             BossSprite(index),
@@ -2039,8 +2064,8 @@ fn attack_bosses(
     let aim = (tile_x as f32 + 0.5, tile_y as f32 + 0.5);
 
     for boss in bosses.0.iter_mut() {
-        let centre_y = boss.body.y - boss.body.height() * BOSS_SCALE / 2.0;
-        let reach = ATTACK_RADIUS * BOSS_SCALE;
+        let centre_y = boss.body.y - boss_height_tiles(boss.kind) / 2.0;
+        let reach = ATTACK_RADIUS * BOSS_REACH_SCALE;
 
         let distance_sq = (boss.body.x - aim.0).powi(2) + (centre_y - aim.1).powi(2);
 

@@ -162,6 +162,128 @@ pub(crate) fn draw_part(
     }
 }
 
+/// Draw a shaded disc.
+///
+/// A rounded rectangle passes for a limb but never for an orb: at 30-odd
+/// pixels across, the flat sides read as a box with filed corners. Anything
+/// meant to be round gets this instead.
+pub(crate) fn draw_disc(
+    canvas: &mut Canvas,
+    cx: i32,
+    cy: i32,
+    radius: f32,
+    base: [f32; 3],
+    seed: u64,
+) {
+    let ramp = ramp_from(base);
+    let r = radius.max(1.0);
+    let span = r.ceil() as i32;
+
+    for dy in -span..=span {
+        for dx in -span..=span {
+            let (fx, fy) = (dx as f32, dy as f32);
+            let distance = (fx * fx + fy * fy).sqrt();
+
+            if distance > r {
+                continue;
+            }
+
+            // One light, upper left: the highlight sits above and left of
+            // centre and the tone falls away toward the lower right.
+            let mut tone = ((-fx / r) * 0.45 + (-fy / r) * 0.55) * 0.9;
+
+            // Darken the rim, so the disc reads as a sphere not a coin.
+            let rim = ((r - distance) / 2.5).min(1.0);
+            tone -= (1.0 - rim) * 0.8;
+
+            let grain = hash01(seed, (dy * (span * 2 + 3) + dx) as i64) - 0.5;
+            tone += grain * 0.20;
+
+            canvas.put(cx + dx, cy + dy, shade(&ramp, tone));
+        }
+    }
+}
+
+/// Draw a shaded trapezoid, `top_w` across at `y` and `bottom_w` at its foot.
+///
+/// Capes, hoods, veils and tapering bodies are all this shape, and a taper is
+/// what reads as "hanging" where a rectangle reads as "attached".
+#[allow(clippy::too_many_arguments)]
+pub(crate) fn draw_taper(
+    canvas: &mut Canvas,
+    cx: i32,
+    y: i32,
+    h: i32,
+    top_w: i32,
+    bottom_w: i32,
+    base: [f32; 3],
+    seed: u64,
+) {
+    let ramp = ramp_from(base);
+    let widest = top_w.max(bottom_w).max(1);
+
+    for py in 0..h {
+        let along = py as f32 / (h - 1).max(1) as f32;
+        let w = (top_w as f32 + (bottom_w - top_w) as f32 * along).round() as i32;
+
+        if w <= 0 {
+            continue;
+        }
+
+        let left = cx - w / 2;
+
+        for px in 0..w {
+            let nx = (px as f32 + 0.5) / w as f32;
+            let lit = (1.0 - nx) * 0.5 + (1.0 - along) * 0.5;
+            let mut tone = (lit - 0.5) * 1.5;
+
+            let edge = px.min(w - 1 - px);
+            let rim = (edge as f32 / 2.0).min(1.0);
+            tone -= (1.0 - rim) * 0.7;
+
+            let grain = hash01(seed, (py * (widest + 2) + px) as i64) - 0.5;
+            tone += grain * 0.18;
+
+            canvas.put(left + px, y + py, shade(&ramp, tone));
+        }
+    }
+}
+
+/// Draw an upward spike standing on `base_y`.
+///
+/// Crowns, fins and dorsal ridges are what break a smooth outline into
+/// something that reads as a creature rather than a shape.
+#[allow(clippy::too_many_arguments)]
+pub(crate) fn draw_spike(
+    canvas: &mut Canvas,
+    cx: i32,
+    base_y: i32,
+    half_w: i32,
+    height: i32,
+    base: [f32; 3],
+    seed: u64,
+) {
+    let ramp = ramp_from(base);
+    let half_w = half_w.max(0);
+
+    for step in 0..height {
+        let along = step as f32 / (height - 1).max(1) as f32;
+        let half = (half_w as f32 * (1.0 - along)).round() as i32;
+
+        for dx in -half..=half {
+            // Lit from the upper left, and brighter toward the tip where the
+            // spike catches the light.
+            let across = -dx as f32 / half_w.max(1) as f32;
+            let mut tone = across * 0.5 + along * 0.45 - 0.15;
+
+            let grain = hash01(seed, (step * (half_w * 2 + 3) + dx) as i64) - 0.5;
+            tone += grain * 0.18;
+
+            canvas.put(cx + dx, base_y - step, shade(&ramp, tone));
+        }
+    }
+}
+
 /// Draw an arm or leg as a column that pivots from its top.
 ///
 /// `sway` displaces the *far* end only, so the limb shears rather than
