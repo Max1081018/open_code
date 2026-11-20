@@ -29,6 +29,8 @@ var _boss_box: VBoxContainer
 var _boss_name: Label
 var _boss_bar: Control
 var _boss_fill := 1.0
+var dialogue: DialogueBox
+var tracker: QuestTracker
 
 
 func _ready() -> void:
@@ -78,6 +80,12 @@ func _ready() -> void:
 		if fill.size.x > 2:
 			_boss_bar.draw_style_box(UITheme.flat(UITheme.DANGER, 14), fill))
 	_boss_box.add_child(_boss_bar)
+
+	tracker = QuestTracker.new()
+	_root.add_child(tracker)
+	tracker.setup.call_deferred(level)
+	dialogue = DialogueBox.new()
+	_root.add_child(dialogue)
 
 	_fps = Label.new()
 	_fps.position = Vector2(24, 210)
@@ -513,6 +521,8 @@ func _process(delta: float) -> void:
 			if o.get("type", "") in ["chest", "workbench", "anvil", "campfire", "sign", "altar",
 					"wardstone", "torch", "geode"]:
 				can_interact = true
+	if level.npc_near() != null:
+		can_interact = true
 	var boss = level.boss
 	_boss_box.visible = boss != null and is_instance_valid(boss) and boss.is_alive()
 	if _boss_box.visible:

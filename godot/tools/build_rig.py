@@ -126,6 +126,22 @@ def layout(character):
                         best = (d, x, y)
             key = part + ("_back" if flip else ("_front" if part in ("arm", "hand", "leg") else ""))
             found[key] = (best[1], best[2], tw, th)
+    # Hair behind the head (some characters): mostly hidden by the head, so
+    # place it where most of its pixels agree in colour with the pose.
+    back_path = os.path.join(root, "parts", "back.png")
+    if os.path.exists(back_path):
+        t = np.asarray(Image.open(back_path).convert("RGBA")).astype(np.float32)
+        th, tw = t.shape[:2]
+        mask = t[..., 3] > 128
+        best = (-1, 0, 0)
+        for y in range(0, H - th + 1):
+            for x in range(0, W - tw + 1):
+                win = pose[y:y + th, x:x + tw]
+                close = (np.abs(win[..., :3] - t[..., :3]).sum(-1) < 40) & mask & (win[..., 3] > 128)
+                score = int(close.sum())
+                if score > best[0]:
+                    best = (score, x, y)
+        found["back"] = (best[1], best[2], tw, th)
     return found
 
 
@@ -144,7 +160,7 @@ def main():
         lines.append('\t"%s": [Vector2(%.1f, %.1f), Vector2(%.1f, %.1f)],' % (name, f[0], f[1], b[0], b[1]))
     lines += ['}', '', '## Character -> part -> Rect2 of the part in the idle pose (pose pixels).',
               '## The cut-out rig hangs its joints off these.', 'const LAYOUT := {']
-    for character in ("player", "zombie", "robot"):
+    for character in ("player", "zombie", "robot", "wren", "mira", "bram"):
         if not os.path.isdir(os.path.join(ROOT, "assets/characters", character, "parts")):
             continue
         found = layout(character)
@@ -183,7 +199,7 @@ def side_heads():
     and skin, dropping the shirt collar below it) as parts/headSide.png, so
     the rig can face where it is going."""
     import numpy as np
-    for character in ("player", "zombie", "robot"):
+    for character in ("player", "zombie", "wren", "mira", "bram"):
         root = os.path.join(ROOT, "assets/characters", character)
         src = os.path.join(root, "side.png")
         if not os.path.exists(src):

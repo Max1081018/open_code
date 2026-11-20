@@ -417,6 +417,8 @@ func _chop_hit(target: Vector2i, object: Dictionary, tool: Dictionary) -> void:
 	Effects.burst(level.fx_layer, World.centre_of(target) + Vector2(0, -60), "dig", Color(0.5, 0.75, 0.35))
 	if object.health <= 0:
 		world.remove_object(target)
+		if level.quests:
+			level.quests.event("fell")
 		level.spawn_drop("wood", 4 + randi() % 4, World.centre_of(target) + Vector2(0, -80))
 		if String(object.get("art", "")).begins_with("tree") and randf() < 0.35:
 			level.spawn_drop("apple", 1, World.centre_of(target) + Vector2(0, -160))
@@ -745,6 +747,14 @@ func _update_lantern(delta: float) -> void:
 # =============================================================================
 
 func _interact() -> void:
+	# People first: talking to someone beside you beats opening a chest.
+	var npc: Npc = level.npc_near()
+	if npc:
+		facing = 1 if npc.global_position.x > global_position.x else -1
+		_anim_lock = 0.35
+		body.play("interact")
+		level.talk_to(npc)
+		return
 	var cell := World.cell_of(global_position - Vector2(0, 60))
 	var best_cell := Vector2i(-1, -1)
 	var best := 99.0

@@ -38,6 +38,7 @@ var weather := true
 
 var music_volume := 0.7
 var sfx_volume := 0.9
+var voice_volume := 1.0
 var control_scale := 1.0  ## 0.7 .. 1.4, multiplies every on-screen control
 var control_opacity := 0.85
 var left_handed := false  ## swap the stick and the action buttons
@@ -87,6 +88,7 @@ func load_settings() -> void:
 	debug_collision = config.get_value("graphics", "debug_collision", debug_collision)
 	music_volume = config.get_value("audio", "music", music_volume)
 	sfx_volume = config.get_value("audio", "sfx", sfx_volume)
+	voice_volume = config.get_value("audio", "voice", voice_volume)
 	control_scale = config.get_value("controls", "scale", control_scale)
 	control_opacity = config.get_value("controls", "opacity", control_opacity)
 	left_handed = config.get_value("controls", "left_handed", left_handed)
@@ -109,6 +111,7 @@ func save_settings() -> void:
 	config.set_value("graphics", "debug_collision", debug_collision)
 	config.set_value("audio", "music", music_volume)
 	config.set_value("audio", "sfx", sfx_volume)
+	config.set_value("audio", "voice", voice_volume)
 	config.set_value("controls", "scale", control_scale)
 	config.set_value("controls", "opacity", control_opacity)
 	config.set_value("controls", "left_handed", left_handed)
@@ -135,6 +138,9 @@ func _apply_audio() -> void:
 		AudioServer.set_bus_volume_db(music, linear_to_db(maxf(music_volume, 0.0001)))
 	if sfx >= 0:
 		AudioServer.set_bus_volume_db(sfx, linear_to_db(maxf(sfx_volume, 0.0001)))
+	var voice := AudioServer.get_bus_index("Voice")
+	if voice >= 0:
+		AudioServer.set_bus_volume_db(voice, linear_to_db(maxf(voice_volume, 0.0001)))
 
 
 ## How many light-map updates per second the lighting level affords.

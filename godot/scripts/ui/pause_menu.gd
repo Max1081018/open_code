@@ -53,6 +53,9 @@ static func settings_grid() -> Control:
 	_slider(grid, "Effects", Settings.sfx_volume, 0.0, 1.0, func(v):
 		Settings.sfx_volume = v
 		Settings.save_settings())
+	_slider(grid, "Voices", Settings.voice_volume, 0.0, 1.0, func(v):
+		Settings.voice_volume = v
+		Settings.save_settings())
 	_slider(grid, "Control size", Settings.control_scale, 0.7, 1.4, func(v):
 		Settings.control_scale = v
 		Settings.save_settings())

@@ -15,6 +15,9 @@ var world: World
 var player: Player
 var camera: Camera2D
 var foreground: Foreground
+var quests: Quests
+var guide: QuestGuide
+var _saved_quests := {}
 var collision_debug: CollisionDebug
 var atmosphere: Atmosphere
 var fx_layer: Node2D
@@ -80,6 +83,7 @@ func start(seed_value: int, saved := {}) -> void:
 	else:
 		player.from_dict(saved.player)
 		world.time_of_day = saved.get("time", 0.3)
+	_saved_quests = saved.get("quests", {})
 
 	camera.global_position = player.global_position + Vector2(0, -120)
 	camera.reset_smoothing()
@@ -101,6 +105,17 @@ func start(seed_value: int, saved := {}) -> void:
 	director = Director.new()
 	director.level = self
 	add_child(director)
+
+	# The story: quests, the people who give them, and what points the way.
+	quests = Quests.new()
+	add_child(quests)
+	quests.setup(self, _saved_quests)
+	player.inventory.changed.connect(quests.inventory_changed)
+	Game.crafted.connect(func(id, amount): quests.event("craft", id, amount))
+	_place_npcs()
+	guide = QuestGuide.new()
+	world.add_child(guide)
+	guide.setup(self)
 	Sfx.play_music("explore")
 
 
@@ -111,6 +126,64 @@ func _starting_kit() -> void:
 	player.inventory.add("wood_sword", 1)
 	player.inventory.add("torch", 6)
 	player.inventory.add("apple", 2)
+
+
+## The people of the meadow: Wren by the spawn, Mira at the cottage, Bram
+## at the mouth of the nearest mine shaft.
+func _place_npcs() -> void:
+	var spawn := data.spawn
+	_spawn_npc("wren", spawn.x + 4)
+	_spawn_npc("mira", spawn.x - 16)
+	var shaft := spawn.x + 26
+	for dx in range(14, 70):
+		for side in [1, -1]:
+			var x: int = spawn.x + dx * side
+			if x > 2 and x < data.width - 3 and data.sky_depth[x] - data.surface[x] > 14:
+				shaft = x - 3 * side
+				break
+		if shaft != spawn.x + 26:
+			break
+	_spawn_npc("bram", shaft)
+
+
+func _spawn_npc(npc_id: String, column: int) -> void:
+	column = clampi(column, 3, data.width - 4)
+	var y: int = data.surface[column] - 1
+	# Stand on the first open cell above solid ground.
+	while y > 2 and data.is_solid(column, y):
+		y -= 1
+	var npc := Npc.new()
+	npc.position = World.foot_of(Vector2i(column, y))
+	actors.add_child(npc)
+	npc.setup(self, npc_id)
+
+
+## The HUD exists: steps that begin speak their line, and a new game
+## opens with Wren calling out.
+func story_ready(new_game: bool) -> void:
+	quests.step_started.connect(func(_quest, line): hud.dialogue.say([line]))
+	if new_game:
+		await get_tree().create_timer(1.5).timeout
+		for npc in get_tree().get_nodes_in_group("npcs"):
+			if npc.id == "wren":
+				talk_to(npc)
+
+
+## Talk to an NPC: their lines for whatever quest they have, or a word in
+## passing.
+func talk_to(npc: Npc) -> void:
+	if hud == null or hud.dialogue.is_talking():
+		return
+	npc.greet()
+	var lines: Array = quests.talk(npc.id)
+	hud.dialogue.say(lines)
+
+
+func npc_near() -> Npc:
+	for npc in get_tree().get_nodes_in_group("npcs"):
+		if npc.near_player():
+			return npc
+	return null
 
 
 func _fit_zoom() -> void:
@@ -166,11 +239,18 @@ func spawn_drop(id: String, count: int, at: Vector2) -> void:
 
 
 func on_tile_broken(_cell: Vector2i, _material: int, ore: int) -> void:
+	if quests:
+		quests.event("break", Items.drop_for_tile(_material))
 	if ore == WorldData.GLOWSHARD:
 		Effects.burst(fx_layer, World.centre_of(_cell), "glow", UITheme.GLOW)
 
 
 func on_placed(cell: Vector2i, id: String) -> void:
+	if quests:
+		if Items.kind(id) == Items.Kind.BLOCK:
+			quests.event("build")
+		else:
+			quests.event("place", String(Items.def(id).get("object", id)))
 	if id == "wardstone":
 		player.spawn_point = World.foot_of(cell) + Vector2(TILE, 0)
 		Game.toast("Wardstone planted — you will return here", Items.icon(id))
@@ -209,6 +289,7 @@ func spawn_enemy(kind: String, at: Vector2) -> Enemy:
 	enemy.player = player
 	enemy.position = at
 	actors.add_child(enemy)
+	enemy.died_at.connect(func(_p): if quests: quests.event("kill", kind))
 	return enemy
 
 
@@ -264,5 +345,6 @@ func save() -> bool:
 	return Game.save_game({
 		"world": data.to_dict(),
 		"player": player.to_dict(),
+		"quests": quests.to_dict() if quests else {},
 		"time": world.time_of_day,
 	})

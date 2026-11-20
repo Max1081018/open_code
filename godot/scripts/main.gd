@@ -55,6 +55,7 @@ func start_game(seed_value: int, saved := {}) -> void:
 		hud.level = level
 		level.hud = hud
 		add_child(hud)
+		level.story_ready(saved.is_empty() and (not _args.has("shot") or _args.has("story")))
 
 
 func _process(_delta: float) -> void:

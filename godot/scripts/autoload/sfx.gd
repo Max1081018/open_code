@@ -30,7 +30,7 @@ func _ready() -> void:
 
 
 func _ensure_buses() -> void:
-	for bus_name in ["Music", "SFX"]:
+	for bus_name in ["Music", "SFX", "Voice"]:
 		if AudioServer.get_bus_index(bus_name) == -1:
 			AudioServer.add_bus()
 			AudioServer.set_bus_name(AudioServer.bus_count - 1, bus_name)
@@ -112,3 +112,19 @@ func stop_music(fade := 1.0) -> void:
 	var tween := create_tween().set_parallel()
 	for player in [_music_a, _music_b]:
 		tween.tween_property(player, "volume_db", -60.0, fade)
+
+
+var _duck_tween: Tween
+
+
+## Music dips while someone speaks, so the voice sits on top.
+func duck_music(on: bool) -> void:
+	var music := AudioServer.get_bus_index("Music")
+	if music < 0:
+		return
+	var target := linear_to_db(maxf(Settings.music_volume, 0.0001)) + (-9.0 if on else 0.0)
+	if _duck_tween:
+		_duck_tween.kill()
+	_duck_tween = create_tween()
+	_duck_tween.tween_method(func(v): AudioServer.set_bus_volume_db(music, v),
+		AudioServer.get_bus_volume_db(music), target, 0.4)

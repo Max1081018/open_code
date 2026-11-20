@@ -65,6 +65,38 @@ const LAYOUT := {
 		"leg_front": Rect2(98, 198, 36, 58),
 		"leg_back": Rect2(58, 198, 36, 58),
 	},
+	"wren": {
+		"head": Rect2(46, 80, 106, 84),
+		"body": Rect2(58, 142, 74, 88),
+		"arm_front": Rect2(120, 162, 40, 60),
+		"arm_back": Rect2(32, 162, 40, 60),
+		"hand_front": Rect2(129, 209, 30, 34),
+		"hand_back": Rect2(33, 209, 30, 34),
+		"leg_front": Rect2(98, 198, 36, 58),
+		"leg_back": Rect2(58, 198, 36, 58),
+		"back": Rect2(49, 65, 101, 131),
+	},
+	"mira": {
+		"head": Rect2(46, 64, 106, 100),
+		"body": Rect2(58, 142, 74, 78),
+		"arm_front": Rect2(119, 161, 40, 60),
+		"arm_back": Rect2(33, 161, 40, 60),
+		"hand_front": Rect2(129, 209, 30, 34),
+		"hand_back": Rect2(33, 209, 30, 34),
+		"leg_front": Rect2(98, 198, 36, 58),
+		"leg_back": Rect2(58, 198, 36, 58),
+		"back": Rect2(42, 78, 112, 34),
+	},
+	"bram": {
+		"head": Rect2(46, 69, 106, 96),
+		"body": Rect2(58, 142, 76, 78),
+		"arm_front": Rect2(120, 162, 42, 60),
+		"arm_back": Rect2(30, 162, 42, 60),
+		"hand_front": Rect2(127, 209, 37, 34),
+		"hand_back": Rect2(28, 209, 37, 34),
+		"leg_front": Rect2(98, 198, 36, 58),
+		"leg_back": Rect2(58, 198, 36, 58),
+	},
 }
 
 ## Icon -> [grip in icon pixels, handle-to-head angle (radians), length].

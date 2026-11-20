@@ -202,6 +202,7 @@ static func _recipe_row(state: Dictionary, recipe: Array) -> Control:
 	craft.pressed.connect(func():
 		if inventory.craft(recipe):
 			Sfx.play("craft")
+			Game.crafted.emit(recipe[0], recipe[1])
 			Game.toast("Crafted %s" % Items.item_name(recipe[0]), Items.icon(recipe[0])))
 	line.add_child(craft)
 	return row

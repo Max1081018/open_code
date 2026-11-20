@@ -4,6 +4,7 @@ extends Node
 
 signal notify(text: String, icon: Texture2D)
 signal item_picked(id: String, count: int)
+signal crafted(id: String, amount: int)
 
 const SAVE_PATH := "user://lanternbound.save"
 const SAVE_VERSION := 1

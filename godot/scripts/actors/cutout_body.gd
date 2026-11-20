@@ -157,6 +157,11 @@ func _build() -> void:
 	_torso.add_child(_neck)
 	_head = _sprite(_tex("head"), head.position - neck)
 	_neck.add_child(_head)
+	if layout.has("back"):
+		# Hair behind the head, moving with it.
+		var hair := _sprite(_tex("back"), (layout.back as Rect2).position - neck)
+		hair.z_index = -2
+		_neck.add_child(hair)
 
 	# Arms from the shoulders; hands at the arms' ends.
 	_shoulder_back = Node2D.new()
