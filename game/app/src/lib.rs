@@ -30,7 +30,12 @@ use deepdelve_core::boss::{
     boss_intent, kind as boss_kind_of, summoned_by as boss_summoned_by, Attack as BossAttack, Boss,
 };
 use deepdelve_core::anim::{clip, state_from_motion, AnimState, Animator, ALL_STATES};
+use deepdelve_core::biome::biome_at;
 use deepdelve_core::craft::{available, craft, Station};
+use deepdelve_core::decor::{
+    cave_prop, prop_glow, prop_size_tiles, prop_texture, surface_prop, Prop, ALL_PROPS,
+    PROP_VARIANTS,
+};
 use deepdelve_core::light::{compute_sky_light, LightMap};
 use deepdelve_core::save::{load, save, PlayerSave, SaveGame};
 use deepdelve_core::noise::hash01;
@@ -111,6 +116,33 @@ impl FrameSet {
     }
 }
 
+/// Scenery textures, generated once at startup like the character frames.
+#[derive(Resource, Default)]
+struct PropBank {
+    textures: std::collections::HashMap<(Prop, u32), Handle<Image>>,
+}
+
+impl PropBank {
+    fn build(images: &mut Assets<Image>) -> PropBank {
+        let mut textures = std::collections::HashMap::new();
+
+        for prop in ALL_PROPS {
+            for variant in 0..PROP_VARIANTS {
+                textures.insert(
+                    (prop, variant),
+                    images.add(to_image(prop_texture(prop, variant))),
+                );
+            }
+        }
+
+        PropBank { textures }
+    }
+
+    fn get(&self, prop: Prop, variant: u32) -> Option<Handle<Image>> {
+        self.textures.get(&(prop, variant % PROP_VARIANTS)).cloned()
+    }
+}
+
 /// Every character's frames, generated once at startup.
 ///
 /// Generating a sprite per frame would destroy mobile performance, so this
@@ -161,14 +193,15 @@ fn character_size(height_tiles: f32) -> Vec2 {
 fn lit_tint(lighting: &LightMap, clock: &TimeOfDay, x: f32, y: f32) -> Color {
     // Sample at chest height rather than at the feet, which are often
     // buried in the floor tile.
-    let tile_x = x.max(0.0) as usize;
-    let tile_y = (y - 1.0).max(0.0) as usize;
-
-    let brightness = (lighting.brightness(tile_x, tile_y) * clock.sky_brightness())
-        .max(AMBIENT_LIGHT)
-        .min(1.0);
+    let brightness = lit_brightness(lighting, clock, x.max(0.0) as usize, (y - 1.0).max(0.0) as usize);
 
     Color::srgb(brightness, brightness, brightness)
+}
+
+/// How brightly lit a tile is right now, as a fraction.
+fn lit_brightness(lighting: &LightMap, clock: &TimeOfDay, tile_x: usize, tile_y: usize) -> f32 {
+    (lighting.brightness(tile_x, tile_y) * clock.sky_brightness())
+        .clamp(AMBIENT_LIGHT, 1.0)
 }
 
 #[derive(Resource)]
@@ -191,7 +224,7 @@ const ATTACK_DAMAGE: f32 = 12.0;
 const ATTACK_RADIUS: f32 = 1.6;
 
 /// Seconds between spawn attempts.
-const SPAWN_INTERVAL: f32 = 2.0;
+const SPAWN_INTERVAL: f32 = 3.5;
 
 /// Enemies are never spawned closer to the player than this, in tiles, so
 /// nothing materialises in the player's face.
@@ -199,7 +232,7 @@ const SPAWN_MIN_DISTANCE: f32 = 12.0;
 const SPAWN_MAX_DISTANCE: f32 = 26.0;
 
 /// Upper limit on living enemies, to bound both difficulty and cost.
-const MAX_MONSTERS: usize = 24;
+const MAX_MONSTERS: usize = 14;
 
 /// How far above and below the player spawns are searched for, in tiles.
 const SPAWN_DEPTH_WINDOW: usize = 12;
@@ -644,6 +677,7 @@ fn setup(mut commands: Commands, mut images: ResMut<Assets<Image>>) {
     ));
 
     commands.insert_resource(bank);
+    commands.insert_resource(PropBank::build(&mut images));
 
     // Translucent square showing which tile the pick will hit.
     commands.spawn((
@@ -684,7 +718,7 @@ fn setup(mut commands: Commands, mut images: ResMut<Assets<Image>>) {
                 border_radius: BorderRadius::MAX,
                 ..default()
             },
-            BackgroundColor(Color::srgba(1.0, 1.0, 1.0, 0.16)),
+            BackgroundColor(Color::srgba(1.0, 1.0, 1.0, 0.10)),
             control,
         ));
     }
@@ -1575,6 +1609,87 @@ fn update_hud(
     }
 }
 
+/// Place scenery for one chunk, as children of its tile sprite.
+///
+/// Positions are relative to the chunk's centre, and the whole lot is
+/// deterministic from the world seed, so nothing about decoration needs
+/// storing or re-deciding when a chunk streams back in.
+fn spawn_scenery(
+    chunk: &mut ChildSpawnerCommands,
+    game: &Game,
+    props: &PropBank,
+    lighting: &LightMap,
+    clock: &TimeOfDay,
+    cx: usize,
+    cy: usize,
+) {
+    let chunk_centre_x = cx as f32 * CHUNK_UNITS + CHUNK_UNITS / 2.0;
+    let chunk_centre_y = -(cy as f32 * CHUNK_UNITS + CHUNK_UNITS / 2.0);
+
+    let place = |chunk: &mut ChildSpawnerCommands,
+                     prop: Prop,
+                     tile_x: usize,
+                     ground_y: usize| {
+        let variant = (tile_x as u32).wrapping_mul(2654435761) % PROP_VARIANTS;
+        let Some(handle) = props.get(prop, variant) else {
+            return;
+        };
+
+        let (tiles_w, tiles_h) = prop_size_tiles(prop);
+
+        // Scenery sits on the ground: its bottom edge meets the tile top.
+        let world_x = (tile_x as f32 + 0.5) * PX;
+        let world_y = -(ground_y as f32 - tiles_h / 2.0) * PX;
+
+        // Glowing scenery is lit less by the surroundings and more by itself.
+        let ambient = lit_brightness(lighting, clock, tile_x, ground_y);
+        let lit = (ambient + prop_glow(prop)).min(1.0);
+
+        chunk.spawn((
+            Sprite {
+                image: handle,
+                custom_size: Some(Vec2::new(tiles_w * PX, tiles_h * PX)),
+                color: Color::srgb(lit, lit, lit),
+                ..default()
+            },
+            Transform::from_xyz(
+                world_x - chunk_centre_x,
+                world_y - chunk_centre_y,
+                // Behind creatures, in front of the tiles and their shading.
+                2.0,
+            ),
+        ));
+    };
+
+    for offset in 0..CHUNK_TILES {
+        let tile_x = cx * CHUNK_TILES + offset;
+        if tile_x >= WORLD_TILES_X {
+            continue;
+        }
+
+        // Surface scenery, if this chunk contains that column's surface.
+        if let Some(surface) = game.world.surface_y(tile_x) {
+            if surface / CHUNK_TILES == cy {
+                if let Some(prop) = surface_prop(SEED, tile_x, biome_at(SEED, tile_x)) {
+                    place(chunk, prop, tile_x, surface);
+                }
+            }
+        }
+
+        // Cave scenery on any floor inside this chunk.
+        for row in 0..CHUNK_TILES {
+            let tile_y = cy * CHUNK_TILES + row;
+            if tile_y + 1 >= WORLD_TILES_Y {
+                continue;
+            }
+
+            if let Some(prop) = cave_prop(&game.world, SEED, tile_x, tile_y) {
+                place(chunk, prop, tile_x, tile_y + 1);
+            }
+        }
+    }
+}
+
 /// Keep chunks near the player composited and drop the rest.
 ///
 /// Compositing the whole world at once would cost gigabytes of texture, so
@@ -1584,6 +1699,8 @@ fn stream_chunks(
     mut images: ResMut<Assets<Image>>,
     game: Res<Game>,
     lighting: Res<Lighting>,
+    clock: Res<Clock>,
+    props: Res<PropBank>,
     player: Res<Player>,
     mut dirty: ResMut<DirtyChunks>,
     existing: Query<(Entity, &ChunkTile)>,
@@ -1638,8 +1755,8 @@ fn stream_chunks(
                 ),
                 ChunkTile { cx, cy },
             ))
-            // The overlay rides along as a child, so despawning the chunk
-            // takes its darkness layer with it.
+            // The overlay and the scenery ride along as children, so
+            // despawning a chunk takes both with it.
             .with_children(|chunk| {
                 chunk.spawn((
                     Sprite {
@@ -1651,6 +1768,8 @@ fn stream_chunks(
                     Transform::from_xyz(0.0, 0.0, 1.0),
                     LightOverlay { cx, cy },
                 ));
+
+                spawn_scenery(chunk, &game, &props, &lighting.0, &clock.0, cx, cy);
             });
     }
 }
