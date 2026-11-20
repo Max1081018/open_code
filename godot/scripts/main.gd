@@ -416,11 +416,21 @@ func _tutorial_bot() -> void:
 				input.use_held = true
 				input.aim = tree
 		"craft":
-			if player.crafting().is_empty():
+			if quests.missing_for(goal[1]) != "":
+				# Short of materials: go and get wood, as a player would.
+				var tree := _nearest_tree()
+				var dx := tree.x - player.global_position.x
+				if absf(dx) > 260:
+					input.move = signf(dx)
+					input.jump_pressed = player.is_on_wall() and _frames % 20 == 0
+					input.jump_held = input.jump_pressed
+				else:
+					input.use_held = true
+					input.aim = tree
+			elif player.crafting().is_empty():
 				for recipe in Items.recipes:
 					if recipe[0] == goal[1]:
-						if not player.start_craft(recipe) and goal[1] == "wood_axe":
-							# Needs the bench: walk to it.
+						if not player.start_craft(recipe):
 							_bot_walk_to_object("workbench")
 		"place":
 			var slot := -1
@@ -439,10 +449,11 @@ func _tutorial_bot() -> void:
 			if not input.use_held:
 				input.move = 1.0
 		"break":
-			# Dig straight down until rock comes up.
+			# Dig a staircase down, so the way back up is a walk.
 			input.hotbar_select = 0
 			input.use_held = true
-			input.aim = player.global_position + Vector2(20, 64)
+			input.move = 0.4 if _frames % 60 < 20 else 0.0
+			input.aim = player.global_position + Vector2(150, 40 if _frames % 60 < 40 else -60)
 		"build":
 			for i in Inventory.HOTBAR_SIZE:
 				var stack = player.inventory.get_slot(i)

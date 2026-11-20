@@ -1,39 +1,144 @@
 {
   "speakers": {
-    "wren": {"name": "Wren", "title": "Keeper's apprentice", "voice": "en_US-amy-medium", "length_scale": 0.95},
-    "bram": {"name": "Old Bram", "title": "Miner", "voice": "en_GB-alan-medium", "length_scale": 1.08},
-    "mira": {"name": "Mira", "title": "Herbalist", "voice": "en_GB-jenny_dioco-medium", "length_scale": 1.0}
+    "wren": {
+      "name": "Wren",
+      "title": "Keeper's apprentice",
+      "voice": "en_US-amy-medium",
+      "length_scale": 0.95
+    },
+    "bram": {
+      "name": "Old Bram",
+      "title": "Miner",
+      "voice": "en_GB-alan-medium",
+      "length_scale": 1.08
+    },
+    "mira": {
+      "name": "Mira",
+      "title": "Herbalist",
+      "voice": "en_GB-jenny_dioco-medium",
+      "length_scale": 1.0
+    }
   },
   "lines": {
-    "wren_wake": {"speaker": "wren", "text": "Oh, thank the light, you're awake. You were lying in the meadow with your lantern still burning. That's no small thing, these days."},
-    "wren_premise": {"speaker": "wren", "text": "The Lumen Cores under the hills are failing. Every night the dark comes up a little further. The keeper went down to find out why, and never came back."},
-    "wren_task_tree": {"speaker": "wren", "text": "If you mean to help, you'll need tools, and tools need wood. Take a swing at one of those trees. Keep at it until it comes down."},
-    "wren_task_wood": {"speaker": "wren", "text": "Good, it's down! Now gather up the wood. Walk over the logs and they're yours. Ten pieces should do it."},
-    "wren_task_workbench": {"speaker": "wren", "text": "Ten pieces. Open your pack and make a workbench. Everything worth having starts at a workbench."},
-    "wren_task_place": {"speaker": "wren", "text": "Now set it down somewhere flat. Hold it in your hand and tap the ground where it should go."},
-    "wren_task_stone": {"speaker": "wren", "text": "Your bench needs stone as much as wood. Dig into the rock with your pickaxe. Six stones."},
-    "wren_task_axe": {"speaker": "wren", "text": "Now, a proper axe. A pickaxe chops like a spoon digs. Make a wooden axe at your bench and the trees will come down twice as fast."},
-    "wren_task_build": {"speaker": "wren", "text": "One last thing. The cottage roof is half gone. Put up six blocks of anything, stone, planks, dirt even, and you'll have built your first wall."},
-    "wren_task_return": {"speaker": "wren", "text": "Come and talk to me when it's up."},
-    "wren_done_first": {"speaker": "wren", "text": "Look at you. A Lanternbearer with calluses. Take this flask, it'll feed your lantern when the dark presses close. Old Bram at the mine can teach you the rest."},
-    "wren_idle": {"speaker": "wren", "text": "Stay where the light is, when you can. And when you can't, carry it with you."},
-    "wren_ward_offer": {"speaker": "wren", "text": "Bram tells me you've been below. Then you've felt it, the cold that eats your light. A wardstone holds it back. Glowshards, stone and a ruby, worked at an anvil."},
-    "wren_ward_done": {"speaker": "wren", "text": "It's beautiful. The dark won't settle anywhere near that stone. You've made a little island of safety. Make more."},
-    "wren_gloam_offer": {"speaker": "wren", "text": "Two cores were failing, Bram says. One under the ruins, one in the crystal hollows. Something lives in the hollows, something that eats light. The keeper called it the Gloam."},
-    "wren_gloam_done": {"speaker": "wren", "text": "The hollows are singing again. I can feel it in the soil. You did it, Lanternbearer. Whatever the keeper started, you've finished."},
-    "bram_greet": {"speaker": "bram", "text": "Hm. Wren's latest, are you? You've got the look. Most folk who come to this mine leave in a hurry, or don't leave at all."},
-    "bram_roots_offer": {"speaker": "bram", "text": "Wooden tools won't scratch what's down there. Get yourself below the roots, forty metres or so, bring up copper and iron, and build yourself an anvil. Then forge a copper pickaxe. Proper metal."},
-    "bram_roots_depth": {"speaker": "bram", "text": "Down you go, then. Mind the drop, and mind the dark even more."},
-    "bram_roots_done": {"speaker": "bram", "text": "Now that's a pick. Hear how it rings? That's the sound of rock giving up. You'll go far with that. Deeper, anyway."},
-    "bram_warden_offer": {"speaker": "bram", "text": "There's a vault under the old ruins, with an altar, and a thing that guards it. Rusted iron and bad temper. Find the key in the ruins and wake it, if you're fool enough. The core it sits on is worth it."},
-    "bram_warden_done": {"speaker": "bram", "text": "You put the Warden down? Ha! I've been afraid of that pile of scrap for thirty years. Here, you've earned this."},
-    "bram_idle": {"speaker": "bram", "text": "Copper first, then iron, then silver, then gold. The rock tells you what it'll give, if you listen to the pick."},
-    "mira_greet": {"speaker": "mira", "text": "Well, hello there. You must be the one Wren dragged out of the meadow. Hungry? You look hungry. Everyone does, lately."},
-    "mira_meal_offer": {"speaker": "mira", "text": "Here's a trade. Build a campfire, cook me two good pieces of meat, and I'll show you how to make a stew that'll put the colour back in your cheeks."},
-    "mira_meal_done": {"speaker": "mira", "text": "Mm, that smells right. Here. Stew for the road. Eat it when the road gets long."},
-    "mira_shards_offer": {"speaker": "mira", "text": "Glowshards grow in the crystal hollows like mushrooms after rain. Bring me six and I'll brew them down into something your lantern will thank you for."},
-    "mira_shards_done": {"speaker": "mira", "text": "Six of them, still humming. Hold on. There. Two flasks of liquid light. Don't drink it, mind. It's for the lantern."},
-    "mira_idle": {"speaker": "mira", "text": "Apples in the meadow, meat on the hoof, fish in the pools. The land still feeds us. For now."},
-    "quest_complete": {"speaker": "wren", "text": "Well done."}
+    "wren_wake": {
+      "speaker": "wren",
+      "text": "Oh, thank the light, you're awake. You were lying in the meadow with your lantern still burning. That's no small thing, these days."
+    },
+    "wren_premise": {
+      "speaker": "wren",
+      "text": "The Lumen Cores under the hills are failing. Every night the dark comes up a little further. The keeper went down to find out why, and never came back."
+    },
+    "wren_task_tree": {
+      "speaker": "wren",
+      "text": "If you mean to help, you'll need tools, and tools need wood. Take a swing at one of those trees. Keep at it until it comes down."
+    },
+    "wren_task_wood": {
+      "speaker": "wren",
+      "text": "Good, it's down! Now gather up the wood. Walk over the logs and they're yours. Eighteen pieces: ten for a workbench, eight for an axe."
+    },
+    "wren_task_workbench": {
+      "speaker": "wren",
+      "text": "That's plenty. Open your pack and make a workbench. Everything worth having starts at a workbench."
+    },
+    "wren_task_place": {
+      "speaker": "wren",
+      "text": "Now set it down somewhere flat. Hold it in your hand and tap the ground where it should go."
+    },
+    "wren_task_stone": {
+      "speaker": "wren",
+      "text": "Your bench needs stone as much as wood. Dig into the rock with your pickaxe. Six stones."
+    },
+    "wren_task_axe": {
+      "speaker": "wren",
+      "text": "Now, a proper axe. A pickaxe chops like a spoon digs. Make a wooden axe at your bench and the trees will come down twice as fast."
+    },
+    "wren_task_build": {
+      "speaker": "wren",
+      "text": "One last thing. The cottage roof is half gone. Put up six blocks of anything, stone, planks, dirt even, and you'll have built your first wall."
+    },
+    "wren_task_return": {
+      "speaker": "wren",
+      "text": "Come and talk to me when it's up."
+    },
+    "wren_done_first": {
+      "speaker": "wren",
+      "text": "Look at you. A Lanternbearer with calluses. Take this flask, it'll feed your lantern when the dark presses close. Old Bram at the mine can teach you the rest."
+    },
+    "wren_idle": {
+      "speaker": "wren",
+      "text": "Stay where the light is, when you can. And when you can't, carry it with you."
+    },
+    "wren_ward_offer": {
+      "speaker": "wren",
+      "text": "Bram tells me you've been below. Then you've felt it, the cold that eats your light. A wardstone holds it back. Glowshards, stone and a ruby, worked at an anvil."
+    },
+    "wren_ward_done": {
+      "speaker": "wren",
+      "text": "It's beautiful. The dark won't settle anywhere near that stone. You've made a little island of safety. Make more."
+    },
+    "wren_gloam_offer": {
+      "speaker": "wren",
+      "text": "Two cores were failing, Bram says. One under the ruins, one in the crystal hollows. Something lives in the hollows, something that eats light. The keeper called it the Gloam."
+    },
+    "wren_gloam_done": {
+      "speaker": "wren",
+      "text": "The hollows are singing again. I can feel it in the soil. You did it, Lanternbearer. Whatever the keeper started, you've finished."
+    },
+    "bram_greet": {
+      "speaker": "bram",
+      "text": "Hm. Wren's latest, are you? You've got the look. Most folk who come to this mine leave in a hurry, or don't leave at all."
+    },
+    "bram_roots_offer": {
+      "speaker": "bram",
+      "text": "Wooden tools won't scratch what's down there. Get yourself below the roots, forty metres or so, bring up copper and iron, and build yourself an anvil. Then forge a copper pickaxe. Proper metal."
+    },
+    "bram_roots_depth": {
+      "speaker": "bram",
+      "text": "Down you go, then. Mind the drop, and mind the dark even more."
+    },
+    "bram_roots_done": {
+      "speaker": "bram",
+      "text": "Now that's a pick. Hear how it rings? That's the sound of rock giving up. You'll go far with that. Deeper, anyway."
+    },
+    "bram_warden_offer": {
+      "speaker": "bram",
+      "text": "There's a vault under the old ruins, with an altar, and a thing that guards it. Rusted iron and bad temper. Find the key in the ruins and wake it, if you're fool enough. The core it sits on is worth it."
+    },
+    "bram_warden_done": {
+      "speaker": "bram",
+      "text": "You put the Warden down? Ha! I've been afraid of that pile of scrap for thirty years. Here, you've earned this."
+    },
+    "bram_idle": {
+      "speaker": "bram",
+      "text": "Copper first, then iron, then silver, then gold. The rock tells you what it'll give, if you listen to the pick."
+    },
+    "mira_greet": {
+      "speaker": "mira",
+      "text": "Well, hello there. You must be the one Wren dragged out of the meadow. Hungry? You look hungry. Everyone does, lately."
+    },
+    "mira_meal_offer": {
+      "speaker": "mira",
+      "text": "Here's a trade. Build a campfire, cook me two good pieces of meat, and I'll show you how to make a stew that'll put the colour back in your cheeks."
+    },
+    "mira_meal_done": {
+      "speaker": "mira",
+      "text": "Mm, that smells right. Here. Stew for the road. Eat it when the road gets long."
+    },
+    "mira_shards_offer": {
+      "speaker": "mira",
+      "text": "Glowshards grow in the crystal hollows like mushrooms after rain. Bring me six and I'll brew them down into something your lantern will thank you for."
+    },
+    "mira_shards_done": {
+      "speaker": "mira",
+      "text": "Six of them, still humming. Hold on. There. Two flasks of liquid light. Don't drink it, mind. It's for the lantern."
+    },
+    "mira_idle": {
+      "speaker": "mira",
+      "text": "Apples in the meadow, meat on the hoof, fish in the pools. The land still feeds us. For now."
+    },
+    "quest_complete": {
+      "speaker": "wren",
+      "text": "Well done."
+    }
   }
 }

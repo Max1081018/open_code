@@ -27,7 +27,7 @@ const DEFS := {
 		"offer": ["wren_wake", "wren_premise"],
 		"steps": [
 			{"goal": ["fell", 1], "text": "Fell a tree", "line": "wren_task_tree"},
-			{"goal": ["have", "wood", 10], "text": "Gather wood", "line": "wren_task_wood"},
+			{"goal": ["have", "wood", 18], "text": "Gather wood", "line": "wren_task_wood"},
 			{"goal": ["craft", "workbench", 1], "text": "Craft a workbench (open your pack)",
 				"line": "wren_task_workbench"},
 			{"goal": ["place", "workbench"], "text": "Place the workbench", "line": "wren_task_place"},
@@ -180,7 +180,28 @@ func progress(id: String) -> Array:
 	var goal: Array = step.goal
 	var need := _needed(goal)
 	var have := _counted(id, goal)
-	return [step.text, mini(have, need), need]
+	var text: String = step.text
+	# A crafting step says what is still missing, so nobody is left
+	# wondering why the button is grey.
+	if goal[0] == "craft":
+		var missing := missing_for(goal[1])
+		if missing != "":
+			text += " — need " + missing
+	return [text, mini(have, need), need]
+
+
+## What the player is short of to make an item, e.g. "3 wood", or "".
+func missing_for(item: String) -> String:
+	for recipe in Items.recipes:
+		if recipe[0] != item:
+			continue
+		var parts := []
+		for ingredient in recipe[3]:
+			var short: int = int(recipe[3][ingredient]) - level.player.inventory.count(ingredient)
+			if short > 0:
+				parts.append("%d %s" % [short, Items.item_name(ingredient).to_lower()])
+		return ", ".join(parts)
+	return ""
 
 
 func _needed(goal: Array) -> int:

@@ -123,3 +123,14 @@ func test_npcs_stand_on_the_ground_near_the_start() -> void:
 	ids.sort()
 	check_eq(ids, ["bram", "mira", "wren"], "all three are in the world")
 	level.free()
+
+
+func test_a_crafting_step_says_what_is_missing() -> void:
+	var level := _make_level()
+	var q := level.quests
+	check_eq(q.missing_for("wood_axe"), "8 wood", "an axe needs eight wood")
+	level.player.inventory.add("wood", 5)
+	check_eq(q.missing_for("wood_axe"), "3 wood", "three short")
+	level.player.inventory.add("wood", 3)
+	check_eq(q.missing_for("wood_axe"), "", "nothing missing")
+	level.free()
