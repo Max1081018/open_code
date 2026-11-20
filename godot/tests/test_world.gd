@@ -308,3 +308,21 @@ func test_wind_and_sun_reach_every_plant_material() -> void:
 	check(is_equal_approx(b.get_shader_parameter("sun_strength"), 0.5), "bushes see the sun")
 	check(Visuals.sway().get_shader_parameter("player_position") == Vector2(100, 200),
 		"grass knows where the player walks")
+
+
+func test_every_game_script_compiles() -> void:
+	# A script that fails to parse is otherwise only noticed by the scenes
+	# that load it; the rest of the suite can pass around it.
+	var broken := []
+	var dirs := ["res://scripts"]
+	while not dirs.is_empty():
+		var dir: String = dirs.pop_back()
+		for sub in DirAccess.get_directories_at(dir):
+			dirs.append(dir.path_join(sub))
+		for file in DirAccess.get_files_at(dir):
+			if not file.ends_with(".gd"):
+				continue
+			var script: GDScript = load(dir.path_join(file))
+			if script == null or not script.can_instantiate():
+				broken.append(file)
+	check(broken.is_empty(), "scripts failing to compile: %s" % [broken])

@@ -51,6 +51,7 @@ func _layout() -> void:
 		"jump": [Vector2(right, bottom), 104.0, "icon_jump"],
 		"attack": [Vector2(right - 225 * unit, bottom + 30 * unit), 86.0, "icon_sword"],
 		"interact": [Vector2(right - 40 * unit, bottom - 215 * unit), 70.0, "icon_hand"],
+		"block": [Vector2(right - 255 * unit, bottom - 175 * unit), 66.0, "icon_shield"],
 	}
 	_buttons.clear()
 	for role in spec:
@@ -78,8 +79,17 @@ func _in_stick_zone(p: Vector2) -> bool:
 	return x < screen.x * 0.36 and p.y > screen.y * 0.45
 
 
+## The block button only exists while a shield is carried.
+func _shown(role: String) -> bool:
+	if role == "block":
+		return level != null and level.player != null and level.player.rig.has_shield()
+	return true
+
+
 func _button_at(p: Vector2) -> String:
 	for role in _buttons:
+		if not _shown(role):
+			continue
 		var b: Dictionary = _buttons[role]
 		# Generous hit area: a thumb is bigger than it thinks it is.
 		if p.distance_to(b.centre) <= b.radius * 1.25:
@@ -139,6 +149,7 @@ func _process(delta: float) -> void:
 	active = not _fingers.is_empty()
 	jump_held = false
 	using = false
+	var blocking := false
 	var steer := 0.0
 	for finger in _fingers.values():
 		match finger.role:
@@ -146,6 +157,8 @@ func _process(delta: float) -> void:
 				steer = _axis(finger.start, finger.pos)
 			"jump":
 				jump_held = true
+			"block":
+				blocking = true
 			"world":
 				using = true
 				input.aim = level.get_canvas_transform().affine_inverse() * finger.pos
@@ -153,6 +166,7 @@ func _process(delta: float) -> void:
 		input.move = steer
 		input.jump_held = jump_held
 		input.use_held = using
+		input.block_held = blocking
 	for role in _flash.keys():
 		_flash[role] -= delta
 		if _flash[role] <= 0.0:
@@ -189,6 +203,8 @@ func _draw() -> void:
 		Color(1, 1, 1, alpha * 0.9))
 
 	for role in _buttons:
+		if not _shown(role):
+			continue
 		var b: Dictionary = _buttons[role]
 		var held := false
 		for finger in _fingers.values():

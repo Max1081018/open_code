@@ -1,0 +1,102 @@
+extends TestCase
+## Equipment drawn in the hands: anchors, grips, swings, blocking.
+
+
+func _make_level() -> Level:
+	var level := Level.new()
+	Engine.get_main_loop().root.add_child(level)
+	level.start(777)
+	return level
+
+
+func test_every_pose_the_rig_can_meet_has_hand_positions() -> void:
+	for clip in ["idle", "walk", "run", "jump", "fall", "attack", "use", "swing_mine",
+			"swing_chop", "slash", "hurt", "interact"]:
+		for frame in CharacterFrames.CLIPS[clip][0]:
+			check(RigData.HANDS.has(frame), "%s/%s has hands" % [clip, frame])
+
+
+func test_the_front_hand_is_in_front() -> void:
+	# The art faces right: the front fist is further right than the back one.
+	for frame in ["idle", "walk0", "walk4", "attack0", "attack2"]:
+		var pair: Array = RigData.HANDS[frame]
+		check(pair[0].x > pair[1].x, "%s: front hand ahead of back hand" % frame)
+
+
+func test_every_tool_and_weapon_icon_has_a_grip() -> void:
+	for id in Items.defs:
+		var kind := Items.kind(id)
+		if kind in [Items.Kind.PICKAXE, Items.Kind.AXE, Items.Kind.SWORD]:
+			var key := String(Items.def(id).icon)
+			check(RigData.GRIPS.has(key), "%s (%s) has a grip" % [id, key])
+	check(RigData.GRIPS.has("equipment/torch_held"), "the hand torch has a grip")
+
+
+func test_grips_sit_toward_the_handle() -> void:
+	# A pickaxe icon is drawn handle bottom-left, head top-right: the grip is
+	# in the lower-left half and the axis points up and to the right.
+	var pick: Array = RigData.GRIPS["items/toolPickaxe"]
+	check(pick[0].x < 64 and pick[0].y > 64, "grip near the handle end")
+	check(pick[1] < 0.0 and pick[1] > -PI / 2, "axis points up-right")
+	var torch: Array = RigData.GRIPS["equipment/torch_held"]
+	check_near(torch[1], -PI / 2, 0.1, "a torch is held upright")
+
+
+func test_swing_curves_start_and_end_at_rest() -> void:
+	for kind in EquipmentRig.CURVES:
+		var keys: Array = EquipmentRig.CURVES[kind]
+		check_near(EquipmentRig._curve(keys, 1.0), keys[keys.size() - 1][1], 0.01, "%s ends" % kind)
+		check(EquipmentRig.IMPACT.has(kind), "%s has an impact moment" % kind)
+		check(EquipmentRig.BODY.has(kind), "%s has a body clip" % kind)
+		# The strike happens after the wind-up: the angle at impact is well
+		# past the furthest point back.
+		var back := 0.0
+		for key in keys:
+			back = minf(back, key[1])
+		check(EquipmentRig._curve(keys, EquipmentRig.IMPACT[kind]) > back + 40.0,
+			"%s has swung through by impact" % kind)
+
+
+func test_a_swing_lands_once_at_its_impact_time() -> void:
+	var level := _make_level()
+	var rig := level.player.rig
+	var hits := [0]
+	rig.swing("mine", 0.4, func(): hits[0] += 1)
+	rig._process(0.4 * 0.5)
+	check_eq(hits[0], 0, "nothing lands during the wind-up")
+	rig._process(0.4 * 0.1)
+	check_eq(hits[0], 1, "it lands at the strike")
+	rig._process(0.4)
+	check_eq(hits[0], 1, "and only once")
+	check(not rig.swinging(), "the swing is over")
+	level.free()
+
+
+func test_a_raised_shield_blocks_from_the_front_only() -> void:
+	var level := _make_level()
+	var player := level.player
+	player.inventory.add("iron_shield", 1)
+	player._refresh_held()
+	check(player.rig.has_shield(), "the shield is carried")
+	player.facing = 1
+	player.rig.blocking = true
+	player.health = 100.0
+	player.hurt(20.0, player.global_position + Vector2(100, 0))
+	check_near(player.health, 96.0, 0.01, "a frontal blow is mostly blocked (iron: 80%)")
+	player._invulnerable = 0.0
+	player.health = 100.0
+	player.hurt(20.0, player.global_position - Vector2(100, 0))
+	check_near(player.health, 80.0, 0.01, "a blow from behind is not")
+	level.free()
+
+
+func test_shields_are_craftable_items() -> void:
+	for id in ["wood_shield", "iron_shield"]:
+		check(Items.exists(id), "%s exists" % id)
+		check(Items.kind(id) == Items.Kind.SHIELD, "%s is a shield" % id)
+		check(Items.icon(id) != null, "%s has art" % id)
+		var found := false
+		for recipe in Items.recipes:
+			if recipe[0] == id:
+				found = true
+		check(found, "%s has a recipe" % id)

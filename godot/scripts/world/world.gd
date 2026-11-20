@@ -43,6 +43,7 @@ var glow_root: Node2D
 
 var light_map := LightMap.new()
 var light_sprite: Sprite2D
+var scatter_sprite: Sprite2D  ## coloured light added on top
 var light_texture: ImageTexture
 var _light_timer := 0.0
 var _light_dirty := true
@@ -130,6 +131,15 @@ func _build_layers() -> void:
 	multiply.blend_mode = CanvasItemMaterial.BLEND_MODE_MUL
 	light_sprite.material = multiply
 	add_child(light_sprite)
+	scatter_sprite = Sprite2D.new()
+	scatter_sprite.centered = false
+	scatter_sprite.z_index = 51
+	scatter_sprite.texture_filter = CanvasItem.TEXTURE_FILTER_LINEAR
+	var scatter := ShaderMaterial.new()
+	scatter.shader = load("res://scripts/shaders/light_scatter.gdshader")
+	scatter_sprite.material = scatter
+	scatter_sprite.visible = Settings.lighting >= 1
+	add_child(scatter_sprite)
 
 	glow_root = Node2D.new()
 	glow_root.z_index = 60
@@ -584,6 +594,9 @@ func _update_lighting() -> void:
 	light_sprite.texture = light_texture
 	light_sprite.position = Vector2(view.position) * TILE
 	light_sprite.scale = Vector2(TILE, TILE)
+	scatter_sprite.texture = light_texture
+	scatter_sprite.position = light_sprite.position
+	scatter_sprite.scale = light_sprite.scale
 	# Terrain relief is lit from wherever the light actually comes from.
 	for layer_material in [self.terrain.material, self.walls.material]:
 		layer_material.set_shader_parameter("light_tex", light_texture)

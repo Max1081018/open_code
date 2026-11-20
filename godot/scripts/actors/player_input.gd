@@ -10,6 +10,7 @@ var use_held := false  ## using the held item at `aim`
 var aim := Vector2.ZERO  ## world position
 var attack_pressed := false
 var interact_pressed := false
+var block_held := false  ## raising the shield
 var hotbar_select := -1
 
 

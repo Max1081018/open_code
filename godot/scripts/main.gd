@@ -76,7 +76,15 @@ func _process(_delta: float) -> void:
 					level.hud.open_chest(Vector2i.ZERO, {"type": "chest", "loot": [
 						{"id": "glowshard", "count": 6}, {"id": "heart_crystal", "count": 1},
 						{"id": "iron_ore", "count": 9}, {"id": "vault_key", "count": 1}]})
-		if _frames == int(_args.get("frames", "90")):
+		var last := int(_args.get("frames", "90"))
+		if _args.has("strip"):
+			# A filmstrip: crops around the player every third frame up to
+			# the last, to check an animation rather than a single pose.
+			var count := int(_args.strip)
+			var first := last - (count - 1) * 3
+			if _frames >= first and (_frames - first) % 3 == 0 and _frames <= last:
+				_grab_strip_frame(_frames == last)
+		elif _frames == last:
 			_capture(_args.shot)
 
 
@@ -100,6 +108,10 @@ func _desktop_input() -> void:
 		input.jump_pressed = true
 	if not _args.has("shot"):
 		input.jump_held = jump
+
+	if not _args.has("shot"):
+		input.block_held = Input.is_key_pressed(KEY_K) or Input.is_key_pressed(KEY_SHIFT) \
+			or Input.is_mouse_button_pressed(MOUSE_BUTTON_RIGHT)
 
 	var over_ui: bool = level.hud != null and level.hud.get("pointer_over_ui") == true
 	if Input.is_mouse_button_pressed(MOUSE_BUTTON_LEFT) and not over_ui:
@@ -159,6 +171,18 @@ func _apply_scenario() -> void:
 	if _args.has("give"):
 		for id in _args.give.split(","):
 			player.inventory.add(id, 20)
+	if _args.get("action", "") == "chop":
+		# Stand beside the nearest tree, facing it.
+		var tree := World.cell_of(_nearest_tree())
+		var stand := Vector2i(tree.x - 2, tree.y)
+		player.global_position = World.foot_of(stand)
+		level.camera.global_position = player.global_position
+		level.camera.reset_smoothing()
+	if _args.has("hold"):
+		# Put this item in the last hotbar slot and select it.
+		player.inventory.slots[Inventory.HOTBAR_SIZE - 1] = {"id": _args.hold, "count": 1}
+		player.inventory.changed.emit()
+		player.select_hotbar(Inventory.HOTBAR_SIZE - 1)
 
 
 func _find_scenario_cell(kind: String) -> Vector2i:
@@ -210,11 +234,55 @@ func _run_scenario() -> void:
 		"attack":
 			if _frames % 25 == 0:
 				input.attack_pressed = true
+		"block":
+			input.block_held = _frames > 10
+		"chop":
+			if _frames > 20:
+				input.use_held = true
+				input.aim = _nearest_tree()
+		"turn":
+			input.move = -0.3 if _frames > 20 else 0.0
 		"jump":
 			input.move = 1.0
 			if _frames % 40 == 5:
 				input.jump_pressed = true
 			input.jump_held = _frames % 40 < 25
+
+
+func _nearest_tree() -> Vector2:
+	var player := level.player
+	var best := player.global_position + Vector2(170, -60)
+	var best_d := 1e9
+	for key in level.data.objects:
+		if level.data.objects[key].get("type", "") != "tree":
+			continue
+		var cell := Vector2i(key % level.data.width, key / level.data.width)
+		var d := World.centre_of(cell).distance_to(player.global_position)
+		if d < best_d:
+			best_d = d
+			best = World.centre_of(cell)
+	return best
+
+
+var _strip: Array[Image] = []
+
+
+func _grab_strip_frame(final: bool) -> void:
+	await RenderingServer.frame_post_draw
+	var image := get_viewport().get_texture().get_image()
+	var at := level.get_viewport().get_canvas_transform() * (level.player.global_position + Vector2(0, -130))
+	var box := Rect2i(Vector2i(at) - Vector2i(260, 260), Vector2i(520, 400))
+	box = box.intersection(Rect2i(Vector2i.ZERO, image.get_size()))
+	_strip.append(image.get_region(box))
+	if not final:
+		return
+	var w := _strip[0].get_width()
+	var strip := Image.create(w * _strip.size(), _strip[0].get_height(), false, _strip[0].get_format())
+	for i in _strip.size():
+		strip.blit_rect(_strip[i], Rect2i(Vector2i.ZERO, _strip[i].get_size()), Vector2i(i * w, 0))
+	strip.save_png(_args.shot)
+	print("captured ", _args.shot, " strip of ", _strip.size())
+	get_tree().quit()
 
 
 func _capture(path: String) -> void:

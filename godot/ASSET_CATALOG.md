@@ -27,6 +27,13 @@ and shading style.
 
 ### Derived in `build_assets.py`
 
+- **Held equipment** (`equipment/torch_held.png`, `shield_wood.png`,
+  `shield_iron.png`): original art drawn by `tools/draw_equipment.py` in the
+  Kenney flat style (the Kenney torch is a wall sconce; its only shields
+  are 70 px). Released with the project under CC0.
+- **Rig data** (`scripts/actors/rig_data.gd`): fist positions per pose
+  frame and grip points per item icon, measured from the art by
+  `tools/build_rig.py`.
 - **Leaf** (`fx/leaf.png`): drawn procedurally in `build_foliage()`; no
   outside source.
 

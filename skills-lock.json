@@ -1,0 +1,12 @@
+{
+  "version": 2,
+  "skills": {
+    "2d-essentials": {
+      "source": "jame581/GodotPrompter",
+      "commit": "426e8ab597473d1c71a11a04f6f0f2e1182a8e39",
+      "sourceType": "github",
+      "skillPath": "skills/2d-essentials/SKILL.md",
+      "computedHash": "29f8638f0332c0fcc1ee720a6f4ae446eedc3ba5751d7181a05f2a0716d72a1f"
+    }
+  }
+}

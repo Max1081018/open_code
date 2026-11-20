@@ -4,7 +4,7 @@ extends Node
 ## Items are plain dictionaries keyed by a string id, so save files store
 ## readable names rather than indices that shift when the table changes.
 
-enum Kind { BLOCK, ORE, MATERIAL, PICKAXE, AXE, SWORD, PLACEABLE, CONSUMABLE, KEY }
+enum Kind { BLOCK, ORE, MATERIAL, PICKAXE, AXE, SWORD, PLACEABLE, CONSUMABLE, KEY, SHIELD }
 
 enum Station { HAND, WORKBENCH, ANVIL, CAMPFIRE }
 
@@ -108,6 +108,12 @@ var defs := {
 		"desc": "Sheds light as it cuts."},
 
 	# --- Placeables -----------------------------------------------------------
+	"wood_shield": {"name": "Wooden Shield", "icon": "equipment/shield_wood", "kind": Kind.SHIELD,
+		"stack": 1, "tier": 1, "block": 0.6,
+		"desc": "Hold to block: takes the sting out of blows from the front."},
+	"iron_shield": {"name": "Iron Shield", "icon": "equipment/shield_iron", "kind": Kind.SHIELD,
+		"stack": 1, "tier": 3, "block": 0.8,
+		"desc": "Iron-bound. Blocks most of a frontal blow and nearly all its force."},
 	"torch": {"name": "Torch", "icon": "props/torch_on_a", "kind": Kind.PLACEABLE, "stack": 99,
 		"object": "torch", "desc": "Light that lasts. Shades will not spawn near it."},
 	"workbench": {"name": "Workbench", "icon": "rendered/workbench", "kind": Kind.PLACEABLE,
@@ -157,6 +163,8 @@ var recipes := [
 	["chest", 1, Station.WORKBENCH, {"wood": 12}],
 	["brick", 2, Station.WORKBENCH, {"stone": 2}],
 	["anvil", 1, Station.WORKBENCH, {"stone": 20, "iron_ore": 6}],
+	["wood_shield", 1, Station.WORKBENCH, {"wood": 14}],
+	["iron_shield", 1, Station.ANVIL, {"iron_ore": 10, "wood": 4}],
 
 	["copper_pickaxe", 1, Station.ANVIL, {"copper_ore": 12, "wood": 4}],
 	["copper_sword", 1, Station.ANVIL, {"copper_ore": 10, "wood": 2}],

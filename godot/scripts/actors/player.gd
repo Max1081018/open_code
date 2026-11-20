@@ -61,7 +61,8 @@ var _breath := 0.0
 var _step_timer := 0.0
 
 var body: AnimatedSprite2D
-var held_sprite: Sprite2D
+var rig: EquipmentRig
+var _swing_override := ""  ## a weapon drawn just for this swing
 var crack: Sprite2D
 var aim_marker: Sprite2D
 
@@ -89,11 +90,10 @@ func _ready() -> void:
 	body.z_index = 10
 	add_child(body)
 
-	held_sprite = Sprite2D.new()
-	held_sprite.z_index = 11
-	held_sprite.scale = Vector2(0.85, 0.85)
-	held_sprite.offset = Vector2(26, -26)  # grip near the handle's end
-	add_child(held_sprite)
+	rig = EquipmentRig.new()
+	rig.z_index = 10
+	add_child(rig)
+	rig.setup(self)
 
 	crack = Sprite2D.new()
 	crack.texture = AtlasTexture.new()
@@ -115,6 +115,7 @@ func _ready() -> void:
 	if Settings.shadows:
 		add_child(SoftShadow.under(self, world, 0.85))
 	world.dynamic_lights.append(_lantern_light)
+	world.dynamic_lights.append(rig.torch_light)
 	inventory.changed.connect(_refresh_held)
 	_refresh_held()
 
@@ -137,6 +138,7 @@ func _physics_process(delta: float) -> void:
 		select_hotbar(input.hotbar_select)
 
 	_move(delta)
+	rig.blocking = input.block_held and rig.has_shield() and not rig.swinging()
 	_use_items(delta)
 	if input.interact_pressed:
 		_interact()
@@ -150,7 +152,7 @@ func _move(delta: float) -> void:
 	var in_water := world.data.get_liquid(cell.x, cell.y) == WorldData.WATER
 	var in_lava := world.data.get_liquid(cell.x, cell.y) == WorldData.LAVA
 	var gravity := GRAVITY * (0.32 if in_water else 1.0)
-	var top_speed := RUN_SPEED * (0.55 if in_water else 1.0)
+	var top_speed := RUN_SPEED * (0.55 if in_water else 1.0) * (0.45 if rig.blocking else 1.0)
 
 	var target := input.move * top_speed
 	var accel := ACCEL if is_on_floor() else AIR_ACCEL
@@ -250,13 +252,10 @@ func select_hotbar(index: int) -> void:
 
 
 func _refresh_held() -> void:
-	var id := held_id()
-	var kind := Items.kind(id) if id != "" else -1
-	if kind in [Items.Kind.PICKAXE, Items.Kind.AXE, Items.Kind.SWORD, Items.Kind.PLACEABLE]:
-		held_sprite.texture = Items.icon(id)
-		held_sprite.visible = true
-	else:
-		held_sprite.visible = false
+	if rig.swinging() and rig.main.visible and _swing_override != "":
+		return  # a sword drawn for a swing stays until the swing is done
+	rig.hold(held_id())
+	rig.carry_shield(inventory.best_of_kind(Items.Kind.SHIELD))
 	held_changed.emit(hotbar_index)
 
 
@@ -320,9 +319,9 @@ func _dig(target: Vector2i, delta: float) -> void:
 	if not object.is_empty() and ObjectArt.item_for(object) != "" and not data.is_solid(target.x, target.y):
 		if _use_cooldown <= 0.0:
 			_use_cooldown = 0.3
-			_swing()
-			world.remove_object(target, true)
-			Sfx.play("break")
+			_swing("mine", 0.3, func():
+				world.remove_object(target, true)
+				Sfx.play("break"))
 		return
 	if not data.is_solid(target.x, target.y):
 		_cancel_mining()
@@ -332,9 +331,10 @@ func _dig(target: Vector2i, delta: float) -> void:
 	if hardness > tool.get("power", 1):
 		if _use_cooldown <= 0.0:
 			_use_cooldown = 0.5
-			_swing()
-			Sfx.play("dig", -8.0, 0.02)
-			Effects.float_text(level.fx_layer, World.centre_of(target), "Too hard", UITheme.DANGER, 34)
+			_swing("mine", 0.5, func():
+				Sfx.play("dig", -8.0, 0.02)
+				Effects.burst(level.fx_layer, World.centre_of(target), "hit")
+				Effects.float_text(level.fx_layer, World.centre_of(target), "Too hard", UITheme.DANGER, 34))
 		return
 
 	if target != _mining_cell:
@@ -346,9 +346,11 @@ func _dig(target: Vector2i, delta: float) -> void:
 	_mining_progress += delta / seconds
 	if _use_cooldown <= 0.0:
 		_use_cooldown = tool.get("speed", 0.4)
-		_swing()
-		Sfx.play("dig", -3.0)
-		Effects.burst(level.fx_layer, World.centre_of(target), "dig", _dust_color(target))
+		var dust := _dust_color(target)
+		_swing("mine", _use_cooldown, func():
+			Sfx.play("dig", -3.0)
+			Effects.burst(level.fx_layer, World.centre_of(target), "dig", dust)
+			_squash(Vector2(1.04, 0.97)))
 
 	var stage := clampi(int(_mining_progress * 3.0), 0, 2)
 	crack.visible = true
@@ -379,15 +381,27 @@ func _chop(target: Vector2i, object: Dictionary, tool: Dictionary) -> void:
 	if _use_cooldown > 0.0:
 		return
 	_use_cooldown = tool.get("speed", 0.4)
-	_swing()
+	# Chopping is its own motion: a flatter, heavier blow that lands a beat
+	# later than a pick's, and the wood is hurt when the blade bites.
+	_swing("chop", _use_cooldown * 1.15, func():
+		if world.object_at(target) == object:
+			_chop_hit(target, object, tool))
+
+
+func _chop_hit(target: Vector2i, object: Dictionary, tool: Dictionary) -> void:
 	var axe_bonus := 2 if tool.get("kind", -1) == Items.Kind.AXE else 1
 	object.health = int(object.get("health", 5)) - tool.get("power", 1) * axe_bonus
 	Sfx.play("dig", -2.0)
 	var node := world.object_node_at(target)
 	if node:
+		# The tree takes the blow: a shove away from the axe and a damped
+		# shudder back.
 		var tween := node.create_tween()
-		tween.tween_property(node, "rotation", 0.04 * facing, 0.06)
-		tween.tween_property(node, "rotation", 0.0, 0.12)
+		tween.tween_property(node, "rotation", 0.05 * facing, 0.05).set_trans(Tween.TRANS_QUAD)
+		tween.tween_property(node, "rotation", -0.025 * facing, 0.10).set_trans(Tween.TRANS_SINE)
+		tween.tween_property(node, "rotation", 0.01 * facing, 0.10).set_trans(Tween.TRANS_SINE)
+		tween.tween_property(node, "rotation", 0.0, 0.12).set_trans(Tween.TRANS_SINE)
+	level.shake(2.5)
 	Effects.burst(level.fx_layer, World.centre_of(target) + Vector2(0, -60), "dig", Color(0.5, 0.75, 0.35))
 	if object.health <= 0:
 		world.remove_object(target)
@@ -447,7 +461,7 @@ func _place(id: String, target: Vector2i) -> void:
 		world.add_object(target, object)
 	inventory.remove_at(hotbar_index, 1)
 	_use_cooldown = 0.16
-	_swing()
+	_swing("place", 0.22)
 	Sfx.play("land", -2.0)
 	level.on_placed(target, id)
 
@@ -482,14 +496,17 @@ func consume(index: int) -> void:
 		Sfx.play("pickup")
 
 
-func _swing() -> void:
-	_anim_lock = 0.22
-	body.play("use")
+## Swing the held item; `on_impact` runs when it connects.
+func _swing(kind := "mine", duration := 0.3, on_impact := Callable()) -> void:
+	duration = maxf(duration, 0.16)
+	_anim_lock = duration
+	var clip := EquipmentRig.body_clip(kind)
+	body.play(clip)
 	body.frame = 0
-	var tween := create_tween()
-	held_sprite.rotation = -1.2 * facing
-	tween.tween_property(held_sprite, "rotation", 1.1 * facing, 0.16).set_trans(Tween.TRANS_CUBIC)
-	tween.tween_property(held_sprite, "rotation", 0.25 * facing, 0.1)
+	var frames := body.sprite_frames
+	var natural := frames.get_frame_count(clip) / frames.get_animation_speed(clip)
+	body.speed_scale = natural / duration
+	rig.swing(kind, duration, on_impact)
 
 
 # =============================================================================
@@ -527,21 +544,24 @@ func attack() -> void:
 	if nearest != null:
 		facing = 1 if nearest.global_position.x > global_position.x else -1
 
-	_anim_lock = 0.24
-	body.play("attack")
-	body.frame = 0
-	if sword != "":
-		held_sprite.texture = Items.icon(sword)
-		held_sprite.visible = true
-	var tween := create_tween()
-	held_sprite.rotation = -1.6 * facing
-	tween.tween_property(held_sprite, "rotation", 1.4 * facing, 0.14).set_trans(Tween.TRANS_CUBIC)
-	tween.tween_callback(_refresh_held)
+	# Draw the sword for the swing if it is not already in hand.
+	if sword != "" and sword != held_id():
+		_swing_override = sword
+		rig.hold(sword)
+	var duration := clampf(_use_cooldown, 0.2, 0.42)
 	Sfx.play("swing", -2.0)
+	_swing("slash", duration, _slash_hit)
+	get_tree().create_timer(duration).timeout.connect(func():
+		_swing_override = ""
+		_refresh_held())
+
+
+## The sword connects: everything in the arc in front is struck.
+func _slash_hit() -> void:
 	var arc_centre := global_position + Vector2(facing * 110, -100)
 	Effects.burst(level.fx_layer, arc_centre, "slash")
-
 	var damage := attack_damage()
+	var landed := false
 	for enemy in get_tree().get_nodes_in_group("enemies"):
 		if not enemy.is_alive():
 			continue
@@ -549,10 +569,32 @@ func attack() -> void:
 		if enemy.global_position.distance_to(arc_centre) <= reach:
 			var crit := randf() < 0.1
 			enemy.take_hit(damage * (1.8 if crit else 1.0), global_position, crit)
+			landed = true
+	if landed:
+		level.shake(3.0)
 
 
 func hurt(amount: float, from: Vector2, knock := true) -> void:
 	if _dead or (_invulnerable > 0.0 and knock):
+		return
+	# A raised shield takes a blow from the front.
+	if rig.blocking and knock and signf(from.x - global_position.x) == float(facing):
+		var shield_id := inventory.best_of_kind(Items.Kind.SHIELD)
+		var guard: float = Items.def(shield_id).get("block", 0.5)
+		amount *= 1.0 - guard
+		Sfx.play("hit", -4.0, 0.1)
+		Effects.burst(level.fx_layer, rig.shield.global_position, "hit")
+		velocity.x = signf(global_position.x - from.x) * 620.0 * (1.0 - guard)
+		_invulnerable = 0.5
+		level.shake(3.0)
+		if amount < 0.5:
+			return
+		health = maxf(health - amount, 0.0)
+		health_changed.emit(health, max_health)
+		Effects.float_text(level.fx_layer, global_position + Vector2(0, -230), "-%d" % int(amount),
+			UITheme.DANGER, 40)
+		if health <= 0.0:
+			_die()
 		return
 	health = maxf(health - amount, 0.0)
 	health_changed.emit(health, max_health)
@@ -627,7 +669,7 @@ func lantern_radius() -> float:
 func _lantern_light() -> Array:
 	if not is_inside_tree():
 		return []
-	var position := (global_position - Vector2(0, 110)) / TILE
+	var position := rig.lantern_position() / TILE
 	var warmth := Color(1.0, 0.84, 0.58) * (0.55 + 0.45 * clampf(glow / max_glow(), 0.0, 1.0))
 	return [[position, lantern_radius(), warmth]]
 
@@ -722,12 +764,10 @@ func nearby_stations() -> Array:
 
 func _animate(delta: float) -> void:
 	body.flip_h = facing < 0
-	held_sprite.position = Vector2(46 * facing, -112)
-	held_sprite.flip_h = facing < 0
-	held_sprite.offset = Vector2(26 * facing, -26)
 
 	if _anim_lock > 0.0:
 		return
+	body.speed_scale = 1.0
 
 	var clip := "idle"
 	if not is_on_floor():

@@ -11,6 +11,11 @@ const CLIPS := {
 	"fall": [["fall"], 1.0, false],
 	"attack": [["attack0", "attack1", "attack2"], 18.0, false],
 	"use": [["attack1", "attack2", "attack1"], 16.0, false],
+	# Tool swings: the art's attack1 is the raised wind-up, attack0 the
+	# strike, attack2 the follow-through.
+	"swing_mine": [["attack1", "attack1", "attack0", "attack2", "attack2", "attack0"], 16.0, false],
+	"swing_chop": [["attack0", "attack1", "attack1", "attack2", "attack2", "attack0"], 16.0, false],
+	"slash": [["attack1", "attack0", "attack2", "attack2", "attack0"], 18.0, false],
 	"hurt": [["hurt"], 1.0, false],
 	"death": [["hit", "fallDown"], 6.0, false],
 	"interact": [["interact"], 1.0, false],
