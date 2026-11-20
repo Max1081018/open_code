@@ -40,6 +40,14 @@ func _find_target() -> Vector2:
 				return _nearest_object("tree", 40)
 			"break":
 				return _nearest_rock(24)
+			"craft":
+				# Away from the station this needs: point the way to one.
+				for recipe in Items.recipes:
+					if recipe[0] == goal[1] and recipe[2] != Items.Station.HAND \
+							and not (recipe[2] in level.player.nearby_stations()):
+						var station: String = {Items.Station.WORKBENCH: "workbench",
+							Items.Station.ANVIL: "anvil", Items.Station.CAMPFIRE: "campfire"}.get(recipe[2], "")
+						return _nearest_object(station, 80)
 	# Otherwise whoever has a quest to offer.
 	for npc in get_tree().get_nodes_in_group("npcs"):
 		var quest: String = quests.quest_for(npc.id)
@@ -53,7 +61,7 @@ func _nearest_object(type: String, radius: int) -> Vector2:
 	var at := World.cell_of(level.player.global_position)
 	var best := Vector2.INF
 	var best_d := INF
-	for dy in range(-12, 8):
+	for dy in range(-12, 12):
 		for dx in range(-radius, radius + 1):
 			var cell := at + Vector2i(dx, dy)
 			if level.world.object_at(cell).get("type", "") == type:

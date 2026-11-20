@@ -502,8 +502,8 @@ func _bot_walk_to_npc(id: String) -> void:
 func _bot_walk_to_object(type: String) -> void:
 	var player := level.player
 	var at := World.cell_of(player.global_position)
-	for dx in range(-30, 31):
-		for dy in range(-6, 6):
+	for dx in range(-90, 91):
+		for dy in range(-8, 8):
 			if level.world.object_at(at + Vector2i(dx, dy)).get("type", "") == type:
 				if absf(dx) > 2:
 					player.input.move = signf(dx)
