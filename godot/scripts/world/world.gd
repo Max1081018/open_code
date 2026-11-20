@@ -25,6 +25,7 @@ const OBJECT_LIGHTS := {
 	"campfire": [Color(1.0, 0.58, 0.30), 11.0],
 	"wardstone": [Color(0.52, 0.88, 1.0), 15.0],
 	"altar": [Color(0.85, 0.30, 0.35), 6.0],
+	"geode": [Color(0.55, 0.40, 1.0), 8.0],
 }
 const GLOWSHARD_LIGHT := Color(0.22, 0.46, 0.80)
 const LAVA_LIGHT := Color(1.0, 0.42, 0.12)

@@ -555,7 +555,7 @@ func hurt(amount: float, from: Vector2, knock := true) -> void:
 	health = maxf(health - amount, 0.0)
 	health_changed.emit(health, max_health)
 	if knock:
-		_invulnerable = 0.7
+		_invulnerable = 1.0
 		velocity = Vector2(signf(global_position.x - from.x) * 620.0, -520.0)
 		_anim_lock = 0.3
 		body.play("hurt")
@@ -686,7 +686,7 @@ func _interact() -> void:
 			var c := cell + Vector2i(dx, dy)
 			var o := world.object_at(c)
 			if o.is_empty() or not (o.type in ["chest", "workbench", "anvil", "campfire", "sign",
-					"altar", "wardstone", "torch"]):
+					"altar", "wardstone", "torch", "geode"]):
 				continue
 			var d := Vector2(dx, dy).length()
 			if d < best:

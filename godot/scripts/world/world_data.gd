@@ -230,6 +230,7 @@ func generate(world_seed: int, progress := Callable()) -> void:
 	_build_cabin()
 	_report(progress, 0.85)
 	_plant_surface()
+	_place_geode()
 	_report(progress, 0.95)
 	_seal_edges()
 	_report(progress, 1.0)
@@ -563,6 +564,29 @@ func _plant_surface() -> void:
 		elif _rng.randf() < 0.5:
 			art = "rock"
 		_put_object(x, y, {"type": "shrub", "art": art})
+
+
+## The heart of the largest hollow: a geode the Gloam sleeps beside.
+func _place_geode() -> void:
+	var best := Vector2i(-1, -1)
+	var best_room := 0
+	for attempt in 4000:
+		var x := _rng.randi_range(20, width - 20)
+		var y := _rng.randi_range(SURFACE_Y + 50, DEEP_Y - 8)
+		if get_wall(x, y) != CRYSTAL or is_solid(x, y) or not is_solid(x, y + 1):
+			continue
+		if abs(x - spawn.x) < 60 or objects.has(idx(x, y)):
+			continue
+		var room := 0
+		for dx in range(-6, 7):
+			for dy in range(-5, 1):
+				if not is_solid(x + dx, y + dy):
+					room += 1
+		if room > best_room:
+			best_room = room
+			best = Vector2i(x, y)
+	if best.x >= 0:
+		_put_object(best.x, best.y, {"type": "geode"})
 
 
 func _seal_edges() -> void:

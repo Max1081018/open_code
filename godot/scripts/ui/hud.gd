@@ -25,6 +25,10 @@ var _panel_layer: Control
 var _open_panel: Control = null
 var _top_buttons: HBoxContainer
 var _fps: Label
+var _boss_box: VBoxContainer
+var _boss_name: Label
+var _boss_bar: Control
+var _boss_fill := 1.0
 
 
 func _ready() -> void:
@@ -55,6 +59,25 @@ func _ready() -> void:
 	_panel_layer.set_anchors_preset(Control.PRESET_FULL_RECT)
 	_panel_layer.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	_root.add_child(_panel_layer)
+
+	_boss_box = VBoxContainer.new()
+	_boss_box.set_anchors_preset(Control.PRESET_CENTER_TOP)
+	_boss_box.grow_horizontal = Control.GROW_DIRECTION_BOTH
+	_boss_box.offset_top = 30
+	_boss_box.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_boss_box.visible = false
+	_root.add_child(_boss_box)
+	_boss_name = UITheme.title("", 44, UITheme.PAPER)
+	_boss_box.add_child(_boss_name)
+	_boss_bar = Control.new()
+	_boss_bar.custom_minimum_size = Vector2(820, 46)
+	_boss_bar.draw.connect(func():
+		var r := Rect2(Vector2.ZERO, _boss_bar.size)
+		_boss_bar.draw_style_box(UITheme.flat(Color(0.1, 0.05, 0.08, 0.85), 18, Color(0.45, 0.2, 0.2), 4), r)
+		var fill := Rect2(Vector2(6, 6), Vector2((r.size.x - 12) * _boss_fill, r.size.y - 12))
+		if fill.size.x > 2:
+			_boss_bar.draw_style_box(UITheme.flat(UITheme.DANGER, 14), fill))
+	_boss_box.add_child(_boss_bar)
 
 	_fps = Label.new()
 	_fps.position = Vector2(24, 210)
@@ -488,8 +511,15 @@ func _process(delta: float) -> void:
 		for dx in range(-3, 4):
 			var o := level.world.object_at(cell + Vector2i(dx, dy))
 			if o.get("type", "") in ["chest", "workbench", "anvil", "campfire", "sign", "altar",
-					"wardstone", "torch"]:
+					"wardstone", "torch", "geode"]:
 				can_interact = true
+	var boss = level.boss
+	_boss_box.visible = boss != null and is_instance_valid(boss) and boss.is_alive()
+	if _boss_box.visible:
+		_boss_name.text = boss.spec.boss
+		_boss_fill = clampf(boss.health / boss.max_health, 0.0, 1.0)
+		_boss_bar.queue_redraw()
+
 	_fps.visible = Settings.show_fps
 	if _fps.visible:
 		_fps.text = "%d fps" % Engine.get_frames_per_second()

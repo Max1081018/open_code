@@ -20,6 +20,8 @@ var drop_layer: Node2D
 var actors: Node2D
 var hud: Node
 var controls: Node
+var director: Director
+var boss: Enemy = null
 
 var _shake := 0.0
 var _look_ahead := 0.0
@@ -82,6 +84,11 @@ func start(seed_value: int, saved := {}) -> void:
 	atmosphere.setup(world, camera)
 
 	player.died.connect(_on_player_died)
+
+	director = Director.new()
+	director.level = self
+	add_child(director)
+	Sfx.play_music("explore")
 
 
 func _starting_kit() -> void:
@@ -170,9 +177,53 @@ func interact_with(cell: Vector2i, object: Dictionary) -> void:
 			object["lit"] = not object.get("lit", true)
 			world.remove_object(cell)
 			world.add_object(cell, object)
-		"altar":
+		"altar", "geode":
 			if hud and hud.has_method("summon_at_altar"):
 				hud.summon_at_altar(cell)
+
+
+func spawn_enemy(kind: String, at: Vector2) -> Enemy:
+	var enemy := Enemy.new()
+	enemy.setup(kind)
+	enemy.world = world
+	enemy.level = self
+	enemy.player = player
+	enemy.position = at
+	actors.add_child(enemy)
+	return enemy
+
+
+## The altar wakes the Warden, if you carry the key; the geode wakes the
+## Gloam. Each guards a Lumen Core, and each core loosens the deep dark.
+func summon_boss(cell: Vector2i) -> void:
+	if boss != null and is_instance_valid(boss) and boss.is_alive():
+		Game.toast("Something is already awake")
+		return
+	var object := world.object_at(cell)
+	var kind := "warden"
+	if object.get("type", "") == "geode":
+		kind = "gloam"
+	elif not player.inventory.remove("vault_key", 1):
+		Game.toast("The altar is cold. It wants a key.", Items.icon("vault_key"))
+		return
+	var at := World.foot_of(cell) + Vector2(5 * TILE * (1 if randf() < 0.5 else -1), -TILE)
+	boss = spawn_enemy(kind, at)
+	boss.died_at.connect(_on_boss_died)
+	Sfx.play("roar", 4.0)
+	shake(26.0)
+	Sfx.play_music("boss")
+	Game.toast("%s awakens" % Enemy.KINDS[kind].boss)
+
+
+func boss_phase(enemy: Enemy) -> void:
+	Game.toast("%s is enraged!" % enemy.spec.boss)
+	shake(18.0)
+
+
+func _on_boss_died(_at: Vector2) -> void:
+	Game.toast("%s is defeated" % boss.spec.boss, Items.icon("lumen_core"))
+	boss = null
+	Sfx.play_music("explore")
 
 
 func _on_player_died() -> void:

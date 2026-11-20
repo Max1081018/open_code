@@ -118,6 +118,13 @@ func _apply_scenario() -> void:
 		"cabin":
 			player.global_position = World.foot_of(data.spawn) + Vector2(-13 * 128, 0)
 			level.world.load_area(World.cell_of(player.global_position), 2)
+	if _args.has("spawn"):
+		var offset := 360.0
+		for kind in _args.spawn.split(","):
+			level.spawn_enemy(kind, player.global_position + Vector2(offset, -40))
+			offset += 260.0
+	if _args.has("boss"):
+		level.boss = level.spawn_enemy(_args.boss, player.global_position + Vector2(700, -80))
 	if _args.has("give"):
 		for id in _args.give.split(","):
 			player.inventory.add(id, 20)

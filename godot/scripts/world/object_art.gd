@@ -60,6 +60,16 @@ static func _build(object: Dictionary, hash_value: int) -> Node2D:
 			var node := _prop("campfire", foot)
 			node.add_child(Effects.fire(Vector2(0, -TILE * 0.32)))
 			return node
+		"geode":
+			var geode := Node2D.new()
+			var crystal := Sprite2D.new()
+			crystal.texture = texture("res://assets/props/gem_blue.png")
+			crystal.scale = Vector2(1.6, 1.6)
+			crystal.modulate = Color(0.8, 0.6, 1.2)
+			crystal.position = Vector2(0, -90)
+			geode.add_child(crystal)
+			geode.add_child(Effects.motes(Vector2(0, -120), Color(0.7, 0.5, 1.0), 2.5))
+			return geode
 		"spawner":
 			return null
 	if ART.has(object.get("type", "")):
