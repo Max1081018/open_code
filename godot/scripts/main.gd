@@ -266,6 +266,8 @@ func _run_scenario() -> void:
 			input.block_held = _frames > 10
 		"soak":
 			_soak()
+		"tutorial":
+			_tutorial_bot()
 		"dodge":
 			input.move = 1.0 if _frames > 15 else 0.0
 			input.dodge_pressed = _frames == 24
@@ -372,6 +374,109 @@ func _soak() -> void:
 		"block":
 			input.block_held = true
 			input.move = 0.4
+
+
+var _bot_log := ""
+
+
+## Plays the tutorial through the real game, with real inputs, reading only
+## the quest tracker for what to do next. If it cannot finish, something in
+## the tutorial is broken.
+func _tutorial_bot() -> void:
+	var player := level.player
+	var input := player.input
+	var quests := level.quests
+	input.use_held = false
+	input.move = 0.0
+	if level.hud.dialogue.is_talking() and _frames % 30 == 0:
+		level.hud.dialogue.stop()
+	var step := quests.current_step("first_light") if quests.state.has("first_light") else {}
+	var where := "%s step %s" % [quests.state.get("first_light", {}).get("state", "?"),
+		quests.state.get("first_light", {}).get("step", "?")]
+	if where != _bot_log:
+		_bot_log = where
+		print("BOT frame %d: %s %s" % [_frames, where, step.get("text", "")])
+	if quests.state.first_light.state == "offered":
+		_bot_walk_to_npc("wren")
+		return
+	if step.is_empty():
+		return
+	var goal: Array = step.goal
+	match goal[0]:
+		"fell", "have":
+			if goal[0] == "have" and goal[1] != "wood":
+				return
+			var tree := _nearest_tree()
+			var dx := tree.x - player.global_position.x
+			if absf(dx) > 260:
+				input.move = signf(dx)
+				input.jump_pressed = player.is_on_wall() and _frames % 20 == 0
+				input.jump_held = input.jump_pressed
+			else:
+				input.use_held = true
+				input.aim = tree
+		"craft":
+			if player.crafting().is_empty():
+				for recipe in Items.recipes:
+					if recipe[0] == goal[1]:
+						if not player.start_craft(recipe) and goal[1] == "wood_axe":
+							# Needs the bench: walk to it.
+							_bot_walk_to_object("workbench")
+		"place":
+			var slot := -1
+			for i in Inventory.HOTBAR_SIZE:
+				var stack = player.inventory.get_slot(i)
+				if stack != null and stack.id == goal[1]:
+					slot = i
+			if slot >= 0:
+				input.hotbar_select = slot
+			var at := World.cell_of(player.global_position) + Vector2i(player.facing * 2, 0)
+			for dy in range(-3, 4):
+				if player.placement_problem(goal[1], at + Vector2i(0, dy)) == "":
+					input.use_held = _frames % 10 < 5
+					input.aim = World.centre_of(at + Vector2i(0, dy))
+					break
+			if not input.use_held:
+				input.move = 1.0
+		"break":
+			# Dig straight down until rock comes up.
+			input.hotbar_select = 0
+			input.use_held = true
+			input.aim = player.global_position + Vector2(20, 64)
+		"build":
+			for i in Inventory.HOTBAR_SIZE:
+				var stack = player.inventory.get_slot(i)
+				if stack != null and Items.kind(stack.id) == Items.Kind.BLOCK:
+					input.hotbar_select = i
+			var cell := World.cell_of(player.global_position) + Vector2i(-2, -int((_frames / 20) % 4))
+			input.use_held = _frames % 8 < 4
+			input.aim = World.centre_of(cell)
+		"talk":
+			_bot_walk_to_npc(goal[1])
+
+
+func _bot_walk_to_npc(id: String) -> void:
+	var player := level.player
+	for npc in get_tree().get_nodes_in_group("npcs"):
+		if npc.id == id:
+			var dx: float = npc.global_position.x - player.global_position.x
+			if absf(dx) > 200:
+				player.input.move = signf(dx)
+				player.input.jump_pressed = player.is_on_wall() and _frames % 20 == 0
+				player.input.jump_held = player.input.jump_pressed
+			elif _frames % 40 == 0:
+				player.input.interact_pressed = true
+
+
+func _bot_walk_to_object(type: String) -> void:
+	var player := level.player
+	var at := World.cell_of(player.global_position)
+	for dx in range(-30, 31):
+		for dy in range(-6, 6):
+			if level.world.object_at(at + Vector2i(dx, dy)).get("type", "") == type:
+				if absf(dx) > 2:
+					player.input.move = signf(dx)
+				return
 
 
 func _nearest_tree() -> Vector2:
