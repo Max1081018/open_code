@@ -134,16 +134,25 @@ func _starting_kit() -> void:
 ## ten tiles of soil. Clear of the cottage, the NPCs and any object.
 static func _raise_outcrop(data: WorldData) -> void:
 	var start := data.spawn.x + 8
-	for x0 in range(start, start + 12):
+	for x0 in range(start, start + 40):
+		# Plants make way; built things (the cottage, chests, signs) do not.
 		var clear := true
 		for dx in 3:
 			var x := x0 + dx
 			var y: int = data.surface[x]
-			for dy in range(-3, 1):
-				if data.objects.has(data.idx(x, y + dy)):
+			for dy in range(-4, 1):
+				var object: Dictionary = data.objects.get(data.idx(x, y + dy), {})
+				if not object.is_empty() and not (object.get("type", "") in ["tree", "shrub"]):
 					clear = false
+			if data.get_liquid(x, y - 1) != WorldData.DRY or absf(data.surface[x] - data.surface[x0]) > 1:
+				clear = false
 		if not clear:
 			continue
+		for dx in 3:
+			var x := x0 + dx
+			var y: int = data.surface[x]
+			for dy in range(-4, 1):
+				data.objects.erase(data.idx(x, y + dy))
 		# A low mound: 2-3-2 rocks, sitting on the ground.
 		for dx in 3:
 			var x := x0 + dx

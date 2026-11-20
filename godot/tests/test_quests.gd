@@ -137,15 +137,17 @@ func test_a_crafting_step_says_what_is_missing() -> void:
 
 
 func test_a_new_world_has_rock_to_mine_near_the_start() -> void:
-	var level := _make_level()
-	var data := level.data
-	var found := 0
-	for x in range(data.spawn.x + 4, data.spawn.x + 30):
-		for y in range(data.surface[x] - 1, data.surface[x] + 3):
-			if data.get_tile(x, y) == WorldData.ROCK and not data.is_solid(x, y - 1):
-				found += 1
-	check(found >= 2, "exposed rock within a short walk (found %d)" % found)
-	level.free()
+	# Several seeds, including the default one the game starts with.
+	for seed_value in [5150, 20261120, 1, 77, 4242]:
+		var data := WorldData.new()
+		data.generate(seed_value)
+		Level._raise_outcrop(data)
+		var found := 0
+		for x in range(data.spawn.x + 4, data.spawn.x + 52):
+			for y in range(data.surface[x] - 1, data.surface[x] + 3):
+				if data.get_tile(x, y) == WorldData.ROCK and not data.is_solid(x, y - 1):
+					found += 1
+		check(found >= 2, "seed %d: exposed rock within a short walk (found %d)" % [seed_value, found])
 
 
 func test_the_meadow_is_safe_during_the_tutorial() -> void:
