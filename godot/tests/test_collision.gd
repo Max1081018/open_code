@@ -85,6 +85,11 @@ func test_placement_rules_match_what_the_ghost_shows() -> void:
 	check_eq(player.placement_problem("planks", ground), "", "a block beside solid ground is fine")
 	check_eq(player.placement_problem("workbench", ground), "", "a bench on the ground is fine")
 	check_eq(player.placement_problem("planks", feet), "You're standing there", "not inside yourself")
+	# Straddling two columns: neither may be filled.
+	player.global_position.x = float(feet.x) * 128.0 + 4.0
+	check_eq(player.placement_problem("planks", feet + Vector2i(-1, 0)), "You're standing there",
+		"not into the column your body overlaps")
+	player.global_position = World.foot_of(feet)
 	var high := ground + Vector2i(0, -4)
 	if data.get_wall(high.x, high.y) == WorldData.AIR:
 		check_eq(player.placement_problem("planks", high), "Needs support", "not floating in the air")

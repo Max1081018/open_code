@@ -361,8 +361,9 @@ func _dig(target: Vector2i, delta: float) -> void:
 	if _use_cooldown <= 0.0:
 		_use_cooldown = tool.get("speed", 0.4)
 		var dust := _dust_color(target)
+		var material := data.get_tile(target.x, target.y)
 		_swing("mine", _use_cooldown, func():
-			Sfx.play("dig", -3.0)
+			_mine_sound(material)
 			Effects.burst(level.fx_layer, World.centre_of(target), "dig", dust)
 			_squash(Vector2(1.04, 0.97)))
 
@@ -458,6 +459,24 @@ func _topple(node: Node2D, cell: Vector2i, wood: int, apple: bool) -> void:
 	tween.tween_callback(node.queue_free)
 
 
+## Each material answers the pick in its own voice: dirt thuds, stone
+## clinks, crystal rings, wood knocks.
+func _mine_sound(material: int) -> void:
+	match material:
+		WorldData.ROCK, WorldData.BASALT, WorldData.BRICK:
+			Sfx.play("hit", -7.0, 0.12)
+			Sfx.play("dig", -10.0, 0.1)
+		WorldData.CRYSTAL:
+			Sfx.play("pickup", -9.0, 0.2)
+			Sfx.play("hit", -12.0, 0.15)
+		WorldData.PLANKS:
+			Sfx.play("chop", -6.0, 0.15)
+		WorldData.SNOW, WorldData.SAND:
+			Sfx.play("dig", -6.0, 0.25)
+		_:
+			Sfx.play("dig", -3.0, 0.12)
+
+
 func _dust_color(cell: Vector2i) -> Color:
 	match world.data.get_tile(cell.x, cell.y):
 		WorldData.GRASS, WorldData.SOIL:
@@ -498,6 +517,11 @@ func _update_ghost() -> void:
 	ghost.show_at(cell, Items.icon(id), placement_problem(id, cell))
 
 
+## The player's collision box in world space (the capsule's bounds).
+func body_box() -> Rect2:
+	return Rect2(global_position - Vector2(34, 196), Vector2(68, 196))
+
+
 ## Why an item cannot go in a cell, or "" if it can. The placement ghost
 ## shows the same verdict the game will apply.
 func placement_problem(id: String, target: Vector2i) -> String:
@@ -509,11 +533,19 @@ func placement_problem(id: String, target: Vector2i) -> String:
 		return "Occupied"
 	if data.get_liquid(target.x, target.y) == WorldData.LAVA:
 		return "Lava"
-	# Never build into yourself.
-	var feet := World.cell_of(global_position + Vector2(0, -4))
-	if target.x == feet.x and target.y >= feet.y - 1 and target.y <= feet.y:
-		return "You're standing there"
 	var d := Items.def(id)
+	# Never build a block into a body: the player's own collision box (which
+	# can straddle two columns), or anyone else's.
+	if d.get("kind", -1) == Items.Kind.BLOCK:
+		var cell_rect := Rect2(Vector2(target) * TILE, Vector2(TILE, TILE)).grow(-3)
+		if cell_rect.intersects(body_box()):
+			return "You're standing there"
+		for other in get_tree().get_nodes_in_group("enemies"):
+			if cell_rect.intersects(other.body_rect()):
+				return "Something's there"
+		for npc in get_tree().get_nodes_in_group("npcs"):
+			if cell_rect.intersects(Rect2(npc.global_position - Vector2(40, 200), Vector2(80, 200))):
+				return "Someone's there"
 	if d.get("kind", -1) == Items.Kind.BLOCK:
 		if data.get_wall(target.x, target.y) != WorldData.AIR:
 			return ""

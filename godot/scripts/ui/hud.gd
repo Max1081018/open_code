@@ -533,3 +533,74 @@ func _process(delta: float) -> void:
 	_fps.visible = Settings.show_fps
 	if _fps.visible:
 		_fps.text = "%d fps" % Engine.get_frames_per_second()
+
+
+
+# =============================================================================
+# Death
+# =============================================================================
+
+signal respawn_requested
+
+var _death_screen: Control
+
+
+## Dimmed screen, a title, where you'll wake, and a button; it goes on by
+## itself after a few seconds so a dropped phone doesn't strand you.
+func show_death(seconds := 4.0) -> void:
+	close_panel()
+	if dialogue:
+		dialogue.stop()
+	_death_screen = Control.new()
+	_death_screen.set_anchors_preset(Control.PRESET_FULL_RECT)
+	_death_screen.mouse_filter = Control.MOUSE_FILTER_STOP
+	var shade := ColorRect.new()
+	shade.set_anchors_preset(Control.PRESET_FULL_RECT)
+	shade.color = Color(0.03, 0.02, 0.06, 0.0)
+	shade.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_death_screen.add_child(shade)
+	var column := VBoxContainer.new()
+	column.set_anchors_preset(Control.PRESET_CENTER)
+	column.grow_horizontal = Control.GROW_DIRECTION_BOTH
+	column.grow_vertical = Control.GROW_DIRECTION_BOTH
+	column.alignment = BoxContainer.ALIGNMENT_CENTER
+	column.add_theme_constant_override("separation", 24)
+	_death_screen.add_child(column)
+	column.add_child(UITheme.title("You fell", 110, Color(0.95, 0.55, 0.45)))
+	var text := UITheme.text("The lantern gutters, but it does not go out.\nIt carries you back to your last light.", 34,
+		UITheme.PAPER)
+	text.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	column.add_child(text)
+	var button := Button.new()
+	button.custom_minimum_size = Vector2(420, 100)
+	button.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
+	column.add_child(button)
+	_root.add_child(_death_screen)
+	touch.visible = false
+	var tween := _death_screen.create_tween()
+	tween.tween_property(shade, "color:a", 0.78, 0.8)
+	column.modulate.a = 0.0
+	tween.parallel().tween_property(column, "modulate:a", 1.0, 0.8)
+	var left := [seconds]
+	button.text = "Rise  (%d)" % ceili(seconds)
+	var done := func():
+		if _death_screen == null:
+			return
+		_death_screen.queue_free()
+		_death_screen = null
+		touch.visible = touch_active or _is_touch_device()
+		respawn_requested.emit()
+	button.pressed.connect(done)
+	var timer := Timer.new()
+	timer.wait_time = 0.25
+	timer.autostart = true
+	_death_screen.add_child(timer)
+	timer.timeout.connect(func():
+		left[0] -= 0.25
+		button.text = "Rise  (%d)" % maxi(ceili(left[0]), 0)
+		if left[0] <= 0.0:
+			done.call())
+
+
+func death_showing() -> bool:
+	return _death_screen != null

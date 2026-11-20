@@ -327,8 +327,12 @@ func _on_boss_died(_at: Vector2) -> void:
 
 
 func _on_player_died() -> void:
-	Game.toast("You fell. The lantern carries you back.")
-	await get_tree().create_timer(2.2).timeout
+	await get_tree().create_timer(1.0).timeout
+	if hud and hud.has_method("show_death"):
+		hud.show_death()
+		await hud.respawn_requested
+	else:
+		await get_tree().create_timer(2.2).timeout
 	player.revive(player.spawn_point)
 	camera.global_position = player.global_position
 	camera.reset_smoothing()

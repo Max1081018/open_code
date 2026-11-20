@@ -2,7 +2,7 @@
 
 ## Done and verified
 
-Verified by headless tests (47) and by screenshot captures at 2340×1080.
+Verified by headless tests (76) and a gameplay soak bot (`--action=soak`) and by screenshot captures at 2340×1080.
 
 - World: 640×360 tiles, three surface biomes, soil/rock/basalt layers,
   caves and shafts, crystal hollows, contained water and lava pools, brick
@@ -33,6 +33,27 @@ Verified by headless tests (47) and by screenshot captures at 2340×1080.
   underwater and lava-heat screen effects.
 - Performance budgets tested: light map ~1.5 ms, chunk load ~1.7 ms.
 
+- Story (see `assets/story/dialogue.json`, `scripts/story/`): three voiced
+  NPCs (Wren, Old Bram, Mira) on the jointed rig; a main quest chain
+  (First Light → Below the Roots → Ward the Dark → The Rusted Warden →
+  Into the Hollows) and side quests; the tutorial is Wren talking the
+  player through felling, gathering, crafting, placing, mining, upgrading
+  and building. Quest tracker, guide arrow, save-compatible quest state.
+- Voices: Piper TTS baked offline to Ogg (`tools/bake_voices.py`), a
+  distinct voice per character, subtitles revealed with the audio, music
+  ducking, a Voices volume slider.
+- Characters: a jointed cut-out rig (Kenney Toon parts) for the hero,
+  enemies and NPCs: strides matched to ground speed, arm swing, breathing,
+  three-quarter head facing travel, expressions; items held in the fist
+  with per-swing curves (mine, chop, slash, place), torch, belt lantern,
+  shields that block from the front.
+- Gathering and building: felled trees topple; placement ghost with
+  reasons; timed crafting with station sounds; build effects.
+- Weather: rain, snow, thunderstorms with lightning and thunder; ambience
+  beds (forest, rain, cave) mixed by location.
+- Collision: fitted creature boxes, swing reach in front only, telegraphed
+  enemy attacks, a collision debug view.
+
 ## Not done yet
 
 - **APK**: the export preset is ready; the build needs Godot's export
@@ -46,8 +67,8 @@ Verified by headless tests (47) and by screenshot captures at 2340×1080.
 - **Map screen** and a **minimap**.
 - **Armour and accessories**: tools and weapons progress; armour does not
   exist yet.
-- **NPCs**: the guide's art is imported but she is not in the world.
-- **Underwater and heat effects** are written but have not been seen in
-  a capture yet (no scenario puts the player in water or beside lava).
+- **Voices by ear**: lines are checked for length and loudness, not
+  listened to; Piper output can mispronounce names.
+- **More quests and NPCs**: three NPCs and seven quests so far.
 - **Liquids** are static: digging under a pool does not drain it.
 - **Furniture** beyond the crafting stations, chests and wardstones.

@@ -262,6 +262,11 @@ func _run_scenario() -> void:
 				input.attack_pressed = true
 		"block":
 			input.block_held = _frames > 10
+		"soak":
+			_soak()
+		"die":
+			if _frames == 20:
+				level.player.hurt(9999.0, level.player.global_position + Vector2(100, 0))
 		"craft":
 			if _frames == 30:
 				level.player.inventory.add("wood", 20)
@@ -290,6 +295,73 @@ func _run_scenario() -> void:
 			if _frames % 40 == 5:
 				input.jump_pressed = true
 			input.jump_held = _frames % 40 < 25
+
+
+var _soak_rng := RandomNumberGenerator.new()
+var _soak_mode := "walk"
+var _soak_until := 0
+
+
+## A bot that plays: a random mix of everything a player does, for as long
+## as the run lasts, so problems that only appear in play show up in the log.
+func _soak() -> void:
+	var player := level.player
+	var input := player.input
+	if _frames == 1:
+		_soak_rng.seed = int(_args.get("seed", "1"))
+		for id in ["wood", "stone", "planks", "copper_ore", "iron_ore", "raw_meat", "glowshard"]:
+			player.inventory.add(id, 40)
+		for id in ["iron_axe", "iron_sword", "iron_shield", "workbench", "anvil", "campfire", "torch"]:
+			player.inventory.add(id, 1 if id != "torch" else 10)
+	if _frames >= _soak_until:
+		var modes := ["walk", "walk_left", "jump", "dig_down", "dig_side", "attack", "build", "place",
+			"craft", "panel", "talk", "block", "hotbar", "spawn", "weather", "idle"]
+		_soak_mode = modes[_soak_rng.randi() % modes.size()]
+		_soak_until = _frames + _soak_rng.randi_range(20, 140)
+		input.use_held = false
+		input.block_held = false
+		input.move = 0.0
+		if level.hud and level.hud.get("_open_panel") != null and _soak_mode != "panel":
+			level.hud.close_panel()
+		match _soak_mode:
+			"craft":
+				var recipe: Array = Items.recipes[_soak_rng.randi() % Items.recipes.size()]
+				player.start_craft(recipe)
+			"panel":
+				level.hud.toggle_inventory()
+			"talk":
+				input.interact_pressed = true
+			"hotbar":
+				input.hotbar_select = _soak_rng.randi() % Inventory.HOTBAR_SIZE
+			"spawn":
+				var kinds := ["slime", "zombie", "bee", "robot", "snail"]
+				level.spawn_enemy(kinds[_soak_rng.randi() % kinds.size()], player.global_position + Vector2(_soak_rng.randf_range(-700, 700), -300))
+			"weather":
+				level.life.set_weather(WorldLife.Weather.RAIN, 1.0)
+				level.life.strike(true)
+	match _soak_mode:
+		"walk":
+			input.move = 1.0
+		"walk_left":
+			input.move = -1.0
+		"jump":
+			input.move = 1.0 if (_frames / 50) % 2 == 0 else -1.0
+			input.jump_pressed = _frames % 30 == 0
+			input.jump_held = _frames % 30 < 18
+		"dig_down":
+			input.use_held = true
+			input.aim = player.global_position + Vector2(0, 60)
+		"dig_side":
+			input.use_held = true
+			input.aim = player.global_position + Vector2(player.facing * 180, -60)
+		"attack":
+			input.attack_pressed = _frames % 20 == 0
+		"build", "place":
+			input.use_held = true
+			input.aim = player.global_position + Vector2(player.facing * 260, -40 - (_frames % 3) * 128)
+		"block":
+			input.block_held = true
+			input.move = 0.4
 
 
 func _nearest_tree() -> Vector2:
