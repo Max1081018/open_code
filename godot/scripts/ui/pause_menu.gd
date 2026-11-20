@@ -46,9 +46,7 @@ static func settings_grid() -> Control:
 	grid.add_theme_constant_override("h_separation", 30)
 	grid.add_theme_constant_override("v_separation", 14)
 
-	_option(grid, "Graphics", ["Low", "Medium", "High"], Settings.quality, func(i):
-		Settings.quality = i
-		Settings.save_settings())
+	_graphics(grid)
 	_slider(grid, "Music", Settings.music_volume, 0.0, 1.0, func(v):
 		Settings.music_volume = v
 		Settings.save_settings())
@@ -73,7 +71,56 @@ static func settings_grid() -> Control:
 	_toggle(grid, "Show FPS", Settings.show_fps, func(on):
 		Settings.show_fps = on
 		Settings.save_settings())
+	_toggle(grid, "Debug: collision shapes", Settings.debug_collision, func(on):
+		Settings.debug_collision = on
+		Settings.save_settings())
 	return grid
+
+
+## The preset row, and the separate controls it sets. Choosing a preset
+## rebuilds the controls beneath it so they show what it chose.
+static func _graphics(grid: GridContainer) -> void:
+	var levels := ["Low", "Med", "High", "Ultra"]
+	var rows := []
+	var rebuild := func(): pass
+	_option(grid, "Graphics preset", Settings.PRESET_NAMES, Settings.quality, func(i):
+		Settings.apply_preset(i)
+		Settings.save_settings()
+		for row in rows:
+			row.queue_free()
+		rows.clear()
+		rebuild.call())
+	rebuild = func():
+		var start := grid.get_child_count()
+		_option(grid, "  Lighting", levels, Settings.lighting, func(i):
+			Settings.lighting = i
+			Settings.save_settings())
+		_option(grid, "  Particles", levels, Settings.particles, func(i):
+			Settings.particles = i
+			Settings.save_settings())
+		_option(grid, "  Shader effects", levels, Settings.shader_fx, func(i):
+			Settings.shader_fx = i
+			Settings.save_settings())
+		_option(grid, "  Background", levels, Settings.background, func(i):
+			Settings.background = i
+			Settings.save_settings())
+		_toggle(grid, "  Soft shadows", Settings.shadows, func(on):
+			Settings.shadows = on
+			Settings.save_settings())
+		_toggle(grid, "  Bloom", Settings.bloom, func(on):
+			Settings.bloom = on
+			Settings.save_settings())
+		_toggle(grid, "  Weather", Settings.weather, func(on):
+			Settings.weather = on
+			Settings.save_settings())
+		# Keep the rebuilt rows directly under the preset row.
+		var added := []
+		for i in range(start, grid.get_child_count()):
+			added.append(grid.get_child(i))
+		for n in added.size():
+			grid.move_child(added[n], 2 + n)
+		rows.append_array(added)
+	rebuild.call()
 
 
 static func _label(grid: GridContainer, text: String) -> void:
@@ -108,7 +155,7 @@ static func _option(grid: GridContainer, text: String, choices: Array, selected:
 		button.text = choices[i]
 		button.toggle_mode = true
 		button.button_pressed = i == selected
-		button.custom_minimum_size = Vector2(166, 76)
+		button.custom_minimum_size = Vector2(130 if choices.size() > 3 else 166, 70)
 		button.add_theme_font_size_override("font_size", 30)
 		buttons.append(button)
 		row.add_child(button)

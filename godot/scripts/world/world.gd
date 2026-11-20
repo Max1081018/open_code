@@ -89,7 +89,8 @@ func _build_layers() -> void:
 	walls.z_index = -5
 	# Background walls are the same rock, set back: darker and cooler, so
 	# the eye reads them as depth rather than as more ground.
-	walls.modulate = Color(0.40, 0.40, 0.50)
+	walls.modulate = Color(0.48, 0.48, 0.58)
+	walls.material = Visuals.terrain(true)
 	add_child(walls)
 
 	object_root = Node2D.new()
@@ -106,6 +107,7 @@ func _build_layers() -> void:
 	terrain = TileMapLayer.new()
 	terrain.tile_set = tileset
 	terrain.z_index = 0
+	terrain.material = Visuals.terrain()
 	add_child(terrain)
 
 	overlay = TileMapLayer.new()

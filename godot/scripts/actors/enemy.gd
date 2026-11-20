@@ -115,6 +115,8 @@ func _ready() -> void:
 		_sprite.modulate = spec.tint
 	add_child(_sprite)
 	_sprite.play("move")
+	if Settings.shadows and spec.mode != Mode.PHASE:
+		add_child(SoftShadow.under(self, world, 0.9 * s))
 
 	if spec.has("light"):
 		add_child(Glow.make(spec.light, 1.4 * s, true))

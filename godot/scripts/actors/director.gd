@@ -18,7 +18,7 @@ var _spawner_cooldown := {}  ## cell index -> seconds
 
 
 func cap() -> int:
-	var base: int = [4, 6, 8][Settings.quality]
+	var base: int = Settings.enemy_cap()
 	return 3 if level.boss != null else base
 
 

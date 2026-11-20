@@ -112,6 +112,8 @@ func _ready() -> void:
 
 	world.add_child(crack)
 	world.add_child(aim_marker)
+	if Settings.shadows:
+		add_child(SoftShadow.under(self, world, 0.85))
 	world.dynamic_lights.append(_lantern_light)
 	inventory.changed.connect(_refresh_held)
 	_refresh_held()

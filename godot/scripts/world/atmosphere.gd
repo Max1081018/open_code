@@ -20,20 +20,20 @@ const BIOMES := {
 	WorldData.Biome.MEADOW: {
 		"far": "fade_trees", "near": "color_hills",
 		"trees": ["tree", "treeLong", "treePine", "tree", "treeSmall_green1"],
-		"fog": Color(0.55, 0.80, 0.74), "sky_top": Color(0.38, 0.66, 0.86),
-		"sky_low": Color(0.74, 0.90, 0.84),
+		"fog": Color(0.40, 0.56, 0.54), "sky_top": Color(0.30, 0.50, 0.70),
+		"sky_low": Color(0.62, 0.74, 0.72),
 	},
 	WorldData.Biome.TUNDRA: {
 		"far": "fade_hills", "near": "color_hills",
 		"trees": ["treePineSnow", "treeSnow", "treePineFrozen", "treeFrozen"],
-		"fog": Color(0.80, 0.88, 0.98), "sky_top": Color(0.42, 0.58, 0.82),
-		"sky_low": Color(0.88, 0.93, 1.0),
+		"fog": Color(0.62, 0.70, 0.80), "sky_top": Color(0.30, 0.42, 0.62),
+		"sky_low": Color(0.76, 0.82, 0.90),
 	},
 	WorldData.Biome.DESERT: {
 		"far": "fade_desert", "near": "color_desert",
 		"trees": ["treePalm", "cactus1", "cactus2", "treePalm"],
-		"fog": Color(0.98, 0.84, 0.64), "sky_top": Color(0.42, 0.62, 0.86),
-		"sky_low": Color(1.0, 0.88, 0.70),
+		"fog": Color(0.80, 0.66, 0.50), "sky_top": Color(0.34, 0.50, 0.70),
+		"sky_low": Color(0.92, 0.78, 0.60),
 	},
 }
 
@@ -134,6 +134,8 @@ func _build_layers() -> void:
 			var fog_material := ShaderMaterial.new()
 			fog_material.shader = load("res://scripts/shaders/fog_layer.gdshader")
 			fog_material.set_shader_parameter("amount", layer_spec[1])
+			# Nearer layers keep a little more colour than distant ones.
+			fog_material.set_shader_parameter("saturation", lerpf(0.45, 0.7, float(i) / 3.0))
 			layer.material = fog_material
 			layer.set_meta("fog", fog_material)
 			_layer_root.add_child(layer)
@@ -193,7 +195,7 @@ func _fill_tree_line(layer: Node2D, kinds: Array, scale: float, seed_value: int)
 	var ground := ColorRect.new()
 	ground.size = Vector2(_strip_width + 400, 1400)
 	ground.position = Vector2(-200, -4)
-	ground.color = Color(0.28, 0.52, 0.36)
+	ground.color = Color(0.16, 0.30, 0.22)
 	ground.use_parent_material = true
 	layer.add_child(ground)
 
@@ -284,7 +286,7 @@ func _build_grade() -> void:
 	_grade.shader = load("res://scripts/shaders/grade.gdshader")
 	rect.material = _grade
 	layer.add_child(rect)
-	rect.visible = Settings.quality != Settings.Quality.LOW
+	rect.visible = Settings.shader_fx >= 1
 
 
 # =============================================================================

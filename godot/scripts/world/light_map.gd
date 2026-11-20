@@ -15,7 +15,7 @@ const AIR_FALLOFF := 0.88
 const SOLID_FALLOFF := 0.74
 const WATER_FALLOFF := 0.80
 ## Floor so the darkest cave is deep indigo, never flat black.
-const AMBIENT := Color(0.025, 0.022, 0.045)
+const AMBIENT := Color(0.055, 0.050, 0.085)
 
 var region := Rect2i()
 var r := PackedFloat32Array()

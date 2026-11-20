@@ -42,7 +42,19 @@ static func make(object: Dictionary, cell: Vector2i) -> Node2D:
 	var node := _build(object, absi(cell.x * 73856093 ^ cell.y * 19349663))
 	if node != null:
 		node.position = Vector2(cell.x * TILE + TILE * 0.5, (cell.y + 1) * TILE)
+		var width: float = SHADOW_WIDTH.get(object.get("type", ""), 0.0)
+		if width > 0.0 and Settings.shadows:
+			var shadow := SoftShadow.blob(width)
+			node.add_child(shadow)
+			node.move_child(shadow, 0)
 	return node
+
+
+## Contact-shadow width in tiles for objects that stand on the ground.
+const SHADOW_WIDTH := {
+	"tree": 1.5, "workbench": 1.0, "anvil": 1.0, "chest": 0.9, "barrel": 0.8,
+	"campfire": 0.9, "altar": 1.1, "wardstone": 0.9, "sign": 0.5, "geode": 1.0,
+}
 
 
 static func _build(object: Dictionary, hash_value: int) -> Node2D:
@@ -183,10 +195,18 @@ shader_type canvas_item;
 // Wind: the top of the sprite drifts while its base stays rooted.
 uniform float phase = 0.0;
 uniform float strength = 9.0;
+// Foliage in the world's palette, not Kenney's toy green.
+uniform float saturation = 0.72;
+uniform vec3 tint = vec3(0.86, 0.92, 0.88);
 void vertex() {
 	float lift = 1.0 - UV.y;
 	float gust = sin(TIME * 1.3 + phase) * 0.7 + sin(TIME * 2.9 + phase * 1.7) * 0.3;
 	VERTEX.x += gust * strength * lift * lift;
+}
+void fragment() {
+	vec4 c = texture(TEXTURE, UV);
+	float grey = dot(c.rgb, vec3(0.299, 0.587, 0.114));
+	COLOR = vec4(mix(vec3(grey), c.rgb, saturation) * tint, c.a) * COLOR;
 }
 """
 	var material := ShaderMaterial.new()
