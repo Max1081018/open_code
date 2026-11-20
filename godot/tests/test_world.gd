@@ -283,3 +283,28 @@ func test_weather_dims_the_sky_only_while_enabled() -> void:
 	check(life.overcast() == 0.0, "weather off means a clear sky")
 	Settings.weather = was
 	life.free()
+
+
+func test_every_tree_art_maps_to_a_known_species() -> void:
+	for biome in WorldData.TREES:
+		for art in WorldData.TREES[biome]:
+			check(Visuals.SPECIES.has(Visuals.species_of(art)), "%s has a species" % art)
+	check(Visuals.species_of("treePineSnow") == "conifer", "pines are conifers")
+	check(Visuals.species_of("cactus2") == "cactus", "cacti do not sway")
+	check(Visuals.species_of("bushAlt3") == "bush", "bushes")
+
+
+func test_plants_share_one_material_per_species() -> void:
+	# Hundreds of trees must not mean hundreds of materials.
+	check(Visuals.foliage("conifer") == Visuals.foliage("conifer"), "same species, same material")
+	check(Visuals.foliage("conifer") != Visuals.foliage("palm"), "species differ")
+
+
+func test_wind_and_sun_reach_every_plant_material() -> void:
+	var a := Visuals.foliage("broadleaf")
+	var b := Visuals.foliage("bush")
+	Visuals.set_environment(Vector2(0.6, -0.8), 0.5, 1.7, Vector2(100, 200))
+	check(is_equal_approx(a.get_shader_parameter("wind"), 1.7), "trees feel the wind")
+	check(is_equal_approx(b.get_shader_parameter("sun_strength"), 0.5), "bushes see the sun")
+	check(Visuals.sway().get_shader_parameter("player_position") == Vector2(100, 200),
+		"grass knows where the player walks")

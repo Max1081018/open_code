@@ -22,7 +22,6 @@ const ITEM_FOR := {
 	"chest": "chest", "wardstone": "wardstone",
 }
 
-static var _sway: Shader
 static var _textures := {}
 
 
@@ -205,7 +204,7 @@ static func _tree(object: Dictionary, foot: Vector2, hash_value: int) -> Node2D:
 	elif String(object.art).begins_with("treeSmall"):
 		height = 2.4
 	var sprite := _sprite_standing(tex, foot + Vector2(0, 6), height)
-	sprite.material = _sway_material(hash_value)
+	sprite.material = Visuals.foliage(Visuals.species_of(String(object.get("art", "tree"))))
 	root.add_child(sprite)
 	return root
 
@@ -225,8 +224,10 @@ static func _shrub(object: Dictionary, foot: Vector2, hash_value: int) -> Node2D
 		height = 0.45
 	var root := Node2D.new()
 	var sprite := _sprite_standing(tex, foot + Vector2(0, 4), height)
-	if art.begins_with("bush") or art.begins_with("grass"):
-		sprite.material = _sway_material(hash_value)
+	if art.begins_with("bush"):
+		sprite.material = Visuals.foliage("bush")
+	elif art.begins_with("grass"):
+		sprite.material = Visuals.sway()
 	if hash_value % 2 == 0:
 		sprite.flip_h = true
 	root.add_child(sprite)
@@ -270,32 +271,3 @@ static func _wardstone(foot: Vector2) -> Node2D:
 	tween.tween_property(gem, "position:y", gem.position.y, 1.4).set_trans(Tween.TRANS_SINE)
 	root.add_child(Effects.motes(foot - Vector2(0, TILE * 1.6), Color(0.6, 0.9, 1.0), 2.2))
 	return root
-
-
-static func _sway_material(hash_value: int) -> ShaderMaterial:
-	if _sway == null:
-		_sway = Shader.new()
-		_sway.code = """
-shader_type canvas_item;
-// Wind: the top of the sprite drifts while its base stays rooted.
-uniform float phase = 0.0;
-uniform float strength = 9.0;
-// Foliage in the world's palette, not Kenney's toy green.
-uniform float saturation = 0.72;
-uniform vec3 tint = vec3(0.86, 0.92, 0.88);
-void vertex() {
-	float lift = 1.0 - UV.y;
-	float gust = sin(TIME * 1.3 + phase) * 0.7 + sin(TIME * 2.9 + phase * 1.7) * 0.3;
-	VERTEX.x += gust * strength * lift * lift;
-}
-void fragment() {
-	vec4 c = texture(TEXTURE, UV);
-	float grey = dot(c.rgb, vec3(0.299, 0.587, 0.114));
-	COLOR = vec4(mix(vec3(grey), c.rgb, saturation) * tint, c.a) * COLOR;
-}
-"""
-	var material := ShaderMaterial.new()
-	material.shader = _sway
-	material.set_shader_parameter("phase", (hash_value % 628) / 100.0)
-	material.set_shader_parameter("strength", 7.0 + (hash_value % 7))
-	return material

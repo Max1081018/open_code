@@ -14,6 +14,7 @@ var data: WorldData
 var world: World
 var player: Player
 var camera: Camera2D
+var foreground: Foreground
 var atmosphere: Atmosphere
 var fx_layer: Node2D
 var drop_layer: Node2D
@@ -58,6 +59,9 @@ func start(seed_value: int, saved := {}) -> void:
 	world.add_child(drop_layer)
 	fx_layer = Node2D.new()
 	world.add_child(fx_layer)
+	foreground = Foreground.new()
+	world.add_child(foreground)
+	foreground.setup(self)
 
 	player = Player.new()
 	player.world = world

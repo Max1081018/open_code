@@ -22,6 +22,15 @@ uniform float rows = 9.0;
 uniform float columns = 16.0;
 uniform float surface_px = 12288.0;  // mean surface, in world pixels
 uniform float deep_px = 32000.0;     // where the basalt begins
+// The tile light map, so relief faces whichever way the light comes from:
+// strata catch a torch on the torch's side, the sun from above.
+uniform sampler2D light_tex : filter_linear;
+uniform vec2 light_origin = vec2(0.0);
+uniform vec2 light_size = vec2(1.0);
+// Bevel: each exposed side of a block becomes a face. The atlas column is
+// the neighbour mask (bit set = that side open to air: 1 up, 2 down,
+// 4 left, 8 right), so the shader knows which edges to shape.
+uniform float bevel = 0.0;
 uniform vec4 deep_tint : source_color = vec4(0.66, 0.68, 0.86, 1.0);
 
 varying vec2 world;
@@ -53,8 +62,41 @@ void fragment() {
 		float hu = luma(texture(TEXTURE, clamp(UV - vec2(0.0, step_px.y), lo, hi)).rgb);
 		float hd = luma(texture(TEXTURE, clamp(UV + vec2(0.0, step_px.y), lo, hi)).rgb);
 		vec3 normal = normalize(vec3((hl - hr) * 5.0, (hu - hd) * 5.0, 1.0));
-		float lit = dot(normal, normalize(vec3(-0.55, -0.65, 0.55)));
+		// Toward the light: the light map's slope around this point.
+		vec2 luv = (world - light_origin) / light_size;
+		vec2 step_l = 96.0 / light_size;
+		float ll = dot(texture(light_tex, luv - vec2(step_l.x, 0.0)).rgb, vec3(0.333));
+		float lr = dot(texture(light_tex, luv + vec2(step_l.x, 0.0)).rgb, vec3(0.333));
+		float lu = dot(texture(light_tex, luv - vec2(0.0, step_l.y)).rgb, vec3(0.333));
+		float ld = dot(texture(light_tex, luv + vec2(0.0, step_l.y)).rgb, vec3(0.333));
+		vec2 slope = vec2(lr - ll, ld - lu);
+		vec2 toward = mix(vec2(-0.55, -0.65), normalize(slope + vec2(1e-4)), clamp(length(slope) * 6.0, 0.0, 0.85));
+		float lit = dot(normal, normalize(vec3(toward, 0.55)));
 		c *= mix(1.0, 0.45 + lit * 0.85, relief);
+	}
+
+	if (quality >= 1 && bevel > 0.0) {
+		int m = int(floor(UV.x * columns));
+		vec2 local = fract(UV * vec2(columns, rows));
+		float bw = 0.17;
+		float top = ((m & 1) != 0) ? 1.0 - smoothstep(0.0, bw, local.y) : 0.0;
+		float bottom = ((m & 2) != 0) ? 1.0 - smoothstep(0.0, bw * 1.4, 1.0 - local.y) : 0.0;
+		float left = ((m & 4) != 0) ? 1.0 - smoothstep(0.0, bw, local.x) : 0.0;
+		float right = ((m & 8) != 0) ? 1.0 - smoothstep(0.0, bw, 1.0 - local.x) : 0.0;
+		// Faces lit from the upper left by default; the light map's slope
+		// below (quality 2) refines it.
+		float face = 1.0;
+		face += top * 0.30;                 // the top catches the light
+		face -= bottom * 0.42;              // the underside is in shadow
+		face += left * 0.16 - right * 0.20; // sides, from the light's side
+		// Away from every open edge the block is buried: a little darker.
+		float exposed = max(max(top, bottom), max(left, right));
+		float buried = (m == 0) ? 1.0 : 0.0;
+		face *= mix(1.0, 0.88, buried);
+		c *= mix(1.0, face, bevel);
+		// A thin bright lip on the top edge, as on a worn stone corner.
+		float lip = ((m & 1) != 0) ? smoothstep(0.035, 0.0, abs(local.y - 0.02)) : 0.0;
+		c += vec3(0.10, 0.09, 0.08) * lip * bevel;
 	}
 
 	if (quality >= 1) {

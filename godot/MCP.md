@@ -48,6 +48,55 @@ tools/mcp/stop_bridge.sh          # before exporting: removes the autoloads
 
 The export preset also excludes `addons/godot_mcp_bridge/`.
 
+## Sods2 godot-mcp — server verified; editor addon not installed in this project
+
+[Sods2/godot-mcp](https://github.com/Sods2/godot-mcp) (MIT), v1.3.0, 84 tools.
+A Node stdio server. File-based tools (scene parsing, `.tscn` editing,
+resources, directory listing, test detection, script validation) work
+without an editor; live tools talk to its own editor addon on TCP 6008.
+
+Verified in the cloud container (Node 22, Godot 4.4.1):
+
+- Built from source (`npm install && npm run build`) and driven over real
+  MCP stdio calls: `tools/list` returned 84 tools; `godot_list_directory`
+  and `godot_detect_test_framework` ("builtin") worked against this project.
+- `godot_validate_script` works but, without its editor addon running,
+  falls back to `--check-only`, which does not load autoloads; it reports
+  `Settings` as unknown. That is the tool's documented limitation, not a
+  bug in the game. Use the project's own `--import` plus the test run.
+- Its own end-to-end editor test (`npm run test:bridge` under `xvfb-run`
+  with `--rendering-driver opengl3`) passed 16/16: scene tree, add node,
+  set property, rename, signals, animation, screenshot, save.
+
+Not installed into the project: its addon folder is also named
+`addons/godot_mcp_bridge`, which would overwrite the rezaahmadn bridge
+above. Beckett already covers live-editor work here. To use the Sods2 live
+tools, swap the folder in deliberately (and disable the other bridge).
+
+```
+claude mcp add godot-sods -e GODOT_PATH=/usr/local/bin/godot \
+  -e GODOT_PROJECT_PATH=$PWD -- node /path/to/godot-mcp/build/index.js
+```
+
+## Skills
+
+- **GodoMaster** (`npm install -g godomaster-skill`): installed; copies a
+  21-chapter Godot 4 reference to `~/.claude/skills/godomaster/`. That is
+  user-level, outside the repo, so a fresh container needs it reinstalled.
+- **GodotPrompter 2d-essentials**
+  (`npx -y skills add jame581/GodotPrompter --skill 2d-essentials --agent claude-code`):
+  installed into the repo at `.claude/skills/2d-essentials/`.
+
+What was taken from them: the 2D normal-map, parallax and draw-order
+guidance. This game lights tiles with a CPU light map rather than
+`Light2D` nodes (far cheaper on the Compatibility renderer on Android),
+so surface lighting reads that light map in the shaders instead of
+adding per-object lights.
+
+GitHub was searched for further Godot 4 2D wind, foliage and normal-map
+tools; nothing found was licensed, maintained and better than writing
+the shaders directly, so nothing more was installed.
+
 ## On an Android phone (Termux) — not verified
 
 No phone was reachable from the session that did this work, so none of the

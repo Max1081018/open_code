@@ -323,6 +323,13 @@ func _grow_cover(chunk: Vector2i) -> void:
 				sprite.position = Vector2(x * TILE + TILE * 0.5 - sprite.texture.get_width() * k * 0.5 + jitter,
 					(y + 1) * TILE - sprite.texture.get_height() * k + 8)
 				sprite.material = Visuals.sway()
+				if n == 1 and art.begins_with("grass"):
+					# The front row: drawn over the player's feet, a touch lower
+					# and darker, so the ground has a near edge as well as a far one.
+					sprite.z_as_relative = false
+					sprite.z_index = 13
+					sprite.position.y += 14
+					sprite.modulate = Color(0.78, 0.82, 0.80)
 				clump.add_child(sprite)
 			object_root.add_child(clump)
 			var sprite := clump
@@ -577,6 +584,11 @@ func _update_lighting() -> void:
 	light_sprite.texture = light_texture
 	light_sprite.position = Vector2(view.position) * TILE
 	light_sprite.scale = Vector2(TILE, TILE)
+	# Terrain relief is lit from wherever the light actually comes from.
+	for layer_material in [self.terrain.material, self.walls.material]:
+		layer_material.set_shader_parameter("light_tex", light_texture)
+		layer_material.set_shader_parameter("light_origin", light_sprite.position)
+		layer_material.set_shader_parameter("light_size", Vector2(image.get_size()) * TILE)
 	_light_dirty = false
 
 
@@ -601,3 +613,20 @@ func near_placed_light(cell: Vector2i, reach := 8.0) -> bool:
 		if Vector2(c).distance_to(Vector2(cell)) <= reach:
 			return true
 	return false
+
+
+## A tree currently on screen, for leaves to fall from: {"position": foot}.
+func random_visible_tree() -> Dictionary:
+	var view := visible_cells()
+	var keys := _object_nodes.keys()
+	if keys.is_empty():
+		return {}
+	for attempt in 12:
+		var key: int = keys[randi() % keys.size()]
+		var cell := Vector2i(key % data.width, key / data.width)
+		if not view.has_point(cell):
+			continue
+		var object: Dictionary = data.objects.get(key, {})
+		if object.get("type", "") == "tree" and Visuals.species_of(object.get("art", "")) in ["broadleaf", "poplar", "sapling"]:
+			return {"position": _object_nodes[key].position}
+	return {}

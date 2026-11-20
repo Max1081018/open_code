@@ -139,6 +139,69 @@ func _process(delta: float) -> void:
 
 	_update_drips(delta, outdoors)
 	_update_grade(cell)
+	_update_plants(delta)
+
+
+## How hard the wind blows: a breeze that rises and falls, much stronger
+## in a storm.
+func wind() -> float:
+	var breeze := 0.8 + 0.25 * sin(Time.get_ticks_msec() / 9000.0)
+	return breeze + intensity * 1.1 if Settings.weather else breeze
+
+
+## The sun's direction across the sky (screen space, pointing toward it),
+## and how strong it is: it rises on the left and sets on the right; at
+## night the moon takes over, faintly.
+func sun() -> Array:
+	var t: float = level.world.time_of_day
+	var day := clampf(sin((t - 0.25) * TAU) * 1.6 + 0.35, 0.0, 1.0)
+	var arc := (t - 0.25) * TAU if day > 0.0 else (t - 0.75) * TAU
+	var direction := Vector2(-cos(arc), -maxf(absf(sin(arc)), 0.3)).normalized()
+	var strength := lerpf(0.25, 1.0, day) * (1.0 - overcast())
+	return [direction, strength]
+
+
+func _update_plants(delta: float) -> void:
+	var lighting := sun()
+	Visuals.set_environment(lighting[0], lighting[1], wind(), level.player.global_position)
+	_update_falling_leaves(delta)
+
+
+## A few leaves let go of the trees on screen and flutter down. A small
+## pool of sprites moved here, not a particle system per tree.
+var _falling: Array[Dictionary] = []
+var _leaf_timer := 0.0
+
+
+func _update_falling_leaves(delta: float) -> void:
+	_leaf_timer -= delta
+	if _leaf_timer <= 0.0 and Settings.particles > 0 and _falling.size() < int(10 * Settings.particle_scale()):
+		_leaf_timer = randf_range(0.4, 1.2) / maxf(wind(), 0.5)
+		var tree := level.world.random_visible_tree()
+		if not tree.is_empty():
+			var leaf := Sprite2D.new()
+			leaf.texture = load("res://assets/fx/leaf.png")
+			leaf.scale = Vector2.ONE * randf_range(0.35, 0.55)
+			leaf.modulate = [Color(0.55, 0.72, 0.36), Color(0.78, 0.62, 0.25), Color(0.62, 0.70, 0.30)][randi() % 3]
+			leaf.z_index = 12
+			leaf.position = tree.position + Vector2(randf_range(-110, 110), -randf_range(260, 520))
+			level.fx_layer.add_child(leaf)
+			_falling.append({"node": leaf, "life": randf_range(5.0, 8.0), "phase": randf() * TAU})
+	var w := wind()
+	for i in range(_falling.size() - 1, -1, -1):
+		var f: Dictionary = _falling[i]
+		var node: Sprite2D = f.node
+		f.life -= delta
+		f.phase += delta * 2.4
+		# Side-to-side flutter, drifting downwind, slowing as it tips.
+		node.position += Vector2(cos(f.phase) * 70.0 + 40.0 * w, 60.0 + sin(f.phase * 2.0) * 25.0) * delta
+		node.rotation = sin(f.phase) * 0.9
+		var cell := World.cell_of(node.position)
+		if f.life <= 0.0 or level.data.is_solid(cell.x, cell.y):
+			node.modulate.a -= delta * 2.0
+			if node.modulate.a <= 0.0:
+				node.queue_free()
+				_falling.remove_at(i)
 
 
 func _advance_weather(delta: float, biome: int) -> void:
