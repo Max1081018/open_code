@@ -1,9 +1,20 @@
-//! Synthesised sound.
+//! Sound: recorded effects, synthesised ambience.
 //!
-//! Every sound in the game is generated as PCM and wrapped in a WAV, because
-//! sample libraries (Freesound, Pixabay and the rest) are unreachable from
-//! the build environment. Keeping it synthesised also means the whole sound
-//! bank costs a few kilobytes of code rather than megabytes of audio.
+//! Short effects are real recordings, licensed from Soundza and prepared by
+//! `tools/prepare_sfx.py` into one format — mono, 16-bit, 22 kHz. Synthesis
+//! can make a convincing click or thud, but it cannot make a pickaxe biting
+//! into rock sound like anything but a synthesiser, and that difference is
+//! audible in the first second of play.
+//!
+//! The clips are embedded with `include_bytes!` rather than loaded from an
+//! asset directory. They then travel with the binary, there is no
+//! load-failure path to handle on a phone, and a missing file is a compile
+//! error instead of a silent gap in the game. All ten cost about 200 kB.
+//!
+//! Ambience stays synthesised. The beds are twenty-second loops, which as
+//! samples would be close to a megabyte each — far more than they are worth
+//! — and a generated loop is seamless by construction, which a trimmed
+//! recording is not.
 
 use crate::noise::hash01;
 
@@ -143,6 +154,32 @@ fn recipe(kind: Sfx) -> Recipe {
 }
 
 /// Render one sound effect as a WAV.
+/// The recorded clip for one effect, as WAV bytes.
+///
+/// This is what the game plays. [`sfx_wav`] synthesises the same effects and
+/// remains the reference for what each one should sound like, but a phone
+/// speaker makes short, dry, recorded foley sound markedly better than
+/// anything an oscillator produces.
+pub fn sfx_recording(kind: Sfx) -> &'static [u8] {
+    match kind {
+        Sfx::Dig => include_bytes!("../../assets/audio/sfx/dig.wav"),
+        Sfx::Break => include_bytes!("../../assets/audio/sfx/break.wav"),
+        Sfx::Hit => include_bytes!("../../assets/audio/sfx/hit.wav"),
+        Sfx::Hurt => include_bytes!("../../assets/audio/sfx/hurt.wav"),
+        Sfx::Jump => include_bytes!("../../assets/audio/sfx/jump.wav"),
+        Sfx::Land => include_bytes!("../../assets/audio/sfx/land.wav"),
+        Sfx::Pickup => include_bytes!("../../assets/audio/sfx/pickup.wav"),
+        Sfx::Craft => include_bytes!("../../assets/audio/sfx/craft.wav"),
+        Sfx::Roar => include_bytes!("../../assets/audio/sfx/roar.wav"),
+        Sfx::Click => include_bytes!("../../assets/audio/sfx/click.wav"),
+    }
+}
+
+/// Synthesise one effect from scratch.
+///
+/// Kept alongside the recordings: it needs no assets at all, which makes it
+/// the thing to reach for when adding a new effect before a clip for it
+/// exists, and its tests pin the WAV encoder the whole module depends on.
 pub fn sfx_wav(kind: Sfx) -> Vec<u8> {
     let Recipe { seconds, peak } = recipe(kind);
 
@@ -294,6 +331,128 @@ mod tests {
         }
         let sum: f64 = samples.iter().map(|s| (*s as f64).powi(2)).sum();
         (sum / samples.len() as f64).sqrt()
+    }
+
+    /// Read the fields of a WAV header that matter to us.
+    fn header_of(wav: &[u8]) -> (u16, u32, u16) {
+        let at = |offset: usize| u16::from_le_bytes([wav[offset], wav[offset + 1]]);
+
+        let channels = at(22);
+        let rate = u32::from_le_bytes([wav[24], wav[25], wav[26], wav[27]]);
+        let bits = at(34);
+
+        (channels, rate, bits)
+    }
+
+    #[test]
+    fn every_effect_has_a_recording() {
+        // The match in `sfx_recording` is exhaustive, so this cannot fail to
+        // compile with a clip missing; what it checks is that each one is
+        // really a populated file and not an empty placeholder.
+        for kind in ALL_SFX {
+            let wav = sfx_recording(kind);
+
+            assert!(
+                wav.len() > WAV_HEADER_LEN + 1000,
+                "{kind:?} is {} bytes, which is not a sound",
+                wav.len()
+            );
+            assert_eq!(&wav[0..4], b"RIFF", "{kind:?} is not a WAV");
+            assert_eq!(&wav[8..12], b"WAVE", "{kind:?} is not a WAV");
+        }
+    }
+
+    #[test]
+    fn every_recording_is_in_the_format_the_game_mixes() {
+        // One format throughout means no resampling at runtime and no
+        // surprise when an effect is swapped for another.
+        for kind in ALL_SFX {
+            let (channels, rate, bits) = header_of(sfx_recording(kind));
+
+            assert_eq!(channels, 1, "{kind:?} is not mono");
+            assert_eq!(rate, SFX_RATE, "{kind:?} is at the wrong sample rate");
+            assert_eq!(bits, 16, "{kind:?} is not 16-bit");
+        }
+    }
+
+    #[test]
+    fn no_recording_is_silent() {
+        for kind in ALL_SFX {
+            let samples = samples_of(sfx_recording(kind));
+
+            assert!(
+                peak(&samples) > 16_000,
+                "{kind:?} peaks at {}, which will be inaudible",
+                peak(&samples)
+            );
+            assert!(rms(&samples) > 200.0, "{kind:?} is near-silence");
+        }
+    }
+
+    #[test]
+    fn every_recording_fires_without_a_perceptible_delay() {
+        // A sound triggered by a button press that takes 100ms to arrive
+        // reads as lag in the game, not as a slow sound. Two of these clips
+        // crept in quietly for over a tenth of a second before the real
+        // transient, and had to be tightened.
+        const LIMIT_MS: usize = 25;
+
+        for kind in ALL_SFX {
+            let samples = samples_of(sfx_recording(kind));
+            let threshold = peak(&samples) / 4;
+
+            let onset = samples
+                .iter()
+                .position(|s| (*s as i32).abs() > threshold)
+                .unwrap_or(usize::MAX);
+            let onset_ms = onset * 1000 / SFX_RATE as usize;
+
+            assert!(
+                onset_ms <= LIMIT_MS,
+                "{kind:?} does not get loud until {onset_ms}ms in"
+            );
+        }
+    }
+
+    #[test]
+    fn recordings_are_short_enough_to_be_effects() {
+        for kind in ALL_SFX {
+            let seconds =
+                samples_of(sfx_recording(kind)).len() as f32 / SFX_RATE as f32;
+
+            assert!(
+                seconds < 2.0,
+                "{kind:?} runs {seconds:.2}s; that is a cue, not an effect"
+            );
+        }
+    }
+
+    #[test]
+    fn recordings_are_level_matched_to_one_another() {
+        // One effect noticeably louder than the rest is the thing players
+        // reach for the volume control over.
+        let peaks: Vec<i32> = ALL_SFX
+            .into_iter()
+            .map(|kind| peak(&samples_of(sfx_recording(kind))))
+            .collect();
+
+        let quietest = *peaks.iter().min().unwrap();
+        let loudest = *peaks.iter().max().unwrap();
+
+        assert!(
+            loudest - quietest < 2_000,
+            "peaks run {quietest}..{loudest}; the bank is not level-matched"
+        );
+    }
+
+    #[test]
+    fn the_whole_recorded_bank_fits_a_mobile_budget() {
+        let total: usize = ALL_SFX.into_iter().map(|k| sfx_recording(k).len()).sum();
+
+        assert!(
+            total < 400_000,
+            "{total} bytes of audio is more than an APK should carry for ten effects"
+        );
     }
 
     #[test]

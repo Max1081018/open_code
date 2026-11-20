@@ -190,6 +190,79 @@ impl Body {
     }
 }
 
+/// Something worth hearing that just happened to a body's footing.
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub enum Footfall {
+    /// Nothing this frame.
+    None,
+    /// Pushed off the ground deliberately.
+    Launched,
+    /// Came back down hard enough to make a noise.
+    Landed,
+}
+
+/// Downward speed, in tiles per second, below which a landing is silent.
+///
+/// Roughly a quarter-tile drop. Without a floor like this, walking along
+/// uneven ground fires a landing thud on almost every step.
+pub const LANDING_SPEED: f32 = 6.0;
+
+/// Watches a body's contact with the ground and reports the transitions.
+///
+/// Jumping and landing are moments, not states, so neither can be read off
+/// a single frame: both need to know what the previous frame looked like.
+/// A landing also needs to know how fast the body was travelling just
+/// before contact, which is already gone by the time it has landed —
+/// collision resolution has zeroed the velocity — so the fall speed is
+/// accumulated while airborne.
+#[derive(Clone, Copy, Debug)]
+pub struct Footing {
+    on_ground: bool,
+    fall_speed: f32,
+}
+
+impl Footing {
+    pub fn new(on_ground: bool) -> Footing {
+        Footing {
+            on_ground,
+            fall_speed: 0.0,
+        }
+    }
+
+    /// Feed in a body's state just after it has stepped.
+    pub fn update(&mut self, on_ground: bool, vy: f32) -> Footfall {
+        let was_on_ground = self.on_ground;
+        self.on_ground = on_ground;
+
+        if !on_ground {
+            // y grows downward, so a positive vy is falling.
+            self.fall_speed = self.fall_speed.max(vy);
+
+            // Leaving the ground while rising is a jump. Leaving it while
+            // already falling is walking off a ledge, which is not.
+            return if was_on_ground && vy < 0.0 {
+                self.fall_speed = 0.0;
+                Footfall::Launched
+            } else {
+                Footfall::None
+            };
+        }
+
+        if was_on_ground {
+            return Footfall::None;
+        }
+
+        let landed = self.fall_speed >= LANDING_SPEED;
+        self.fall_speed = 0.0;
+
+        if landed {
+            Footfall::Landed
+        } else {
+            Footfall::None
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -343,5 +416,129 @@ mod tests {
             "body should fall down the one-tile shaft, stopped at y = {}",
             body.y
         );
+    }
+
+    #[test]
+    fn standing_still_reports_nothing() {
+        let mut footing = Footing::new(true);
+
+        for _ in 0..10 {
+            assert_eq!(footing.update(true, 0.0), Footfall::None);
+        }
+    }
+
+    #[test]
+    fn pushing_off_the_ground_is_a_launch() {
+        let mut footing = Footing::new(true);
+
+        assert_eq!(footing.update(false, -JUMP_SPEED), Footfall::Launched);
+    }
+
+    #[test]
+    fn a_launch_is_reported_once_and_not_every_airborne_frame() {
+        let mut footing = Footing::new(true);
+        footing.update(false, -JUMP_SPEED);
+
+        let later: Vec<Footfall> = (0..8)
+            .map(|frame| footing.update(false, -JUMP_SPEED + frame as f32))
+            .collect();
+
+        assert!(
+            later.iter().all(|&fall| fall == Footfall::None),
+            "still airborne, so nothing more should fire: {later:?}"
+        );
+    }
+
+    #[test]
+    fn walking_off_a_ledge_is_not_a_jump() {
+        // Leaving the ground already falling means the ground ran out, not
+        // that the player pushed off. A jump grunt there would be wrong.
+        let mut footing = Footing::new(true);
+
+        assert_eq!(footing.update(false, 1.2), Footfall::None);
+    }
+
+    #[test]
+    fn coming_down_from_a_jump_is_a_landing() {
+        let mut footing = Footing::new(true);
+        footing.update(false, -JUMP_SPEED);
+
+        // Rise, turn over, and fall back.
+        for speed in [-10.0, -4.0, 0.0, 6.0, 12.0] {
+            footing.update(false, speed);
+        }
+
+        assert_eq!(footing.update(true, 0.0), Footfall::Landed);
+    }
+
+    #[test]
+    fn stepping_down_a_kerb_lands_silently() {
+        let mut footing = Footing::new(true);
+
+        // One frame of gravity at 60fps is about 1.2 tiles per second.
+        footing.update(false, 1.2);
+
+        assert_eq!(
+            footing.update(true, 0.0),
+            Footfall::None,
+            "a thud on every bump of uneven ground is worse than no thud"
+        );
+    }
+
+    #[test]
+    fn the_landing_uses_the_speed_before_impact_not_after_it() {
+        // Collision resolution zeroes vy, so by the frame the body has
+        // landed the impact speed is gone. If this looked only at the
+        // current frame it would never hear anything.
+        let mut footing = Footing::new(false);
+        footing.update(false, 30.0);
+
+        assert_eq!(footing.update(true, 0.0), Footfall::Landed);
+    }
+
+    #[test]
+    fn a_hard_landing_does_not_leak_into_the_next_hop() {
+        let mut footing = Footing::new(false);
+        footing.update(false, 30.0);
+        assert_eq!(footing.update(true, 0.0), Footfall::Landed);
+
+        // Now a gentle step down, which should be silent on its own merits.
+        footing.update(false, 1.0);
+
+        assert_eq!(footing.update(true, 0.0), Footfall::None);
+    }
+
+    #[test]
+    fn a_real_jump_through_the_physics_engine_launches_and_lands() {
+        // The unit tests above drive the tracker by hand; this one checks
+        // the thresholds hold up against the actual motion of a body.
+        let world = flat_world(16, 32, 20);
+        let mut body = Body::new(8.0, 19.0);
+        settle(&mut body, &world, 120);
+
+        let mut footing = Footing::new(body.on_ground);
+        let dt = 1.0 / 60.0;
+
+        let jumped = footing.update(
+            {
+                body.step(&world, Intent { move_dir: 0.0, jump: true }, dt);
+                body.on_ground
+            },
+            body.vy,
+        );
+        assert_eq!(jumped, Footfall::Launched, "a jump should be heard");
+
+        let mut landed = Footfall::None;
+        for _ in 0..240 {
+            body.step(&world, Intent { move_dir: 0.0, jump: false }, dt);
+
+            let fall = footing.update(body.on_ground, body.vy);
+            if fall != Footfall::None {
+                landed = fall;
+                break;
+            }
+        }
+
+        assert_eq!(landed, Footfall::Landed, "coming back down should be heard");
     }
 }

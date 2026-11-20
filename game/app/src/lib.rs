@@ -31,7 +31,7 @@ use deepdelve_core::sprite::{
     CHAR_H, CHAR_W,
 };
 use deepdelve_core::touch::{Controls, Zone};
-use deepdelve_core::audio::{ambient_wav, sfx_wav, Sfx, ALL_SFX};
+use deepdelve_core::audio::{ambient_wav, sfx_recording, Sfx, ALL_SFX};
 use deepdelve_core::vfx::{Particles, ScreenShake};
 use deepdelve_core::interact::{can_reach, place, MiningState};
 use deepdelve_core::boss::{
@@ -51,7 +51,7 @@ use deepdelve_core::noise::hash01;
 use deepdelve_core::gear::{attack_damage, best_pickaxe, best_sword, dig_power};
 use deepdelve_core::icon::{heart_icon, item_icon};
 use deepdelve_core::item::{def, drop_from, Inventory, ItemId, ItemKind};
-use deepdelve_core::physics::{Body, Intent};
+use deepdelve_core::physics::{Body, Footfall, Footing, Intent};
 use deepdelve_core::tilemap::{chunk_texture, TileAtlas, CHUNK_TILES};
 use deepdelve_core::view::{PLAYER_HEIGHT_TILES, TILE_SCREEN_PX};
 use deepdelve_core::world::World;
@@ -89,6 +89,8 @@ struct Player {
     combat: Combat,
     anim: Animator,
     facing_right: bool,
+    /// Watches contact with the ground so jumps and landings can be heard.
+    footing: Footing,
 }
 
 #[derive(Resource, Default)]
@@ -763,14 +765,16 @@ fn setup(
     mut images: ResMut<Assets<Image>>,
     mut sounds: ResMut<Assets<AudioSource>>,
 ) {
-    // Synthesise the whole sound bank up front: a few kilobytes of code
-    // rather than megabytes of samples, and nothing to load from disk.
+    // Effects are recorded clips embedded in the binary; ambience is
+    // synthesised, because a twenty-second loop as samples would cost more
+    // than the rest of the audio put together. Either way there is nothing
+    // to load from disk and nothing that can fail at startup.
     let bank = SoundBank {
         effects: ALL_SFX
             .into_iter()
             .map(|kind| {
                 let source = AudioSource {
-                    bytes: sfx_wav(kind).into(),
+                    bytes: sfx_recording(kind).into(),
                 };
                 (kind, sounds.add(source))
             })
@@ -957,6 +961,7 @@ fn setup(
         combat: Combat::new(PLAYER_HEALTH),
         anim: Animator::new(),
         facing_right: true,
+        footing: Footing::new(body.on_ground),
     });
     commands.insert_resource(Target::default());
     commands.insert_resource(DirtyChunks::default());
@@ -1027,6 +1032,7 @@ fn step_player(
     windows: Query<&Window>,
     game: Res<Game>,
     mut player: ResMut<Player>,
+    mut sounds: ResMut<SoundQueue>,
     mut sprites: Query<&mut Transform, With<PlayerSprite>>,
 ) {
     let mut move_dir: f32 = 0.0;
@@ -1066,6 +1072,14 @@ fn step_player(
         player.facing_right = true;
     } else if intent.move_dir < -0.1 {
         player.facing_right = false;
+    }
+
+    let (on_ground, fall_speed) = (player.body.on_ground, player.body.vy);
+
+    match player.footing.update(on_ground, fall_speed) {
+        Footfall::Launched => sounds.play(Sfx::Jump),
+        Footfall::Landed => sounds.play(Sfx::Land),
+        Footfall::None => {}
     }
 
     let locomotion = state_from_motion(
@@ -1288,6 +1302,7 @@ fn summon_boss(
     mut player: ResMut<Player>,
     mut bosses: ResMut<Bosses>,
     mut notice: ResMut<Notice>,
+    mut sounds: ResMut<SoundQueue>,
 ) {
     if !keys.just_pressed(KeyCode::KeyB) {
         return;
@@ -1323,6 +1338,7 @@ fn summon_boss(
         .0
         .push(Boss::new(boss_kind, column as f32 + 0.5, (row + 1) as f32));
 
+    sounds.play(Sfx::Roar);
     notice.0 = format!("{} rises!", boss_kind_of(boss_kind).name);
 }
 
@@ -2247,8 +2263,9 @@ fn dig_or_build(
     .into_iter()
     .enumerate()
     {
-        if keys.just_pressed(key) {
+        if keys.just_pressed(key) && player.hotbar_slot != index {
             player.hotbar_slot = index;
+            sounds.play(Sfx::Click);
         }
     }
 
