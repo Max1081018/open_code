@@ -96,11 +96,16 @@ func _ready() -> void:
 	if spec.has("toon"):
 		_toon = true
 		box.size = Vector2(70, 190) * Vector2(s, s)
+		shape.position = Vector2(0, -box.size.y * 0.5)
 	else:
-		box.size = Vector2(96, 70) * Vector2(s, s)
+		# Fitted to the creature's own art, not one box for every kind: a
+		# worm is long and low, a snail tall, a bee hangs mid-frame.
+		var fit := _art_box()
+		box.size = fit.size * s
+		shape.position = fit.get_center() * s
 	shape.shape = box
-	shape.position = Vector2(0, -box.size.y * 0.5)
 	add_child(shape)
+	_box = box
 	hit_radius = box.size.x * 0.6
 
 	_sprite = AnimatedSprite2D.new()
@@ -125,6 +130,45 @@ func _ready() -> void:
 
 
 static var _frame_cache := {}
+static var _box_cache := {}
+var _box: RectangleShape2D
+var _windup := 0.0  ## seconds left before a telegraphed attack lands
+
+
+## The visible body of the creature's first frame, in sprite-local pixels
+## (unscaled): 80% of the drawn width (fins and wings are not body), 90% of
+## the height, standing on the same bottom edge.
+func _art_box() -> Rect2:
+	var key: String = spec.frames
+	if _box_cache.has(key):
+		return _box_cache[key]
+	var frames := _frames()
+	var texture := frames.get_frame_texture("move", 0)
+	var used := Rect2(32, 58, 64, 70)
+	if texture:
+		var image := texture.get_image()
+		if image:
+			if image.is_compressed():
+				image.decompress()
+			used = Rect2(image.get_used_rect())
+	var size := used.size * Vector2(0.8, 0.9)
+	var bottom := used.end.y - 128.0  # the art's bottom edge, feet at 0
+	var centre_x := used.get_center().x - 64.0
+	var box := Rect2(Vector2(centre_x - size.x * 0.5, bottom - size.y), size)
+	_box_cache[key] = box
+	return box
+
+
+## The collision box in world space, for hit tests and the debug view.
+func body_rect() -> Rect2:
+	if _box == null:
+		return Rect2(global_position - Vector2(40, 80), Vector2(80, 80))
+	var shape: CollisionShape2D = null
+	for child in get_children():
+		if child is CollisionShape2D:
+			shape = child
+	var centre := global_position + (shape.position if shape else Vector2.ZERO)
+	return Rect2(centre - _box.size * 0.5, _box.size)
 
 
 func _frames() -> SpriteFrames:
@@ -263,17 +307,47 @@ func _squash(amount: Vector2) -> void:
 
 
 func _touch_damage() -> void:
-	if _attack_timer > 0.0:
-		return
 	var s: float = spec.scale
 	var reach := hit_radius + 50.0
 	var centre := global_position + Vector2(0, -40 * s)
-	if player.global_position.distance_to(centre) < reach + 30 * s or \
-			(player.global_position + Vector2(0, -100)).distance_to(centre) < reach:
-		player.hurt(spec.damage, global_position)
-		_attack_timer = 0.9
-		if _toon:
-			_play("attack")
+	var close := player.global_position.distance_to(centre) < reach + 30 * s or \
+			(player.global_position + Vector2(0, -100)).distance_to(centre) < reach
+	if _windup > 0.0:
+		# The blow lands at the end of the wind-up, and only if the player
+		# is still there: the tell is a real chance to get out of the way.
+		_windup -= get_physics_process_delta_time()
+		if _windup <= 0.0:
+			_lunge()
+			if close or player.global_position.distance_to(centre) < reach + 70 * s:
+				player.hurt(spec.damage, global_position)
+			_attack_timer = 0.9
+		return
+	if _attack_timer > 0.0 or not close:
+		return
+	_begin_windup()
+
+
+## The tell: a crouch, a flash, a lean back. Bosses have their own.
+func _begin_windup() -> void:
+	_windup = 0.12 if is_boss else 0.32
+	if _toon:
+		_play("attack")
+	var s: float = spec.scale
+	var tween := create_tween()
+	tween.tween_property(_sprite, "scale", Vector2(s * 1.12, s * 0.86), _windup * 0.8) \
+		.set_trans(Tween.TRANS_SINE)
+	_sprite.self_modulate = Color(1.6, 1.25, 1.25)
+	tween.parallel().tween_property(_sprite, "self_modulate", Color.WHITE, _windup)
+
+
+## The strike after the tell: a short lunge toward the player.
+func _lunge() -> void:
+	var s: float = spec.scale
+	var tween := create_tween()
+	tween.tween_property(_sprite, "scale", Vector2(s * 0.9, s * 1.12), 0.06)
+	tween.tween_property(_sprite, "scale", Vector2(s, s), 0.18).set_trans(Tween.TRANS_BACK)
+	if spec.mode != Mode.PHASE:
+		velocity.x += facing * 420.0
 
 
 # =============================================================================

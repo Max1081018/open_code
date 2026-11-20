@@ -15,6 +15,7 @@ var world: World
 var player: Player
 var camera: Camera2D
 var foreground: Foreground
+var collision_debug: CollisionDebug
 var atmosphere: Atmosphere
 var fx_layer: Node2D
 var drop_layer: Node2D
@@ -62,6 +63,9 @@ func start(seed_value: int, saved := {}) -> void:
 	foreground = Foreground.new()
 	world.add_child(foreground)
 	foreground.setup(self)
+	collision_debug = CollisionDebug.new()
+	world.add_child(collision_debug)
+	collision_debug.setup(self)
 
 	player = Player.new()
 	player.world = world

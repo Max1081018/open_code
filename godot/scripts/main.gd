@@ -178,6 +178,8 @@ func _apply_scenario() -> void:
 		player.global_position = World.foot_of(stand)
 		level.camera.global_position = player.global_position
 		level.camera.reset_smoothing()
+	if _args.has("debug"):
+		Settings.debug_collision = true
 	if _args.has("hold"):
 		# Put this item in the last hotbar slot and select it.
 		player.inventory.slots[Inventory.HOTBAR_SIZE - 1] = {"id": _args.hold, "count": 1}

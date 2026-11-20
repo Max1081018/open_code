@@ -62,6 +62,7 @@ var _step_timer := 0.0
 
 var body: AnimatedSprite2D
 var rig: EquipmentRig
+var _was_in_water := false
 var _swing_override := ""  ## a weapon drawn just for this swing
 var crack: Sprite2D
 var aim_marker: Sprite2D
@@ -196,6 +197,14 @@ func _move(delta: float) -> void:
 	if in_lava:
 		hurt(40.0 * delta, global_position + Vector2(0, 40), false)
 
+	# Into the water: a splash sized by how fast.
+	if in_water and not _was_in_water and absf(velocity.y) + absf(velocity.x) * 0.3 > 200.0:
+		var surface_y := float(cell.y) * TILE
+		for i in 3:
+			Effects.burst(level.fx_layer, Vector2(global_position.x + randf_range(-50, 50), surface_y), "splash")
+		Sfx.play("land", -8.0, 0.2)
+	_was_in_water = in_water
+
 
 ## Walk up one-tile ledges without jumping, as Terraria does. On a phone
 ## this matters more than anywhere: constant jump-tapping to cross bumpy
@@ -219,10 +228,16 @@ func _try_step_up() -> void:
 func _land() -> void:
 	if _fall_speed > FALL_DAMAGE_FROM:
 		hurt((_fall_speed - FALL_DAMAGE_FROM) * 0.05, global_position + Vector2(0, 50))
+	# Compression scaled by the fall: a hop barely dips, a long drop sits
+	# down hard and pushes up again.
+	var weight := clampf((_fall_speed - 250.0) / 1300.0, 0.0, 1.0)
+	if weight > 0.0:
+		_squash(Vector2(1.0 + 0.22 * weight, 1.0 - 0.2 * weight))
 	if _fall_speed > 600.0:
 		Sfx.play("land", -4.0)
 		Effects.burst(level.fx_layer, global_position, "smoke", Color(0.85, 0.78, 0.66))
-		_squash(Vector2(1.18, 0.84))
+		if _fall_speed > 1300.0:
+			level.shake(4.0 * weight)
 	_fall_speed = 0.0
 
 
@@ -556,6 +571,21 @@ func attack() -> void:
 		_refresh_held())
 
 
+## The sword's reach: from the shoulder out to blade's length plus the arm,
+## across the arc the swing sweeps (over the head and down in front, not
+## behind). Tested against the nearest point of the target's box.
+const SWING_REACH := 300.0
+
+
+func in_swing_reach(target: Rect2) -> bool:
+	var shoulder := global_position + Vector2(0, -130)
+	var nearest := Vector2(clampf(shoulder.x, target.position.x, target.end.x),
+		clampf(shoulder.y, target.position.y, target.end.y))
+	var local := nearest - shoulder
+	local.x *= facing
+	return local.length() <= SWING_REACH and local.x >= -40.0
+
+
 ## The sword connects: everything in the arc in front is struck.
 func _slash_hit() -> void:
 	var arc_centre := global_position + Vector2(facing * 110, -100)
@@ -565,8 +595,7 @@ func _slash_hit() -> void:
 	for enemy in get_tree().get_nodes_in_group("enemies"):
 		if not enemy.is_alive():
 			continue
-		var reach: float = 1.6 * TILE + enemy.get("hit_radius")
-		if enemy.global_position.distance_to(arc_centre) <= reach:
+		if in_swing_reach(enemy.body_rect()):
 			var crit := randf() < 0.1
 			enemy.take_hit(damage * (1.8 if crit else 1.0), global_position, crit)
 			landed = true
