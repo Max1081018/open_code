@@ -14,6 +14,7 @@ use bevy::asset::RenderAssetUsages;
 use bevy::image::ImageSampler;
 use bevy::render::render_resource::{Extent3d, TextureDimension, TextureFormat};
 use bevy::render::view::screenshot::{save_to_disk, Screenshot};
+use bevy::audio::Volume;
 use bevy::window::WindowResolution;
 
 use deepdelve_core::art::{tile_base_colour, Texture};
@@ -25,6 +26,7 @@ use deepdelve_core::sprite::{
     CHAR_H, CHAR_W,
 };
 use deepdelve_core::touch::{Controls, Zone};
+use deepdelve_core::audio::{ambient_wav, sfx_wav, Sfx, ALL_SFX};
 use deepdelve_core::vfx::{Particles, ScreenShake};
 use deepdelve_core::interact::{can_reach, place, MiningState};
 use deepdelve_core::boss::{
@@ -116,6 +118,33 @@ impl FrameSet {
             .cloned()
     }
 }
+
+/// Synthesised sound, generated once at startup.
+#[derive(Resource)]
+struct SoundBank {
+    effects: std::collections::HashMap<Sfx, Handle<AudioSource>>,
+    surface_ambience: Handle<AudioSource>,
+    cave_ambience: Handle<AudioSource>,
+}
+
+/// Depth below the surface at which the ambient bed switches to the cave one.
+const CAVE_AMBIENCE_DEPTH: f32 = 8.0;
+
+/// Seconds of ambient loop generated. Longer is less repetitive but costs
+/// memory; twenty seconds is long enough not to notice the seam.
+const AMBIENCE_SECONDS: f32 = 20.0;
+
+/// Which ambient bed is currently playing.
+#[derive(Resource, Default, PartialEq, Eq, Clone, Copy)]
+enum Ambience {
+    #[default]
+    None,
+    Surface,
+    Cave,
+}
+
+#[derive(Component)]
+struct AmbienceTrack;
 
 /// Live visual effects.
 #[derive(Resource)]
@@ -586,6 +615,9 @@ pub fn main() {
                     .chain(),
                 // Player-driven side effects.
                 (crafting, save_and_load).chain(),
+                // Audio last of the simulation groups, so everything that
+                // happened this frame has had a chance to queue a sound.
+                (manage_ambience, drain_sounds).chain(),
                 // World presentation.
                 (
                     refresh_lighting,
@@ -665,7 +697,34 @@ fn window_resolution() -> WindowResolution {
     parsed.unwrap_or((1280, 720)).into()
 }
 
-fn setup(mut commands: Commands, mut images: ResMut<Assets<Image>>) {
+fn setup(
+    mut commands: Commands,
+    mut images: ResMut<Assets<Image>>,
+    mut sounds: ResMut<Assets<AudioSource>>,
+) {
+    // Synthesise the whole sound bank up front: a few kilobytes of code
+    // rather than megabytes of samples, and nothing to load from disk.
+    let bank = SoundBank {
+        effects: ALL_SFX
+            .into_iter()
+            .map(|kind| {
+                let source = AudioSource {
+                    bytes: sfx_wav(kind).into(),
+                };
+                (kind, sounds.add(source))
+            })
+            .collect(),
+        surface_ambience: sounds.add(AudioSource {
+            bytes: ambient_wav(SEED, AMBIENCE_SECONDS, 0.85).into(),
+        }),
+        cave_ambience: sounds.add(AudioSource {
+            bytes: ambient_wav(SEED ^ 0x1234, AMBIENCE_SECONDS, 0.08).into(),
+        }),
+    };
+    commands.insert_resource(bank);
+    commands.insert_resource(Ambience::default());
+    commands.insert_resource(SoundQueue::default());
+
     // Generate every character's frames up front. Doing this per frame at
     // runtime would be ruinous on a phone.
     let bank = SpriteBank {
@@ -983,6 +1042,7 @@ fn step_monsters(
     mut monsters: ResMut<Monsters>,
     mut player: ResMut<Player>,
     mut effects: ResMut<Effects>,
+    mut sounds: ResMut<SoundQueue>,
 ) {
     let dt = time.delta_secs().min(MAX_FRAME);
 
@@ -1027,6 +1087,7 @@ fn step_monsters(
                 effects
                     .particles
                     .burst_hit(player_body.x, player_body.y - 0.9);
+                sounds.play(Sfx::Hurt);
             }
             enemy.anim.request(AnimState::Attack);
         }
@@ -1054,6 +1115,7 @@ fn attack_monsters(
     mut monsters: ResMut<Monsters>,
     mut player: ResMut<Player>,
     mut effects: ResMut<Effects>,
+    mut sounds: ResMut<SoundQueue>,
 ) {
     if !mouse.just_pressed(MouseButton::Left) {
         return;
@@ -1092,6 +1154,7 @@ fn attack_monsters(
         let centre_y = enemy.body.y - enemy.body.height() / 2.0;
         effects.particles.burst_hit(enemy.body.x, centre_y);
         effects.shake.add(0.14);
+        sounds.play(Sfx::Hit);
     }
 
     if landed && !enemy.is_alive() {
@@ -1292,6 +1355,83 @@ fn sync_boss_sprites(
             BossSprite(index),
         ));
     }
+}
+
+/// Sounds requested this frame.
+///
+/// Gameplay systems push onto this rather than spawning audio entities
+/// directly, and each kind plays at most once per frame: a burst of ten
+/// particles should be one impact, not ten overlapping copies of it.
+#[derive(Resource, Default)]
+struct SoundQueue(Vec<Sfx>);
+
+impl SoundQueue {
+    fn play(&mut self, kind: Sfx) {
+        if !self.0.contains(&kind) {
+            self.0.push(kind);
+        }
+    }
+}
+
+/// Spawn one-shot players for everything queued, then clear the queue.
+fn drain_sounds(
+    mut commands: Commands,
+    bank: Res<SoundBank>,
+    mut queue: ResMut<SoundQueue>,
+) {
+    for kind in queue.0.drain(..) {
+        let Some(handle) = bank.effects.get(&kind) else {
+            continue;
+        };
+
+        commands.spawn((
+            AudioPlayer::new(handle.clone()),
+            // Despawn on finish, so one-shots do not accumulate entities.
+            PlaybackSettings::DESPAWN,
+        ));
+    }
+}
+
+/// Swap the ambient bed when the player moves between sky and deep ground.
+fn manage_ambience(
+    mut commands: Commands,
+    bank: Res<SoundBank>,
+    game: Res<Game>,
+    player: Res<Player>,
+    mut current: ResMut<Ambience>,
+    playing: Query<Entity, With<AmbienceTrack>>,
+) {
+    let surface = game
+        .world
+        .surface_y(player.body.x.max(0.0) as usize)
+        .unwrap_or(0) as f32;
+
+    let wanted = if player.body.y > surface + CAVE_AMBIENCE_DEPTH {
+        Ambience::Cave
+    } else {
+        Ambience::Surface
+    };
+
+    if *current == wanted {
+        return;
+    }
+
+    for entity in &playing {
+        commands.entity(entity).despawn();
+    }
+
+    let handle = match wanted {
+        Ambience::Cave => bank.cave_ambience.clone(),
+        _ => bank.surface_ambience.clone(),
+    };
+
+    commands.spawn((
+        AudioPlayer::new(handle),
+        PlaybackSettings::LOOP.with_volume(Volume::Linear(0.45)),
+        AmbienceTrack,
+    ));
+
+    *current = wanted;
 }
 
 /// Advance particles and shake, then draw the pool.
@@ -1557,6 +1697,7 @@ fn dig_or_build(
     mut player: ResMut<Player>,
     mut dirty: ResMut<DirtyChunks>,
     mut effects: ResMut<Effects>,
+    mut sounds: ResMut<SoundQueue>,
 ) {
     for (index, key) in [
         KeyCode::Digit1,
@@ -1604,6 +1745,7 @@ fn dig_or_build(
         let dt = time.delta_secs().min(MAX_FRAME);
 
         player.anim.request(AnimState::Mine);
+        sounds.play(Sfx::Dig);
 
         if let Some(broken) =
             player
@@ -1621,6 +1763,7 @@ fn dig_or_build(
                 tile_base_colour(broken),
             );
             effects.shake.add(0.05);
+            sounds.play(Sfx::Break);
         }
     } else {
         player.mining.cancel();

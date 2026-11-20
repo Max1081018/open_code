@@ -18,7 +18,9 @@ path = "src/main.rs"
 
 [dependencies]
 deepdelve-core = { path = "../core" }
-bevy = "0.20.1"
+# "wav" is not in Bevy's default features, and all the game's audio is
+# synthesised into WAV at startup, so it has to be asked for.
+bevy = { version = "0.20.1", features = ["wav"] }
 
 # GameActivity is the entry point android_main is generated against. Not a
 # default feature, so it must be asked for explicitly.

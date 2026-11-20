@@ -6,6 +6,7 @@
 
 pub mod anim;
 pub mod art;
+pub mod audio;
 pub mod biome;
 pub mod boss;
 pub mod craft;
