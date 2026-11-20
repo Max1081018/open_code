@@ -26,7 +26,7 @@ const OBJECT_LIGHTS := {
 	"wardstone": [Color(0.52, 0.88, 1.0), 15.0],
 	"altar": [Color(0.85, 0.30, 0.35), 6.0],
 }
-const GLOWSHARD_LIGHT := Color(0.30, 0.62, 1.0)
+const GLOWSHARD_LIGHT := Color(0.22, 0.46, 0.80)
 const LAVA_LIGHT := Color(1.0, 0.42, 0.12)
 const CRYSTAL_AMBIENT := Color(0.16, 0.08, 0.24)
 

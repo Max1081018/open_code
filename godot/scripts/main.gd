@@ -57,26 +57,31 @@ func _process(_delta: float) -> void:
 
 
 func _desktop_input() -> void:
+	# Once a real touch has been seen this is a phone: the touch controls
+	# own the player's input, and mouse events (which Godot emulates from
+	# touches for the GUI's sake) must not double it.
+	if level.hud and level.hud.get("touch_active"):
+		return
 	var input := level.player.input
-	var axis := Input.get_axis("ui_left", "ui_right")
-	if Input.is_key_pressed(KEY_A):
+	var axis := 0.0
+	if Input.is_key_pressed(KEY_A) or Input.is_key_pressed(KEY_LEFT):
 		axis -= 1.0
-	if Input.is_key_pressed(KEY_D):
+	if Input.is_key_pressed(KEY_D) or Input.is_key_pressed(KEY_RIGHT):
 		axis += 1.0
-	if absf(axis) > absf(input.move):
-		input.move = clampf(axis, -1.0, 1.0)
-	elif not level.hud or not level.hud.get("touch_active"):
-		input.move = clampf(axis, -1.0, 1.0)
+	if not _args.has("shot"):
+		input.move = axis
 
 	var jump := Input.is_key_pressed(KEY_SPACE) or Input.is_key_pressed(KEY_W)
 	if jump and not input.jump_held:
 		input.jump_pressed = true
-	input.jump_held = jump or (level.hud != null and level.hud.get("touch_jump") == true)
+	if not _args.has("shot"):
+		input.jump_held = jump
 
-	if Input.is_mouse_button_pressed(MOUSE_BUTTON_LEFT) and not (level.hud and level.hud.get("pointer_over_ui")):
+	var over_ui: bool = level.hud != null and level.hud.get("pointer_over_ui") == true
+	if Input.is_mouse_button_pressed(MOUSE_BUTTON_LEFT) and not over_ui:
 		input.use_held = true
 		input.aim = level.get_global_mouse_position()
-	elif not (level.hud and level.hud.get("touch_using")):
+	elif not _args.has("shot"):
 		input.use_held = false
 
 	for i in 8:
