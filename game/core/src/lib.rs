@@ -13,6 +13,7 @@ pub mod craft;
 pub mod daynight;
 pub mod decor;
 pub mod enemy;
+pub mod gear;
 pub mod icon;
 pub mod interact;
 pub mod item;

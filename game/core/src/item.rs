@@ -16,6 +16,8 @@ pub enum ItemKind {
     Block(Tile),
     /// Digs, with the given tool power.
     Pickaxe { power: f32 },
+    /// Strikes, with the given damage.
+    Sword { damage: f32 },
     /// Crafting material with no direct use.
     Material,
 }
@@ -154,6 +156,21 @@ pub const ITEMS: &[ItemDef] = &[
         max_stack: STANDARD_STACK,
         kind: ItemKind::Material,
     },
+    ItemDef {
+        name: "Copper Sword",
+        max_stack: UNIQUE,
+        kind: ItemKind::Sword { damage: 15.0 },
+    },
+    ItemDef {
+        name: "Iron Sword",
+        max_stack: UNIQUE,
+        kind: ItemKind::Sword { damage: 24.0 },
+    },
+    ItemDef {
+        name: "Gold Sword",
+        max_stack: UNIQUE,
+        kind: ItemKind::Sword { damage: 36.0 },
+    },
 ];
 
 pub const DIRT: ItemId = ItemId(0);
@@ -179,6 +196,9 @@ pub const WARDEN_TROPHY: ItemId = ItemId(19);
 pub const RIMEWYRM_TROPHY: ItemId = ItemId(20);
 pub const COLOSSUS_TROPHY: ItemId = ItemId(21);
 pub const HOLLOW_KING_TROPHY: ItemId = ItemId(22);
+pub const COPPER_SWORD: ItemId = ItemId(23);
+pub const IRON_SWORD: ItemId = ItemId(24);
+pub const GOLD_SWORD: ItemId = ItemId(25);
 
 /// Look up an item's definition.
 pub fn def(id: ItemId) -> &'static ItemDef {
@@ -328,7 +348,8 @@ mod tests {
         assert_eq!(def(GOLD_PICKAXE).name, "Gold Pickaxe");
         assert_eq!(def(SNOW).name, "Snow Block");
         assert_eq!(def(HOLLOW_KING_TROPHY).name, "Hollow King Trophy");
-        assert_eq!(ITEMS.len(), 23, "constants must cover the whole table");
+        assert_eq!(def(GOLD_SWORD).name, "Gold Sword");
+        assert_eq!(ITEMS.len(), 26, "constants must cover the whole table");
     }
 
     #[test]

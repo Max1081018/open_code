@@ -117,6 +117,42 @@ pub fn item_icon(item: ItemId) -> Texture {
             });
         }
 
+        ItemKind::Sword { damage } => {
+            // Keener swords are drawn in brighter steel.
+            let blade = [
+                132.0 + damage * 2.6,
+                140.0 + damage * 2.4,
+                152.0 + damage * 1.8,
+            ];
+            let guard = [150.0, 116.0, 58.0];
+            let grip = [96.0, 66.0, 44.0];
+
+            stamp(&mut canvas, |x, y| {
+                let fx = unit(x);
+                let fy = unit(y);
+
+                // The weapon lies corner to corner, point at the top right.
+                let along = (fx - fy + 1.0) / 2.0;
+                let across = ((fx + fy) / 2.0 - 0.5).abs();
+
+                // Blade tapers to its point.
+                let half_width = 0.085 * (1.0 - (along - 0.62).max(0.0) / 0.38).max(0.0);
+                if along > 0.42 && across < half_width {
+                    return Some(lit(blade, fx, fy));
+                }
+                // Crossguard, square across the blade.
+                if (0.34..0.42).contains(&along) && across < 0.20 {
+                    return Some(lit(guard, fx, fy));
+                }
+                // Grip and pommel.
+                if along > 0.14 && along <= 0.34 && across < 0.065 {
+                    return Some(lit(grip, fx, fy));
+                }
+
+                None
+            });
+        }
+
         ItemKind::Material => {
             let name = definition.name;
 
@@ -466,7 +502,10 @@ mod tests {
 
             let filled = opaque(&icon);
             match def(item).kind {
-                ItemKind::Block(_) | ItemKind::Pickaxe { .. } | ItemKind::Material => {
+                ItemKind::Block(_)
+                | ItemKind::Pickaxe { .. }
+                | ItemKind::Sword { .. }
+                | ItemKind::Material => {
                     assert!(filled > 0, "{} drew nothing", def(item).name)
                 }
             }

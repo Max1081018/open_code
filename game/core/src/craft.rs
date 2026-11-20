@@ -1,8 +1,8 @@
 //! Crafting recipes and the rules for turning materials into items.
 
 use crate::item::{
-    Inventory, ItemId, COAL, COPPER_BAR, COPPER_ORE, COPPER_PICKAXE, GOLD_BAR, GOLD_ORE,
-    GOLD_PICKAXE, IRON_BAR, IRON_ORE, IRON_PICKAXE, STONE,
+    Inventory, ItemId, COAL, COPPER_BAR, COPPER_ORE, COPPER_PICKAXE, COPPER_SWORD, GOLD_BAR,
+    GOLD_ORE, GOLD_PICKAXE, GOLD_SWORD, IRON_BAR, IRON_ORE, IRON_PICKAXE, IRON_SWORD, STONE,
 };
 
 /// A crafting station the player must be standing near.
@@ -53,6 +53,24 @@ pub const RECIPES: &[Recipe] = &[
         output: IRON_PICKAXE,
         output_count: 1,
         inputs: &[(IRON_BAR, 10), (STONE, 4)],
+        station: Some(Station::Anvil),
+    },
+    Recipe {
+        output: COPPER_SWORD,
+        output_count: 1,
+        inputs: &[(COPPER_BAR, 6), (STONE, 2)],
+        station: Some(Station::Anvil),
+    },
+    Recipe {
+        output: IRON_SWORD,
+        output_count: 1,
+        inputs: &[(IRON_BAR, 8), (STONE, 2)],
+        station: Some(Station::Anvil),
+    },
+    Recipe {
+        output: GOLD_SWORD,
+        output_count: 1,
+        inputs: &[(GOLD_BAR, 10), (STONE, 2)],
         station: Some(Station::Anvil),
     },
     Recipe {

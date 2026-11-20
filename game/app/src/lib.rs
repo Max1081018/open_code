@@ -47,6 +47,7 @@ use deepdelve_core::light::{compute_sky_light, LightMap};
 use deepdelve_core::quest::{QuestEvent, QuestLog, QUESTS};
 use deepdelve_core::save::{load, save, PlayerSave, SaveGame};
 use deepdelve_core::noise::hash01;
+use deepdelve_core::gear::{attack_damage, best_pickaxe, best_sword, dig_power};
 use deepdelve_core::icon::{heart_icon, item_icon};
 use deepdelve_core::item::{def, drop_from, Inventory, ItemId, ItemKind};
 use deepdelve_core::physics::{Body, Intent};
@@ -98,9 +99,9 @@ struct Bosses(Vec<Boss>);
 #[derive(Component)]
 struct BossSprite(usize);
 
-/// Damage one swing deals to a boss. Lower than against ordinary enemies
-/// would be, because boss health pools are large and the fight should last.
-const BOSS_ATTACK_DAMAGE: f32 = 26.0;
+/// Fraction of a swing that lands on a boss. Bosses have large health
+/// pools, and a fight should not collapse the moment a better sword exists.
+const BOSS_DAMAGE_SHARE: f32 = 1.6;
 
 /// Seconds between a summoning phase calling in its minions.
 const BOSS_SUMMON_INTERVAL: f32 = 6.0;
@@ -267,8 +268,7 @@ struct MonsterSprite(usize);
 /// The player's starting and maximum health.
 const PLAYER_HEALTH: f32 = 100.0;
 
-/// Damage one swing deals to an enemy.
-const ATTACK_DAMAGE: f32 = 12.0;
+
 
 /// How close a click must land to an enemy to hit it, in tiles.
 const ATTACK_RADIUS: f32 = 1.6;
@@ -295,8 +295,7 @@ const HOTBAR: [ItemId; 4] = [
     deepdelve_core::item::IRON_ORE,
 ];
 
-/// Bare-handed dig power, before any pickaxe is crafted.
-const BARE_HAND_POWER: f32 = 1.6;
+
 
 /// The tile currently under the cursor or finger, if any.
 #[derive(Resource, Default)]
@@ -1213,8 +1212,9 @@ fn attack_monsters(
         return;
     };
 
+    let swing = attack_damage(&player.inventory);
     let enemy = &mut monsters.0[index];
-    let landed = enemy.combat.take_damage(ATTACK_DAMAGE);
+    let landed = enemy.combat.take_damage(swing);
 
     if landed {
         enemy.anim.request(AnimState::Hurt);
@@ -2003,8 +2003,10 @@ fn animate_player(
 fn attack_bosses(
     mouse: Res<ButtonInput<MouseButton>>,
     target: Res<Target>,
+    player: Res<Player>,
     mut bosses: ResMut<Bosses>,
 ) {
+    let swing = attack_damage(&player.inventory);
     if !mouse.just_pressed(MouseButton::Left) {
         return;
     }
@@ -2021,7 +2023,9 @@ fn attack_bosses(
         let distance_sq = (boss.body.x - aim.0).powi(2) + (centre_y - aim.1).powi(2);
 
         if distance_sq <= reach * reach {
-            boss.combat.take_damage(BOSS_ATTACK_DAMAGE);
+            // Bosses take a fraction of a normal swing, so their health
+            // pools stay meaningful as weapons improve.
+            boss.combat.take_damage(swing * BOSS_DAMAGE_SHARE);
             return;
         }
     }
@@ -2235,10 +2239,11 @@ fn dig_or_build(
         player.anim.request(AnimState::Mine);
         sounds.play(Sfx::Dig);
 
-        if let Some(broken) =
-            player
-                .mining
-                .mine(&mut game.world, &body, tile_pos, BARE_HAND_POWER, dt)
+        let power = dig_power(&player.inventory);
+
+        if let Some(broken) = player
+            .mining
+            .mine(&mut game.world, &body, tile_pos, power, dt)
         {
             if let Some(item) = drop_from(broken) {
                 player.inventory.add(item, 1);
@@ -2356,10 +2361,13 @@ fn update_hud(
 
     for mut text in &mut hud {
         text.0 = format!(
-            "{sky}   monsters: {}   holding {}{boss_line}\n{crafting_line}\
+            "{sky}   monsters: {}   holding {}\n\
+             pick: {}   blade: {}{boss_line}\n{crafting_line}\
              {quest_line}{notice_line}",
             monsters.0.len(),
             def(held).name,
+            best_pickaxe(&player.inventory).map_or("bare hands", |i| def(i).name),
+            best_sword(&player.inventory).map_or("bare hands", |i| def(i).name),
         );
     }
 }
