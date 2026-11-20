@@ -1,0 +1,48 @@
+# Progress report — Lanternbound
+
+Last updated at commit after `10ba25e` on branch `ccr-60ac94c6-dyqxhw`.
+Engine: Godot 4.4.1, GL Compatibility renderer, Android-first.
+
+## Working and verified (tests: 76 pass; soak bot: 3 runs, 4.6 min of play, no script errors)
+
+| Area | State | How verified |
+|---|---|---|
+| Characters | Jointed cut-out rig (Kenney Toon parts) for hero, NPCs, zombies, robots, bosses; strides matched to speed, arm swing, breathing, three-quarter head, expressions, death topple | Filmstrips at fixed 60 fps |
+| Item holding | Fist-anchored grips measured from art, item in front of arm and under the fingers, behind the head on overhead wind-ups; mine / chop / slash / place curves; torch with flame; belt lantern; shields | Filmstrips, 8 equipment tests |
+| Story | 3 voiced NPCs (Wren, Bram, Mira); 5 main + 2 side quests; tutorial taught through play; tracker; guide arrow; save-compatible | 7 quest tests incl. full tutorial play-through, captures |
+| Voices | Piper TTS baked offline to Ogg (30 lines), one voice per NPC, subtitles timed to audio, music ducking, Voices volume | Every line checked for real length and loudness; not listened to |
+| Gathering | Trees topple and scatter wood; material-specific mining sounds; impact-timed effects | Captures |
+| Building | Placement ghost with reasons; one validity check for ghost and build; can't build into bodies | Placement test (incl. straddling) |
+| Crafting | Timed jobs with station sounds and work animation; progress fill | 4 crafting tests, capture |
+| World | 2.5D foliage shader per species, bevelled terrain, light-directed relief, foreground layer, coloured light scatter, water/lava shaders, weather incl. thunderstorms, ambience beds | Captures |
+| Combat | Fitted creature boxes, front-only sword reach, telegraphed enemy attacks, shield block | 4 collision tests |
+| Death | Death screen with Rise countdown | Capture |
+
+## Not verified / not done
+
+- **No real device** has run the game; no APK has been built (future deliverable).
+- **Audio is unheard**: there is no sound device here. Clips are checked by
+  length/loudness only. Piper may mispronounce names.
+- Robot keeps a front-facing head (its three-quarter cut lost the face).
+- Dodge roll, running vs walking as separate gaits, pick-up animation:
+  not done (the brief asks for them).
+- Inventory redesign (drag and drop, tooltips, rarity, equipment slots):
+  not done; current pack is tap-to-move.
+- More NPCs/quests, map/minimap, armour, liquids flowing: not done.
+
+## Exact next tasks
+
+1. Dodge roll (keyboard + touch button) with invulnerability frames and a
+   rig pose; running gait above walking speed.
+2. Inventory redesign (stage E): drag and drop, tooltips with stats and
+   rarity colours, sort, equipment slots for shield and lantern.
+3. Pooled VFX (stage D): material chips per tile type, enemy death bursts.
+4. A second region of story content (Bram's mine as a built location,
+   more voiced lines; re-run `python3 tools/bake_voices.py`).
+5. Performance pass on the foliage shader and light scatter at Low/Medium.
+
+## How to check things
+
+- Tests: `godot --headless --path godot -s res://tests/run_tests.gd`
+- Soak: `xvfb-run -a godot --path godot --rendering-driver opengl3 --fixed-fps 60 -- --shot=out.png --touch --frames=6000 --action=soak --seed=7`, then grep the log for `SCRIPT ERROR`.
+- Captures: see `--action`, `--scenario`, `--hold`, `--strip`, `--story`, `--hover`, `--debug` in `scripts/main.gd`.

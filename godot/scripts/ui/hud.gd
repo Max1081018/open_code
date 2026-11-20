@@ -570,6 +570,7 @@ func show_death(seconds := 4.0) -> void:
 	var text := UITheme.text("The lantern gutters, but it does not go out.\nIt carries you back to your last light.", 34,
 		UITheme.PAPER)
 	text.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	text.custom_minimum_size = Vector2(980, 0)
 	column.add_child(text)
 	var button := Button.new()
 	button.custom_minimum_size = Vector2(420, 100)
