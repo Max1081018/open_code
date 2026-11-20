@@ -137,6 +137,8 @@ func _unhandled_input(event: InputEvent) -> void:
 				level.player.input.attack_pressed = true
 			KEY_E:
 				level.player.input.interact_pressed = true
+			KEY_L, KEY_CTRL:
+				level.player.input.dodge_pressed = true
 
 
 # =============================================================================
@@ -264,6 +266,9 @@ func _run_scenario() -> void:
 			input.block_held = _frames > 10
 		"soak":
 			_soak()
+		"dodge":
+			input.move = 1.0 if _frames > 15 else 0.0
+			input.dodge_pressed = _frames == 24
 		"die":
 			if _frames == 20:
 				level.player.hurt(9999.0, level.player.global_position + Vector2(100, 0))

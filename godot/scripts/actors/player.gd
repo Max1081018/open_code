@@ -137,6 +137,7 @@ func _physics_process(delta: float) -> void:
 
 	_move(delta)
 	rig.blocking = input.block_held and rig.has_shield() and not rig.swinging()
+	_dodge(delta)
 	_use_items(delta)
 	_work_craft(delta)
 	if input.interact_pressed:
@@ -157,7 +158,8 @@ func _move(delta: float) -> void:
 	var accel := ACCEL if is_on_floor() else AIR_ACCEL
 	if absf(input.move) < 0.05:
 		accel = FRICTION if is_on_floor() else AIR_ACCEL * 0.5
-	velocity.x = move_toward(velocity.x, target, accel * delta)
+	if _dodge_time <= 0.0:
+		velocity.x = move_toward(velocity.x, target, accel * delta)
 	if absf(input.move) > 0.1:
 		facing = 1 if input.move > 0 else -1
 
@@ -207,6 +209,49 @@ func _move(delta: float) -> void:
 ## Walk up one-tile ledges without jumping, as Terraria does. On a phone
 ## this matters more than anywhere: constant jump-tapping to cross bumpy
 ## ground is the fastest way to make a game feel like a chore.
+## A quick roll: a burst of speed in the direction you are going, with a
+## moment where blows pass through you. Short cooldown so it is a choice,
+## not a way to travel.
+var _dodge_time := 0.0
+var _dodge_cooldown := 0.0
+var _air_dodged := false
+const DODGE_SPEED := 1350.0
+const DODGE_TIME := 0.36
+
+
+func _dodge(delta: float) -> void:
+	_dodge_cooldown = maxf(_dodge_cooldown - delta, 0.0)
+	if _dodge_time > 0.0:
+		_dodge_time -= delta
+		velocity.x = facing * DODGE_SPEED * (0.55 + 0.45 * _dodge_time / DODGE_TIME)
+		return
+	if is_on_floor():
+		_air_dodged = false
+	if not input.dodge_pressed or _dodge_cooldown > 0.0 or rig.blocking:
+		return
+	# On the ground any time; in the air, once until you land.
+	if not is_on_floor():
+		if _air_dodged:
+			return
+		_air_dodged = true
+	if absf(input.move) > 0.1:
+		facing = 1 if input.move > 0 else -1
+	_dodge_time = DODGE_TIME
+	velocity.x = facing * DODGE_SPEED
+	velocity.y = minf(velocity.y, 0.0)
+	_dodge_cooldown = 0.75
+	_invulnerable = maxf(_invulnerable, DODGE_TIME)
+	_anim_lock = DODGE_TIME
+	body.play("dodge")
+	body.speed_scale = 1.0
+	Sfx.play("swing", -8.0, 0.15)
+	Effects.burst(level.fx_layer, global_position, "smoke", Color(0.85, 0.78, 0.66))
+
+
+func dodging() -> bool:
+	return _dodge_time > 0.0
+
+
 func _try_step_up() -> void:
 	var feet := World.cell_of(global_position + Vector2(0, -8))
 	var ahead := feet + Vector2i(facing, 0)

@@ -16,7 +16,7 @@ extends Node2D
 
 const ONE_SHOT := {
 	"attack": 0.3, "use": 0.3, "swing_mine": 0.3, "swing_chop": 0.35, "slash": 0.3,
-	"hurt": 0.32, "interact": 0.35, "death": 0.45, "cheer": 1.0,
+	"hurt": 0.32, "interact": 0.35, "death": 0.45, "cheer": 1.0, "dodge": 0.36,
 }
 const STRIDE := 150.0  ## ground covered by half a walk cycle, in pixels
 
@@ -336,6 +336,15 @@ func _process(delta: float) -> void:
 			arm_f = -70.0 + sin(_clock * 8.0) * 10.0
 			arm_b = 250.0 - sin(_clock * 8.0) * 10.0
 			pelvis_y = -absf(sin(_clock * 8.0)) * 6.0
+		"dodge":
+			# Tucked into a ball, rolling once round its middle.
+			bend_f = true
+			bend_b = true
+			leg_f = -40.0
+			leg_b = -20.0
+			arm_f = 30.0
+			arm_b = 150.0
+			lean = 20.0
 		"death":
 			face = "headShock"
 			_death = minf(_death + delta / 0.45, 1.0)
@@ -387,6 +396,12 @@ func _process(delta: float) -> void:
 		# Topple backwards and lie still.
 		rotation = deg_to_rad(-88.0 * smoothstep(0.0, 1.0, _death)) * (-1.0 if flip_h else 1.0)
 		position.y = -40.0 * _death
+	elif animation == "dodge":
+		var u := clampf(_t / ONE_SHOT.dodge, 0.0, 1.0)
+		var turn := TAU * smoothstep(0.0, 1.0, u) * (-1.0 if flip_h else 1.0)
+		var centre := Vector2(0, -105)
+		rotation = turn
+		position = centre - centre.rotated(turn) + Vector2(0, sin(u * PI) * 30.0)
 	else:
 		rotation = 0.0
-		position.y = 0.0
+		position = Vector2.ZERO

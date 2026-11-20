@@ -100,3 +100,27 @@ func test_shields_are_craftable_items() -> void:
 			if recipe[0] == id:
 				found = true
 		check(found, "%s has a recipe" % id)
+
+
+func test_a_dodge_rolls_through_blows_and_then_cools_down() -> void:
+	var level := _make_level()
+	var player := level.player
+	player.input.dodge_pressed = true
+	player._dodge(1.0 / 60.0)
+	check(player.dodging(), "the roll starts")
+	check(absf(player.velocity.x) > 1000.0, "with a burst of speed")
+	player.health = 100.0
+	player.hurt(20.0, player.global_position + Vector2(80, 0))
+	check_eq(player.health, 100.0, "blows pass through a rolling body")
+	player._dodge(Player.DODGE_TIME)
+	player._dodge(0.01)
+	check(not player.dodging(), "the roll ends")
+	player.input.dodge_pressed = true
+	player._dodge(0.01)
+	check(not player.dodging(), "and cannot be chained at once")
+	player._dodge_cooldown = 0.0
+	player.input.dodge_pressed = true
+	player._dodge(0.01)
+	if not player.is_on_floor():
+		check(not player.dodging(), "only one dash in the air until you land")
+	level.free()

@@ -12,6 +12,7 @@ var hover := Vector2.INF  ## mouse position in the world (desktop), INF on touch
 var attack_pressed := false
 var interact_pressed := false
 var block_held := false  ## raising the shield
+var dodge_pressed := false
 var hotbar_select := -1
 
 
@@ -20,4 +21,5 @@ func end_frame() -> void:
 	jump_pressed = false
 	attack_pressed = false
 	interact_pressed = false
+	dodge_pressed = false
 	hotbar_select = -1

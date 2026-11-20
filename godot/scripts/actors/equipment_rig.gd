@@ -307,6 +307,8 @@ func _place_main(hand: Vector2, angle_deg: float, facing: float) -> void:
 		main.flip_h = true
 		main.offset = -(Vector2(size.x - grip.x, grip.y) - size * 0.5)
 		main.rotation = -rotation_right
+	# Turn with the body when it turns over (a roll, a fall).
+	main.rotation += player.body.rotation
 	if _flame:
 		var tip := _tip_local(0.92)
 		_flame.position = Vector2(tip.x * facing, tip.y)
