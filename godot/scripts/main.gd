@@ -422,8 +422,7 @@ func _tutorial_bot() -> void:
 				var dx := tree.x - player.global_position.x
 				if absf(dx) > 260:
 					input.move = signf(dx)
-					input.jump_pressed = player.is_on_wall() and _frames % 20 == 0
-					input.jump_held = input.jump_pressed
+					_bot_jump(player)
 				else:
 					input.use_held = true
 					input.aim = tree
@@ -469,8 +468,7 @@ func _tutorial_bot() -> void:
 				var dx := World.centre_of(rock).x - player.global_position.x
 				if absf(dx) > 300:
 					input.move = signf(dx)
-					input.jump_pressed = player.is_on_wall() and _frames % 20 == 0
-					input.jump_held = input.jump_pressed
+					_bot_jump(player)
 				else:
 					input.use_held = true
 					input.aim = World.centre_of(rock)
@@ -486,6 +484,23 @@ func _tutorial_bot() -> void:
 			_bot_walk_to_npc(goal[1])
 
 
+var _bot_jump_hold := 0
+
+
+## Jump at a wall and keep the button held, as a player does: a tap released
+## at once is a short hop (the jump is cut when the button comes up).
+func _bot_jump(player: Player) -> void:
+	if _bot_jump_hold > 0:
+		_bot_jump_hold -= 1
+		player.input.jump_held = true
+		return
+	player.input.jump_held = false
+	if player.is_on_wall() and player.is_on_floor():
+		player.input.jump_pressed = true
+		player.input.jump_held = true
+		_bot_jump_hold = 22
+
+
 func _bot_walk_to_npc(id: String) -> void:
 	var player := level.player
 	for npc in get_tree().get_nodes_in_group("npcs"):
@@ -493,8 +508,7 @@ func _bot_walk_to_npc(id: String) -> void:
 			var dx: float = npc.global_position.x - player.global_position.x
 			if absf(dx) > 200:
 				player.input.move = signf(dx)
-				player.input.jump_pressed = player.is_on_wall() and _frames % 20 == 0
-				player.input.jump_held = player.input.jump_pressed
+				_bot_jump(player)
 			elif _frames % 40 == 0:
 				player.input.interact_pressed = true
 
