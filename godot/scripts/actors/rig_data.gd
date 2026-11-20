@@ -32,6 +32,41 @@ const HANDS := {
 	"talk": [Vector2(69.1, -59.5), Vector2(-50.7, -33.5)],
 }
 
+## Character -> part -> Rect2 of the part in the idle pose (pose pixels).
+## The cut-out rig hangs its joints off these.
+const LAYOUT := {
+	"player": {
+		"head": Rect2(44, 44, 113, 121),
+		"body": Rect2(58, 142, 74, 78),
+		"arm_front": Rect2(120, 162, 42, 60),
+		"arm_back": Rect2(30, 162, 42, 60),
+		"hand_front": Rect2(127, 209, 37, 34),
+		"hand_back": Rect2(28, 209, 37, 34),
+		"leg_front": Rect2(98, 198, 36, 58),
+		"leg_back": Rect2(58, 198, 36, 58),
+	},
+	"zombie": {
+		"head": Rect2(46, 52, 108, 112),
+		"body": Rect2(58, 142, 74, 78),
+		"arm_front": Rect2(120, 162, 42, 60),
+		"arm_back": Rect2(30, 162, 42, 60),
+		"hand_front": Rect2(127, 209, 37, 34),
+		"hand_back": Rect2(28, 209, 37, 34),
+		"leg_front": Rect2(98, 198, 36, 58),
+		"leg_back": Rect2(58, 198, 36, 58),
+	},
+	"robot": {
+		"head": Rect2(46, 75, 106, 90),
+		"body": Rect2(48, 142, 94, 78),
+		"arm_front": Rect2(120, 162, 38, 58),
+		"arm_back": Rect2(35, 162, 38, 58),
+		"hand_front": Rect2(125, 210, 36, 36),
+		"hand_back": Rect2(31, 210, 36, 36),
+		"leg_front": Rect2(98, 198, 36, 58),
+		"leg_back": Rect2(58, 198, 36, 58),
+	},
+}
+
 ## Icon -> [grip in icon pixels, handle-to-head angle (radians), length].
 const GRIPS := {
 	"items/axe_bronze": [Vector2(19.2, 83.3), -0.486, 120.4],

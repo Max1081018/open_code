@@ -60,7 +60,7 @@ var _mining_progress := 0.0
 var _breath := 0.0
 var _step_timer := 0.0
 
-var body: AnimatedSprite2D
+var body: CutoutBody
 var rig: EquipmentRig
 var _was_in_water := false
 var _swing_override := ""  ## a weapon drawn just for this swing
@@ -83,11 +83,8 @@ func _ready() -> void:
 	shape.position = Vector2(0, -98)
 	add_child(shape)
 
-	body = AnimatedSprite2D.new()
-	body.sprite_frames = CharacterFrames.build("player")
-	body.animation = "idle"
-	body.offset = Vector2(0, -128)
-	body.position = Vector2(0, 2)
+	body = CutoutBody.new("player")
+	body.run_speed = RUN_SPEED
 	body.z_index = 10
 	add_child(body)
 
@@ -517,10 +514,7 @@ func _swing(kind := "mine", duration := 0.3, on_impact := Callable()) -> void:
 	_anim_lock = duration
 	var clip := EquipmentRig.body_clip(kind)
 	body.play(clip)
-	body.frame = 0
-	var frames := body.sprite_frames
-	var natural := frames.get_frame_count(clip) / frames.get_animation_speed(clip)
-	body.speed_scale = natural / duration
+	body.speed_scale = body.clip_length(clip) / duration
 	rig.swing(kind, duration, on_impact)
 
 
@@ -792,29 +786,19 @@ func nearby_stations() -> Array:
 # =============================================================================
 
 func _animate(delta: float) -> void:
+	# The skeleton animates itself from how the player is moving: strides
+	# matched to the ground covered, jumps, falls. Actions are one-shots.
 	body.flip_h = facing < 0
-
+	body.motion = velocity
+	body.grounded = is_on_floor()
 	if _anim_lock > 0.0:
 		return
 	body.speed_scale = 1.0
-
-	var clip := "idle"
-	if not is_on_floor():
-		clip = "jump" if velocity.y < 0.0 else "fall"
-	elif absf(velocity.x) > 60.0:
-		clip = "walk"
-		body.speed_scale = clampf(absf(velocity.x) / RUN_SPEED, 0.5, 1.2)
-		_step_timer -= delta * body.speed_scale
+	if is_on_floor() and absf(velocity.x) > 60.0:
+		_step_timer -= delta * clampf(absf(velocity.x) / RUN_SPEED, 0.5, 1.2)
 		if _step_timer <= 0.0:
 			_step_timer = 0.31
 			Sfx.play("step", -14.0, 0.15)
-	if body.animation != clip:
-		body.play(clip)
-
-	# A single idle pose needs breath, or the hero reads as a cut-out.
-	if clip == "idle":
-		_breath += delta * 2.2
-		body.scale = Vector2(1.0 + sin(_breath) * 0.008, 1.0 - sin(_breath) * 0.014)
 
 
 # =============================================================================

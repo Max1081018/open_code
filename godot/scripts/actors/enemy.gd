@@ -61,7 +61,7 @@ var facing := -1
 var is_boss := false
 var home := Vector2.ZERO
 
-var _sprite: AnimatedSprite2D
+var _sprite  ## AnimatedSprite2D for creatures, CutoutBody for people
 var _toon := false
 var _hop_timer := 0.0
 var _attack_timer := 0.0
@@ -108,14 +108,16 @@ func _ready() -> void:
 	_box = box
 	hit_radius = box.size.x * 0.6
 
-	_sprite = AnimatedSprite2D.new()
-	_sprite.sprite_frames = _frames()
+	if _toon:
+		# People (zombies, robots, shades, the bosses) are jointed rigs.
+		_sprite = CutoutBody.new(spec.toon)
+		_sprite.run_speed = float(spec.speed)
+	else:
+		_sprite = AnimatedSprite2D.new()
+		_sprite.sprite_frames = _frames()
+		_sprite.offset = Vector2(0, -64)
 	_sprite.scale = Vector2(s, s)
 	_sprite.z_index = 9
-	if _toon:
-		_sprite.offset = Vector2(0, -128)
-	else:
-		_sprite.offset = Vector2(0, -64)
 	if spec.has("tint"):
 		_sprite.modulate = spec.tint
 	add_child(_sprite)
@@ -237,6 +239,9 @@ func _physics_process(delta: float) -> void:
 			_fly(delta, to_player, near)
 
 	_sprite.flip_h = facing > 0 if not _toon else facing < 0
+	if _toon:
+		_sprite.motion = velocity / maxf(spec.scale, 0.1)
+		_sprite.grounded = is_on_floor() or spec.mode == Mode.PHASE
 	_touch_damage()
 
 	# Shades burn in strong light: a torch line is a wall to them.
@@ -296,6 +301,11 @@ func _fly(delta: float, to_player: Vector2, near: bool) -> void:
 
 
 func _play(clip: String) -> void:
+	if _toon:
+		# The rig picks walking, jumping and falling from motion itself.
+		if clip in ["attack", "death", "hurt"] and _sprite.animation != clip:
+			_sprite.play(clip)
+		return
 	if _sprite.animation != clip and _sprite.sprite_frames.has_animation(clip):
 		_sprite.play(clip)
 

@@ -144,7 +144,7 @@ func _apply_scenario() -> void:
 	var player := level.player
 	var data := level.data
 	match _args.get("scenario", "surface"):
-		"cave", "crystal", "deep", "ruin", "mushroom":
+		"cave", "crystal", "deep", "ruin", "mushroom", "underwater", "lava":
 			var target := _find_scenario_cell(_args.scenario)
 			player.global_position = World.foot_of(target)
 			player.glow = player.max_glow()
@@ -196,6 +196,24 @@ func _find_scenario_cell(kind: String) -> Vector2i:
 			if ObjectArt.glows(data.objects[key], cell) and not data.is_solid(cell.x - 2, cell.y) \
 					and data.is_solid(cell.x - 2, cell.y + 1):
 				return cell - Vector2i(2, 0)
+	if kind == "underwater":
+		# Standing on a pool's floor with water over the head.
+		for y in range(WorldData.SURFACE_Y - 10, data.height - 4):
+			for x in range(40, data.width - 40):
+				if data.get_liquid(x, y) == WorldData.WATER and data.get_liquid(x, y - 1) == WorldData.WATER \
+						and data.get_liquid(x, y - 2) == WorldData.WATER and data.is_solid(x, y + 1):
+					return Vector2i(x, y)
+	if kind == "lava":
+		# Dry ground two or three cells from lava, on the same level.
+		for y in range(WorldData.SURFACE_Y + 20, data.height - 4):
+			for x in range(40, data.width - 40):
+				if data.is_solid(x, y) or data.is_solid(x, y - 1) or not data.is_solid(x, y + 1):
+					continue
+				if data.get_liquid(x, y) != WorldData.DRY:
+					continue
+				for dx in [2, 3, -2, -3]:
+					if data.get_liquid(x + dx, y) == WorldData.LAVA or data.get_liquid(x + dx, y + 1) == WorldData.LAVA:
+						return Vector2i(x, y)
 	var rng := RandomNumberGenerator.new()
 	rng.seed = 5
 	for attempt in 40000:
@@ -244,6 +262,8 @@ func _run_scenario() -> void:
 				input.aim = _nearest_tree()
 		"turn":
 			input.move = -0.3 if _frames > 20 else 0.0
+		"walkleft":
+			input.move = -1.0 if _frames > 20 else 0.0
 		"jump":
 			input.move = 1.0
 			if _frames % 40 == 5:

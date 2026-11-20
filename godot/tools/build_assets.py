@@ -314,6 +314,11 @@ def build_characters(kenney):
             rename=lambda stem, p=prefix: stem.replace(p, ""),
         )
         print(f"characters/{folder}: {n} poses")
+        # The separate body parts drive the cut-out rig (scripts/actors/cutout_body.gd).
+        parts = os.path.join(toon, source, "Parts HD")
+        if folder != "guide" and os.path.isdir(parts):
+            n = copy_tree(parts, os.path.join("assets", "characters", folder, "parts"))
+            print(f"characters/{folder}/parts: {n} parts")
 
     n = copy_tree(
         os.path.join(kenney, "2d/New Platformer Pack/Sprites/Enemies/Double"),

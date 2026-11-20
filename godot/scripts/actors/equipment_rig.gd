@@ -53,7 +53,10 @@ var blocking := false
 func setup(the_player: Player) -> void:
 	player = the_player
 	main = Sprite2D.new()
-	main.z_index = 1  # over the body (z 10 + 1 relative to the rig at 10)
+	# Draw order around the hand: the front arm (12) behind the item (13),
+	# the fist (14) over it, so the item is gripped in front of the arm and
+	# the fingers close round the handle, rather than the arm hiding it.
+	main.z_index = 3
 	add_child(main)
 
 	shield = Sprite2D.new()
@@ -103,7 +106,21 @@ func hold(id: String) -> void:
 		_flame = Node2D.new()
 		var tip := _tip_local(0.92)
 		_flame.position = tip
-		var fire := Effects.fire(Vector2.ZERO)
+		# The flame: Kenney's torch flame drawing, flickering, plus sparks.
+		var flame := Sprite2D.new()
+		var atlas := AtlasTexture.new()
+		atlas.atlas = load("res://assets/props/torch_on_a.png")
+		atlas.region = Rect2(28, 0, 72, 70)
+		flame.texture = atlas
+		flame.offset = Vector2(0, -26)
+		flame.scale = Vector2.ONE * 0.75 / main.scale
+		flame.z_index = 2
+		_flame.add_child(flame)
+		var flicker := flame.create_tween().set_loops()
+		var base := flame.scale
+		flicker.tween_property(flame, "scale", base * Vector2(0.92, 1.08), 0.11)
+		flicker.tween_property(flame, "scale", base * Vector2(1.05, 0.94), 0.13)
+		var fire := Effects.fire(Vector2(0, -10))
 		fire.scale = Vector2.ONE / main.scale
 		fire.amount = maxi(fire.amount / 2, 4)
 		fire.emission_rect_extents = Vector2(7, 3)
@@ -188,7 +205,9 @@ func _process(delta: float) -> void:
 	var back: Vector2 = hands[1]
 
 	# --- The front hand's item ---------------------------------------------
+	var body := player.body
 	var angle := _rest_angle()
+	var swinging_now := not _swing.is_empty()
 	if not _swing.is_empty():
 		_swing.t += delta / _swing.duration
 		var kind: String = _swing.kind
@@ -201,25 +220,40 @@ func _process(delta: float) -> void:
 			_swing = {}
 	if blocking:
 		angle = -70.0
+	# The front arm carries the item: through a swing it points along the
+	# blow (the item extends past the hand); a torch is held up and out;
+	# otherwise the arm swings freely and the item rides along with it.
+	if swinging_now:
+		body.arm_override = clampf(angle + 55.0, -150.0, 120.0)
+		body.arm_blend = 1.0
+	elif _held_kind == "torch":
+		body.arm_override = 28.0
+		body.arm_blend = 1.0
+	else:
+		body.arm_override = NAN
+		body.arm_blend = 0.0
+		if _held_kind in ["tool", "sword"]:
+			# Carried forward and a little up, clear of the face.
+			angle = body.front_arm_angle() - (98.0 if _held_kind == "tool" else 105.0)
+	body.guard = blocking
+	# Lifted back over the shoulder, the item and arm go behind the head.
+	var behind := swinging_now and angle < -105.0
+	body.arm_behind = behind
+	main.z_index = -3 if behind else 3
 	_place_main(front, angle, facing)
 	_update_trail(delta)
 
 	# --- The shield ----------------------------------------------------------
 	if shield.visible:
-		if blocking:
-			# Raised in front of the chest.
-			shield.position = Vector2(58 * facing, -128)
-			shield.z_index = 2
-			shield.rotation = 0.0
-		else:
-			# Slung on the back arm, behind the body.
-			shield.position = Vector2(back.x - 6 * facing, back.y - 26)
-			shield.z_index = -2
-			shield.rotation = -0.25 * facing
+		# On the back arm's hand: slung behind the body, or brought round in
+		# front of the chest when guarding.
+		shield.position = back + Vector2(0, -18)
+		shield.z_index = 3 if blocking else -4
+		shield.rotation = 0.0 if blocking else -0.25 * facing
 		shield.flip_h = facing < 0
 
 	# --- The lantern on the belt: a pendulum pushed by the player's motion ---
-	var hip := Vector2(-30 * facing, -102)
+	var hip := body.hip() - player.global_position + Vector2(-36 * facing, 12)
 	var push := -player.velocity.x * 0.0022 - (player.velocity.y * 0.0008 if not player.is_on_floor() else 0.0)
 	_lantern_speed += (-_lantern_angle * 38.0 + push * 60.0) * delta
 	_lantern_speed *= exp(-3.2 * delta)
@@ -229,20 +263,10 @@ func _process(delta: float) -> void:
 	lantern.visible = _held_kind != "torch"
 
 
-## Fist positions for the body's current frame, scaled with its squash.
+## The skeleton's hands, in the player's space.
 func _hands() -> Array:
-	var body := player.body
-	var texture := body.sprite_frames.get_frame_texture(body.animation, body.frame)
-	var name := texture.resource_path.get_file().get_basename() if texture else "idle"
-	var pair: Array = RigData.HANDS.get(name, RigData.HANDS.idle)
-	var facing := float(player.facing)
-	var out := []
-	for hand in pair:
-		var p: Vector2 = hand
-		# The body squashes about its feet.
-		p = Vector2(p.x * body.scale.x, (p.y - body.position.y) * body.scale.y + body.position.y)
-		out.append(Vector2(p.x * facing, p.y))
-	return out
+	var origin := player.global_position
+	return [player.body.front_hand() - origin, player.body.back_hand() - origin]
 
 
 func _rest_angle() -> float:
