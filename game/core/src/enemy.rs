@@ -123,6 +123,12 @@ pub struct Enemy {
     pub kind: EnemyKindId,
     pub body: Body,
     pub combat: Combat,
+    /// Animation playback, carried with the enemy so it survives the list
+    /// being compacted when another enemy dies.
+    pub anim: crate::anim::Animator,
+    /// Which way the sprite faces. Held rather than derived, so a creature
+    /// that stops moving keeps facing the way it was.
+    pub facing_right: bool,
 }
 
 impl Enemy {
@@ -131,6 +137,8 @@ impl Enemy {
             kind: kind_id,
             body: Body::new(x, y),
             combat: Combat::new(kind(kind_id).max_health),
+            anim: crate::anim::Animator::new(),
+            facing_right: true,
         }
     }
 

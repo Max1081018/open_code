@@ -333,6 +333,112 @@ mod layout {
     pub const MOUTH_Y: i32 = 24;
 }
 
+/// How an enemy kind looks. Indexed by `EnemyKindId`.
+pub fn enemy_style(kind: crate::enemy::EnemyKindId) -> CharacterStyle {
+    match kind.0 {
+        // Slime: a squat green blob.
+        0 => CharacterStyle {
+            build: Build::Blob,
+            skin: [120.0, 200.0, 110.0],
+            cloth: [96.0, 186.0, 96.0],
+            trouser: [76.0, 150.0, 78.0],
+            hair: [96.0, 186.0, 96.0],
+            eye: [40.0, 70.0, 48.0],
+            seed: 0xE000,
+        },
+        // Cave Crawler: wiry and rust-coloured.
+        1 => CharacterStyle {
+            build: Build::Humanoid,
+            skin: [176.0, 132.0, 104.0],
+            cloth: [182.0, 104.0, 56.0],
+            trouser: [116.0, 72.0, 44.0],
+            hair: [84.0, 52.0, 34.0],
+            eye: [222.0, 176.0, 70.0],
+            seed: 0xE001,
+        },
+        // Deep Stalker: tall and violet, with pale eyes.
+        2 => CharacterStyle {
+            build: Build::Humanoid,
+            skin: [150.0, 126.0, 168.0],
+            cloth: [118.0, 70.0, 150.0],
+            trouser: [72.0, 46.0, 96.0],
+            hair: [54.0, 34.0, 72.0],
+            eye: [226.0, 230.0, 240.0],
+            seed: 0xE002,
+        },
+        // Gloom Brute: heavy, red, and broad.
+        _ => CharacterStyle {
+            build: Build::Hulk,
+            skin: [182.0, 108.0, 96.0],
+            cloth: [158.0, 52.0, 48.0],
+            trouser: [94.0, 38.0, 40.0],
+            hair: [66.0, 28.0, 30.0],
+            eye: [244.0, 196.0, 80.0],
+            seed: 0xE003,
+        },
+    }
+}
+
+/// How tall a creature is drawn, in tiles.
+///
+/// Drawn size is deliberately allowed to differ a little from the physics
+/// box: a slime that collides as a 1.8-tile body still looks absurd drawn
+/// that tall, and a brute should loom.
+pub fn enemy_height_tiles(kind: crate::enemy::EnemyKindId) -> f32 {
+    match kind.0 {
+        0 => 1.05, // Slime: low to the ground
+        1 => 1.60, // Cave Crawler: wiry
+        2 => 1.85, // Deep Stalker: tall
+        _ => 2.05, // Gloom Brute: looming
+    }
+}
+
+/// How a boss looks. Indexed by `BossKindId`.
+pub fn boss_style(kind: crate::boss::BossKindId) -> CharacterStyle {
+    match kind.0 {
+        // The Warden: slate and iron.
+        0 => CharacterStyle {
+            build: Build::Hulk,
+            skin: [142.0, 148.0, 158.0],
+            cloth: [86.0, 94.0, 112.0],
+            trouser: [56.0, 62.0, 78.0],
+            hair: [44.0, 48.0, 62.0],
+            eye: [120.0, 230.0, 236.0],
+            seed: 0xB000,
+        },
+        // Rimewyrm: pale ice.
+        1 => CharacterStyle {
+            build: Build::Hulk,
+            skin: [206.0, 224.0, 238.0],
+            cloth: [128.0, 180.0, 220.0],
+            trouser: [80.0, 126.0, 170.0],
+            hair: [168.0, 206.0, 232.0],
+            eye: [60.0, 120.0, 190.0],
+            seed: 0xB001,
+        },
+        // Sand Colossus: sunbaked stone.
+        2 => CharacterStyle {
+            build: Build::Hulk,
+            skin: [208.0, 180.0, 128.0],
+            cloth: [186.0, 150.0, 92.0],
+            trouser: [132.0, 104.0, 62.0],
+            hair: [150.0, 120.0, 74.0],
+            eye: [240.0, 120.0, 50.0],
+            seed: 0xB002,
+        },
+        // Hollow King: void and gold.
+        _ => CharacterStyle {
+            build: Build::Hulk,
+            skin: [92.0, 80.0, 108.0],
+            cloth: [56.0, 44.0, 74.0],
+            trouser: [40.0, 32.0, 56.0],
+            hair: [212.0, 176.0, 86.0],
+            eye: [250.0, 206.0, 96.0],
+            seed: 0xB003,
+        },
+    }
+}
+
 /// The pose for one frame of one clip.
 pub fn pose(state: AnimState, frame: u32) -> Pose {
     let index = frame as usize;
@@ -543,17 +649,19 @@ pub fn character_frame(
     let seed = style.seed;
 
     if style.build == Build::Blob {
-        // A blob is one squat body that sits low, with a face on it.
-        let w = 34;
-        let h = 26;
+        // A blob is one squat body that sits low, with a face on it. It
+        // fills most of the canvas height so that scaling the sprite to a
+        // creature's size does not leave it a speck.
+        let w = 38;
+        let h = 46;
         let x = CENTRE_X - w / 2;
         let y = CHAR_H as i32 - h + pose.body_dy.min(0);
 
         draw_part(&mut canvas, x, y, w, h, 12.0, style.cloth, seed);
 
         // Eyes sit on the upper half of the blob.
-        let eye_y = y + 8;
-        for centre_x in [CENTRE_X - 7, CENTRE_X + 7] {
+        let eye_y = y + 14;
+        for centre_x in [CENTRE_X - 8, CENTRE_X + 8] {
             if blinking {
                 for dx in -2..=2 {
                     canvas.put(centre_x + dx, eye_y, ramp_from(style.cloth).shadow);
@@ -578,8 +686,12 @@ pub fn character_frame(
         return canvas.into_texture();
     }
 
-    // Hulks are broader and squatter than the standard humanoid.
-    let bulk = if style.build == Build::Hulk { 6 } else { 0 };
+    // Hulks are broader than the standard humanoid. Bulk goes mostly into
+    // the chest: widening the arms by the same amount turns them into slabs.
+    let hulk = style.build == Build::Hulk;
+    let torso_bulk = if hulk { 8 } else { 0 };
+    let bulk = if hulk { 2 } else { 0 };
+    let arm_spread = if hulk { 2 } else { 0 };
 
     let body_dy = pose.body_dy;
     let head_dy = body_dy + pose.head_dy;
@@ -597,7 +709,7 @@ pub fn character_frame(
     // Back to front: far limbs, near limbs, torso, near arm, neck, head.
     draw_limb(
         &mut canvas,
-        ARM_FAR_X + pose.lean - bulk,
+        ARM_FAR_X + pose.lean - arm_spread,
         ARM_Y + pose.arm_far.1 + body_dy,
         ARM_W + bulk,
         ARM_H,
@@ -642,9 +754,9 @@ pub fn character_frame(
 
     draw_part(
         &mut canvas,
-        TORSO_X + pose.lean - bulk / 2,
+        TORSO_X + pose.lean - torso_bulk / 2,
         TORSO_Y + body_dy,
-        TORSO_W + bulk,
+        TORSO_W + torso_bulk,
         TORSO_H,
         5.0,
         style.cloth,
@@ -653,7 +765,7 @@ pub fn character_frame(
 
     draw_limb(
         &mut canvas,
-        ARM_NEAR_X + pose.lean,
+        ARM_NEAR_X + pose.lean + arm_spread,
         ARM_Y + pose.arm_near.1 + body_dy,
         ARM_W + bulk,
         ARM_H,
@@ -957,6 +1069,61 @@ mod tests {
         let b = character_frame(&other, AnimState::Idle, 0, false);
 
         assert!(pixels_differ(&a, &b) > 40, "recolouring should be visible");
+    }
+
+    #[test]
+    fn every_enemy_kind_has_its_own_look() {
+        use crate::enemy::ENEMIES;
+
+        let mut seen = Vec::new();
+        for index in 0..ENEMIES.len() {
+            let style = enemy_style(crate::enemy::EnemyKindId(index as u16));
+
+            assert!(
+                !seen.contains(&style.seed),
+                "enemy {index} reuses another's seed"
+            );
+            seen.push(style.seed);
+
+            let texture = character_frame(&style, AnimState::Idle, 0, false);
+            assert!(opaque_count(&texture) > 150, "enemy {index} drew almost nothing");
+        }
+    }
+
+    #[test]
+    fn every_boss_kind_has_its_own_look() {
+        use crate::boss::BOSSES;
+
+        for index in 0..BOSSES.len() {
+            let style = boss_style(crate::boss::BossKindId(index as u16));
+            let texture = character_frame(&style, AnimState::Idle, 0, false);
+
+            assert!(opaque_count(&texture) > 150, "boss {index} drew almost nothing");
+        }
+    }
+
+    #[test]
+    fn the_slime_is_a_blob_and_the_brute_is_a_hulk() {
+        assert_eq!(enemy_style(crate::enemy::SLIME).build, Build::Blob);
+        assert_eq!(enemy_style(crate::enemy::GLOOM_BRUTE).build, Build::Hulk);
+    }
+
+    #[test]
+    fn enemies_do_not_all_look_the_same() {
+        let crawler = character_frame(
+            &enemy_style(crate::enemy::CAVE_CRAWLER),
+            AnimState::Idle,
+            0,
+            false,
+        );
+        let stalker = character_frame(
+            &enemy_style(crate::enemy::DEEP_STALKER),
+            AnimState::Idle,
+            0,
+            false,
+        );
+
+        assert!(pixels_differ(&crawler, &stalker) > 200);
     }
 
     #[test]

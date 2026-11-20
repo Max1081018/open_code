@@ -195,6 +195,8 @@ pub struct Boss {
     pub kind: BossKindId,
     pub body: Body,
     pub combat: Combat,
+    pub anim: crate::anim::Animator,
+    pub facing_right: bool,
 }
 
 impl Boss {
@@ -203,6 +205,8 @@ impl Boss {
             kind: kind_id,
             body: Body::new(x, y),
             combat: Combat::new(kind(kind_id).max_health),
+            anim: crate::anim::Animator::new(),
+            facing_right: true,
         }
     }
 

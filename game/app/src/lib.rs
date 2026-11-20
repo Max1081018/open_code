@@ -20,11 +20,16 @@ use deepdelve_core::art::Texture;
 use deepdelve_core::daynight::{TimeOfDay, DAY_LENGTH};
 use deepdelve_core::enemy::{bodies_overlap, chase_intent, kind, Combat, Enemy, EnemyKindId};
 use deepdelve_core::spawn::{choose_kind, find_standing_spot};
+use deepdelve_core::sprite::{
+    boss_style, character_frame, enemy_height_tiles, enemy_style, player_style, CharacterStyle,
+    CHAR_H, CHAR_W,
+};
 use deepdelve_core::touch::{Controls, Zone};
 use deepdelve_core::interact::{can_reach, place, MiningState};
 use deepdelve_core::boss::{
     boss_intent, kind as boss_kind_of, summoned_by as boss_summoned_by, Attack as BossAttack, Boss,
 };
+use deepdelve_core::anim::{clip, state_from_motion, AnimState, Animator, ALL_STATES};
 use deepdelve_core::craft::{available, craft, Station};
 use deepdelve_core::light::{compute_sky_light, LightMap};
 use deepdelve_core::save::{load, save, PlayerSave, SaveGame};
@@ -32,7 +37,7 @@ use deepdelve_core::noise::hash01;
 use deepdelve_core::item::{def, drop_from, Inventory, ItemId, ItemKind};
 use deepdelve_core::physics::{Body, Intent};
 use deepdelve_core::tilemap::{chunk_texture, TileAtlas, CHUNK_TILES};
-use deepdelve_core::view::{PLAYER_HEIGHT_TILES, PLAYER_WIDTH_TILES, TILE_SCREEN_PX};
+use deepdelve_core::view::{PLAYER_HEIGHT_TILES, TILE_SCREEN_PX};
 use deepdelve_core::world::World;
 
 const WORLD_TILES_X: usize = 256;
@@ -66,6 +71,8 @@ struct Player {
     /// Index into `HOTBAR` of the item the player is holding.
     hotbar_slot: usize,
     combat: Combat,
+    anim: Animator,
+    facing_right: bool,
 }
 
 #[derive(Resource, Default)]
@@ -86,6 +93,83 @@ const BOSS_SUMMON_INTERVAL: f32 = 6.0;
 
 /// A boss stands head and shoulders over the player.
 const BOSS_SCALE: f32 = 2.4;
+
+/// Pre-generated animation frames for one character.
+#[derive(Default)]
+struct FrameSet {
+    frames: std::collections::HashMap<(AnimState, u32, bool), Handle<Image>>,
+}
+
+impl FrameSet {
+    /// The handle for a frame, falling back to the open-eyed variant where
+    /// no blinking version was generated.
+    fn get(&self, state: AnimState, frame: u32, blinking: bool) -> Option<Handle<Image>> {
+        self.frames
+            .get(&(state, frame, blinking))
+            .or_else(|| self.frames.get(&(state, frame, false)))
+            .cloned()
+    }
+}
+
+/// Every character's frames, generated once at startup.
+///
+/// Generating a sprite per frame would destroy mobile performance, so this
+/// is built up front and only ever read afterwards.
+#[derive(Resource, Default)]
+struct SpriteBank {
+    player: FrameSet,
+    enemies: Vec<FrameSet>,
+    bosses: Vec<FrameSet>,
+}
+
+/// States where a blink is actually visible, so only these get the extra
+/// closed-eye frames rather than doubling the whole bank.
+fn blinks_in(state: AnimState) -> bool {
+    matches!(state, AnimState::Idle | AnimState::Walk | AnimState::Run)
+}
+
+fn build_frame_set(images: &mut Assets<Image>, style: &CharacterStyle) -> FrameSet {
+    let mut frames = std::collections::HashMap::new();
+
+    for state in ALL_STATES {
+        for frame in 0..clip(state).frames {
+            for blinking in [false, true] {
+                if blinking && !blinks_in(state) {
+                    continue;
+                }
+
+                let texture = character_frame(style, state, frame, blinking);
+                frames.insert((state, frame, blinking), images.add(to_image(texture)));
+            }
+        }
+    }
+
+    FrameSet { frames }
+}
+
+/// On-screen size of a character sprite, preserving the canvas aspect.
+fn character_size(height_tiles: f32) -> Vec2 {
+    let height = height_tiles * PX;
+    Vec2::new(height * CHAR_W as f32 / CHAR_H as f32, height)
+}
+
+/// Tint for a character standing at `(x, y)` in tile space.
+///
+/// Characters are lit by the same sky light as the terrain. Without this
+/// they glow at full brightness in a pitch-dark cave, which immediately
+/// reads as a sprite pasted on top of the scene rather than standing in it.
+fn lit_tint(lighting: &LightMap, clock: &TimeOfDay, x: f32, y: f32) -> Color {
+    // Sample at chest height rather than at the feet, which are often
+    // buried in the floor tile.
+    let tile_x = x.max(0.0) as usize;
+    let tile_y = (y - 1.0).max(0.0) as usize;
+
+    let brightness = (lighting.brightness(tile_x, tile_y) * clock.sky_brightness())
+        .max(AMBIENT_LIGHT)
+        .min(1.0);
+
+    Color::srgb(brightness, brightness, brightness)
+}
 
 #[derive(Resource)]
 struct Clock(TimeOfDay);
@@ -464,6 +548,7 @@ pub fn main() {
                     .chain(),
                 // Everything that follows the simulation.
                 (
+                    animate_player,
                     sync_monster_sprites,
                     sync_boss_sprites,
                     follow_camera,
@@ -514,7 +599,26 @@ fn window_resolution() -> WindowResolution {
     parsed.unwrap_or((1280, 720)).into()
 }
 
-fn setup(mut commands: Commands) {
+fn setup(mut commands: Commands, mut images: ResMut<Assets<Image>>) {
+    // Generate every character's frames up front. Doing this per frame at
+    // runtime would be ruinous on a phone.
+    let bank = SpriteBank {
+        player: build_frame_set(&mut images, &player_style()),
+        enemies: (0..deepdelve_core::enemy::ENEMIES.len())
+            .map(|index| {
+                build_frame_set(&mut images, &enemy_style(EnemyKindId(index as u16)))
+            })
+            .collect(),
+        bosses: (0..deepdelve_core::boss::BOSSES.len())
+            .map(|index| {
+                build_frame_set(
+                    &mut images,
+                    &boss_style(deepdelve_core::boss::BossKindId(index as u16)),
+                )
+            })
+            .collect(),
+    };
+
     let world = World::generate(SEED, WORLD_TILES_X, WORLD_TILES_Y);
     let atlas = TileAtlas::new(SEED);
 
@@ -524,18 +628,22 @@ fn setup(mut commands: Commands) {
 
     commands.spawn((Camera2d, Transform::from_xyz(0.0, 0.0, 1000.0)));
 
+    let first_frame = bank
+        .player
+        .get(AnimState::Idle, 0, false)
+        .expect("player idle frame");
+
     commands.spawn((
         Sprite {
-            color: Color::srgb(0.96, 0.86, 0.62),
-            custom_size: Some(Vec2::new(
-                PLAYER_WIDTH_TILES * PX,
-                PLAYER_HEIGHT_TILES * PX,
-            )),
+            image: first_frame,
+            custom_size: Some(character_size(PLAYER_HEIGHT_TILES)),
             ..default()
         },
         Transform::from_xyz(0.0, 0.0, 10.0),
         PlayerSprite,
     ));
+
+    commands.insert_resource(bank);
 
     // Translucent square showing which tile the pick will hit.
     commands.spawn((
@@ -590,6 +698,8 @@ fn setup(mut commands: Commands) {
         mining: MiningState::new(),
         hotbar_slot: 0,
         combat: Combat::new(PLAYER_HEALTH),
+        anim: Animator::new(),
+        facing_right: true,
     });
     commands.insert_resource(Target::default());
     commands.insert_resource(DirtyChunks::default());
@@ -694,6 +804,21 @@ fn step_player(
     let dt = time.delta_secs().min(MAX_FRAME);
     player.body.step(&game.world, intent, dt);
 
+    // Face the way we are steering, and keep facing that way once stopped.
+    if intent.move_dir > 0.1 {
+        player.facing_right = true;
+    } else if intent.move_dir < -0.1 {
+        player.facing_right = false;
+    }
+
+    let locomotion = state_from_motion(
+        player.body.vx,
+        player.body.vy,
+        player.body.on_ground,
+    );
+    player.anim.request(locomotion);
+    player.anim.advance(dt);
+
     for mut transform in &mut sprites {
         transform.translation.x = player.body.x * PX;
         transform.translation.y = -(player.body.y - PLAYER_HEIGHT_TILES / 2.0) * PX;
@@ -710,16 +835,6 @@ fn advance_clock(time: Res<Time>, mut clock: ResMut<Clock>, mut sky: ResMut<Clea
         0.65 * brightness,
         0.85 * brightness,
     );
-}
-
-/// Colour used to draw each enemy type until sprite art exists for them.
-fn monster_colour(id: EnemyKindId) -> Color {
-    match id.0 {
-        0 => Color::srgb(0.45, 0.85, 0.45),
-        1 => Color::srgb(0.85, 0.55, 0.25),
-        2 => Color::srgb(0.70, 0.35, 0.80),
-        _ => Color::srgb(0.85, 0.25, 0.25),
-    }
 }
 
 /// Occasionally place a new enemy out of sight of the player.
@@ -789,6 +904,13 @@ fn step_monsters(
     let player_body = player.body;
 
     for enemy in monsters.0.iter_mut() {
+        // A dead enemy stops fighting but stays long enough to fall over.
+        if !enemy.is_alive() {
+            enemy.anim.request(AnimState::Death);
+            enemy.anim.advance(dt);
+            continue;
+        }
+
         enemy.combat.tick(dt);
 
         let intent = chase_intent(enemy, &game.world, player_body.x);
@@ -798,12 +920,31 @@ fn step_monsters(
         };
         enemy.body.step(&game.world, paced, dt);
 
+        if intent.move_dir > 0.01 {
+            enemy.facing_right = true;
+        } else if intent.move_dir < -0.01 {
+            enemy.facing_right = false;
+        }
+
+        enemy.anim.request(state_from_motion(
+            enemy.body.vx,
+            enemy.body.vy,
+            enemy.body.on_ground,
+        ));
+        enemy.anim.advance(dt);
+
         if bodies_overlap(&enemy.body, &player_body) {
-            player.combat.take_damage(kind(enemy.kind).contact_damage);
+            if player.combat.take_damage(kind(enemy.kind).contact_damage) {
+                player.anim.request(AnimState::Hurt);
+            }
+            enemy.anim.request(AnimState::Attack);
         }
     }
 
-    monsters.0.retain(|enemy| enemy.is_alive());
+    // Keep corpses until their death animation has played out.
+    monsters
+        .0
+        .retain(|enemy| enemy.is_alive() || !enemy.anim.finished());
 
     if !player.combat.is_alive() {
         let spawn_x = WORLD_TILES_X / 2;
@@ -844,12 +985,18 @@ fn attack_monsters(
         }
     }
 
+    player.anim.request(AnimState::Attack);
+
     let Some((index, _)) = nearest else {
         return;
     };
 
     let enemy = &mut monsters.0[index];
     let landed = enemy.combat.take_damage(ATTACK_DAMAGE);
+
+    if landed {
+        enemy.anim.request(AnimState::Hurt);
+    }
 
     if landed && !enemy.is_alive() {
         for &(item, count) in enemy.loot() {
@@ -933,10 +1080,26 @@ fn step_bosses(
         let intent = boss_intent(boss, &game.world, player_body.x);
         boss.body.step(&game.world, intent, dt);
 
+        if intent.move_dir > 0.01 {
+            boss.facing_right = true;
+        } else if intent.move_dir < -0.01 {
+            boss.facing_right = false;
+        }
+
+        boss.anim.request(state_from_motion(
+            boss.body.vx,
+            boss.body.vy,
+            boss.body.on_ground,
+        ));
+        boss.anim.advance(dt);
+
         let phase = *boss.phase();
 
         if bodies_overlap(&boss.body, &player_body) {
-            player.combat.take_damage(phase.contact_damage);
+            if player.combat.take_damage(phase.contact_damage) {
+                player.anim.request(AnimState::Hurt);
+            }
+            boss.anim.request(AnimState::Attack);
         }
 
         if summoning_due {
@@ -970,18 +1133,37 @@ fn step_bosses(
 /// One sprite per living boss, kept in step with the boss list.
 fn sync_boss_sprites(
     mut commands: Commands,
+    time: Res<Time>,
     bosses: Res<Bosses>,
-    mut sprites: Query<(Entity, &BossSprite, &mut Transform)>,
+    bank: Res<SpriteBank>,
+    lighting: Res<Lighting>,
+    clock: Res<Clock>,
+    mut sprites: Query<(Entity, &BossSprite, &mut Transform, &mut Sprite)>,
 ) {
+    let now = time.elapsed_secs();
     let mut drawn = vec![false; bosses.0.len()];
 
-    for (entity, marker, mut transform) in &mut sprites {
+    let appearance = |boss: &Boss| {
+        let blinking = deepdelve_core::anim::blink_closed(now, 900 + boss.kind.0 as u64);
+
+        bank.bosses
+            .get(boss.kind.0 as usize)
+            .and_then(|set| set.get(boss.anim.state(), boss.anim.frame(), blinking))
+    };
+
+    for (entity, marker, mut transform, mut sprite) in &mut sprites {
         match bosses.0.get(marker.0) {
             Some(boss) => {
                 drawn[marker.0] = true;
                 transform.translation.x = boss.body.x * PX;
                 transform.translation.y =
                     -(boss.body.y - PLAYER_HEIGHT_TILES * BOSS_SCALE / 2.0) * PX;
+
+                if let Some(handle) = appearance(boss) {
+                    sprite.image = handle;
+                }
+                sprite.flip_x = !boss.facing_right;
+                sprite.color = lit_tint(&lighting.0, &clock.0, boss.body.x, boss.body.y);
             }
             None => {
                 commands.entity(entity).despawn();
@@ -995,13 +1177,15 @@ fn sync_boss_sprites(
         }
 
         let boss = &bosses.0[index];
+        let Some(handle) = appearance(boss) else {
+            continue;
+        };
+
         commands.spawn((
             Sprite {
-                color: Color::srgb(0.72, 0.12, 0.42),
-                custom_size: Some(Vec2::new(
-                    PLAYER_WIDTH_TILES * BOSS_SCALE * PX,
-                    PLAYER_HEIGHT_TILES * BOSS_SCALE * PX,
-                )),
+                image: handle,
+                custom_size: Some(character_size(PLAYER_HEIGHT_TILES * BOSS_SCALE)),
+                flip_x: !boss.facing_right,
                 ..default()
             },
             Transform::from_xyz(
@@ -1011,6 +1195,33 @@ fn sync_boss_sprites(
             ),
             BossSprite(index),
         ));
+    }
+}
+
+/// Show the player's current animation frame.
+fn animate_player(
+    time: Res<Time>,
+    player: Res<Player>,
+    bank: Res<SpriteBank>,
+    lighting: Res<Lighting>,
+    clock: Res<Clock>,
+    mut sprites: Query<&mut Sprite, With<PlayerSprite>>,
+) {
+    let blinking = deepdelve_core::anim::blink_closed(time.elapsed_secs(), 1);
+
+    let Some(handle) = bank
+        .player
+        .get(player.anim.state(), player.anim.frame(), blinking)
+    else {
+        return;
+    };
+
+    let tint = lit_tint(&lighting.0, &clock.0, player.body.x, player.body.y);
+
+    for mut sprite in &mut sprites {
+        sprite.image = handle.clone();
+        sprite.flip_x = !player.facing_right;
+        sprite.color = tint;
     }
 }
 
@@ -1045,20 +1256,41 @@ fn attack_bosses(
 /// Keep one sprite per living enemy, in step with the enemy list.
 fn sync_monster_sprites(
     mut commands: Commands,
+    time: Res<Time>,
     monsters: Res<Monsters>,
+    bank: Res<SpriteBank>,
+    lighting: Res<Lighting>,
+    clock: Res<Clock>,
     mut sprites: Query<(Entity, &MonsterSprite, &mut Transform, &mut Sprite)>,
 ) {
+    let now = time.elapsed_secs();
     let mut drawn = vec![false; monsters.0.len()];
+
+    // Enemies shift index as others die, so everything is refreshed every
+    // frame rather than only on spawn.
+    let appearance = |enemy: &Enemy, index: usize| {
+        let blinking = deepdelve_core::anim::blink_closed(now, 100 + index as u64);
+
+        bank.enemies
+            .get(enemy.kind.0 as usize)
+            .and_then(|set| set.get(enemy.anim.state(), enemy.anim.frame(), blinking))
+    };
 
     for (entity, marker, mut transform, mut sprite) in &mut sprites {
         match monsters.0.get(marker.0) {
             Some(enemy) => {
                 drawn[marker.0] = true;
+                let height = enemy_height_tiles(enemy.kind);
+
                 transform.translation.x = enemy.body.x * PX;
-                transform.translation.y =
-                    -(enemy.body.y - PLAYER_HEIGHT_TILES / 2.0) * PX;
-                // Enemies shift index as others die, so re-tint every frame.
-                sprite.color = monster_colour(enemy.kind);
+                transform.translation.y = -(enemy.body.y - height / 2.0) * PX;
+
+                if let Some(handle) = appearance(enemy, marker.0) {
+                    sprite.image = handle;
+                }
+                sprite.custom_size = Some(character_size(height));
+                sprite.flip_x = !enemy.facing_right;
+                sprite.color = lit_tint(&lighting.0, &clock.0, enemy.body.x, enemy.body.y);
             }
             None => {
                 commands.entity(entity).despawn();
@@ -1072,18 +1304,23 @@ fn sync_monster_sprites(
         }
 
         let enemy = &monsters.0[index];
+        let Some(handle) = appearance(enemy, index) else {
+            continue;
+        };
+
+        let height = enemy_height_tiles(enemy.kind);
+
         commands.spawn((
             Sprite {
-                color: monster_colour(enemy.kind),
-                custom_size: Some(Vec2::new(
-                    PLAYER_WIDTH_TILES * PX,
-                    PLAYER_HEIGHT_TILES * PX,
-                )),
+                image: handle,
+                custom_size: Some(character_size(height)),
+                flip_x: !enemy.facing_right,
+                color: lit_tint(&lighting.0, &clock.0, enemy.body.x, enemy.body.y),
                 ..default()
             },
             Transform::from_xyz(
                 enemy.body.x * PX,
-                -(enemy.body.y - PLAYER_HEIGHT_TILES / 2.0) * PX,
+                -(enemy.body.y - height / 2.0) * PX,
                 9.0,
             ),
             MonsterSprite(index),
@@ -1217,6 +1454,8 @@ fn dig_or_build(
 
     if digging {
         let dt = time.delta_secs().min(MAX_FRAME);
+
+        player.anim.request(AnimState::Mine);
 
         if let Some(broken) =
             player
