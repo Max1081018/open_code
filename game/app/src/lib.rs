@@ -405,6 +405,7 @@ fn save_and_load(
         match load(&bytes) {
             Ok(restored) => {
                 game.world = restored.world;
+                game.world.rebuild_walls(SEED);
 
                 player.body = Body::new(restored.player.x, restored.player.y);
                 player.combat = Combat::new(PLAYER_HEALTH);
@@ -663,6 +664,8 @@ fn capture_and_exit(
     mut commands: Commands,
     capture: Option<ResMut<CaptureRun>>,
     player: Option<Res<Player>>,
+    mut game: Option<ResMut<Game>>,
+    mut dirty: Option<ResMut<DirtyChunks>>,
     mut effects: Option<ResMut<Effects>>,
     mut exit: MessageWriter<AppExit>,
 ) {
@@ -672,8 +675,27 @@ fn capture_and_exit(
 
     capture.frames += 1;
 
-    // In capture mode only, keep effects firing so a still frame can show
-    // them. Without this, catching a 0.2s spark in a screenshot is luck.
+    // In capture mode only, cut a short tunnel so a still frame shows the
+    // background walls a dug passage leaves behind.
+    if capture.frames == 40 {
+        if let (Some(player), Some(game), Some(dirty)) =
+            (player.as_ref(), game.as_mut(), dirty.as_mut())
+        {
+            let origin_x = player.body.x as usize;
+            let origin_y = player.body.y as usize;
+
+            for step in 0..9usize {
+                for depth in 0..4usize {
+                    let (x, y) = (origin_x + 2 + step, origin_y + 1 + depth);
+                    game.world.set_tile(x, y, deepdelve_core::world::Tile::Air);
+                    dirty.0.insert((x / CHUNK_TILES, y / CHUNK_TILES));
+                }
+            }
+        }
+    }
+
+    // Keep effects firing so a still frame can show them. Without this,
+    // catching a 0.2s spark in a screenshot is luck.
     if let (Some(player), Some(effects)) = (player.as_ref(), effects.as_mut()) {
         if capture.frames % 10 == 0 {
             let x = player.body.x;

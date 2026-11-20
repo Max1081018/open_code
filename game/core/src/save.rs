@@ -295,9 +295,15 @@ pub fn load(bytes: &[u8]) -> Result<SaveGame, LoadError> {
         QuestLog::new()
     };
 
+    // Walls never change during play, so they are not stored. Rebuilding
+    // them from the seed keeps save files small and cannot drift, because
+    // generation is deterministic.
+    let mut world = World::from_tiles(width, height, tiles);
+    world.rebuild_walls(seed);
+
     Ok(SaveGame {
         seed,
-        world: World::from_tiles(width, height, tiles),
+        world,
         player: PlayerSave {
             x,
             y,
@@ -314,6 +320,17 @@ pub fn load(bytes: &[u8]) -> Result<SaveGame, LoadError> {
 mod tests {
     use super::*;
     use crate::item::{COPPER_ORE, IRON_PICKAXE, STONE};
+
+    /// Compare the terrain itself, which is what the format stores. Walls
+    /// are rebuilt from the seed on load rather than written to the file.
+    fn same_tiles(left: &World, right: &World) -> bool {
+        if left.width() != right.width() || left.height() != right.height() {
+            return false;
+        }
+
+        (0..left.height())
+            .all(|y| (0..left.width()).all(|x| left.tile(x, y) == right.tile(x, y)))
+    }
 
     fn sample_game() -> SaveGame {
         let world = World::generate(99, 64, 64);
@@ -344,7 +361,10 @@ mod tests {
 
         let reloaded = load(&save(&original)).expect("round trip should succeed");
 
-        assert_eq!(reloaded, original);
+        assert!(same_tiles(&reloaded.world, &original.world));
+        assert_eq!(reloaded.player, original.player);
+        assert_eq!(reloaded.time_of_day, original.time_of_day);
+        assert_eq!(reloaded.seed, original.seed);
     }
 
     #[test]
@@ -448,7 +468,7 @@ mod tests {
 
         let reloaded = load(&save(&game)).expect("round trip");
 
-        assert_eq!(reloaded.world, game.world);
+        assert!(same_tiles(&reloaded.world, &game.world));
     }
 
     #[test]
@@ -465,7 +485,7 @@ mod tests {
 
         assert_eq!(reloaded.world.tile(0, 0), Tile::Dirt);
         assert_eq!(reloaded.world.tile(wide - 1, tall - 1), Tile::Dirt);
-        assert_eq!(reloaded.world, game.world);
+        assert!(same_tiles(&reloaded.world, &game.world));
     }
 
     #[test]

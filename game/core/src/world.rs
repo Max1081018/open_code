@@ -161,12 +161,53 @@ impl Tile {
     }
 }
 
+/// The background behind a tile.
+///
+/// Walls are what you see through a tunnel you have dug: the material is
+/// still there behind you, so the hole does not read as open sky. Natural
+/// caves have no wall, which is what makes them read as genuinely hollow.
+#[derive(Clone, Copy, PartialEq, Eq, Debug, Default)]
+pub enum Wall {
+    /// Open to whatever is behind the world.
+    #[default]
+    None,
+    Soil,
+    Rock,
+    Sand,
+}
+
+impl Wall {
+    /// The wall left behind when `tile` is dug out.
+    pub fn behind(tile: Tile) -> Wall {
+        match tile {
+            Tile::Air => Wall::None,
+            Tile::Dirt | Tile::Grass | Tile::Snow => Wall::Soil,
+            Tile::Sand => Wall::Sand,
+            _ => Wall::Rock,
+        }
+    }
+
+    /// Base colour of the wall, before it is darkened for depth.
+    pub fn colour(self) -> Option<[f32; 3]> {
+        match self {
+            Wall::None => None,
+            Wall::Soil => Some([134.0, 96.0, 62.0]),
+            Wall::Rock => Some([118.0, 118.0, 126.0]),
+            Wall::Sand => Some([214.0, 192.0, 138.0]),
+        }
+    }
+}
+
+/// How much darker a wall is than the tile it sits behind.
+pub const WALL_DIMMING: f32 = 0.42;
+
 /// A generated tile world, addressed by `(x, y)` with `y = 0` at the top.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct World {
     width: usize,
     height: usize,
     tiles: Vec<Tile>,
+    walls: Vec<Wall>,
 }
 
 impl World {
@@ -203,6 +244,10 @@ impl World {
             }
         }
 
+        // Walls are taken from the solid terrain *before* caves are cut, so
+        // a tunnel the player digs still has material behind it.
+        let mut walls: Vec<Wall> = tiles.iter().map(|&tile| Wall::behind(tile)).collect();
+
         // Carve caves through stone only: the grass cap and soil stay intact,
         // and the bottom rows stay solid.
         let cave_floor = height.saturating_sub(BEDROCK_ROWS);
@@ -221,6 +266,8 @@ impl World {
 
                 if (field - 0.5).abs() < CAVE_BAND {
                     tiles[y * width + x] = Tile::Air;
+                    // A natural cavern is open space, not a dug tunnel.
+                    walls[y * width + x] = Wall::None;
                 }
             }
         }
@@ -258,6 +305,7 @@ impl World {
             width,
             height,
             tiles,
+            walls,
         }
     }
 
@@ -279,8 +327,34 @@ impl World {
         World {
             width,
             height,
+            walls: vec![Wall::None; tiles.len()],
             tiles,
         }
+    }
+
+    /// The wall behind `(x, y)`, or `Wall::None` outside the world.
+    pub fn wall(&self, x: usize, y: usize) -> Wall {
+        if x >= self.width || y >= self.height {
+            return Wall::None;
+        }
+        self.walls[y * self.width + x]
+    }
+
+    /// Overwrite the wall behind `(x, y)`. Out-of-bounds writes are ignored.
+    pub fn set_wall(&mut self, x: usize, y: usize, wall: Wall) {
+        if x >= self.width || y >= self.height {
+            return;
+        }
+        self.walls[y * self.width + x] = wall;
+    }
+
+    /// Recompute walls from the seed that produced this world.
+    ///
+    /// Walls never change during play, so they are not written to save
+    /// files; a loaded world rebuilds them from its seed instead.
+    pub fn rebuild_walls(&mut self, seed: u64) {
+        let fresh = World::generate(seed, self.width, self.height);
+        self.walls = fresh.walls;
     }
 
     pub fn width(&self) -> usize {
@@ -431,6 +505,111 @@ mod tests {
     #[test]
     fn an_unrecognised_save_id_is_rejected() {
         assert_eq!(Tile::from_id(250), None);
+    }
+
+    #[test]
+    fn dug_ground_leaves_a_wall_behind_it() {
+        let world = World::generate(7, 128, 96);
+
+        // Find a solid tile a few rows under the surface.
+        let column = 40;
+        let surface = world.surface_y(column).expect("ground");
+        let buried = surface + 3;
+
+        assert!(world.tile(column, buried).is_solid(), "precondition");
+        assert_ne!(
+            world.wall(column, buried),
+            Wall::None,
+            "buried ground should have material behind it, or a dug tunnel \
+             would show open sky"
+        );
+    }
+
+    #[test]
+    fn open_sky_has_no_wall_behind_it() {
+        let world = World::generate(7, 128, 96);
+
+        for x in (0..128).step_by(7) {
+            assert_eq!(
+                world.wall(x, 0),
+                Wall::None,
+                "the sky at column {x} should not be walled"
+            );
+        }
+    }
+
+    #[test]
+    fn natural_caves_are_hollow_rather_than_walled() {
+        let world = World::generate(7, 256, 160);
+
+        // A carved cave is air well below the surface with no wall.
+        let hollow = (0..world.width()).any(|x| {
+            let Some(surface) = world.surface_y(x) else {
+                return false;
+            };
+            ((surface + 14)..world.height()).any(|y| {
+                !world.tile(x, y).is_solid() && world.wall(x, y) == Wall::None
+            })
+        });
+
+        assert!(
+            hollow,
+            "natural caverns should read as genuinely hollow, not papered over"
+        );
+    }
+
+    #[test]
+    fn walls_match_the_material_that_was_there() {
+        assert_eq!(Wall::behind(Tile::Stone), Wall::Rock);
+        assert_eq!(Wall::behind(Tile::Dirt), Wall::Soil);
+        assert_eq!(Wall::behind(Tile::Grass), Wall::Soil);
+        assert_eq!(Wall::behind(Tile::Sand), Wall::Sand);
+        assert_eq!(Wall::behind(Tile::Air), Wall::None);
+        // Ore sits in rock, so its wall is rock.
+        assert_eq!(Wall::behind(Tile::GoldOre), Wall::Rock);
+    }
+
+    #[test]
+    fn only_open_wall_has_no_colour() {
+        assert_eq!(Wall::None.colour(), None);
+
+        for wall in [Wall::Soil, Wall::Rock, Wall::Sand] {
+            assert!(wall.colour().is_some(), "{wall:?} needs a colour to draw");
+        }
+    }
+
+    #[test]
+    fn mining_a_tile_does_not_remove_the_wall_behind_it() {
+        let mut world = World::generate(7, 128, 96);
+        let column = 40;
+        let surface = world.surface_y(column).expect("ground");
+        let buried = surface + 3;
+
+        let before = world.wall(column, buried);
+        world.set_tile(column, buried, Tile::Air);
+
+        assert_eq!(
+            world.wall(column, buried),
+            before,
+            "digging should leave the background intact"
+        );
+    }
+
+    #[test]
+    fn walls_can_be_rebuilt_from_the_seed() {
+        let original = World::generate(7, 96, 64);
+
+        // A world loaded from a save has tiles but no walls.
+        let mut loaded = World::from_tiles(96, 64, (0..96 * 64).map(|i| original.tile(i % 96, i / 96)).collect());
+        assert_eq!(loaded.wall(40, 40), Wall::None, "precondition");
+
+        loaded.rebuild_walls(7);
+
+        for x in (0..96).step_by(5) {
+            for y in (0..64).step_by(5) {
+                assert_eq!(loaded.wall(x, y), original.wall(x, y), "at ({x}, {y})");
+            }
+        }
     }
 
     #[test]

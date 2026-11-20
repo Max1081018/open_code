@@ -8,7 +8,10 @@ use crate::art::{
     edge_shade, tile_texture, variant_for, variant_seed, Exposure, Texture, TEXTURE_VARIANTS,
 };
 use crate::view::TILE_SOURCE_PX;
-use crate::world::{Tile, World};
+use crate::world::{Tile, World, WALL_DIMMING};
+
+/// Keeps wall grain independent of every other noise field.
+const WALL_GRAIN_SALT: u64 = 0x5A11_B00C_5A11_B00C;
 
 /// Edge length of a chunk, in tiles.
 pub const CHUNK_TILES: usize = 16;
@@ -88,6 +91,32 @@ pub fn chunk_texture(
             let wy = chunk_y * CHUNK_TILES + ty;
 
             let tile = world.tile(wx, wy);
+
+            // Paint the wall first, so a dug tunnel shows the material
+            // behind it rather than open sky. Walls are dimmed and flat:
+            // they must read as background, never compete with the tiles.
+            if let Some(colour) = world.wall(wx, wy).colour() {
+                let origin_x = tx as u32 * TILE_SOURCE_PX;
+                let origin_y = ty as u32 * TILE_SOURCE_PX;
+
+                for sy in 0..TILE_SOURCE_PX {
+                    for sx in 0..TILE_SOURCE_PX {
+                        // A little grain, so a wall is not a flat rectangle.
+                        let grain = crate::noise::hash01(
+                            atlas.seed ^ WALL_GRAIN_SALT,
+                            ((wy * 4096 + wx) * 97 + (sy * TILE_SOURCE_PX + sx) as usize) as i64,
+                        ) - 0.5;
+                        let shade = WALL_DIMMING * (1.0 + grain * 0.16);
+
+                        let i = (((origin_y + sy) * size + origin_x + sx) * 4) as usize;
+                        pixels[i] = (colour[0] * shade) as u8;
+                        pixels[i + 1] = (colour[1] * shade) as u8;
+                        pixels[i + 2] = (colour[2] * shade) as u8;
+                        pixels[i + 3] = 255;
+                    }
+                }
+            }
+
             let Some(texture) = atlas.get(tile, variant_for(atlas.seed, wx, wy)) else {
                 continue;
             };
@@ -244,6 +273,57 @@ mod tests {
 
         assert_eq!(left.pixel(10, 10)[3], 255, "left chunk should hold stone");
         assert_eq!(right.pixel(10, 10)[3], 0, "right chunk should be empty");
+    }
+
+    #[test]
+    fn a_dug_tunnel_shows_its_wall_rather_than_open_sky() {
+        let mut world = World::generate(7, CHUNK_TILES * 4, CHUNK_TILES * 4);
+        let atlas = TileAtlas::new(7);
+
+        // Dig out a buried tile, which should leave its wall behind.
+        let column = 20;
+        let surface = world.surface_y(column).expect("ground");
+        let dug = surface + 4;
+        assert!(world.tile(column, dug).is_solid(), "precondition: solid");
+        world.set_tile(column, dug, Tile::Air);
+
+        let chunk = chunk_texture(&world, &atlas, column / CHUNK_TILES, dug / CHUNK_TILES);
+
+        let px = (column % CHUNK_TILES) as u32 * TILE_SOURCE_PX + TILE_SOURCE_PX / 2;
+        let py = (dug % CHUNK_TILES) as u32 * TILE_SOURCE_PX + TILE_SOURCE_PX / 2;
+
+        assert_eq!(
+            chunk.pixel(px, py)[3],
+            255,
+            "a dug tunnel should show the wall behind it, not the sky"
+        );
+    }
+
+    #[test]
+    fn a_wall_is_darker_than_the_tile_it_sits_behind() {
+        let mut world = World::generate(7, CHUNK_TILES * 4, CHUNK_TILES * 4);
+        let atlas = TileAtlas::new(7);
+
+        let column = 20;
+        let surface = world.surface_y(column).expect("ground");
+        let dug = surface + 4;
+
+        let solid = chunk_texture(&world, &atlas, column / CHUNK_TILES, dug / CHUNK_TILES);
+        world.set_tile(column, dug, Tile::Air);
+        let hollow = chunk_texture(&world, &atlas, column / CHUNK_TILES, dug / CHUNK_TILES);
+
+        let px = (column % CHUNK_TILES) as u32 * TILE_SOURCE_PX + TILE_SOURCE_PX / 2;
+        let py = (dug % CHUNK_TILES) as u32 * TILE_SOURCE_PX + TILE_SOURCE_PX / 2;
+
+        let brightness = |t: &Texture| {
+            let p = t.pixel(px, py);
+            p[0] as u32 + p[1] as u32 + p[2] as u32
+        };
+
+        assert!(
+            brightness(&hollow) < brightness(&solid),
+            "the background must recede behind the foreground, not match it"
+        );
     }
 
     #[test]
