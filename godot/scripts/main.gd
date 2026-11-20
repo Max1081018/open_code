@@ -521,6 +521,7 @@ func _bot_walk_to_object(type: String) -> void:
 			if level.world.object_at(at + Vector2i(dx, dy)).get("type", "") == type:
 				if absf(dx) > 2:
 					player.input.move = signf(dx)
+					_bot_jump(player)
 				return
 
 
