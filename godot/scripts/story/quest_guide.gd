@@ -35,7 +35,7 @@ func _find_target() -> Vector2:
 			"talk":
 				for npc in get_tree().get_nodes_in_group("npcs"):
 					if npc.id == goal[1]:
-						return npc.global_position + Vector2(0, -360)
+						return npc.global_position + Vector2(0, -500)
 			"fell":
 				return _nearest_object("tree", 40)
 			"break":
@@ -44,7 +44,7 @@ func _find_target() -> Vector2:
 	for npc in get_tree().get_nodes_in_group("npcs"):
 		var quest: String = quests.quest_for(npc.id)
 		if quest != "" and quests.state[quest].state == "offered":
-			return npc.global_position + Vector2(0, -360)
+			return npc.global_position + Vector2(0, -500)
 	return Vector2.INF
 
 

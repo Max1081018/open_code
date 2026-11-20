@@ -480,6 +480,16 @@ func remove_object(cell: Vector2i, drop := false) -> Dictionary:
 	return object
 
 
+## Take an object's node out of the world's keeping without freeing it, so
+## something else can animate it out (a felled tree toppling).
+func detach_object_node(cell: Vector2i) -> Node2D:
+	var key := data.idx(cell.x, cell.y)
+	var node: Node2D = _object_nodes.get(key)
+	_object_nodes.erase(key)
+	_glow_decor.erase(key)
+	return node
+
+
 func object_at(cell: Vector2i) -> Dictionary:
 	return data.objects.get(data.idx(cell.x, cell.y), {})
 

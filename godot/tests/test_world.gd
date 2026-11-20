@@ -326,3 +326,19 @@ func test_every_game_script_compiles() -> void:
 			if script == null or not script.can_instantiate():
 				broken.append(file)
 	check(broken.is_empty(), "scripts failing to compile: %s" % [broken])
+
+
+func test_ambience_follows_where_the_player_is() -> void:
+	var life := WorldLife.new()
+	var was: bool = Settings.weather
+	Settings.weather = true
+	var outside := life.ambience_mix(1.0)
+	var below := life.ambience_mix(0.0)
+	check(outside.forest > outside.cave, "birds outdoors")
+	check(below.cave > below.forest and below.forest == 0.0, "drips underground, no birds")
+	life.set_weather(WorldLife.Weather.RAIN, 1.0)
+	var storm := life.ambience_mix(1.0)
+	check(storm.rain > 0.9 and storm.forest < outside.forest, "rain drowns the birds out")
+	check(life.ambience_mix(0.0).rain == 0.0, "no rain underground")
+	Settings.weather = was
+	life.free()

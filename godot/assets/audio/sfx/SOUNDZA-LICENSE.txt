@@ -30,3 +30,10 @@ Music (assets/audio/music, converted to Ogg Vorbis q2 by ffmpeg):
 - cave.ogg    — "Malchak Crystal Cave 2" — https://soundza.com/sound/malchak-crystal-cave-2
 - boss.ogg    — "Epic Boss Battle" — https://soundza.com/sound/epic-boss-battle
 - title.ogg   — "Sand Castles" — https://soundza.com/sound/sand-castles
+- tree_fall.ogg — "Genuine Falling Tree" — https://soundza.com/sound/genuine-falling-tree
+- chop.ogg — "Wood Hit 1" — https://soundza.com/sound/wood-hit-1-1
+- thunder_close.ogg — "Close Thunder Strike" — https://soundza.com/sound/close-thunder-strike
+- thunder_far.ogg — "Thunder" — https://soundza.com/sound/thunder
+- ambience/rain.ogg — "Heavy Rain Falling Through Trees" (40 s, crossfaded loop) — https://soundza.com/sound/heavy-rain-falling-through-trees
+- ambience/forest.ogg — "Forest Bird Chorus" (40 s, crossfaded loop) — https://soundza.com/sound/forest-bird-chorus
+- ambience/cave.ogg — "Cave Drip Ambience" — https://soundza.com/sound/cave-drip-ambience

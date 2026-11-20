@@ -75,3 +75,29 @@ sample pack. Full list with links in `assets/audio/*/SOUNDZA-LICENSE.txt`.
 - **Kenney Platformer Pack Medieval**: an older flat style that clashed with
   the rest.
 - **SpriteCook, Figma**: their servers failed to connect from this environment.
+
+
+## Voices — Piper (MIT)
+
+Every spoken line is synthesised offline by `tools/bake_voices.py` with
+[Piper](https://github.com/rhasspy/piper) (MIT) and shipped as Ogg Vorbis
+in `assets/voice/`; no model is in the game. Voices, from
+[rhasspy/piper-voices](https://huggingface.co/rhasspy/piper-voices), each
+under the licence on its model card:
+
+| Character | Voice |
+|---|---|
+| Wren | en_US-amy-medium |
+| Old Bram | en_GB-alan-medium |
+| Mira | en_GB-jenny_dioco-medium |
+
+NPC bodies: Kenney Toon Characters (CC0) — Female adventurer (Wren),
+Female person (Mira), Male person (Bram), Parts HD on the cut-out rig.
+
+## Ambience and new effects — Soundza
+
+From [Soundza](https://soundza.com) under the Soundza Standard License
+(free for commercial use; listed in `assets/audio/sfx/SOUNDZA-LICENSE.txt`):
+tree fall, wood chop, close and distant thunder; ambience loops for rain
+through trees, a forest bird chorus and cave drips. Loops are cut to 40 s
+with an equal-power crossfade by `tools/make_loop.py`.

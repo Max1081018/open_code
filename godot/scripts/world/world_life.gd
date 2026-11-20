@@ -41,6 +41,7 @@ func setup(the_level: Level) -> void:
 	_snow = _make_snow()
 	_leaves = _make_leaves()
 	_drip_texture = load("res://assets/fx/circle_05.png")
+	_ambience_setup()
 
 
 func _make_rain() -> CPUParticles2D:
@@ -140,6 +141,8 @@ func _process(delta: float) -> void:
 	_update_drips(delta, outdoors)
 	_update_grade(cell)
 	_update_plants(delta)
+	_update_ambience(delta, outdoors)
+	_update_storm(delta, outdoors)
 
 
 ## How hard the wind blows: a breeze that rises and falls, much stronger
@@ -289,3 +292,89 @@ func _update_grade(cell: Vector2i) -> void:
 	grade.set_shader_parameter("underwater", _underwater)
 	grade.set_shader_parameter("heat", _heat)
 	grade.set_shader_parameter("rain", intensity if sky == Weather.RAIN else 0.0)
+
+
+# =============================================================================
+# Ambience: birds in the open by day, rain when it rains, drips underground,
+# cross-faded by where the player is. Three looping beds, nothing more.
+# =============================================================================
+
+var _beds := {}
+var _flash: ColorRect
+var _storm_timer := 6.0
+
+
+func _ambience_setup() -> void:
+	for name in ["forest", "rain", "cave"]:
+		var stream: AudioStream = load("res://assets/audio/ambience/%s.ogg" % name)
+		if stream == null:
+			continue
+		if stream is AudioStreamOggVorbis:
+			stream.loop = true
+		var player := AudioStreamPlayer.new()
+		player.stream = stream
+		player.bus = "SFX"
+		player.volume_db = -60.0
+		add_child(player)
+		player.play(randf() * 10.0)
+		_beds[name] = player
+	# Lightning lights the whole screen for an instant.
+	var layer := CanvasLayer.new()
+	layer.layer = 2
+	add_child(layer)
+	_flash = ColorRect.new()
+	_flash.set_anchors_preset(Control.PRESET_FULL_RECT)
+	_flash.color = Color(0.85, 0.9, 1.0, 0.0)
+	_flash.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	layer.add_child(_flash)
+
+
+## How loud each bed should be, 0..1.
+func ambience_mix(outdoors: float) -> Dictionary:
+	var day := 0.0
+	if level and level.world:
+		day = clampf(sin((level.world.time_of_day - 0.25) * TAU) * 1.6 + 0.35, 0.0, 1.0)
+	var rain := intensity if sky == Weather.RAIN and Settings.weather else 0.0
+	return {
+		"forest": outdoors * lerpf(0.25, 1.0, day) * (1.0 - rain * 0.7),
+		"rain": outdoors * rain,
+		"cave": 1.0 - outdoors,
+	}
+
+
+func _update_ambience(delta: float, outdoors: float) -> void:
+	var mix := ambience_mix(outdoors)
+	var trims := {"forest": -14.0, "rain": -9.0, "cave": -2.0}
+	for name in _beds:
+		var player: AudioStreamPlayer = _beds[name]
+		var target: float = linear_to_db(maxf(mix[name], 0.001)) + trims[name]
+		player.volume_db = move_toward(player.volume_db, target, 30.0 * delta)
+
+
+## Thunderstorms: heavy rain brings lightning. Close strikes light the
+## screen and the thunder follows at once; distant ones flicker and the
+## rumble arrives a beat later. Underground, only the rumble carries.
+func _update_storm(delta: float, outdoors: float) -> void:
+	var storming := sky == Weather.RAIN and intensity > 0.6 and Settings.weather
+	if not storming:
+		return
+	_storm_timer -= delta
+	if _storm_timer > 0.0:
+		return
+	_storm_timer = randf_range(7.0, 18.0)
+	strike(randf() < 0.35, outdoors)
+
+
+func strike(close: bool, outdoors := 1.0) -> void:
+	if outdoors > 0.3 and _flash:
+		var peak := 0.55 if close else 0.2
+		var tween := create_tween()
+		_flash.color.a = peak * outdoors
+		tween.tween_property(_flash, "color:a", 0.0, 0.08)
+		tween.tween_property(_flash, "color:a", peak * 0.6 * outdoors, 0.05)
+		tween.tween_property(_flash, "color:a", 0.0, 0.35)
+	var delay := 0.05 if close else randf_range(0.8, 2.2)
+	get_tree().create_timer(delay).timeout.connect(func():
+		Sfx.play("thunder_close" if close else "thunder_far", -2.0 if close else -6.0 - (1.0 - outdoors) * 10.0, 0.05)
+		if close and level:
+			level.shake(6.0 * outdoors))
