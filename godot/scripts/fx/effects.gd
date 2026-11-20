@@ -105,8 +105,51 @@ static func motes(offset: Vector2, color: Color, radius_tiles: float) -> CPUPart
 	return p
 
 
-## One-shot burst at a world position, freed when it finishes.
+## Finished bursts wait here to be reused: kind -> idle particle nodes.
+## A busy fight fires dozens a second; restarting a pooled emitter is far
+## cheaper on a phone than building and freeing one each time.
+static var _pool := {}
+const POOL_LIMIT := 10
+
+
+static func pooled(kind: String) -> int:
+	return (_pool.get(kind, []) as Array).size()
+
+
+## One-shot burst at a world position, from the pool when one is free.
 static func burst(parent: Node, position: Vector2, kind: String, color := Color.WHITE) -> void:
+	var idle: Array = _pool.get(kind, [])
+	while not idle.is_empty():
+		var reused: CPUParticles2D = idle.pop_back()
+		if not is_instance_valid(reused):
+			continue
+		if reused.get_parent() != parent:
+			reused.get_parent().remove_child(reused)
+			parent.add_child(reused)
+		reused.position = position
+		if kind in ["dig", "break", "smoke", "heal", "glow"]:
+			reused.color = color if kind in ["dig", "break"] else reused.color
+			if kind in ["smoke", "heal", "glow"]:
+				reused.color_ramp = _fade(Color(color, 0.7 if kind == "smoke" else 1.0), Color(color, 0.0))
+		reused.visible = true
+		reused.restart()
+		return
+	_make_burst(parent, position, kind, color)
+
+
+static func _retire(p: CPUParticles2D, kind: String) -> void:
+	if not is_instance_valid(p):
+		return
+	var idle: Array = _pool.get(kind, [])
+	if idle.size() >= POOL_LIMIT:
+		p.queue_free()
+		return
+	p.visible = false
+	idle.append(p)
+	_pool[kind] = idle
+
+
+static func _make_burst(parent: Node, position: Vector2, kind: String, color: Color) -> void:
 	var p := CPUParticles2D.new()
 	p.position = position
 	p.one_shot = true
@@ -205,7 +248,7 @@ static func burst(parent: Node, position: Vector2, kind: String, color := Color.
 			p.color_ramp = _fade(Color(1, 1, 1, 0.9), Color(1, 1, 1, 0))
 	parent.add_child(p)
 	p.emitting = true
-	p.finished.connect(p.queue_free)
+	p.finished.connect(func(): _retire(p, kind))
 
 
 ## A number or word that pops up and floats away: damage, pickups.

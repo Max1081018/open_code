@@ -34,7 +34,7 @@ Engine: Godot 4.4.1, GL Compatibility renderer, Android-first.
 
 1. (done: dodge roll) Running gait above walking speed; pick-up gesture.
 2. Equipment slots for shield and lantern (drag and drop, rarity, sort done).
-3. Pooled VFX (stage D): material chips per tile type, enemy death bursts.
+3. (done: pooled bursts, enemy death finish) Material chips per tile type.
 4. A second region of story content (Bram's mine as a built location,
    more voiced lines; re-run `python3 tools/bake_voices.py`).
 5. Performance pass on the foliage shader and light scatter at Low/Medium.

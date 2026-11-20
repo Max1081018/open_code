@@ -342,3 +342,19 @@ func test_ambience_follows_where_the_player_is() -> void:
 	check(life.ambience_mix(0.0).rain == 0.0, "no rain underground")
 	Settings.weather = was
 	life.free()
+
+
+func test_bursts_are_pooled_not_rebuilt() -> void:
+	var holder := Node2D.new()
+	Engine.get_main_loop().root.add_child(holder)
+	Effects.burst(holder, Vector2.ZERO, "hit")
+	var made: CPUParticles2D = holder.get_child(holder.get_child_count() - 1)
+	Effects._retire(made, "hit")
+	var before := Effects.pooled("hit")
+	check(before >= 1, "a finished burst waits in the pool")
+	var count := holder.get_child_count()
+	Effects.burst(holder, Vector2(50, 0), "hit")
+	check_eq(holder.get_child_count(), count, "the next burst reuses it instead of adding a node")
+	check_eq(Effects.pooled("hit"), before - 1, "taken from the pool")
+	check(made.visible and made.position == Vector2(50, 0), "moved and shown")
+	holder.free()

@@ -441,7 +441,18 @@ func _die() -> void:
 		_play("death")
 	elif _sprite.sprite_frames.has_animation("dead"):
 		_play("dead")
+	# The finish: a white flash, a pop of sparks, a short tumble away from
+	# the blow, then gone.
+	Effects.burst(level.fx_layer, global_position + Vector2(0, -60 * s), "hit")
+	Effects.burst(level.fx_layer, global_position + Vector2(0, -60 * s), "glow", Color(1.0, 0.9, 0.7))
+	_sprite.self_modulate = Color(4, 4, 4)
+	level.shake(4.0 if not is_boss else 20.0)
 	var tween := create_tween()
-	tween.tween_interval(0.5)
+	tween.tween_property(_sprite, "self_modulate", Color.WHITE, 0.15)
+	if not _toon:
+		var away := signf(global_position.x - player.global_position.x)
+		tween.parallel().tween_property(_sprite, "rotation", away * 1.4, 0.5).set_ease(Tween.EASE_OUT)
+		tween.parallel().tween_property(self, "position:y", position.y - 40, 0.18).set_ease(Tween.EASE_OUT)
+	tween.tween_interval(0.35)
 	tween.tween_property(self, "modulate:a", 0.0, 0.4)
 	tween.tween_callback(queue_free)
