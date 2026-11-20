@@ -25,9 +25,18 @@ static func build(hud: Node) -> Control:
 		button.pressed.connect(spec[1])
 		buttons.add_child(button)
 
-	content.add_child(settings_grid())
+	content.add_child(scrolling(settings_grid(), 560))
 	panel.set_meta("on_close_callable", func(): Settings.save_settings())
 	return panel
+
+
+## Wrap tall content so a panel never runs off a short screen.
+static func scrolling(inner: Control, height: float) -> ScrollContainer:
+	var scroll := ScrollContainer.new()
+	scroll.custom_minimum_size = Vector2(0, height)
+	scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
+	scroll.add_child(inner)
+	return scroll
 
 
 ## The settings controls, shared by the pause menu and the main menu.
@@ -68,7 +77,7 @@ static func settings_grid() -> Control:
 
 
 static func _label(grid: GridContainer, text: String) -> void:
-	var label := UITheme.text(text, 34, UITheme.PAPER)
+	var label := UITheme.text(text, 34, UITheme.INK)
 	label.autowrap_mode = TextServer.AUTOWRAP_OFF
 	label.custom_minimum_size = Vector2(380, 0)
 	grid.add_child(label)

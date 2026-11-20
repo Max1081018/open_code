@@ -142,7 +142,7 @@ func _open_settings() -> void:
 	column.add_theme_constant_override("separation", 20)
 	panel.add_child(column)
 	column.add_child(UITheme.title("Settings", 60, UITheme.PAPER))
-	column.add_child(PauseMenu.settings_grid())
+	column.add_child(PauseMenu.scrolling(PauseMenu.settings_grid(), 600))
 	var done := Button.new()
 	done.text = "Done"
 	done.custom_minimum_size = Vector2(300, 96)

@@ -17,7 +17,7 @@ static func build(hud: Node, player: Player, focus: String) -> Control:
 	left.add_theme_constant_override("separation", 12)
 	row.add_child(left)
 	left.add_child(UITheme.text("Tap a stack, then tap where it goes. The top row is your hotbar.",
-		26, UITheme.PAPER.darkened(0.15)))
+		26, UITheme.MUTED))
 	var grid := GridContainer.new()
 	grid.columns = 8
 	grid.add_theme_constant_override("h_separation", 8)
@@ -44,9 +44,10 @@ static func build(hud: Node, player: Player, focus: String) -> Control:
 	for station in stations:
 		names.append(Items.STATION_NAMES[station])
 	var heading := UITheme.title("Crafting", 42, UITheme.GOLD)
+	heading.add_theme_color_override("font_outline_color", Color(0.36, 0.20, 0.10))
 	heading.horizontal_alignment = HORIZONTAL_ALIGNMENT_LEFT
 	right.add_child(heading)
-	right.add_child(UITheme.text("Near: " + ", ".join(names), 26, UITheme.PAPER.darkened(0.15)))
+	right.add_child(UITheme.text("Near: " + ", ".join(names), 26, UITheme.MUTED))
 	var scroll := ScrollContainer.new()
 	scroll.custom_minimum_size = Vector2(700, 640)
 	scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
@@ -113,7 +114,7 @@ static func _refresh(state: Dictionary) -> void:
 		var text: String = d.get("desc", "")
 		if not info.is_empty():
 			text = " · ".join(info) + "\n" + text
-		var body := UITheme.text(text, 28, UITheme.PAPER)
+		var body := UITheme.text(text, 28, UITheme.INK)
 		body.custom_minimum_size = Vector2(800, 0)
 		details.add_child(body)
 		if d.kind == Items.Kind.CONSUMABLE:
@@ -191,7 +192,7 @@ static func _recipe_row(state: Dictionary, recipe: Array) -> Control:
 		needs.add_child(chip)
 	if not at_station:
 		var where := UITheme.text("Needs a %s nearby" % Items.STATION_NAMES[recipe[2]], 22,
-			Color(1.0, 0.8, 0.5))
+			Color(1.0, 0.86, 0.6))
 		middle.add_child(where)
 
 	var craft := Button.new()
@@ -213,7 +214,7 @@ static func _recipe_row(state: Dictionary, recipe: Array) -> Control:
 static func build_chest(hud: Node, player: Player, object: Dictionary) -> Control:
 	var panel: Control = hud.make_panel(Vector2(1640, 0), "Chest")
 	var content: VBoxContainer = panel.get_meta("content")
-	content.add_child(UITheme.text("Tap a stack to move it across.", 26, UITheme.PAPER.darkened(0.15)))
+	content.add_child(UITheme.text("Tap a stack to move it across.", 26, UITheme.MUTED))
 	var row := HBoxContainer.new()
 	row.add_theme_constant_override("separation", 40)
 	content.add_child(row)

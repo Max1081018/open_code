@@ -20,3 +20,13 @@ Sounds:
 - craft.wav  — "Metal Hammer Hit 2" — https://soundza.com/sound/metal-hammer-hit-2
 - roar.wav   — "Creature Roar 2" — https://soundza.com/sound/creature-roar-2
 - click.wav  — "Lock 1" — https://soundza.com/sound/lock-1
+- chest.wav  — "Treasure Chest Opening" — https://soundza.com/sound/treasure-chest-opening
+- swing.wav  — "Metallic Blade Whoosh 1" — https://soundza.com/sound/metallic-blade-whoosh-1 [AI-generated]
+- step.wav   — a copy of jump.wav, played quietly
+
+Music (assets/audio/music, converted to Ogg Vorbis q2 by ffmpeg):
+
+- explore.ogg — "Grasslands" — https://soundza.com/sound/grasslands
+- cave.ogg    — "Malchak Crystal Cave 2" — https://soundza.com/sound/malchak-crystal-cave-2
+- boss.ogg    — "Epic Boss Battle" — https://soundza.com/sound/epic-boss-battle
+- title.ogg   — "Sand Castles" — https://soundza.com/sound/sand-castles

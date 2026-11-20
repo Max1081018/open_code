@@ -120,6 +120,12 @@ func _process(delta: float) -> void:
 	else:
 		camera.offset = Vector2.ZERO
 
+	# Music follows the player: open air, underground, or a fight.
+	if boss == null or not is_instance_valid(boss):
+		var cell := World.cell_of(player.global_position)
+		var below := cell.y - data.surface[clampi(cell.x, 0, data.width - 1)]
+		Sfx.play_music("cave" if below > 12 else "explore")
+
 	_autosave -= delta
 	if _autosave <= 0.0:
 		_autosave = 90.0

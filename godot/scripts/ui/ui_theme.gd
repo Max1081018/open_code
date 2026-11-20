@@ -7,6 +7,8 @@ const PAPER := Color(1.0, 0.96, 0.86)
 const GOLD := Color(1.0, 0.82, 0.36)
 const GLOW := Color(0.55, 0.88, 1.0)
 const DANGER := Color(1.0, 0.36, 0.32)
+## Secondary text on the cream panels. Cream-on-cream was unreadable.
+const MUTED := Color(0.46, 0.33, 0.23)
 
 static var _title: Font
 static var _body: Font
@@ -63,11 +65,13 @@ static func theme() -> Theme:
 	t.set_stylebox("panel", "Panel", box("panel_brown", 28, 26))
 	t.set_stylebox("panel", "PanelContainer", box("panel_brown", 28, 26))
 
-	t.set_stylebox("normal", "Button", box("button_brown", 20, 16))
-	t.set_stylebox("hover", "Button", box("button_brown", 20, 16))
-	t.set_stylebox("pressed", "Button", box("button_red", 20, 16))
+	# Dark wood with a gold edge: Kenney's cream button art put cream text
+	# on a cream face, which only its outline kept legible.
+	t.set_stylebox("normal", "Button", _button(Color(0.44, 0.26, 0.15), GOLD))
+	t.set_stylebox("hover", "Button", _button(Color(0.52, 0.32, 0.18), GOLD.lightened(0.2)))
+	t.set_stylebox("pressed", "Button", _button(Color(0.30, 0.17, 0.10), GOLD))
 	t.set_stylebox("focus", "Button", StyleBoxEmpty.new())
-	t.set_stylebox("disabled", "Button", box("button_grey", 20, 16))
+	t.set_stylebox("disabled", "Button", _button(Color(0.40, 0.38, 0.42), Color(0.58, 0.56, 0.6)))
 	t.set_color("font_color", "Button", PAPER)
 	t.set_color("font_hover_color", "Button", Color.WHITE)
 	t.set_color("font_pressed_color", "Button", Color.WHITE)
@@ -83,8 +87,15 @@ static func theme() -> Theme:
 	t.set_stylebox("slider", "HSlider", flat(Color(0.30, 0.20, 0.14), 10))
 	t.set_stylebox("grabber_area", "HSlider", flat(GOLD, 10))
 	t.set_stylebox("grabber_area_highlight", "HSlider", flat(GOLD, 10))
-	t.set_icon("grabber", "HSlider", load("res://assets/ui/panels/round_brown.png"))
-	t.set_icon("grabber_highlight", "HSlider", load("res://assets/ui/panels/round_brown.png"))
+	# The grabber art is 256 px; at native size every slider row was taller
+	# than a thumb is wide and the settings ran off the screen.
+	var knob := _scaled("res://assets/ui/panels/round_brown.png", 52)
+	t.set_icon("grabber", "HSlider", knob)
+	t.set_icon("grabber_highlight", "HSlider", knob)
+	for state in ["normal", "hover", "pressed", "hover_pressed", "focus", "disabled"]:
+		t.set_stylebox(state, "CheckButton", StyleBoxEmpty.new())
+	t.set_icon("checked", "CheckButton", _scaled("res://assets/ui/panels/checkbox_brown_checked.png", 64))
+	t.set_icon("unchecked", "CheckButton", _scaled("res://assets/ui/panels/checkbox_brown_empty.png", 64))
 
 	t.set_stylebox("panel", "TooltipPanel", box("panel_brown_dark", 24, 14))
 	t.set_color("font_color", "TooltipLabel", PAPER)
@@ -96,6 +107,21 @@ static func theme() -> Theme:
 	t.set_stylebox("grabber", "VScrollBar", flat(Color(0.45, 0.30, 0.20), 8))
 	_theme = t
 	return t
+
+
+static func _scaled(path: String, size_px: int) -> Texture2D:
+	var image: Image = (load(path) as Texture2D).get_image()
+	image.resize(size_px, size_px, Image.INTERPOLATE_LANCZOS)
+	return ImageTexture.create_from_image(image)
+
+
+static func _button(fill: Color, edge: Color) -> StyleBoxFlat:
+	var style := flat(fill, 20, edge, 4)
+	style.shadow_color = Color(0, 0, 0, 0.28)
+	style.shadow_size = 6
+	style.shadow_offset = Vector2(0, 4)
+	style.set_content_margin_all(16)
+	return style
 
 
 ## A big outlined title label.

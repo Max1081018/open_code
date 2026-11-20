@@ -16,6 +16,18 @@ func _ready() -> void:
 		var parts := arg.trim_prefix("--").split("=", true, 1)
 		_args[parts[0]] = parts[1] if parts.size() > 1 else "true"
 
+	if _args.has("shot"):
+		# The capture driver must keep counting through a paused game.
+		process_mode = Node.PROCESS_MODE_ALWAYS
+	if _args.has("menu"):
+		var menu: Control = load("res://scripts/ui/main_menu.gd").new()
+		menu.main = self
+		add_child(menu)
+		if _args.has("shot"):
+			for i in int(_args.get("frames", "40")):
+				await get_tree().process_frame
+			_capture(_args.shot)
+		return
 	if _args.has("shot") or _args.has("play"):
 		start_game(int(_args.get("seed", "20261120")))
 		if _args.has("time"):
@@ -52,6 +64,18 @@ func _process(_delta: float) -> void:
 	if _args.has("shot"):
 		_frames += 1
 		_run_scenario()
+		if _args.has("panel") and _frames == int(_args.get("frames", "90")) - 20:
+			match _args.panel:
+				"inventory":
+					level.hud.toggle_inventory()
+				"craft":
+					level.hud.open_crafting()
+				"pause":
+					level.hud.open_pause()
+				"chest":
+					level.hud.open_chest(Vector2i.ZERO, {"type": "chest", "loot": [
+						{"id": "glowshard", "count": 6}, {"id": "heart_crystal", "count": 1},
+						{"id": "iron_ore", "count": 9}, {"id": "vault_key", "count": 1}]})
 		if _frames == int(_args.get("frames", "90")):
 			_capture(_args.shot)
 

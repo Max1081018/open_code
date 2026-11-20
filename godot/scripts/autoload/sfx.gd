@@ -94,7 +94,10 @@ func play_music(track: String, fade := 1.6) -> void:
 
 	var incoming := _music_b if _music_a.playing else _music_a
 	var outgoing := _music_a if incoming == _music_b else _music_b
-	incoming.stream = load(path)
+	var stream: AudioStream = load(path)
+	if "loop" in stream:
+		stream.loop = true  # every track here is a seamless loop
+	incoming.stream = stream
 	incoming.volume_db = -40.0
 	incoming.play()
 
