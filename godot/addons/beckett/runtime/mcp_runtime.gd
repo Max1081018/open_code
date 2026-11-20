@@ -1,0 +1,2672 @@
+extends Node
+
+## Game side of the runtime channel (B2). Registered as a project autoload by the
+## plugin. NOT a @tool script — it runs ONLY in the played game, never in the editor.
+## When a scene plays it dials the editor's BeckettRuntimeBridge and serves commands:
+## screenshot, input simulation, live scene tree, runtime get/set/call.
+##
+## If the MCP server isn't running, the dial just fails and the game runs normally —
+## zero impact when the bridge is off.
+
+const RETRY_INTERVAL := 2.0
+
+var _peer := StreamPeerTCP.new()
+var _buf := PackedByteArray()
+var _port := 8771
+var _since_retry := 0.0
+var _was_connected := false
+var _hello_sent := false  # handshake line sent for the CURRENT connection (v1.9.1)
+
+# Input recording (record_input / replay_input over the bridge).
+var _recording := false
+var _rec: Array = []
+var _rec_t0 := 0
+var _rec_f0 := 0                  # Engine.get_physics_frames() at record_start; events stamp the frame delta 'f' for deterministic (frame-stepped) replay
+
+# Deterministic playtest control (time_control op=step / op=step_until, with inputs_per_frame) and the playtest replay
+# window (op=run) run on one game-side tick clock, runtime/step_clock.gd (1.17): it counts the ticks the scene ran, puts
+# each tick's input in between ticks and freezes the game at the start of the tick after the last one. A window cannot
+# run inside one bridge handler (physics only advances between frames, and the handler blocks the frame it runs on), so
+# the commands OPEN it and reply at once, and the editor polls tc_step_status / replay_status until it has closed. The
+# clock is Full-only (pack.ps1 trims it from Lite), so it is loaded by path (_step_clock), never preloaded; without it
+# these commands answer that they are a Full-edition feature.
+const STEP_CLOCK_PATH := "res://addons/beckett/runtime/step_clock.gd"
+var _clock: Variant = null        # runtime/step_clock.gd once hooked to the tree; null in a build without it (Lite)
+# Perf capture across the replay window (v1.9 "measured, not estimated") — extracted to its
+# own module in the v1.9.1 B7 split; see runtime/replay_perf.gd for the how and the why.
+const ReplayPerf := preload("res://addons/beckett/runtime/replay_perf.gd")
+var _replay_perf := ReplayPerf.new()
+# Wire-format <-> InputEvent codec (recorder, `input` cmd, replay injection) — B7 split.
+const InputCodec := preload("res://addons/beckett/runtime/input_codec.gd")
+# UI snapshot + the occlusion hit test behind click_control's accuracy precheck
+# (v1.10 UI-playtest pillar) — feature logic lives in ui_inspect.gd, dispatch here.
+const UiInspect := preload("res://addons/beckett/runtime/ui_inspect.gd")
+# Which pixels a screenshot reads (1.17): the window, or one SubViewport's own game pixels (viewport=). The rules live
+# in capture_source.gd; the capture itself stays here.
+const CaptureSource := preload("res://addons/beckett/runtime/capture_source.gd")
+# A window capture names the viewport= of a pixel-art layout it sees once per game process; this says it has
+# (_pixel_hint sets it, and only for a hint the reply carries).
+var _pixel_hint_given := false
+# Where the drive tools aim (1.17): a click's push point, the focused-window rule for a press, GUI space -> window
+# pixels for injected input. Full-only (pack.ps1 trims runtime/drive_aim.gd from Lite), so it is loaded by path when a
+# drive command needs it, never preloaded: see _drive_aim.
+const DRIVE_AIM_PATH := "res://addons/beckett/runtime/drive_aim.gd"
+var _aim: Variant = null          # runtime/drive_aim.gd once loaded
+# ui_do macro window (v1.10 P1): one call = a whole click/type/wait/assert flow run
+# game-side across frames. The machine lives in ui_do.gd; _process ticks it.
+const UiDo := preload("res://addons/beckett/runtime/ui_do.gd")
+var _ui_do := UiDo.new()
+# Per-physics-frame invariants (v1.16 playtest depth): rules checked on EVERY frame of the replay
+# window and of a ui_do window. The checker lives in invariants.gd; this file only arms and ticks it.
+const Invariants := preload("res://addons/beckett/runtime/invariants.gd")
+var _inv := Invariants.new()
+var _inv_base_frame := 0          # physics frame a ui_do window opened on: its invariant frame numbers count from here
+# Input this autoload injected and nobody released, so a scene restart can let go of it (input_codec.gd).
+var _held: Dictionary = {}
+# Instance id of the scene the last scene_reload replaced, until scene_state has seen the new one come up.
+var _reload_old_id := 0
+# Call-arg coercion shared VERBATIM with the editor's call_method (v1.10.2), so the
+# two sides can't drift. core/callargs.gd is dependency-free on purpose: it parses in
+# the game process and in export-template builds (no editor classes).
+const CallArgs := preload("res://addons/beckett/core/callargs.gd")
+# Replies keep their types (1.17): an editor that asks gets each reply in the engine's binary form (reply_line), so an int,
+# a vector or a transform reaches it exactly. core/typed_json.gd has the why and the shapes a client then reads.
+const TypedJson := preload("res://addons/beckett/core/typed_json.gd")
+# True while the reply being built goes out in binary: _safe then leaves a struct as it is for the binary form to carry.
+var _typed_reply := false
+# Beckett's own objects are off limits to every write and call the editor asks this autoload to make: the BeckettRuntime
+# autoload, this implementation node, anything below either, and any node whose script is one of Beckett's. The check is on
+# the node a command RESOLVED to, so it holds however the command named it (path, name, class, nth, under). Without it the
+# play_scene on_ready batch, which is a `set`, could write this node's own state (_recording, _held, _clock ...)
+# and start the recorder, the input injector and the replay from the free edition. core/internals.gd has the why.
+const Internals := preload("res://addons/beckett/core/internals.gd")
+# Game-owned state (v1.16): nodes in the group beckett_state / mcp_state answer _beckett_state() /
+# _mcp_state(). The `game_state` command collects them (get_remote_tree state=true); the ui_do `state`
+# step asserts on one of them. Logic and the why live in game_state.gd.
+const GameState := preload("res://addons/beckett/runtime/game_state.gd")
+# Quiet play (v1.16 M5d): play_scene quiet=true launches the game with BECKETT_QUIET in its environment, and this
+# mutes it and (for a separate window) parks the window off-screen without focus, as the first thing it does.
+# The why and the per-mode rules live in quiet.gd; the `quiet_state` command reports what is in force.
+const Quiet := preload("res://addons/beckett/runtime/quiet.gd")
+var _quiet := Quiet.new()
+
+# Per-frame typing window (v1.11): type_text per_frame=true queues its chars here and
+# _process injects ONE per frame, so per-char handlers (text_changed each keystroke,
+# typing minigames, char rate limits) see real typing instead of paste semantics.
+# The editor tool polls cmd=type_status until the queue drains.
+var _typing_ctrl: Control = null
+var _typing_text := ""
+var _typing_i := 0
+var _typing_submit := false
+var _typing_done := true
+var _typing_error := ""
+
+# Captured game output — runtime script errors WITH stack traces, push_error/warning,
+# and print() — via a custom OS Logger installed in the played game. This is the
+# real-time play->see-error->fix signal the agent reads through the game_logs tool;
+# no file logging, no editor debugger needed (the engine routes built-in error/output
+# to the internal debugger, not to EditorDebuggerPlugin captures — so we tap them here,
+# at the source, in the game process itself).
+#
+# The Logger base class + OS.add_logger() are Godot 4.5+. On older engines (4.2–4.4)
+# there's no such API, so capture gracefully no-ops and game_logs returns empty (see
+# _install_log_sink). Everything Logger-typed is kept out of parse scope — typed Object
+# here, the sink compiled at runtime — so this file still parses/loads on 4.2–4.4.
+# Ring + runtime-compiled OS Logger — extracted to runtime/game_log_sink.gd (B7 split);
+# the 4.5+ parse-safety story lives there now.
+const GameLogSink := preload("res://addons/beckett/runtime/game_log_sink.gd")
+var _log_sink := GameLogSink.new()
+
+
+func _ready() -> void:
+	# Duplicate-autoload guard (v1.9.1; found by the rpg-village heavy-game test): a project
+	# upgraded across the godot_mcp->beckett rename can carry TWO autoload entries pointing
+	# at this same script. Both twins would dial the bridge with the same valid session
+	# token, and the newer one displaces the older MID-COMMAND — replay windows then report
+	# frames=0 from the wrong twin. Tie-break on child INDEX, not _ready order (Godot adds
+	# all autoloads before readying any, so the lowest-index twin is the deterministic
+	# winner whether _ready fires incrementally or all-at-once); every later twin goes
+	# dormant loudly. Comparing self.get_index() is order-independent — the earlier attempt
+	# that gated on "a same-script sibling exists" made BOTH twins dormant.
+	for sib in get_tree().root.get_children():
+		if sib != self and sib.get_script() == get_script() and sib.get_index() < get_index():
+			push_warning("[beckett] duplicate runtime autoload '%s' (twin of '%s') — staying dormant; remove the stale autoload entry from project.godot" % [name, sib.name])
+			set_process(false)
+			set_physics_process(false)
+			set_process_input(false)
+			return
+	# Keep serving while the game is paused (get_tree().paused = true) — pause
+	# menus and game-over screens are exactly when the agent needs to look at the
+	# game and click buttons; an INHERIT-mode autoload would freeze the channel.
+	process_mode = Node.PROCESS_MODE_ALWAYS
+	# Before anything else the game does: a quiet play moves its window off-screen and mutes it right away.
+	_quiet.apply(OS.get_environment(Quiet.ENV))
+	var p := OS.get_environment("BECKETT_RUNTIME_PORT")
+	if p != "" and p.is_valid_int():
+		_port = p.to_int()
+	_dial()
+	set_process(true)
+	set_process_input(true)
+	# Tap the game's own log stream (errors/warnings/stack traces/prints).
+	# Logger + OS.add_logger() are Godot 4.5+; on 4.2–4.4 this is a graceful no-op.
+	_log_sink.install()
+	# The tick clock hooks the tree's physics_frame and process_frame signals here, before any scene script can (every
+	# autoload is ready before the scene), so its handlers run first in every tick and frame (they do nothing until a window
+	# opens). Last, so a clock that fails cannot stop the channel above. Lite has no clock: a no-op.
+	_step_clock()
+
+
+func _exit_tree() -> void:
+	_log_sink.uninstall()
+	if _clock != null:
+		_clock.detach()  # an open window ends, and Engine.max_physics_steps_per_frame goes back
+
+
+func _input(event: InputEvent) -> void:
+	if not _recording:
+		return
+	var d: Dictionary = InputCodec.serialize_event(event)
+	if not d.is_empty():
+		d["t"] = float(Time.get_ticks_msec() - _rec_t0)
+		d["f"] = Engine.get_physics_frames() - _rec_f0
+		_rec.append(d)
+
+
+func _dial() -> void:
+	_peer = StreamPeerTCP.new()
+	_hello_sent = false
+	_peer.connect_to_host("127.0.0.1", _port)
+
+
+func _process(delta: float) -> void:
+	_quiet.tick(delta)  # a no-op unless this play was asked to be quiet
+	_peer.poll()
+	var st := _peer.get_status()
+	if st == StreamPeerTCP.STATUS_CONNECTED:
+		if not _hello_sent:
+			_hello_sent = true
+			# v1.9.1 handshake: identify to the editor bridge with the session token the
+			# editor exported into our environment (empty when auth is off — the bridge
+			# accepts either per its own expected_token). Sent exactly once per connection;
+			# the bridge consumes it before promoting us to the live peer.
+			_peer.put_data((JSON.stringify({"hello": OS.get_environment("BECKETT_RUNTIME_TOKEN")}) + "\n").to_utf8_buffer())
+		_was_connected = true
+		var avail := _peer.get_available_bytes()
+		if avail > 0:
+			var res: Array = _peer.get_partial_data(avail)
+			if res[0] == OK:
+				_buf.append_array(res[1])
+		while true:
+			var nl := _buf.find(10)
+			if nl == -1:
+				break
+			var line := _buf.slice(0, nl).get_string_from_utf8()
+			_buf = _buf.slice(nl + 1)
+			_handle(line)
+		# Advance an open ui_do macro window one attempt per frame (after command
+		# handling, so an open/abort from this very frame is already applied).
+		_ui_do.tick()
+		# Per-frame typing window (v1.11): inject one queued char per frame.
+		_type_tick()
+	elif st == StreamPeerTCP.STATUS_ERROR or st == StreamPeerTCP.STATUS_NONE:
+		# Reconnect on DROP too, not just before the first connect. A mid-session drop
+		# (bridge restart, editor focus loss) used to be permanent — the old retry was
+		# gated on `not _was_connected`, so once connected it never re-dialed until a
+		# stop+replay. Now we re-dial on the same interval whenever the link is down.
+		if _was_connected:
+			# Just lost an established link: reset read state and re-dial promptly.
+			_was_connected = false
+			_buf = PackedByteArray()
+			_since_retry = RETRY_INTERVAL
+		_since_retry += delta
+		if _since_retry >= RETRY_INTERVAL:
+			_since_retry = 0.0
+			_dial()
+	# The replay window's frame clock (1.17): one fixed point per frame, a no-op while no window is open.
+	_replay_perf.frame(Time.get_ticks_usec())
+
+
+# The ui_do window's invariants are the one thing this node still judges per physics tick; the step and replay windows
+# run on the tick clock (runtime/step_clock.gd), which counts the ticks the scene itself ran.
+func _physics_process(_delta: float) -> void:
+	# A ui_do window runs UNPAUSED in real time: its invariants are checked on every physics frame it
+	# is open (a paused game is not simulating, so there is nothing to judge).
+	if _inv.active and _ui_do.active:
+		var utree := get_tree()
+		if utree != null and not utree.paused:
+			_inv.check(_root(), Engine.get_physics_frames() - _inv_base_frame)
+
+
+## runtime/step_clock.gd, created once and hooked to the tree (again, after the node left it and came back), or null in a
+## build without it (Lite) or with a copy that does not load.
+func _step_clock() -> Variant:
+	if _clock == null:
+		if not ResourceLoader.exists(STEP_CLOCK_PATH):
+			return null
+		var impl = load(STEP_CLOCK_PATH)
+		if impl == null or not impl.can_instantiate():  # a copy that does not compile still loads, and .new() on it is a script error (as in beckett_autoload.gd)
+			return null
+		_clock = impl.new()
+	if is_inside_tree() and not _clock.attached_to(self):
+		_clock.attach(self, Callable(self, "_inject"))
+	return _clock
+
+
+## A step, step_until or replay window is open (ui_do is refused while one is).
+func _clock_open() -> bool:
+	return _clock != null and _clock.is_open()
+
+
+## Why a window command cannot run in this build: the clock is not part of it (Lite), or it is and failed to load.
+func _clock_missing(what: String) -> String:
+	if not ResourceLoader.exists(STEP_CLOCK_PATH):
+		return "%s is a Full-edition feature (runtime/step_clock.gd is not part of this build)" % what
+	return "runtime/step_clock.gd failed to load (the engine's own error above says why)"
+
+
+## Open a deterministic replay window (playtest op=run) on the tick clock: an event stamped f goes in before frame f+1,
+## the settle frames run after the last stamp, and the game freezes for the asserts. The editor polls replay_status.
+func _replay_open(msg: Dictionary) -> Dictionary:
+	var tree := get_tree()
+	if tree == null:
+		return {"ok": false, "error": "no scene tree"}
+	var clock: Variant = _step_clock()
+	if clock == null:
+		return {"ok": false, "error": _clock_missing("the deterministic playtest replay")}
+	if clock.in_step():
+		return {"ok": false, "error": "a time_control step window is open: let it finish, or time_control op=freeze, before replay"}
+	# Arm the suite's invariants BEFORE anything else changes: a rule set that does not load refuses
+	# the whole run with the reason, rather than replaying with the rules silently absent.
+	var inv_err := _arm_invariants(msg)
+	if not inv_err.is_empty():
+		return {"ok": false, "error": inv_err}
+	_replay_perf.begin()
+	return clock.open_replay(msg.get("events", []), maxi(0, int(msg.get("settle_frames", 4))), Callable(self, "_replay_head"))
+
+
+## The start of a replay frame (the clock calls it at every head, before the frame's nodes run): the invariants judge
+## frame `frame` on the state the frame before it left (frame 0 on the state the window opened with), in the replay's own
+## numbering, the same as an event's f. Perf times frames in _process (replay_perf.gd frame()); the closing head ends it.
+func _replay_head(frame: int, closing: bool) -> void:
+	if closing:
+		_replay_perf.end()
+	if _inv.active:
+		_inv.check(_root(), frame)
+
+
+func _replay_status() -> Dictionary:
+	var clock: Variant = _step_clock()
+	if clock == null:
+		return {"ok": false, "error": _clock_missing("the deterministic playtest replay")}
+	var rs: Dictionary = clock.replay_status()
+	rs["ok"] = true
+	rs["paused"] = get_tree() != null and get_tree().paused
+	var replaying := bool(rs.get("replaying", false))
+	# perf rides the poll that reports the window closed: the editor reads it only then, and reducing the whole
+	# series on every poll would spend the very frames it times (1.17).
+	rs["perf"] = {} if replaying else _replay_perf.summary()
+	# The rule results ride the poll that reports the window closed, not every poll before it.
+	if _inv.active and not replaying:
+		rs["invariants"] = _inv.results()
+	return rs
+
+
+## Load the suite's `invariants` (msg.invariants) into the checker, replacing any previous set; "" on
+## success (including "none given"), else why the rules cannot be loaded.
+func _arm_invariants(msg: Dictionary) -> String:
+	_inv.close()
+	var list: Variant = msg.get("invariants", null)
+	if not (list is Array) or (list as Array).is_empty():
+		return ""
+	var o: Dictionary = _inv.open(list)
+	return "" if bool(o.get("ok", false)) else str(o.get("error", "invariants did not load"))
+
+
+# ---------------------------------------------------------------- scene restart (playtest op=repeat)
+
+## Start the current scene over from its file, FROZEN, for playtest op=repeat: every run of a batch has
+## to begin from the same fresh scene or the second run would measure what the first left behind. A
+## handler cannot relaunch the game (that needs the editor's own frames), but it can reload the scene.
+## The scene's resources are reloaded too (see _change_scene_afresh): without that the engine's cache would
+## hand the next run the shape, the shared .tres and the sub-resource the last one changed.
+## What this does NOT reset is anything outside the scene's own files: autoloads, saved files, engine
+## singletons, a variable a script holds that is not saved in a resource, and a resource that only an
+## autoload or a script loads. Any open stepping / replay / ui_do / typing window is dropped, and input the
+## last run left held is released. The change itself is deferred by the engine, so the editor polls
+## scene_state until the new scene is up.
+##
+## With `scene` (op=run_all and op=mutate: each suite names the scene it plays) the game is switched to
+## THAT scene instead, when it is not the current one; the same freeze, release and poll apply, and a
+## game that has lost its scene (a run that ended on a broken one) can be brought back this way too.
+func _scene_reload(msg: Dictionary = {}) -> Dictionary:
+	var tree := get_tree()
+	if tree == null:
+		return {"ok": false, "error": "no scene tree"}
+	var target := str(msg.get("scene", "")).strip_edges()
+	if not target.is_empty():
+		# A suite file can come from a cloned repository: the project's own scenes only.
+		if not (target.begins_with("res://") or target.begins_with("user://")) or target.contains("..") or not ResourceLoader.exists(target):
+			return {"ok": false, "error": "scene '%s' is not a scene of this project (res:// or user://, no '..', and the file must exist)" % target.left(160)}
+	var cur: Node = tree.current_scene
+	if cur == null:
+		# Between the swap and the new scene's arrival there is no current scene: a HEAVY scene spends seconds
+		# there. If the last restart has not been seen come up, this is that window, not a game without a scene.
+		if _reload_old_id != 0:
+			return {"ok": false, "pending": true, "error": "a scene restart is still loading (the previous scene_reload has not come up yet)"}
+		if target.is_empty():
+			return {"ok": false, "error": "the game has no current scene to restart (the scene was set up some other way than as the main or a changed-to scene)"}
+	var path := str(cur.scene_file_path) if cur != null else ""
+	if target.is_empty() and path.is_empty():
+		return {"ok": false, "error": "the current scene (%s) was built in code and has no scene file, so it cannot be restarted from one" % cur.name}
+	if _clock != null:
+		_clock.abort()  # a step or replay window ends here, and the engine's step setting goes back
+	_replay_perf.end()
+	_ui_do.abort()
+	_inv.close()
+	_typing_done = true
+	_typing_ctrl = null
+	var released := InputCodec.release_all(_held)
+	tree.paused = true  # the fresh scene must not run a frame before the next run says so
+	var old_id := cur.get_instance_id() if cur != null else 0
+	var switching := not target.is_empty() and target != path
+	var err := _change_scene_afresh(tree, target if switching else path)
+	if err != OK:
+		return {"ok": false, "error": "%s failed (%s)" % ["change_scene_to_file" if switching else "reload_current_scene", error_string(err)]}
+	_reload_old_id = old_id
+	var out := {"ok": true, "scene": target if switching else path, "old_id": old_id, "released_inputs": released}
+	if switching:
+		out["changed"] = true
+	return out
+
+
+## Change the scene to the one in `path`, with its resources read from disk again. reload_current_scene() and
+## change_scene_to_file() take the scene and everything it uses from the engine's cache, which still holds what the
+## last run did to them (a shape's size, a shared .tres a script wrote to): a second run of a deterministic game then
+## starts from the first one's leftovers. CACHE_MODE_REPLACE_DEEP re-reads the scene and the resources it names INTO
+## the objects already in the cache, so everything that holds one (an autoload, a preloaded constant) sees the fresh
+## values and keeps pointing at the same object; scripts are not part of it, so their static variables carry on like
+## the autoloads' state (probed on 4.4.1, 4.6.2 and 4.7). A scene that will not load that way is left to the engine's own
+## change_scene_to_file, which says why. The cost is reading the scene's resources again: a heavy 3D scene takes longer to
+## come back, which the editor's restart wait allows for.
+func _change_scene_afresh(tree: SceneTree, path: String) -> Error:
+	# Through call(): the mode is a plain int on every engine, so the analyzer has no enum to check it against.
+	var fresh := ResourceLoader.call("load", path, "PackedScene", deep_replace_mode()) as PackedScene
+	if fresh != null:
+		return tree.change_scene_to_packed(fresh)
+	return tree.change_scene_to_file(path)
+
+
+## The cache mode _change_scene_afresh loads with. CACHE_MODE_REPLACE_DEEP is a Godot 4.3 value, and a class constant
+## this script named would stop it from parsing on 4.2, taking every runtime tool down with it, so it is looked up by
+## name. 4.2 gets CACHE_MODE_REPLACE: the scene file is read again, but the resource files it names come from the cache
+## (the deep mode is what reaches them), so a change a run made to one of those carries into the next run there.
+static func deep_replace_mode() -> int:
+	if ClassDB.class_has_integer_constant("ResourceLoader", "CACHE_MODE_REPLACE_DEEP"):
+		return ClassDB.class_get_integer_constant("ResourceLoader", "CACHE_MODE_REPLACE_DEEP")
+	return ResourceLoader.CACHE_MODE_REPLACE
+
+
+## Is the restarted scene up? `id` is the live scene's instance id: it differs from scene_reload's
+## old_id once the engine has swapped it in. (A heavy scene blocks this process for seconds while it
+## loads, so a caller polling this can see a timeout before it sees the answer.)
+func _scene_state() -> Dictionary:
+	var tree := get_tree()
+	var cur: Node = tree.current_scene if tree != null else null
+	var id := cur.get_instance_id() if cur != null else 0
+	var up := cur != null and cur.is_node_ready()
+	if up and _reload_old_id != 0 and id != _reload_old_id:
+		_reload_old_id = 0  # the restart has come up: nothing is pending any more
+	# `scene` is the file the live scene came from ("" when it was built in code): a batch that plays several scenes
+	# puts the game back on the one it found.
+	return {"ok": true, "id": id, "ready": up, "paused": tree != null and tree.paused, "scene": str(cur.scene_file_path) if cur != null else ""}
+
+
+func _handle(line: String) -> void:
+	var msg: Variant = JSON.parse_string(line)
+	if not (msg is Dictionary):
+		return
+	_peer.put_data((reply_line(msg) + "\n").to_utf8_buffer())
+
+
+## The reply to one command, as the line written back to the editor (without its newline). An editor that asks for it
+## (TypedJson.ASK) gets the reply in binary, so an int, a vector or a transform reaches it exactly; any other editor gets
+## JSON as before 1.17, so an editor older than this game still reads every reply. A screenshot stays JSON either way:
+## its picture is base64 text already, and a second encoding would only make it a third longer on the socket.
+func reply_line(msg: Dictionary) -> String:
+	var typed := TypedJson.asks_typed(msg) and str(msg.get("cmd", "")) != "screenshot"
+	_typed_reply = typed
+	var resp := _dispatch(msg)
+	_typed_reply = false
+	if typed:
+		resp = TypedJson.pack(resp)
+	# Echo the editor's sequence id so a late reply (this handler ran past the editor's
+	# read deadline) is recognised as stale on the next command instead of desyncing.
+	if msg.has("_id"):
+		resp["_id"] = msg["_id"]
+	return JSON.stringify(resp)
+
+
+func _dispatch(msg: Dictionary) -> Dictionary:
+	match str(msg.get("cmd", "")):
+		"ping":
+			return {"ok": true, "scene": _scene_name()}
+		"quiet_state":
+			return _quiet.report()
+		"tree":
+			return _tree_cmd(msg)
+		"game_state":
+			return _game_state_cmd(msg)
+		"screenshot":
+			return _screenshot(msg)
+		"input":
+			return _run_input(msg.get("events", []))
+		"get":
+			var n := _resolve_target(msg)
+			if n == null:
+				return {"ok": false, "error": _not_found(msg)}
+			return _get_cmd(n, msg)
+		"set":
+			var n := _resolve_target(msg)
+			if n == null:
+				return {"ok": false, "error": _not_found(msg)}
+			return _set_cmd(n, msg)
+		"call":
+			var n := _resolve_target(msg)
+			if n == null:
+				return {"ok": false, "error": _not_found(msg)}
+			return _call_cmd(n, msg)
+		"describe":
+			var n := _resolve_target(msg)
+			if n == null:
+				return {"ok": false, "error": _not_found(msg)}
+			return _describe_cmd(n)
+		"debug_draw":
+			return _debug_draw(msg)
+		"render_probe":
+			return _render_probe(msg)
+		"reload_shader":
+			return _reload_shader(msg)
+		"exists":
+			# A ':' path never resolves: answer with the reason, not a bare no, so wait_for_node stops at once.
+			var exists_refused := _target_refusal(msg)
+			if not exists_refused.is_empty():
+				return {"ok": false, "exists": false, "error": exists_refused}
+			return {"ok": true, "exists": _resolve_target(msg) != null}
+		"find":
+			return _find(msg)
+		"click_text":
+			return _click_text(msg)
+		"click_control":
+			return _click_control(msg)
+		"control_rect":
+			return _control_rect(msg)
+		"ui_snapshot":
+			return _ui_snapshot(msg)
+		"type_text":
+			return _type_text(msg)
+		"type_status":
+			return _type_status()
+		"ui_audit":
+			return _ui_audit(msg)
+		"ui_do_open":
+			if _clock_open():
+				return {"ok": false, "error": "a time_control/replay window is open: close it before ui_do"}
+			if _ui_do.active:
+				return _ui_do.open(self, msg)  # refuses with "already open"; the running window keeps its own rules
+			var uido_inv_err := _arm_invariants(msg)
+			if not uido_inv_err.is_empty():
+				return {"ok": false, "error": uido_inv_err}
+			_inv_base_frame = Engine.get_physics_frames()
+			var uido_open: Dictionary = _ui_do.open(self, msg)
+			if not bool(uido_open.get("ok", false)):
+				_inv.close()
+			return uido_open
+		"ui_do_status":
+			var uido_st: Dictionary = _ui_do.status()
+			# A suite's invariants ride the SAME poll that reports the flow finished (once, not every poll).
+			if _inv.active and not bool(uido_st.get("active", false)):
+				uido_st["invariants"] = _inv.results()
+			return uido_st
+		"ui_do_abort":
+			return _ui_do.abort()
+		"click_node3d":
+			return _click_node3d(msg)
+		"click_world":
+			return _click_world(msg)
+		"scroll":
+			return _scroll_cmd(msg)
+		"drag":
+			return _drag_cmd(msg)
+		"perf":
+			return {"ok": true, "monitors": _perf_monitors()}
+		"fingerprint":
+			return _fingerprint()
+		"physics_overlap":
+			return _physics_overlap(msg)
+		"logs":
+			return _log_sink.snapshot(msg)
+		"record_start":
+			_recording = true
+			_rec = []
+			_rec_t0 = Time.get_ticks_msec()
+			_rec_f0 = Engine.get_physics_frames()
+			return {"ok": true}
+		"record_stop":
+			_recording = false
+			return {"ok": true, "events": _rec.duplicate()}
+		"eval":
+			return _eval_cmd(msg, false)
+		"eval_at":
+			return _eval_cmd(msg, true)
+		"replay_open":
+			if _ui_do.active:
+				return {"ok": false, "error": "a ui_do window is open: let it finish (ui_do_status) or ui_do_abort first"}
+			return _replay_open(msg)
+		"replay_status":
+			return _replay_status()
+		"scene_reload":
+			return _scene_reload(msg)
+		"scene_state":
+			return _scene_state()
+		"tc_freeze":
+			return _tc_freeze()
+		"tc_unfreeze":
+			return _tc_unfreeze()
+		"tc_step":
+			if _ui_do.active:
+				return {"ok": false, "error": "a ui_do window is open: let it finish (ui_do_status) or ui_do_abort first"}
+			return _tc_step(msg)
+		"tc_step_until":
+			if _ui_do.active:
+				return {"ok": false, "error": "a ui_do window is open: let it finish (ui_do_status) or ui_do_abort first"}
+			return _tc_step_until(msg)
+		"tc_step_status":
+			return _tc_step_status()
+		"tc_time_scale":
+			return _tc_time_scale(msg)
+		"tc_status":
+			return _tc_state()
+		_:
+			return {"ok": false, "error": "unknown cmd"}
+
+
+# ---------------------------------------------------------------- runtime ops
+
+func _root() -> Node:
+	var t := get_tree()
+	if t == null:
+		return null
+	return t.current_scene if t.current_scene != null else t.root
+
+
+func _scene_name() -> String:
+	var r := _root()
+	return str(r.name) if r != null else ""
+
+
+## Scene-relative path for a response, tolerant of a missing tree. An exception raised
+## while building a REPLY is the worst kind here: the dispatch dies with no response and
+## the editor's runtime channel desyncs, so the whole session looks hung.
+func _path_of(n: Node) -> String:
+	if n == null:
+		return ""
+	var r := _root()
+	if r == null:
+		return str(n.get_name())
+	return str(r.get_path_to(n))
+
+
+## Resolve a node by path/name. Base is the current scene, but ALSO accepts an
+## absolute SceneTree path (/root/...) and falls back to a tree-wide name search,
+## so both "Player" and "/root/Main/Player" work (the #1 'node not found' trap).
+## A path with a ':' in it resolves to nothing (see subpath_refusal for why, and for what the caller is told).
+func _resolve(path: String) -> Node:
+	var root := _root()
+	if root == null:
+		return null
+	if path.is_empty() or path == "." or path == root.name:
+		return root
+	# No node name can hold a ':', and get_node_or_null drops it and everything after it: Ground:material_override
+	# came back as Ground. Every command, ui_do step and object argument resolves through here.
+	if path.contains(":"):
+		return null
+	var tree := get_tree()
+	# Absolute SceneTree path (/root/...).
+	if path.begins_with("/root") and tree != null:
+		var abs := tree.root.get_node_or_null(NodePath(path))
+		if abs != null:
+			return abs
+	# Relative to the current scene.
+	var n := root.get_node_or_null(NodePath(path))
+	if n != null:
+		return n
+	n = root.find_child(path, true, false)
+	if n != null:
+		return n
+	# Last resort: name search from the SceneTree root (covers autoloads / overlays).
+	if tree != null and tree.root != null:
+		n = tree.root.find_child(path, true, false)
+	return n
+
+
+## The words every ':' refusal carries, so an agent (and a test) can tell it from a plain miss.
+const PROPERTY_PATH := "a ':' starts a property path"
+## How much of each part of a path a ':' refusal echoes: room for a deep /root/... path, so the split it suggests
+## can be used as it stands.
+const SUBPATH_SHOWN_MAX := 200
+
+
+## Why `value`, given in `field` as a node path, names no node: "" when it is not a property path. A ':' starts a
+## property path (NodePath subnames: Ground:material_override is the material_override property of Ground), and
+## get_node_or_null drops it and everything after it, so such a path used to act on Ground itself: a get read
+## Ground's own property, a set or a call landed on Ground, a click clicked it, and every reply said ok (seen live on
+## 4.6.2, 2026-10-08; the engine drops subnames on 4.4.1 and 4.7 too, and the unit suite pins it). The words say where
+## the property part goes: `prop` is the property the command names beside
+## the path, appended to the split, and `with_property` false is for a field with no property beside it (a scope, a
+## call, a wait), which is told the node alone. A file path (res://, user://) is no property path and gets "": _resolve
+## refuses it all the same, with the plain miss.
+## No sentence here starts with "node not found" or "no node matches", the only errors the on_ready drain, the click
+## wait and the ui_do steps wait on: a path that can never resolve must not run their budgets out.
+## Mirrored by tools/playtest_standalone.gd (subpath_refusal), word for word; the unit suite holds the two together.
+static func subpath_refusal(field: String, value: String, prop: String = "", with_property: bool = true) -> String:
+	var colon := value.find(":")
+	if colon == -1 or value.contains("://"):
+		return ""
+	var node := value.left(colon)
+	if node.is_empty():
+		node = "."  # ":visible" is a property of the scene root
+	var rest := value.substr(colon + 1)
+	if not prop.is_empty():
+		rest = prop if rest.is_empty() else rest + ":" + prop
+	var why := "%s '%s' is not a node path: %s, and %s names a node." % [field, _subpath_shown(value), PROPERTY_PATH, field]
+	if with_property and not rest.is_empty():
+		return why + " Put the node in %s and the property part in property: %s=%s property=%s" % [field, field, _subpath_shown(node), _subpath_shown(rest)]
+	return why + " Pass %s=%s" % [field, _subpath_shown(node)]
+
+
+static func _subpath_shown(text: String) -> String:
+	var t := text.replace("\n", " ").replace("\r", " ")
+	return t if t.length() <= SUBPATH_SHOWN_MAX else t.left(SUBPATH_SHOWN_MAX) + "..."
+
+
+## The ':' refusal for a command's target, or "": its path, or with no path the `under` its selector is scoped to
+## (what _resolve_matches reads). A get or a set names its property beside the path (`prop`), so the split it is
+## told carries both. ui_do asks this too, to fail a click or a type step at once.
+static func _target_refusal(msg: Dictionary) -> String:
+	var path := str(msg.get("path", ""))
+	if not path.is_empty():
+		return subpath_refusal("path", path, str(msg.get("prop", "")), msg.has("prop"))
+	return subpath_refusal("under", str(msg.get("under", "")), "", false)
+
+
+## The error for a scope path (tree, find, ui_snapshot, ui_audit) that resolved to nothing.
+static func _scope_miss(path: String) -> String:
+	var why := subpath_refusal("path", path, "", false)
+	return why if not why.is_empty() else "node not found: %s" % path
+
+
+## Custom class_name of a node's script (Godot 4.3+), "" if none / built-in.
+func _script_global_name(n: Node) -> String:
+	var s = n.get_script()
+	if s == null:
+		return ""
+	if s.has_method("get_global_name"):
+		var gn = s.get_global_name()
+		if gn != null and str(gn) != "":
+			return str(gn)
+	return ""
+
+
+## Resolve a node from a command: by "path" if given, else by a live SELECTOR
+## (class / name / text [+ nth]) — so the agent can address a node without re-fetching
+## volatile auto-generated paths (@Node@NN) every session. class matches custom
+## class_name too (see _class_match).
+## All live nodes matching a command's target spec, in document (DFS pre-order) order.
+## Spec = "path" (exact, 0/1 result; supports /root and %UniqueName) OR a selector:
+## class (native or custom class_name) / name / text, optionally scoped to a subtree
+## via "under". ONE resolver for every tool that takes a target (click_control,
+## click_node3d/world, runtime_get/set/call) so nth never means different things.
+func _resolve_matches(msg: Dictionary) -> Array:
+	var path := str(msg.get("path", ""))
+	if not path.is_empty():
+		var direct := _resolve(path)
+		return [direct] if direct != null else []
+	var cls := str(msg.get("class", ""))
+	var name_q := str(msg.get("name", ""))
+	var text_q := str(msg.get("text", ""))
+	if cls == "" and name_q == "" and text_q == "":
+		return []
+	var scope := _root()
+	var under := str(msg.get("under", ""))
+	if not under.is_empty():
+		scope = _resolve(under)
+	if scope == null:
+		return []
+	var out: Array = []
+	_select_walk(scope, cls, name_q, text_q, out)
+	return out
+
+
+func _resolve_target(msg: Dictionary) -> Node:
+	var matches := _resolve_matches(msg)
+	if matches.is_empty():
+		return null
+	var nth := int(msg.get("nth", 0))
+	if nth < 0 or nth >= matches.size():
+		return null
+	return matches[nth]
+
+
+## runtime "get" — reads a property that may sit on a SUB-RESOURCE
+## ("environment:volumetric_fog_density", "material_override:shader_parameter/tint").
+func _get_cmd(n: Node, msg: Dictionary) -> Dictionary:
+	var prop := str(msg.get("prop", ""))
+	var res := _property_owner(n, prop)
+	if not bool(res.get("ok", false)):
+		return res
+	return {"ok": true, "value": _safe(_read_at(res)), "resolved": _path_of(n)}
+
+
+## runtime "set" = the twin of the v1.10.2 call gate, and the same lesson one layer down.
+## `Object.set()` is SILENT on a name it does not know and blind to sub-resource paths, so
+## this dispatch used to answer ok:true for writes that never landed. The agent then
+## screenshots an unchanged frame and concludes the CAUSE was wrong rather than the write —
+## it is not slow, it is confidently wrong, which is worse. So: resolve the real owner,
+## write, then READ BACK. A write that moved nothing is an error; a write the engine
+## adjusted (clamped, normalized) reports before/after so the clamp is visible instead of
+## invisible. Born from the 2026-07-27 "3D meadow" oneshot postmortem, where a silently
+## dropped volumetric_fog_density write cost 10 minutes and two wrong conclusions.
+func _set_cmd(n: Node, msg: Dictionary) -> Dictionary:
+	# Before anything is read or resolved further: a write to Beckett's own runtime is refused, and the reply says
+	# so in words the on_ready retry does not take for "not there yet" (it retries only a target that has not appeared).
+	var off := Internals.runtime_refusal(n)
+	if not off.is_empty():
+		return {"ok": false, "error": off}
+	var prop := str(msg.get("prop", ""))
+	var res := _property_owner(n, prop)
+	if not bool(res.get("ok", false)):
+		return res
+	# The object that owns the leaf is not always the node: "environment:fog_density" ends on a sub-resource, and a
+	# hop can land on whatever an object property of the node holds, so the owner is held to the same rule.
+	off = Internals.runtime_refusal(res.get("owner"))
+	if not off.is_empty():
+		return {"ok": false, "error": off}
+	var before: Variant = _read_at(res)
+	# Refuse a value we could not make fit. Godot's `set` accepts garbage for a typed
+	# property and quietly stores the type's DEFAULT — so `global_transform = "nonsense"`
+	# used to zero the node's transform and answer ok. Same rule the v1.10.2 call gate
+	# applies to arguments: a coercion failure fails the write instead of destroying data.
+	var fit := _coerce_write(res, before, msg.get("value"))
+	if not bool(fit.get("ok", false)):
+		return {"ok": false, "error": "%s.%s: %s" % [(res["owner"] as Object).get_class(), str(res["leaf"]), str(fit["error"])],
+			"suggestion": str(fit["suggestion"])}
+	var want: Variant = fit["value"]
+	if bool(res.get("indexed", false)):
+		(res["owner"] as Object).set_indexed(NodePath(str(res["leaf"])), want)
+	else:
+		(res["owner"] as Object).set(str(res["leaf"]), want)
+	var after: Variant = _read_at(res)
+	var out := {
+		"ok": true,
+		"resolved": _path_of(n),
+		"before": _safe(before),
+		"after": _safe(after),
+	}
+	if _value_eq(after, want):
+		if not _value_eq(before, after):
+			out["changed"] = true
+		return out
+	if _value_eq(before, after):
+		out["ok"] = false
+		out["error"] = "write did not stick: %s.%s is still %s (wanted %s)" % [
+			(res["owner"] as Object).get_class(), str(res["leaf"]), str(_safe(after)), str(_safe(want))]
+		out["suggestion"] = "the property may be read-only, or game code (_process/_physics_process/an AnimationPlayer) rewrites it every frame"
+		return out
+	out["changed"] = true
+	out["note"] = "the engine adjusted the value (clamped or normalized): wanted %s, stored %s" % [
+		str(_safe(want)), str(_safe(after))]
+	return out
+
+
+## Read through a resolved {owner, leaf, indexed} triple from _property_owner.
+func _read_at(res: Dictionary) -> Variant:
+	var owner: Object = res.get("owner")
+	if bool(res.get("indexed", false)):
+		return owner.get_indexed(NodePath(str(res.get("leaf", ""))))
+	return owner.get(str(res.get("leaf", "")))
+
+
+## Resolve a possibly-nested property path down to the object that actually OWNS the leaf.
+## `Object.get/set` only know top-level names: a path with ':' in it ("environment:fog_density")
+## silently reads null and silently writes nowhere, which is the whole bug this guards.
+## Walking hop by hop also lets a typo name the exact failing hop instead of the whole path.
+## Returns {ok, owner, leaf, indexed} or {ok:false, error, suggestion}.
+func _property_owner(obj: Object, prop: String) -> Dictionary:
+	if prop.is_empty():
+		return {"ok": false, "error": "prop is required (the property name, e.g. position or environment:fog_density)"}
+	var parts := prop.split(":", false)
+	if parts.is_empty():
+		return {"ok": false, "error": "prop is required"}
+	var owner: Object = obj
+	for i in range(parts.size() - 1):
+		var seg := str(parts[i])
+		if not _has_property(owner, seg):
+			return _no_property(owner, seg, prop)
+		var nxt: Variant = owner.get(seg)
+		if nxt == null:
+			return {"ok": false,
+				"error": "%s.%s is null, so '%s' cannot be reached" % [owner.get_class(), seg, prop],
+				"suggestion": "assign a %s there first (e.g. give the WorldEnvironment an Environment), then set the nested property" % seg}
+		if not (nxt is Object):
+			# A built-in struct hop (position:x, transform:origin) — no property list to walk,
+			# so hand the WHOLE path to get_indexed/set_indexed and skip per-hop validation.
+			return {"ok": true, "owner": obj, "leaf": prop, "indexed": true}
+		owner = nxt as Object
+		if not is_instance_valid(owner):
+			return {"ok": false, "error": "%s in '%s' points at a freed object" % [seg, prop]}
+	var leaf := str(parts[parts.size() - 1])
+	if not _has_property(owner, leaf):
+		return _no_property(owner, leaf, prop)
+	return {"ok": true, "owner": owner, "leaf": leaf, "indexed": false}
+
+
+func _no_property(owner: Object, seg: String, prop: String) -> Dictionary:
+	var where := "" if seg == prop else " (in path '%s')" % prop
+	var out := {"ok": false, "error": "%s has no property '%s'%s" % [owner.get_class(), seg, where]}
+	var near := _near_properties(owner, seg)
+	if not near.is_empty():
+		out["suggestion"] = "did you mean: %s" % ", ".join(near)
+	return out
+
+
+func _has_property(obj: Object, prop: String) -> bool:
+	for p in obj.get_property_list():
+		if str(p.get("name", "")) == prop:
+			return true
+	return false
+
+
+## Best-effort "did you mean" list — a wrong property name should cost one call, not a
+## describe_object round-trip. Substring hits rank above fuzzy ones.
+func _near_properties(obj: Object, prop: String, limit := 5) -> Array:
+	const HEADERS := PROPERTY_USAGE_CATEGORY | PROPERTY_USAGE_GROUP | PROPERTY_USAGE_SUBGROUP
+	var lower := prop.to_lower()
+	var scored: Array = []
+	for p in obj.get_property_list():
+		if int(p.get("usage", 0)) & HEADERS:
+			continue
+		var nm := str(p.get("name", ""))
+		if nm.is_empty():
+			continue
+		var low := nm.to_lower()
+		var s := low.similarity(lower)
+		if low.contains(lower) or lower.contains(low):
+			s += 1.0
+		if s > 0.45:
+			scored.append([s, nm])
+	scored.sort_custom(func(a, b): return a[0] > b[0])
+	var out: Array = []
+	for e in scored:
+		out.append(e[1])
+		if out.size() >= limit:
+			break
+	return out
+
+
+## The value a write to the resolved property `res` (holding `current`) stores, made from what JSON carries:
+## {ok, value}, or {ok: false, error, suggestion} naming the type it takes. A property with a type never gets the value
+## as it arrived: "19" kept as a string where game code does `coins += 1` errors ("String + int"), aborts the dispatch
+## and desyncs the runtime channel. The rule is CallArgs.coerce_write, the one the editor's set_property keeps, so a
+## write takes every spelling a call's argument does and is held to the type the property DECLARES (see there).
+## This used to be a local converter that knew arrays and dicts only and answered Vector3.ZERO for anything else (a
+## string, a short array), so the write zeroed the node, the read-back agreed with the zero, and the reply said nothing
+## had changed; and judging by the value read let a shader uniform at its default (it reads null) store
+## "shader_parameter/tint" = "#ff0000" as the STRING.
+func _coerce_write(res: Dictionary, current: Variant, value: Variant) -> Dictionary:
+	return CallArgs.coerce_write(value, _declared(res), current)
+
+
+## The property-list entry of a resolved leaf, {} for a struct member (position:y), which has none of its own.
+func _declared(res: Dictionary) -> Dictionary:
+	if bool(res.get("indexed", false)):
+		return {}
+	var leaf := str(res.get("leaf", ""))
+	for p in (res["owner"] as Object).get_property_list():
+		if str(p.get("name", "")) == leaf:
+			return p
+	return {}
+
+
+## Compare a written value against what came back. Floats go through approx comparison —
+## an engine that stores 0.1 as 0.100000001 HAS honoured the write, and calling that a
+## failure would be the same dishonesty in the other direction.
+func _value_eq(a: Variant, b: Variant) -> bool:
+	if typeof(a) != typeof(b):
+		return false
+	match typeof(a):
+		TYPE_FLOAT:
+			return is_equal_approx(float(a), float(b))
+		TYPE_VECTOR2, TYPE_VECTOR3, TYPE_VECTOR4, TYPE_COLOR, TYPE_QUATERNION, TYPE_PLANE, TYPE_TRANSFORM2D, TYPE_TRANSFORM3D, TYPE_BASIS:
+			return a.is_equal_approx(b)
+	return a == b
+
+
+## runtime "call" = the editor call_method's twin gate (v1.10.2). A raw callv on
+## mis-typed args does NOT run the method - the engine pushes an error (visible in
+## game_logs) and returns null, which this dispatch used to report as ok:true.
+func _call_cmd(n: Node, msg: Dictionary) -> Dictionary:
+	var off := Internals.runtime_refusal(n)
+	if not off.is_empty():
+		return {"ok": false, "error": off}
+	var method := str(msg.get("method", ""))
+	if not n.has_method(method):
+		return {"ok": false, "error": "%s has no method '%s'" % [n.get_class(), method]}
+	var raw: Variant = msg.get("args", [])
+	var args: Array = raw if raw is Array else []
+	var prep: Dictionary = CallArgs.prepare(n, method, args, self)
+	if not bool(prep.get("ok", false)):
+		return {"ok": false, "error": "%s.%s: %s" % [n.get_class(), method, str(prep.get("error", "argument mismatch"))]}
+	var call_args: Array = (prep["args"] as Array).duplicate()
+	# set, set_deferred and set_indexed declare the value as a Variant, so CallArgs hands it over as sent, and a native
+	# property given a value of another type stores its DEFAULT: set("position", "0 6 11") zeroed the node and
+	# answered ok. A property that resolves holds the value to its type here, the way runtime "set" does.
+	if method in ["set", "set_deferred", "set_indexed"] and call_args.size() == 2:
+		var res := _property_owner(n, str(call_args[0]))
+		if bool(res.get("ok", false)):
+			off = Internals.runtime_refusal(res.get("owner"))
+			if not off.is_empty():
+				return {"ok": false, "error": off}
+			var fit := _coerce_write(res, _read_at(res), call_args[1])
+			if not bool(fit.get("ok", false)):
+				return {"ok": false, "error": "%s.%s: arg 1 (value): %s" % [n.get_class(), method, str(fit["error"])],
+					"suggestion": str(fit["suggestion"])}
+			call_args[1] = fit["value"]
+	var resp := {"ok": true, "result": _safe(n.callv(method, call_args)), "resolved": str(_root().get_path_to(n))}
+	var warn := _stale_gd_warning(n)
+	if not warn.is_empty():
+		resp["warning"] = warn
+	return resp
+
+
+## Where an eval_at expression runs, and the names it binds (runtime/expr_scope.gd). Loaded when asked, not preloaded: it
+## is a Full-edition module that pack.ps1 trims from Lite, and a build without it says so instead of failing to parse.
+const EXPR_SCOPE_PATH := "res://addons/beckett/runtime/expr_scope.gd"
+
+
+## runtime "eval": one GDScript Expression on the scene root, its value back. The playtest expr assert, its mutation
+## probes and runtime_call expr= send it. "eval_at" (`scoped`, 1.17: runtime_call expr= with a node or inputs, Full) runs
+## one on the node the command names with its inputs bound, and `resolved` names that node. A runtime from before 1.17
+## does not know eval_at, so an expression meant for one node never runs on the scene root there. An expression is not
+## sandboxed: it reaches whatever the game's scene tree reaches (see invariants.gd, UNSAFE_CALLS). str_to_var and
+## bytes_to_var_with_objects are refused before anything is parsed or resolved.
+func _eval_cmd(msg: Dictionary, scoped: bool) -> Dictionary:
+	var src := str(msg.get("expr", ""))
+	var unsafe := Invariants.unsafe_call(src)
+	if not unsafe.is_empty():
+		return {"ok": false, "error": "expr refused: %s" % unsafe}
+	var root := _root()
+	var scope := {"base": root if root != null else self, "names": PackedStringArray(), "values": []}
+	if scoped:
+		if not ResourceLoader.exists(EXPR_SCOPE_PATH):
+			return {"ok": false, "error": "an expression on a node, or with inputs, is a Full-edition feature (runtime/expr_scope.gd is not part of this build)"}
+		var impl = load(EXPR_SCOPE_PATH)
+		if impl == null:
+			return {"ok": false, "error": "runtime/expr_scope.gd failed to load (the engine's own error above says why)"}
+		scope = impl.scope(self, msg)
+		if scope.has("error"):
+			return {"ok": false, "error": str(scope["error"])}
+	var base: Node = scope["base"]
+	var ex := Expression.new()
+	if ex.parse(src, scope["names"]) != OK:
+		return {"ok": false, "error": "expr parse error: %s" % ex.get_error_text()}
+	var v: Variant = ex.execute(scope["values"], base, true)
+	if ex.has_execute_failed():
+		return {"ok": false, "error": "expr exec error: %s" % ex.get_error_text()}
+	var out := {"ok": true, "value": _safe(v)}
+	if scoped:
+		out["resolved"] = _path_of(base)
+	# A condition that came back false also says what it read, so a failed expr assert reports the value that broke it
+	# (and two runs of a flaky suite can be told apart), not just "false". runtime_call expr= asks for the value alone
+	# (bare): its value is the answer, and a vector, a 0 or an empty list would read as false and have its operands
+	# evaluated a second time.
+	if not CallArgs.to_bool(v) and not CallArgs.flag(msg, "bare"):
+		var reads := Invariants.reads_of(src.strip_edges(), base)
+		if not reads.is_empty():
+			out["reads"] = reads
+	return out
+
+
+func _resolve_object_arg(spec: String) -> Node:
+	var n := _resolve(spec)
+	if n != null and not Internals.runtime_refusal(n).is_empty():
+		return null  # an argument is a way to an object like any other: CallArgs asks _object_arg_refusal why
+	return n
+
+
+## Why an object argument that did not resolve was refused (CallArgs.prepare asks): "" when it is simply not there.
+func _object_arg_refusal(spec: String) -> String:
+	return Internals.runtime_refusal(_resolve(spec))
+
+
+## The running game keeps whatever script version it loaded; a .gd edited on disk
+## mid-play means live results no longer match the file. Surface that instead of
+## letting the mismatch masquerade as a game bug.
+func _stale_gd_warning(n: Node) -> String:
+	var scr = n.get_script()
+	if scr == null or not (scr is GDScript):
+		return ""
+	var path: String = scr.resource_path
+	if not path.begins_with("res://") or not FileAccess.file_exists(path):
+		return ""
+	var disk := FileAccess.get_file_as_string(path).replace("\r\n", "\n")
+	var loaded := str(scr.source_code).replace("\r\n", "\n")
+	if disk.is_empty() or loaded.is_empty() or disk == loaded:
+		return ""
+	return "script %s changed on disk after the game loaded it - the running game may still be on the old version (restart the scene to be sure)" % path
+
+
+func _select_walk(node: Node, cls: String, name_q: String, text_q: String, out: Array) -> void:
+	var ok := true
+	if cls != "" and not _class_match(node, cls):
+		ok = false
+	if ok and name_q != "" and str(node.name).findn(name_q) == -1:
+		ok = false
+	if ok and text_q != "" and _node_text(node).findn(text_q) == -1:
+		ok = false
+	if ok:
+		out.append(node)
+	for c in node.get_children():
+		_select_walk(c, cls, name_q, text_q, out)
+
+
+## Human-readable reason a _resolve_target call failed (path vs selector).
+func _not_found(msg: Dictionary) -> String:
+	var refused := _target_refusal(msg)
+	if not refused.is_empty():
+		return refused
+	var path := str(msg.get("path", ""))
+	if not path.is_empty():
+		return "node not found: %s" % path
+	var sel: Array = []
+	for k in ["class", "name", "text"]:
+		var v := str(msg.get(k, ""))
+		if v != "":
+			sel.append("%s=%s" % [k, v])
+	if sel.is_empty():
+		return "no path or selector (class/name/text) given"
+	return "no node matches selector %s (nth=%d)" % [", ".join(sel), int(msg.get("nth", 0))]
+
+
+# ---------------------------------------------------------------- time control (deterministic playtest)
+
+## Common state block returned by every time_control op so the agent always sees the
+## same shape: is the game running, is the tree paused, current Engine.time_scale,
+## the engine's physics frame counter (it keeps counting while frozen), and whether a
+## step window is open.
+func _tc_state() -> Dictionary:
+	var tree := get_tree()
+	var paused := tree != null and tree.paused
+	return {
+		"ok": true,
+		"running": tree != null,
+		"paused": paused,
+		"time_scale": Engine.time_scale,
+		"physics_frames": Engine.get_physics_frames(),
+		"in_step": _clock != null and _clock.in_step(),
+	}
+
+
+func _tc_freeze() -> Dictionary:
+	var tree := get_tree()
+	if tree == null:
+		return {"ok": false, "error": "no scene tree"}
+	# An open step or replay window is ended by an explicit freeze: the user wants a hard stop.
+	if _clock != null:
+		_clock.abort()
+	tree.paused = true
+	return _tc_state()
+
+
+func _tc_unfreeze() -> Dictionary:
+	var tree := get_tree()
+	if tree == null:
+		return {"ok": false, "error": "no scene tree"}
+	if _clock != null:
+		_clock.abort()
+	tree.paused = false
+	return _tc_state()
+
+
+## OPEN a fixed-count step window on the tick clock (runtime/step_clock.gd), from a frozen or a running game, and
+## reply at once; the editor polls tc_step_status until in_step is false. Entry i of inputs_per_frame goes in before
+## tick i, and a batch longer than the window grows it.
+func _tc_step(msg: Dictionary) -> Dictionary:
+	if get_tree() == null:
+		return {"ok": false, "error": "no scene tree"}
+	var clock: Variant = _step_clock()
+	if clock == null:
+		return {"ok": false, "error": _clock_missing("frame stepping")}
+	return clock.open_count(int(msg.get("frames", 1)), msg.get("inputs_per_frame", []), CallArgs.flag(msg, "unfreeze"))
+
+
+## OPEN a condition step window. The condition is checked for what it may not call and parsed HERE, before the clock is
+## looked up, so the str_to_var refusal holds in every build; the clock reads it when the window opens (already true:
+## no tick runs) and at the start of every tick.
+func _tc_step_until(msg: Dictionary) -> Dictionary:
+	var tree := get_tree()
+	if tree == null:
+		return {"ok": false, "error": "no scene tree"}
+	var cond := str(msg.get("condition", "")).strip_edges()
+	if cond.is_empty():
+		return {"ok": false, "error": "step_until needs a 'condition' expression"}
+	var unsafe := Invariants.unsafe_call(cond)
+	if not unsafe.is_empty():
+		return {"ok": false, "error": "condition refused: %s" % unsafe}
+	var expr := Expression.new()
+	var perr := expr.parse(cond)
+	if perr != OK:
+		return {"ok": false, "error": "condition parse error: %s" % expr.get_error_text()}
+	var clock: Variant = _step_clock()
+	if clock == null:
+		return {"ok": false, "error": _clock_missing("frame stepping")}
+	var timeout_sec: float = clampf(float(msg.get("timeout_sec", 10.0)), 0.1, 120.0)
+	return clock.open_until(expr, int(msg.get("max_frames", 0)), timeout_sec, CallArgs.flag(msg, "unfreeze"), Callable(self, "_root"), Callable(self, "_safe"))
+
+
+## Poll target for an open step window: the engine state, plus the clock's frames (the ticks the scene ran), the inputs
+## that went in and, once closed, the terminator (and step_until's last condition value).
+func _tc_step_status() -> Dictionary:
+	var clock: Variant = _step_clock()
+	if clock == null:
+		return {"ok": false, "error": _clock_missing("frame stepping")}
+	var out := _tc_state()
+	out.merge(clock.status(), true)
+	return out
+
+
+## Set Engine.time_scale. Clamp to [0.01, 10.0]; a value of 0 is rejected (freeze is the
+## way to stop time, and a 0 scale wedges tweens/timers). Reports the clamped value.
+func _tc_time_scale(msg: Dictionary) -> Dictionary:
+	if not msg.has("value"):
+		return {"ok": false, "error": "time_scale needs a 'value'"}
+	var requested := float(msg.get("value", 1.0))
+	if requested == 0.0:
+		return {"ok": false, "error": "time_scale 0 is not allowed — use freeze to stop time (a 0 scale wedges tweens/timers)"}
+	var clamped: float = clampf(requested, 0.01, 10.0)
+	Engine.time_scale = clamped
+	var st := _tc_state()
+	st["requested"] = requested
+	st["clamped"] = clamped
+	return st
+
+
+# ---------------------------------------------------------------- tree (scoped)
+
+func _tree_cmd(msg: Dictionary) -> Dictionary:
+	var root := _root()
+	if root == null:
+		return {"ok": false, "error": "no current scene"}
+	var start := root
+	var p := str(msg.get("path", ""))
+	if not p.is_empty():
+		start = _resolve(p)
+		if start == null:
+			return {"ok": false, "error": _scope_miss(p)}
+	var depth := int(msg.get("depth", -1))
+	var max_nodes := int(msg.get("max_nodes", 250))
+	if max_nodes <= 0:
+		max_nodes = 1 << 30
+	var max_children := int(msg.get("max_children", 50))
+	if max_children <= 0:
+		max_children = 1 << 30
+	var ctx := {"count": 0, "max": max_nodes, "max_children": max_children,
+		"collapse": CallArgs.flag(msg, "collapse", true), "truncated": false}
+	var tree := _tree2(start, root, depth, ctx)
+	var out := {"ok": true, "tree": tree, "node_count": int(ctx["count"])}
+	if bool(ctx["truncated"]):
+		out["truncated"] = true
+		out["hint"] = "output capped — narrow with path=, lower depth=, or raise max_nodes="
+	return out
+
+
+## Collect the game-owned state (v1.16): every node of the whole SceneTree, autoloads included, that is in
+## the group beckett_state / mcp_state and answers _beckett_state() / _mcp_state(). Whole tree on purpose:
+## the node that holds a game's score or inventory is as often an autoload as a node of the scene. The
+## reply is capped and says when it cut (game_state.gd).
+func _game_state_cmd(msg: Dictionary) -> Dictionary:
+	var tree := get_tree()
+	if tree == null:
+		return {"ok": false, "error": "no scene tree"}
+	var out: Dictionary = GameState.collect(tree, _root(), int(msg.get("max_nodes", GameState.MAX_NODES)))
+	out["ok"] = true
+	return out
+
+
+func _tree2(n: Node, root: Node, depth: int, ctx: Dictionary) -> Dictionary:
+	ctx["count"] = int(ctx["count"]) + 1
+	var d: Dictionary = {"name": str(n.name), "class": n.get_class()}
+	var gn := _script_global_name(n)
+	if gn != "":
+		d["script"] = gn
+	var child_count := n.get_child_count()
+	if child_count == 0:
+		return d
+	if depth == 0:
+		d["children_omitted"] = child_count
+		return d
+	var kids := n.get_children()
+	var out_kids: Array = []
+	var shown := 0
+	var i := 0
+	while i < kids.size():
+		if int(ctx["count"]) >= int(ctx["max"]):
+			ctx["truncated"] = true
+			break
+		if shown >= int(ctx["max_children"]):
+			out_kids.append({"more": kids.size() - i})
+			ctx["truncated"] = true
+			break
+		var c: Node = kids[i]
+		# Collapse a run of identical childless leaf siblings (e.g. 8 CPUParticles2D)
+		# into one entry — the #1 source of token-bloat in real scene trees.
+		if bool(ctx["collapse"]) and c.get_child_count() == 0 and _script_global_name(c) == "":
+			var cls := c.get_class()
+			var j := i
+			while j < kids.size() and kids[j].get_child_count() == 0 \
+					and kids[j].get_class() == cls and _script_global_name(kids[j]) == "":
+				j += 1
+			var run := j - i
+			if run >= 5:
+				ctx["count"] = int(ctx["count"]) + run
+				out_kids.append({"class": cls, "count": run, "collapsed": true,
+					"first": str(c.name), "last": str(kids[j - 1].name)})
+				shown += 1
+				i = j
+				continue
+		out_kids.append(_tree2(c, root, depth - 1, ctx))
+		shown += 1
+		i += 1
+	if not out_kids.is_empty():
+		d["children"] = out_kids
+	return d
+
+
+## A capture of the game window, or of one SubViewport's own game pixels. A key the caller does not send leaves the
+## window capture exactly as it was, which is what compare_screenshots and the playtest asserts rely on:
+##   viewport  a SubViewport, or the SubViewportContainer that shows it (capture_source.gd has the why)
+##   fit       enlarge a viewport capture in whole nearest steps until its short side reaches CaptureSource.MIN_EDGE
+##   hint      (window captures by the screenshot tool) name the pixel-art layout it sees, once per game process
+func _screenshot(msg: Dictionary = {}) -> Dictionary:
+	var sv: SubViewport = null
+	var want := str(msg.get("viewport", ""))
+	if not want.is_empty():
+		var picked := _capture_subviewport(want)
+		if picked.has("error"):
+			return {"ok": false, "error": str(picked["error"])}
+		sv = picked["sv"]
+	var vp: Viewport = sv if sv != null else get_viewport()
+	if vp == null:
+		return {"ok": false, "error": "no viewport"}
+	var tex := vp.get_texture()
+	if tex == null:
+		return {"ok": false, "error": "no viewport texture (headless / no RHI?)"}
+	var img := tex.get_image()
+	if img == null:
+		return {"ok": false, "error": "could not read viewport image (headless / no RHI?)"}
+	# A SubViewport with use_hdr_2d hands back a float frame. It is converted to 8 bits as it stands, with no sRGB
+	# curve (Image.linear_to_srgb takes only 8-bit images, and 4.2 has none), and the reply says it was HDR.
+	var hdr := false
+	if sv != null and img.get_format() >= Image.FORMAT_RF and img.get_format() <= Image.FORMAT_RGBE9995:
+		img.convert(Image.FORMAT_RGBA8)
+		hdr = true
+	var full_w := img.get_width()
+	var full_h := img.get_height()
+	# Set-of-Mark legend is collected BEFORE crop/scale — marks live in full-image
+	# pixel space; the drawer maps them through (xy - crop_offset) * scale.
+	var annotate := str(msg.get("annotate", "")) == "ui"
+	var marks_list: Array = []
+	if annotate:
+		# A SubViewport's controls are walked from it and measured in its own pixels.
+		var walk_from: Node = get_tree().root
+		if sv != null:
+			walk_from = sv
+		marks_list = UiInspect.marks(vp, walk_from, _root(), int(msg.get("max_marks", 40)))
+	var off := Vector2.ZERO
+	var rg: Variant = msg.get("region", null)
+	if rg is Array and (rg as Array).size() >= 4:
+		off = Vector2(float(clampi(int(rg[0]), 0, full_w - 1)), float(clampi(int(rg[1]), 0, full_h - 1)))
+	img = _maybe_crop(img, msg)
+	var crop := Vector2i(img.get_width(), img.get_height())
+	# max_dim is folded INTO `scale` rather than applied as a second resize because `scale` is
+	# not only the resize factor: it is what annotate_image() draws the Set-of-Mark boxes with
+	# and what the legend remap below reports rects in. Capping anywhere else would leave the
+	# boxes and the rects describing a picture the caller never received.
+	var scale := _capped_scale(float(msg.get("scale", 1.0)), img.get_width(), img.get_height(), int(msg.get("max_dim", 0)))
+	# Game pixels too few to read are enlarged in whole nearest steps: each one becomes a k x k block, no blur.
+	var k := 1
+	if sv != null and CallArgs.flag(msg, "fit") and scale >= 1.0:
+		k = CaptureSource.pixel_upscale(img.get_width(), img.get_height(), int(msg.get("max_dim", 0)))
+	if scale < 1.0:
+		img.resize(maxi(1, roundi(img.get_width() * scale)), maxi(1, roundi(img.get_height() * scale)), Image.INTERPOLATE_BILINEAR)
+	elif k > 1:
+		img.resize(img.get_width() * k, img.get_height() * k, Image.INTERPOLATE_NEAREST)
+	# Picture pixels per captured pixel: the factor the legend and the boxes use (scale itself for a window capture).
+	var f := scale * k
+	if not marks_list.is_empty():
+		if k > 1:
+			# Drawn at their picture rects, so an enlarged picture keeps the boxes' usual 2 px lines.
+			UiInspect.annotate_image(img, _legend(marks_list, off, f), Vector2.ZERO, 1.0)
+		else:
+			UiInspect.annotate_image(img, marks_list, off, scale)
+	var fmt := str(msg.get("format", "png")).to_lower()
+	var quality := clampf(float(msg.get("quality", 0.8)), 0.1, 1.0)
+	var data: PackedByteArray
+	var mime := "image/png"
+	var note := ""
+	if fmt == "jpeg" or fmt == "jpg":
+		# save_jpg_to_buffer is duck-checked: older 4.x without it falls back honestly.
+		if img.has_method("save_jpg_to_buffer"):
+			data = img.save_jpg_to_buffer(quality)
+			mime = "image/jpeg"
+		else:
+			data = img.save_png_to_buffer()
+			note = "jpeg unsupported on this engine — png returned"
+	elif fmt == "webp":
+		data = img.save_webp_to_buffer(true, quality)
+		mime = "image/webp"
+	else:
+		data = img.save_png_to_buffer()
+	var out := {"ok": true, "data": Marshalls.raw_to_base64(data), "mime": mime,
+		"w": img.get_width(), "h": img.get_height(), "full_w": full_w, "full_h": full_h}
+	if note != "":
+		out["note"] = note
+	if annotate:
+		# Legend rects are remapped into FINAL image pixels, so a reported rect and the box
+		# drawn for it are the same numbers — including when max_dim capped the frame. They
+		# are PICTURE coordinates, not input coordinates: drive a mark by its path
+		# (click_control). A follow-up region= is measured against the FULL frame instead, so
+		# a legend rect has to be scaled back by full_w/w (region_w/w when this call cropped)
+		# and re-offset by the region origin before it can be reused there.
+		out["marks"] = _legend(marks_list, off, f)
+	if sv != null:
+		_pixels_facts(out, sv, off, f, crop, rg is Array and (rg as Array).size() >= 4)
+		if k > 1:
+			out["k"] = k
+		if hdr:
+			out["hdr"] = true
+	elif CallArgs.flag(msg, "hint") and not msg.has("region"):
+		var hint := _pixel_hint(Vector2i(img.get_width(), img.get_height()))
+		if not hint.is_empty():
+			out["pixel_hint"] = hint
+	return out
+
+
+## The once-per-run hint for a window capture whose picture is `pic`: {path, w, h} of the pixel-art layout the window
+## shows (CaptureSource.pixel_layout, judged in GUI space), or {} when there is none, the hint was given, or the game
+## pixels would not cost at most half of this picture (CaptureSource.hint_share, the test the editor words the line
+## by). Only a hint the line will carry spends the flag: a capture scaled down to about the game pixels' size first
+## never uses up the line a later full-size capture shows.
+func _pixel_hint(pic: Vector2i) -> Dictionary:
+	if _pixel_hint_given:
+		return {}
+	var lay := CaptureSource.pixel_layout(get_tree().root)
+	if lay == null or CaptureSource.hint_share(pic.x, pic.y, lay.size.x, lay.size.y) < 2:
+		return {}
+	_pixel_hint_given = true
+	return {"path": UiInspect.path_of(lay, _root()), "w": lay.size.x, "h": lay.size.y}
+
+
+## The Set-of-Mark legend in picture pixels: each mark's rect as (xy - crop offset) * f.
+static func _legend(marks_list: Array, off: Vector2, f: float) -> Array:
+	var legend: Array = []
+	for m in marks_list:
+		var md := m as Dictionary
+		var r4: Array = md["rect"]
+		var e := {"i": md["i"], "path": md["path"],
+			"rect": [roundi((float(r4[0]) - off.x) * f), roundi((float(r4[1]) - off.y) * f),
+				roundi(float(r4[2]) * f), roundi(float(r4[3]) * f)]}
+		if md.has("text"):
+			e["text"] = md["text"]
+		legend.append(e)
+	return legend
+
+
+## What a capture of a SubViewport's game pixels says beside the picture (the screenshot tool words it): which
+## SubViewport, the region it cut in game pixels, how many GUI px one picture pixel stands for and where picture pixel
+## (0, 0) sits in the root's GUI space (px, px_from: the space simulate_input, drag and scroll position= take), why the
+## frame may be old, and the OS cursor when it is over the picture.
+func _pixels_facts(out: Dictionary, sv: SubViewport, off: Vector2, f: float, crop: Vector2i, cropped: bool) -> void:
+	out["src"] = UiInspect.path_of(sv, _root())
+	if cropped:
+		out["region"] = [int(off.x), int(off.y), crop.x, crop.y]
+	var window := get_tree().root
+	var shown := CaptureSource.shown_by(sv, window)
+	if not shown.is_empty():
+		var factor := float(shown["factor"])
+		out["px"] = snappedf(factor / f, 0.01)
+		var at: Vector2 = ((shown["rect"] as Rect2).position + off * factor).round()
+		if at != Vector2.ZERO:
+			out["px_from"] = [int(at.x), int(at.y)]
+	var stale := CaptureSource.stale_reason(sv)
+	if not stale.is_empty():
+		out["stale"] = stale
+	var cur := CaptureSource.cursor_in_picture(window, shown, off, f, Vector2i(int(out["w"]), int(out["h"])))
+	if cur.x >= 0:
+		out["cursor"] = [cur.x, cur.y]
+
+
+## The SubViewport a screenshot viewport= names: {sv} or {error}. A SubViewport, or the SubViewportContainer that
+## shows one (its first SubViewport child), found the way every other command finds a node.
+func _capture_subviewport(want: String) -> Dictionary:
+	var refused := subpath_refusal("viewport", want, "", false)
+	if not refused.is_empty():
+		return {"error": refused}
+	var tail := ". Pass a SubViewport, or the SubViewportContainer that shows it (find_nodes class=SubViewport lists them)"
+	var n := _resolve(want)
+	if n == null:
+		return {"error": "viewport: no node '%s' in the running game%s" % [_subpath_shown(want), tail]}
+	var sv := CaptureSource.subviewport_of(n)
+	if sv == null:
+		if n is SubViewportContainer:
+			return {"error": "viewport: %s holds no SubViewport" % UiInspect.path_of(n, _root())}
+		return {"error": "viewport: %s is a %s, not a SubViewport%s" % [UiInspect.path_of(n, _root()), n.get_class(), tail]}
+	return {"sv": sv}
+
+
+## ui_audit: deterministic layout QA over the live UI (checks in ui_inspect.gd).
+func _ui_audit(msg: Dictionary) -> Dictionary:
+	var vp := get_viewport()
+	if vp == null:
+		return {"ok": false, "error": "no viewport"}
+	if _root() == null:
+		return {"ok": false, "error": "no current scene"}
+	var scope: Node = get_tree().root
+	var p := str(msg.get("path", ""))
+	if not p.is_empty():
+		scope = _resolve(p)
+		if scope == null:
+			return {"ok": false, "error": _scope_miss(p)}
+	return UiInspect.audit(vp, get_tree().root, _root(), scope, msg)
+
+
+## The one resize factor a capture uses: the caller's `scale` dial, reduced further so the
+## long edge of a WxH frame lands inside max_dim (0 or less = no cap). Static and named so
+## the headless unit suite can pin it — annotation and the legend both ride on this number.
+## The math lives in capture_source.gd, where the editor's target=editor capture shares it.
+static func _capped_scale(scale: float, w: int, h: int, max_dim: int) -> float:
+	return CaptureSource.capped_scale(scale, w, h, max_dim)
+
+
+## Crop to region=[x,y,w,h] (pixels, clamped to bounds) to save tokens; returns the
+## image unchanged when no valid region is given.
+func _maybe_crop(img: Image, msg: Dictionary) -> Image:
+	var r = msg.get("region", null)
+	if not (r is Array and r.size() >= 4):
+		return img
+	var x := clampi(int(r[0]), 0, img.get_width() - 1)
+	var y := clampi(int(r[1]), 0, img.get_height() - 1)
+	var w := clampi(int(r[2]), 1, img.get_width() - x)
+	var h := clampi(int(r[3]), 1, img.get_height() - y)
+	return img.get_region(Rect2i(x, y, w, h))
+
+
+func _run_input(events: Array) -> Dictionary:
+	var count := 0
+	for e in events:
+		if not (e is Dictionary):
+			continue
+		var ev: InputEvent = InputCodec.build_event(e)
+		if ev != null:
+			_inject(ev)
+			count += 1
+	return {"ok": true, "dispatched": count}
+
+
+## Every synthetic event this autoload feeds the game goes through here, so what it pressed and nobody
+## released is remembered (see _release_held, the scene restart).
+## Positions arrive in the root's GUI space, the space every other position Beckett takes is in and the
+## one the recorder saw them in (_input runs after the root made the event local). Input.parse_input_event
+## takes WINDOW pixels, so they are carried there first: without it a click aimed with ui_snapshot's rect,
+## or a recorded one replayed, landed off by the content scale (2x, plus a KEEP margin, in the field).
+## (A build without runtime/drive_aim.gd is Lite, whose bridge never sends an input command: as it is, then.)
+func _inject(ie: InputEvent) -> void:
+	var ev := ie
+	var aim = _drive_aim()
+	var tree := get_tree()
+	if aim != null and tree != null:
+		ev = aim.gui_to_window(ie, tree.root)
+	Input.parse_input_event(ev)
+	InputCodec.track(_held, ev)
+
+
+## runtime/drive_aim.gd, loaded once and kept, or null in a build without it (Lite).
+func _drive_aim() -> Variant:
+	if _aim == null and ResourceLoader.exists(DRIVE_AIM_PATH):
+		_aim = load(DRIVE_AIM_PATH)
+	return _aim
+
+
+# ---------------------------------------------------------------- find (live nodes)
+
+func _find(msg: Dictionary) -> Dictionary:
+	var root := _root()
+	if root == null:
+		return {"ok": false, "error": "no current scene"}
+	var scope := root
+	var p := str(msg.get("path", ""))
+	if not p.is_empty():
+		scope = _resolve(p)
+		if scope == null:
+			return {"ok": false, "error": _scope_miss(p)}
+	var cls := str(msg.get("class", ""))
+	var text_q := str(msg.get("text", ""))
+	var name_q := str(msg.get("name", ""))
+	var recursive := CallArgs.flag(msg, "recursive", true)
+	var maxn := int(msg.get("max", 100))
+	var out: Array = []
+	for c in scope.get_children():
+		if out.size() >= maxn:
+			break
+		if recursive:
+			_find_walk(c, root, cls, text_q, name_q, out, maxn)
+		else:
+			_match_into(c, root, cls, text_q, name_q, out)
+	return {"ok": true, "nodes": out, "count": out.size()}
+
+
+func _find_walk(node: Node, root: Node, cls: String, text_q: String, name_q: String, out: Array, maxn: int) -> void:
+	if out.size() >= maxn:
+		return
+	_match_into(node, root, cls, text_q, name_q, out)
+	for c in node.get_children():
+		if out.size() >= maxn:
+			return
+		_find_walk(c, root, cls, text_q, name_q, out, maxn)
+
+
+func _match_into(node: Node, root: Node, cls: String, text_q: String, name_q: String, out: Array) -> void:
+	if not _class_match(node, cls):
+		return
+	var ntext := _node_text(node)
+	if text_q != "" and ntext.findn(text_q) == -1:
+		return
+	if name_q != "" and str(node.name).findn(name_q) == -1:
+		return
+	var entry := {"path": str(root.get_path_to(node)), "class": node.get_class()}
+	var gn := _script_global_name(node)
+	if gn != "":
+		entry["script"] = gn
+	if ntext != "":
+		entry["text"] = ntext
+	out.append(entry)
+
+
+## Match a class filter against BOTH the native class chain AND the custom script
+## class_name — is_class() alone misses custom nodes (they read as @Node@NN).
+func _class_match(node: Node, cls: String) -> bool:
+	if cls == "":
+		return true
+	if node.is_class(cls):
+		return true
+	var gn := _script_global_name(node)
+	return gn != "" and gn.nocasecmp_to(cls) == 0
+
+
+func _node_text(n: Node) -> String:
+	for p in n.get_property_list():
+		if str(p.get("name", "")) == "text":
+			return str(n.get("text"))
+	return ""
+
+
+# ---------------------------------------------------------------- click
+
+func _click_text(msg: Dictionary) -> Dictionary:
+	var root := _root()
+	if root == null:
+		return {"ok": false, "error": "no current scene"}
+	var under_refused := subpath_refusal("under", str(msg.get("under", "")), "", false)
+	if not under_refused.is_empty():
+		return {"ok": false, "error": under_refused}
+	# Same resolver as click_control, scoped to buttons: the two tools agree on the
+	# match set and nth ordering (a bare text selector elsewhere also scopes to BaseButton).
+	var sel := msg.duplicate()
+	if str(sel.get("class", "")) == "":
+		sel["class"] = "BaseButton"
+	var matches := _resolve_matches(sel)
+	var text := str(msg.get("text", ""))
+	if matches.is_empty():
+		var where := (" under %s" % str(msg.get("under", ""))) if str(msg.get("under", "")) != "" else ""
+		return {"ok": false, "error": "no button with text containing '%s'%s" % [text, where]}
+	if CallArgs.flag(msg, "all"):
+		var list: Array = []
+		for b in matches:
+			list.append({"path": str(root.get_path_to(b)), "text": _node_text(b), "class": b.get_class()})
+		return {"ok": true, "matches": list, "count": list.size()}
+	var idx := int(msg.get("nth", 0))
+	if idx < 0 or idx >= matches.size():
+		return {"ok": false, "error": "nth %d out of range (%d match(es) for '%s')" % [idx, matches.size(), text]}
+	var btn: Node = matches[idx]
+	var off := Internals.runtime_refusal(btn)
+	if not off.is_empty():
+		return {"ok": false, "error": off}
+	# v1.10 accuracy: a disabled button never fires in the real UI — emitting its
+	# 'pressed' anyway would hand the agent a fabricated success.
+	if UiInspect.is_disabled(btn):
+		return {"ok": true, "clicked": false, "path": str(root.get_path_to(btn)),
+			"warning": "button is disabled — 'pressed' not emitted (the real UI would ignore this click)"}
+	btn.emit_signal("pressed")
+	return {"ok": true, "clicked": true, "path": str(root.get_path_to(btn)), "match_count": matches.size()}
+
+
+## Click a Control by injecting press+release at its center straight into the
+## viewport in GUI space (push_input local). This bypasses the content-scale /
+## stretch transform that makes Input.parse_input_event miss buttons in containers.
+## The center is taken through the control's canvas transform (CanvasLayer scale and
+## offset, a Camera2D, a layer that follows the viewport) and UiInspect.route() carries
+## it up through each SubViewportContainer and embedded window, so the press is pushed
+## where Godot would hand a real click down to the control (1.17).
+##
+## Guards the false-positive where the target is scrolled out of a ScrollContainer:
+## a click there would silently miss (clipped) yet look successful. If the center is
+## clipped/off-screen we scroll it into view and report clicked=false (the re-sort is
+## deferred one frame) so the caller calls again to land the click — never a fake hit.
+func _click_control(msg: Dictionary) -> Dictionary:
+	# Clicking by bare text means "a button": scope it to BaseButton so nth indexes the
+	# SAME set/order as click_button_by_text. Without this, a text-only selector also
+	# counts Labels and other text-bearing nodes, shifting nth onto the wrong control.
+	if str(msg.get("text", "")) != "" and str(msg.get("class", "")) == "" \
+			and str(msg.get("path", "")) == "" and str(msg.get("name", "")) == "":
+		msg = msg.duplicate()
+		msg["class"] = "BaseButton"
+	var n := _resolve_target(msg)
+	if n == null:
+		return {"ok": false, "error": _not_found(msg)}
+	var off := Internals.runtime_refusal(n)
+	if not off.is_empty():
+		return {"ok": false, "error": off}
+	if not (n is Control):
+		return {"ok": false, "error": "not a Control (%s) — use simulate_input for non-Control targets" % n.get_class()}
+	# After the refusals above, which both editions give: the push point comes from a Full-only module.
+	var aim = _drive_aim()
+	if aim == null:
+		return {"ok": false, "error": "clicking a control is a Full-edition feature (runtime/drive_aim.gd is not part of this build)"}
+	var vp := get_viewport()
+	if vp == null:
+		return {"ok": false, "error": "no viewport"}
+	var ctrl := n as Control
+	var path := str(_root().get_path_to(ctrl))
+	if not ctrl.is_visible_in_tree():
+		return {"ok": true, "clicked": false, "path": path,
+			"warning": "control is hidden (not visible in tree) — nothing to click"}
+	# `center` is the point pushed: the control's center taken through its canvas transform and up
+	# the route, in the GUI space of the viewport the route lands in (the root, nearly always).
+	var rt: Dictionary = aim.click_route(ctrl, _root())
+	var center: Vector2 = rt["at"]
+	# v1.10 accuracy: a disabled control swallows clicks: pushing anyway would report
+	# a success the real UI can never produce.
+	if UiInspect.is_disabled(ctrl):
+		return {"ok": true, "clicked": false, "path": path, "at": [center.x, center.y],
+			"warning": "control is disabled: the click would be ignored (enable it first, or pick another control)"}
+	# A hidden or IGNORE SubViewportContainer, or input turned off on the way: no click from the screen
+	# gets there. clicked=false keeps it retryable inside wait_ms (a container that fades in).
+	if not str(rt["why"]).is_empty():
+		return {"ok": true, "clicked": false, "path": path, "at": [center.x, center.y], "warning": str(rt["why"])}
+	if UiInspect.route_clipped(ctrl, rt):
+		if not _scroll_into_view(ctrl):
+			return {"ok": true, "clicked": false, "scrolled": false, "path": path, "at": [center.x, center.y],
+				"warning": "control is off-screen/clipped and has no ScrollContainer ancestor to bring it into view"}
+		# Flush the deferred re-sort so the scrolled position applies THIS call (no retry).
+		_force_sort(ctrl)
+		rt = aim.click_route(ctrl, _root())
+		center = rt["at"]
+		if UiInspect.route_clipped(ctrl, rt):
+			return {"ok": true, "clicked": false, "scrolled": true, "path": path, "at": [center.x, center.y],
+				"warning": "scrolled toward view but still clipped (nested scroll?): call click_control again to land the click"}
+	# v1.10 accuracy: whoever is TOP-MOST at the point receives the event. If that is
+	# not the target (a popup on top, a modal overlay, a covering ColorRect with
+	# mouse_filter STOP), pushing would activate the WRONG control: refuse and name
+	# the blocker instead. hit_along runs that test at every level of the route (the root,
+	# then inside each SubViewport), and inside a dialog; whether a control reaches the
+	# dialog itself is not judged (window stacking is approximated: the pre-1.10 push).
+	# A level whose pick finds nothing means our approximation missed (a shape it does not
+	# model): fall through to the push, never block on a guess.
+	var hit := UiInspect.hit_along(ctrl, rt, rt["local"])
+	var receiver: Node = hit["receiver"]
+	var ignore_note := ""
+	if hit["blocker"] != null:
+		receiver = hit["blocker"]
+		if UiInspect.mouse_filter_of(ctrl) == Control.MOUSE_FILTER_IGNORE:
+			ignore_note = "target has mouse_filter=IGNORE: the click was delivered at its position; %s received it" \
+				% UiInspect.path_of(receiver, _root())
+		else:
+			return {"ok": true, "clicked": false, "path": path, "at": [center.x, center.y],
+				"occluded_by": UiInspect.path_of(receiver, _root()),
+				"warning": "occluded by %s (%s): that control would receive the click instead; close/dismiss it, or click it" \
+					% [UiInspect.path_of(receiver, _root()), receiver.get_class()]}
+	var button := int(msg.get("button", 1))
+	# Only a left press moves focus between embedded windows; any other press goes to the window that has it.
+	var focus_why: String = aim.press_focus_refusal(rt, button, _root())
+	if not focus_why.is_empty():
+		return {"ok": true, "clicked": false, "path": path, "at": [center.x, center.y], "warning": focus_why}
+	var push_vp: Viewport = rt["vp"]
+	var down := InputEventMouseButton.new()
+	down.button_index = button
+	down.pressed = true
+	down.position = center
+	down.global_position = center
+	push_vp.push_input(down, true)
+	var up := InputEventMouseButton.new()
+	up.button_index = button
+	up.pressed = false
+	up.position = center
+	up.global_position = center
+	push_vp.push_input(up, true)
+	var out := {"ok": true, "clicked": true, "path": path, "at": [center.x, center.y]}
+	if receiver != null and receiver != ctrl:
+		out["received_by"] = UiInspect.path_of(receiver, _root())
+	if push_vp != get_tree().root:
+		out["space"] = UiInspect.path_of(push_vp, _root())  # `at` is in this viewport's own pixels
+	var notes: Array = []
+	if ignore_note != "":
+		notes.append(ignore_note)
+	if bool(rt["direct"]):
+		notes.append("%s is not shown by a SubViewportContainer: the click was pushed straight into it" % UiInspect.path_of(push_vp, _root()))
+	for h in rt["hops"]:
+		var via: Node = (h as Dictionary)["via"]
+		if via is SubViewportContainer and via.get_script() != null and via.has_method("_propagate_input_event"):
+			notes.append("%s has a script _propagate_input_event, which can keep the click from %s" % [UiInspect.path_of(via, _root()), UiInspect.path_of((h as Dictionary)["vp"], _root())])
+	if not notes.is_empty():
+		out["note"] = "; ".join(PackedStringArray(notes))
+	return out
+
+
+## Scroll every ScrollContainer ancestor so ctrl becomes visible. Returns true if at
+## least one did (the position update is deferred to the next layout pass). Only those in
+## ctrl's own viewport: one above a SubViewport would scroll to a rect in another space.
+func _scroll_into_view(ctrl: Control) -> bool:
+	var did := false
+	var a := ctrl.get_parent()
+	while a != null and not (a is Viewport):
+		if a is ScrollContainer:
+			(a as ScrollContainer).ensure_control_visible(ctrl)
+			did = true
+		a = a.get_parent()
+	return did
+
+
+## Force every Container ancestor to re-sort its children NOW, instead of waiting for
+## the queued sort next frame — lets click_control scroll a control into view and click
+## it in the SAME call. Best-effort: if positions still aren't settled, the caller falls
+## back to the call-again path.
+func _force_sort(ctrl: Control) -> void:
+	var a := ctrl.get_parent()
+	while a != null:
+		if a is Container:
+			a.notification(Container.NOTIFICATION_SORT_CHILDREN)
+		a = a.get_parent()
+
+
+## Report a Control's rect in BOTH the root's GUI space (where it is drawn, and the space
+## click_control, drag, scroll and simulate_input aim in) and window pixels (content scale
+## and the window's own transform applied: what Input.parse_input_event and OS input use).
+## The gui values go through the control's canvas transform and UiInspect.route(), so a HUD
+## on a scaled CanvasLayer or a control inside a SubViewport or a dialog reports where it is
+## on screen, not where get_global_rect() puts it (1.17).
+func _control_rect(msg: Dictionary) -> Dictionary:
+	var n := _resolve_target(msg)
+	if n == null:
+		return {"ok": false, "error": _not_found(msg)}
+	if not (n is Control):
+		return {"ok": false, "error": "not a Control (%s)" % n.get_class()}
+	var ctrl := n as Control
+	if get_viewport() == null:
+		return {"ok": false, "error": "no viewport"}
+	var rt := UiInspect.route(ctrl.get_viewport(), _root())
+	var local := Rect2(Vector2.ZERO, ctrl.size)
+	var gxf: Transform2D = (rt["xf"] as Transform2D) * ctrl.get_global_transform_with_canvas()
+	var gr: Rect2 = gxf * local
+	var gc: Vector2 = gxf * (ctrl.size * 0.5)
+	var land: Viewport = rt["vp"]
+	var sxf: Transform2D = land.get_final_transform() * gxf
+	var sr: Rect2 = sxf * local
+	var sc: Vector2 = sxf * (ctrl.size * 0.5)
+	var rect := {
+		"path": str(_root().get_path_to(ctrl)),
+		"gui_rect": [gr.position.x, gr.position.y, gr.size.x, gr.size.y],
+		"gui_center": [gc.x, gc.y],
+		"screen_rect": [sr.position.x, sr.position.y, sr.size.x, sr.size.y],
+		"screen_center": [sc.x, sc.y],
+	}
+	if land != get_tree().root:
+		rect["space"] = UiInspect.path_of(land, _root())
+	return {"ok": true, "rect": rect}
+
+
+## One-call accessibility snapshot of the visible UI (v1.10) — the walker lives in
+## ui_inspect.gd; this just resolves the scope. Walks the whole SceneTree root by
+## default so autoload HUD layers and popup Windows outside the current scene show up.
+func _ui_snapshot(msg: Dictionary) -> Dictionary:
+	var vp := get_viewport()
+	if vp == null:
+		return {"ok": false, "error": "no viewport"}
+	if _root() == null:
+		return {"ok": false, "error": "no current scene"}
+	var scope: Node = get_tree().root
+	var p := str(msg.get("path", ""))
+	if not p.is_empty():
+		scope = _resolve(p)
+		if scope == null:
+			return {"ok": false, "error": _scope_miss(p)}
+	return UiInspect.snapshot(vp, get_tree().root, _root(), scope, msg)
+
+
+## Type a string into a focusable Control as REAL key events (each char an
+## InputEventKey carrying `unicode`), so text_changed / validation / max-length all
+## fire — unlike a programmatic `text =` set, which fires none of them. All chars land
+## within ONE frame, so LineEdit's deferred text_changed coalesces to a single emission
+## (paste semantics — same as a player hitting Ctrl+V). clear=true (default) replaces
+## the content (select_all first, so the first char overwrites); '\n' chars and
+## submit=true press Enter (LineEdit fires text_submitted).
+func _type_text(msg: Dictionary) -> Dictionary:
+	# A new call supersedes any open per-frame stream (no interleaving).
+	_typing_done = true
+	_typing_ctrl = null
+	# 'text' is the PAYLOAD to type here, not the text selector — strip it from the
+	# resolve spec or it would filter targets by their current text content.
+	var spec := msg.duplicate()
+	spec.erase("text")
+	var n := _resolve_target(spec)
+	if n == null:
+		return {"ok": false, "error": _not_found(spec)}
+	var off := Internals.runtime_refusal(n)
+	if not off.is_empty():
+		return {"ok": false, "error": off}
+	if not (n is Control):
+		return {"ok": false, "error": "not a Control (%s) — type_text drives focusable text inputs" % n.get_class()}
+	var ctrl := n as Control
+	var vp := get_viewport()
+	if vp == null:
+		return {"ok": false, "error": "no viewport"}
+	var path := str(_root().get_path_to(ctrl))
+	if not ctrl.is_visible_in_tree():
+		return {"ok": true, "typed": 0, "path": path, "warning": "control is hidden — nothing typed"}
+	if UiInspect.is_disabled(ctrl):
+		return {"ok": true, "typed": 0, "path": path, "warning": "control is disabled — nothing typed"}
+	if "editable" in ctrl and not bool(ctrl.get("editable")):
+		return {"ok": true, "typed": 0, "path": path, "warning": "control is not editable — nothing typed"}
+	if ctrl.focus_mode == Control.FOCUS_NONE:
+		return {"ok": false, "error": "%s has focus_mode NONE — it cannot take keyboard input; set focus_mode, or write the property with runtime_set_property (no signals)" % path}
+	ctrl.grab_focus()
+	if vp.gui_get_focus_owner() != ctrl:
+		return {"ok": false, "error": "could not focus %s — another control refuses to release focus" % path}
+	var text := str(msg.get("text", ""))
+	var submit := CallArgs.flag(msg, "submit")
+	if CallArgs.flag(msg, "clear", true):
+		if ctrl.has_method("select_all"):
+			ctrl.call("select_all")
+			if text.is_empty():
+				_push_key(vp, KEY_BACKSPACE, 0)
+		elif "text" in ctrl:
+			ctrl.set("text", "")
+	# v1.11 per_frame: queue the chars and let _process inject ONE per frame, so
+	# per-char handlers see real typing. The editor tool polls cmd=type_status.
+	if CallArgs.flag(msg, "per_frame"):
+		_typing_ctrl = ctrl
+		_typing_text = text
+		_typing_i = 0
+		_typing_submit = submit
+		_typing_done = text.is_empty() and not _typing_submit
+		_typing_error = ""
+		return {"ok": true, "per_frame": true, "path": path,
+			"queued": text.length() + (1 if submit else 0)}
+	var typed := 0
+	for i in text.length():
+		var code := text.unicode_at(i)
+		if code == 10:
+			_push_key(vp, KEY_ENTER, 0)  # newline: TextEdit inserts a break, LineEdit submits
+		else:
+			_push_key(vp, 0, code)
+		typed += 1
+	if submit:
+		_push_key(vp, KEY_ENTER, 0)
+	var out := {"ok": true, "typed": typed, "path": path, "submitted": submit}
+	# Read the text back so the agent sees what the field ACCEPTED (max_length,
+	# filters, and text_changed handlers included) without a second call.
+	if "text" in ctrl:
+		out["text_after"] = str(ctrl.get("text"))
+	return out
+
+
+## Press+release one key straight into the viewport. keycode may be 0 when the event
+## only carries text (`unicode`) — exactly how IME/soft-keyboard input arrives, and
+## what LineEdit/TextEdit insert from.
+func _push_key(vp: Viewport, keycode: int, unicode: int) -> void:
+	var down := InputEventKey.new()
+	down.keycode = keycode
+	down.physical_keycode = keycode
+	down.unicode = unicode
+	down.pressed = true
+	vp.push_input(down)
+	var up := InputEventKey.new()
+	up.keycode = keycode
+	up.physical_keycode = keycode
+	up.pressed = false
+	vp.push_input(up)
+
+
+## v1.11 per-frame typing: inject exactly one queued char (or the trailing Enter) per
+## process frame. Distinct frames = distinct deferred text_changed emissions - the
+## whole point; one-frame injection coalesces them into paste semantics.
+func _type_tick() -> void:
+	if _typing_done:
+		return
+	if _typing_ctrl == null or not is_instance_valid(_typing_ctrl) or not _typing_ctrl.is_visible_in_tree():
+		_typing_error = "target vanished mid-typing (%d of %d chars in)" % [_typing_i, _typing_text.length()]
+		_typing_done = true
+		_typing_ctrl = null
+		return
+	var vp := get_viewport()
+	if vp == null:
+		_typing_error = "no viewport"
+		_typing_done = true
+		return
+	if vp.gui_get_focus_owner() != _typing_ctrl:
+		_typing_ctrl.grab_focus()  # something stole focus between frames; take it back
+	if _typing_i < _typing_text.length():
+		var code := _typing_text.unicode_at(_typing_i)
+		if code == 10:
+			_push_key(vp, KEY_ENTER, 0)
+		else:
+			_push_key(vp, 0, code)
+		_typing_i += 1
+		return
+	if _typing_submit:
+		_push_key(vp, KEY_ENTER, 0)  # the submit Enter gets its own frame too
+		_typing_submit = false
+		return
+	_typing_done = true
+
+
+func _type_status() -> Dictionary:
+	var out := {"ok": true, "done": _typing_done, "typed": _typing_i}
+	if not _typing_error.is_empty():
+		out["warning"] = _typing_error
+	if _typing_ctrl != null and is_instance_valid(_typing_ctrl):
+		var r := _root()
+		if r != null:
+			out["path"] = str(r.get_path_to(_typing_ctrl))
+		if "text" in _typing_ctrl:
+			out["text_after"] = str(_typing_ctrl.get("text"))
+	return out
+
+
+## Click a 3D node by projecting its world origin to the screen through the camera that
+## renders it, then injecting motion+press+release there, for games that do their own
+## mouse picking (CollisionObject3D._input_event / a camera raycast from the cursor). The
+## camera of the node's own viewport is tried first, so a node inside a SubViewport is
+## clicked through that SubViewport's camera (runtime/world_click.gd).
+func _click_node3d(msg: Dictionary) -> Dictionary:
+	var n := _resolve_target(msg)
+	if n == null:
+		return {"ok": false, "error": _not_found(msg)}
+	var off := Internals.runtime_refusal(n)
+	if not off.is_empty():
+		return {"ok": false, "error": off}
+	if not (n is Node3D):
+		return {"ok": false, "error": "not a Node3D (%s)" % n.get_class()}
+	var n3 := n as Node3D
+	# Target the visible CENTER for meshes: their origin is often at (0,0,0) while the
+	# geometry sits elsewhere, so projecting the bare origin misses the screen. Use the
+	# world-space AABB center when the node is a VisualInstance3D.
+	var world: Vector3 = n3.global_position
+	if n3 is VisualInstance3D:
+		var ab: AABB = (n3 as VisualInstance3D).get_aabb()
+		if ab.size != Vector3.ZERO:
+			world = n3.global_transform * ab.get_center()
+	return _world_click(world, int(msg.get("button", 1)), str(_root().get_path_to(n3)), n3.get_viewport())
+
+
+## Click at a 3D WORLD position (unprojected through the root's camera, else a SubViewport's).
+func _click_world(msg: Dictionary) -> Dictionary:
+	var p: Variant = msg.get("position", null)
+	if not (p is Array and (p as Array).size() >= 3):
+		return {"ok": false, "error": "position must be [x, y, z]"}
+	return _world_click(_vec3(p), int(msg.get("button", 1)), "world")
+
+
+## The 3D click itself: which camera, the route to the viewport that takes the push, what will and will not
+## receive it (runtime/world_click.gd). Loaded when asked, not preloaded: it is a Full-edition module that
+## pack.ps1 trims from Lite, and a build without it says so instead of failing to parse.
+const WORLD_CLICK_PATH := "res://addons/beckett/runtime/world_click.gd"
+
+
+func _world_click(world: Vector3, button: int, label: String, node_vp: Viewport = null) -> Dictionary:
+	if not ResourceLoader.exists(WORLD_CLICK_PATH):
+		return {"ok": false, "error": "clicking the 3D world is a Full-edition feature (runtime/world_click.gd is not part of this build)"}
+	var impl = load(WORLD_CLICK_PATH)
+	if impl == null:
+		return {"ok": false, "error": "runtime/world_click.gd failed to load (the engine's own error above says why)"}
+	var tree := get_tree()
+	if tree == null or tree.root == null:
+		return {"ok": false, "error": "no viewport"}
+	return impl.click(tree.root, _root(), world, button, label, node_vp)
+
+
+func _vec3(v: Variant) -> Vector3:
+	if v is Array and v.size() >= 3:
+		return Vector3(v[0], v[1], v[2])
+	if v is Dictionary:
+		return Vector3(v.get("x", 0), v.get("y", 0), v.get("z", 0))
+	return Vector3.ZERO
+
+
+## Mouse-wheel scroll at a target Control's center (path/selector) or an explicit
+## gui-space position. amount>0 scrolls down, <0 up; |amount| = wheel notches.
+## A target's center goes up its route like click_control's (a list inside a SubViewport
+## or a dialog is scrolled where it is on screen); position= is in the root's GUI space.
+func _scroll_cmd(msg: Dictionary) -> Dictionary:
+	var vp := get_viewport()
+	if vp == null:
+		return {"ok": false, "error": "no viewport"}
+	var target: Control = null
+	if not msg.has("position"):
+		var n := _resolve_target(msg)
+		if n == null:
+			return {"ok": false, "error": _not_found(msg)}
+		var off := Internals.runtime_refusal(n)
+		if not off.is_empty():
+			return {"ok": false, "error": off}
+		if not (n is Control):
+			return {"ok": false, "error": "scroll target must be a Control, or give position=[x,y]"}
+		target = n as Control
+	var aim = _drive_aim()
+	if aim == null:
+		return {"ok": false, "error": "scrolling is a Full-edition feature (runtime/drive_aim.gd is not part of this build)"}
+	var amount := int(msg.get("amount", 1))
+	if amount == 0:
+		amount = 1
+	var btn := MOUSE_BUTTON_WHEEL_UP if amount < 0 else MOUSE_BUTTON_WHEEL_DOWN
+	# A wheel notch is a press that is not a left click: Godot hands it to whichever embedded window has focus, at
+	# the point it was aimed. A target is refused when that window does not hold it; a bare position only when it is
+	# outside that window (inside, the notch reaches what is drawn there, as a player's does).
+	var push_vp: Viewport = get_tree().root
+	var pos: Vector2
+	var focus_why := ""
+	if target == null:
+		pos = InputCodec.vec2(msg.get("position", []))
+		focus_why = aim.point_focus_refusal(push_vp, pos, btn, _root())
+	else:
+		var rt: Dictionary = aim.click_route(target, _root())
+		if not str(rt["why"]).is_empty():
+			return {"ok": false, "error": str(rt["why"])}
+		pos = rt["at"]
+		push_vp = rt["vp"]
+		focus_why = aim.press_focus_refusal(rt, btn, _root())
+	if not focus_why.is_empty():
+		return {"ok": false, "error": focus_why}
+	var notches := absi(amount)
+	for i in notches:
+		var down := InputEventMouseButton.new()
+		down.button_index = btn
+		down.pressed = true
+		down.factor = 1.0
+		down.position = pos
+		down.global_position = pos
+		push_vp.push_input(down, true)
+		var up := InputEventMouseButton.new()
+		up.button_index = btn
+		up.pressed = false
+		up.position = pos
+		up.global_position = pos
+		push_vp.push_input(up, true)
+	var out := {"ok": true, "scrolled": notches, "direction": "up" if amount < 0 else "down", "at": [pos.x, pos.y]}
+	if push_vp != get_tree().root:
+		out["space"] = UiInspect.path_of(push_vp, _root())
+	return out
+
+
+## Press at `from`, glide through interpolated motion to `to`, release — for sliders,
+## drag-and-drop, camera pans. Coordinates are gui-space (like click_control).
+func _drag_cmd(msg: Dictionary) -> Dictionary:
+	var vp := get_viewport()
+	if vp == null:
+		return {"ok": false, "error": "no viewport"}
+	var f: Variant = msg.get("from", null)
+	var t: Variant = msg.get("to", null)
+	if not (f is Array and (f as Array).size() >= 2 and t is Array and (t as Array).size() >= 2):
+		return {"ok": false, "error": "from and to must both be [x, y]"}
+	var from := InputCodec.vec2(f)
+	var to := InputCodec.vec2(t)
+	var button := int(msg.get("button", 1))
+	var mask := 1 << (button - 1)
+	var steps: int = clampi(int(msg.get("steps", 8)), 1, 60)
+	var down := InputEventMouseButton.new()
+	down.button_index = button
+	down.pressed = true
+	down.position = from
+	down.global_position = from
+	vp.push_input(down, true)
+	var prev := from
+	for i in range(1, steps + 1):
+		var p: Vector2 = from.lerp(to, float(i) / float(steps))
+		var mm := InputEventMouseMotion.new()
+		mm.position = p
+		mm.global_position = p
+		mm.relative = p - prev
+		mm.button_mask = mask
+		vp.push_input(mm, true)
+		prev = p
+	var up := InputEventMouseButton.new()
+	up.button_index = button
+	up.pressed = false
+	up.position = to
+	up.global_position = to
+	vp.push_input(up, true)
+	return {"ok": true, "dragged": true, "from": [from.x, from.y], "to": [to.x, to.y], "steps": steps}
+
+
+# ---------------------------------------------------------------- render diagnosis (v1.12)
+# "The node exists, visible is true, the log is clean, and I still see nothing."
+# Beckett could always show the agent that the IMAGE was wrong; it could not say which
+# STAGE made it wrong, so the only move left was guess-and-check against pixels. The
+# 2026-07-27 "3D meadow" oneshot lost 37 of 99 minutes to exactly that: a reversed index
+# buffer meant the whole terrain was backface-culled, every signal read healthy, and the
+# sky below the horizon got mistaken for ground — so lighting, fog, exposure and the
+# palette were all "fixed" on geometry that had never been drawn once.
+#
+# debug_draw isolates the stage visually; render_probe answers the same question in
+# NUMBERS, so the conclusion never depends on reading a picture correctly.
+
+# Viewport.DEBUG_DRAW_* by agent-facing name. Enum constants (not literals) so a renamed
+# value fails at parse time; all of these date to 4.0, safely under the 4.2 floor.
+const DEBUG_DRAW_MODES := {
+	"normal": Viewport.DEBUG_DRAW_DISABLED,
+	"unshaded": Viewport.DEBUG_DRAW_UNSHADED,
+	"lighting": Viewport.DEBUG_DRAW_LIGHTING,
+	"overdraw": Viewport.DEBUG_DRAW_OVERDRAW,
+	"wireframe": Viewport.DEBUG_DRAW_WIREFRAME,
+	"normal_buffer": Viewport.DEBUG_DRAW_NORMAL_BUFFER,
+}
+
+
+## Editor-facing properties of a LIVE node, so describe_object can answer for the running
+## game instead of failing on a /root/... path that every other runtime tool accepts.
+## Mirrors BeckettReflect.properties_of's filter (editor-visible, no group/category headers).
+func _describe_cmd(n: Node) -> Dictionary:
+	var props: Dictionary = {}
+	for p in n.get_property_list():
+		var usage := int(p.get("usage", 0))
+		if (usage & PROPERTY_USAGE_EDITOR) == 0:
+			continue
+		if (usage & PROPERTY_USAGE_GROUP) != 0 or (usage & PROPERTY_USAGE_CATEGORY) != 0:
+			continue
+		var nm := str(p.get("name", ""))
+		if nm.is_empty():
+			continue
+		props[nm] = _safe(n.get(nm))
+	return {"ok": true, "class": n.get_class(), "resolved": _path_of(n), "properties": props}
+
+
+func _debug_draw(msg: Dictionary) -> Dictionary:
+	var mode := str(msg.get("mode", "normal"))
+	if not DEBUG_DRAW_MODES.has(mode):
+		return {"ok": false,
+			"error": "unknown debug draw mode '%s'" % mode,
+			"suggestion": "one of: %s" % ", ".join(DEBUG_DRAW_MODES.keys())}
+	var vp := get_viewport()
+	if vp == null:
+		return {"ok": false, "error": "no viewport (headless run has no render target)"}
+	var out := {"ok": true, "mode": mode, "previous": _debug_draw_name(vp.debug_draw)}
+	if mode == "wireframe":
+		# Without this the wireframe pass has no geometry to draw and the screen goes black —
+		# the trap that makes wireframe look "broken" the first time anyone reaches for it.
+		RenderingServer.set_debug_generate_wireframes(true)
+		var method := ""
+		if RenderingServer.has_method("get_current_rendering_method"):
+			method = str(RenderingServer.call("get_current_rendering_method"))
+		if method == "gl_compatibility":
+			out["note"] = "the Compatibility renderer ignores wireframe debug draw — switch the renderer or use render_probe instead"
+	vp.debug_draw = DEBUG_DRAW_MODES[mode]
+	return out
+
+
+func _debug_draw_name(value: int) -> String:
+	for k in DEBUG_DRAW_MODES:
+		if int(DEBUG_DRAW_MODES[k]) == value:
+			return str(k)
+	return "other(%d)" % value
+
+
+## Answer "is this thing being drawn, and if not, which stage dropped it" as data:
+## visibility chain, cull mask vs the camera, frustum, distance/visibility range, material
+## and cull mode per surface, and the triangle winding the camera actually sees.
+func _render_probe(msg: Dictionary) -> Dictionary:
+	var n := _resolve_target(msg)
+	if n == null:
+		return {"ok": false, "error": _not_found(msg)}
+	if not (n is VisualInstance3D):
+		return {"ok": false,
+			"error": "%s is not a VisualInstance3D — render_probe answers 3D 'why can't I see it' questions" % n.get_class(),
+			"suggestion": "pass a MeshInstance3D / MultiMeshInstance3D path; for 2D and Control layout use ui_snapshot"}
+	var vi := n as VisualInstance3D
+	var warnings: Array = []
+	var out := {
+		"ok": true,
+		"path": _path_of(vi),
+		"class": vi.get_class(),
+		"visible": vi.visible,
+		"visible_in_tree": vi.is_visible_in_tree(),
+	}
+	if not vi.visible:
+		warnings.append("visible = false on this node")
+	elif not vi.is_visible_in_tree():
+		warnings.append("visible = true here, but an ancestor is hidden (visible_in_tree = false)")
+
+	var local_aabb := vi.get_aabb()
+	var world_aabb := vi.global_transform * local_aabb
+	out["aabb_world"] = {
+		"position": _v3a(world_aabb.position),
+		"size": _v3a(world_aabb.size),
+		"center": _v3a(world_aabb.get_center()),
+	}
+	if local_aabb.size.is_zero_approx():
+		warnings.append("the AABB is zero-sized — there is no geometry to draw (empty mesh, or no surfaces)")
+	var sc := vi.global_transform.basis.get_scale()
+	if is_zero_approx(sc.x) or is_zero_approx(sc.y) or is_zero_approx(sc.z):
+		warnings.append("global scale has a zero axis %s — the mesh collapses to nothing" % str(sc))
+
+	var cam := vi.get_viewport().get_camera_3d() if vi.get_viewport() != null else null
+	if cam == null:
+		warnings.append("no current Camera3D in this viewport — nothing 3D can be drawn at all")
+	else:
+		out["camera"] = {
+			"path": _path_of(cam),
+			"position": _v3a(cam.global_position),
+			"near": cam.near,
+			"far": cam.far,
+		}
+		var dist := cam.global_position.distance_to(world_aabb.get_center())
+		out["distance_m"] = snappedf(dist, 0.01)
+		out["in_frustum"] = _aabb_in_frustum(cam, world_aabb)
+		out["in_frustum_test"] = "aabb corners + center + camera-inside"
+		if not bool(out["in_frustum"]):
+			warnings.append("the AABB is outside the camera frustum — it is off-screen, not mis-shaded")
+		if dist > cam.far:
+			warnings.append("distance %.1fm is beyond the camera far plane (%.1fm)" % [dist, cam.far])
+		if (vi.layers & cam.cull_mask) == 0:
+			warnings.append("layers 0b%s and the camera cull_mask 0b%s do not overlap — this camera never renders this node" % [
+				String.num_uint64(vi.layers, 2), String.num_uint64(cam.cull_mask, 2)])
+		out["layers"] = vi.layers
+		out["camera_cull_mask"] = cam.cull_mask
+		if vi is GeometryInstance3D:
+			var gi := vi as GeometryInstance3D
+			if gi.visibility_range_end > 0.0 and dist > gi.visibility_range_end:
+				warnings.append("distance %.1fm is past visibility_range_end (%.1fm) — LOD culled it" % [dist, gi.visibility_range_end])
+			if dist < gi.visibility_range_begin:
+				warnings.append("distance %.1fm is nearer than visibility_range_begin (%.1fm)" % [dist, gi.visibility_range_begin])
+			out["cast_shadow"] = int(gi.cast_shadow)
+			out["transparency"] = gi.transparency
+			if is_equal_approx(gi.transparency, 1.0):
+				warnings.append("transparency = 1.0 — fully see-through")
+
+	var mesh: Mesh = null
+	if vi is MeshInstance3D:
+		mesh = (vi as MeshInstance3D).mesh
+		if mesh == null:
+			warnings.append("mesh is null — the MeshInstance3D has nothing assigned")
+	elif vi is MultiMeshInstance3D:
+		var mm := (vi as MultiMeshInstance3D).multimesh
+		if mm == null:
+			warnings.append("multimesh is null")
+		else:
+			mesh = mm.mesh
+			out["instance_count"] = mm.instance_count
+			out["visible_instance_count"] = mm.visible_instance_count
+			if mm.instance_count == 0:
+				warnings.append("instance_count = 0 — the MultiMesh has no instances to draw")
+			elif mm.visible_instance_count == 0:
+				warnings.append("visible_instance_count = 0 — every instance is suppressed (set it to -1 to draw them all)")
+
+	if mesh != null:
+		out["surfaces"] = _surface_report(vi, mesh, warnings)
+		var w := _winding_report(mesh, vi.global_transform, cam)
+		if not w.is_empty():
+			out["winding"] = w
+			_winding_warnings(w, out.get("surfaces", []), warnings)
+
+	if not warnings.is_empty():
+		out["warnings"] = warnings
+	else:
+		out["verdict"] = "nothing here explains an invisible mesh — the geometry reaches the camera; look at material colour, lighting, or what is drawn IN FRONT of it"
+	return out
+
+
+func _v3a(v: Vector3) -> Array:
+	return [snappedf(v.x, 0.001), snappedf(v.y, 0.001), snappedf(v.z, 0.001)]
+
+
+## surface_get_primitive_type lives on ArrayMesh, NOT on the Mesh base class, so calling it
+## blind blows up on every PrimitiveMesh (BoxMesh, PlaneMesh, SphereMesh...) — which is most
+## of what a scene is built from. A PrimitiveMesh is always triangles.
+func _primitive_of(mesh: Mesh, surface: int) -> int:
+	if mesh.has_method("surface_get_primitive_type"):
+		return int(mesh.call("surface_get_primitive_type", surface))
+	return Mesh.PRIMITIVE_TRIANGLES
+
+
+## Frustum test via the engine's own per-point answer, so no assumption is made about
+## which way Camera3D.get_frustum() plane normals face.
+func _aabb_in_frustum(cam: Camera3D, box: AABB) -> bool:
+	if box.has_point(cam.global_position):
+		return true
+	if cam.is_position_in_frustum(box.get_center()):
+		return true
+	for i in 8:
+		if cam.is_position_in_frustum(box.get_endpoint(i)):
+			return true
+	return false
+
+
+## Per-surface material state, resolved through the real override chain
+## (material_override > surface override > the mesh's own material).
+func _surface_report(vi: VisualInstance3D, mesh: Mesh, warnings: Array) -> Array:
+	const CULL_NAMES := ["back", "front", "disabled"]
+	var mi := vi as MeshInstance3D
+	var out: Array = []
+	for s in mesh.get_surface_count():
+		var mat: Material = null
+		if mi != null:
+			mat = mi.get_active_material(s)
+		else:
+			mat = mesh.surface_get_material(s)
+		var entry := {"index": s, "primitive": _primitive_of(mesh, s)}
+		if mat == null:
+			# Not a warning: a MeshInstance3D with no material draws with the engine's white
+			# default, which is normal. The null here is enough for an agent to notice.
+			entry["material"] = null
+			out.append(entry)
+			continue
+		entry["material"] = mat.get_class()
+		if mat is BaseMaterial3D:
+			var bm := mat as BaseMaterial3D
+			entry["cull_mode"] = CULL_NAMES[int(bm.cull_mode)] if int(bm.cull_mode) < CULL_NAMES.size() else str(bm.cull_mode)
+			entry["shading_mode"] = int(bm.shading_mode)
+			entry["transparency"] = int(bm.transparency)
+			entry["albedo"] = str(bm.albedo_color)
+			entry["no_depth_test"] = bm.no_depth_test
+			if bm.albedo_color.a <= 0.001:
+				warnings.append("surface %d albedo alpha is 0 — fully transparent" % s)
+		elif mat is ShaderMaterial:
+			var sm := mat as ShaderMaterial
+			var sh := sm.shader
+			entry["shader"] = str(sh.resource_path) if sh != null else null
+			if sh == null:
+				warnings.append("surface %d has a ShaderMaterial with no shader" % s)
+			else:
+				# The render_mode line is the only place a shader states its cull mode, and a
+				# stray cull_front there produces exactly the same invisible mesh as reversed
+				# winding — worth naming so the two are told apart.
+				var code := sh.code
+				if code.contains("cull_front"):
+					entry["cull_mode"] = "front (render_mode cull_front)"
+				elif code.contains("cull_disabled"):
+					entry["cull_mode"] = "disabled (render_mode cull_disabled)"
+				else:
+					entry["cull_mode"] = "back (shader default)"
+				if code.strip_edges().is_empty():
+					warnings.append("surface %d shader %s has empty code" % [s, str(sh.resource_path)])
+		out.append(entry)
+	return out
+
+
+## Sample the index buffer and answer the two winding questions that matter:
+## how many triangles face the camera right now, and whether the index order agrees with
+## the mesh's own normals. Godot treats CLOCKWISE winding as the FRONT face, which makes
+## the front-face normal (v2-v0) x (v1-v0) — the REVERSE of the habitual cross product.
+## (Verified against BoxMesh / SphereMesh / CylinderMesh / PlaneMesh, all unanimous.)
+func _winding_report(mesh: Mesh, xf: Transform3D, cam: Camera3D) -> Dictionary:
+	const MAX_SAMPLES := 1200
+	var facing := 0
+	var away := 0
+	var degenerate := 0
+	var agree := 0
+	var flipped := 0
+	var nan_verts := 0
+	var total_tris := 0
+	var sampled := 0
+	var cam_pos := cam.global_position if cam != null else Vector3.ZERO
+	for s in mesh.get_surface_count():
+		if _primitive_of(mesh, s) != Mesh.PRIMITIVE_TRIANGLES:
+			continue
+		var arr: Array = mesh.surface_get_arrays(s)
+		if arr.is_empty() or arr[Mesh.ARRAY_VERTEX] == null:
+			continue
+		var verts: PackedVector3Array = arr[Mesh.ARRAY_VERTEX]
+		var idx: PackedInt32Array = arr[Mesh.ARRAY_INDEX] if arr[Mesh.ARRAY_INDEX] != null else PackedInt32Array()
+		var norms: PackedVector3Array = arr[Mesh.ARRAY_NORMAL] if arr[Mesh.ARRAY_NORMAL] != null else PackedVector3Array()
+		var tris := (idx.size() / 3) if idx.size() > 0 else (verts.size() / 3)
+		total_tris += tris
+		if tris == 0:
+			continue
+		var step: int = maxi(1, tris / MAX_SAMPLES)
+		for t in range(0, tris, step):
+			var i0: int = idx[t * 3] if idx.size() > 0 else t * 3
+			var i1: int = idx[t * 3 + 1] if idx.size() > 0 else t * 3 + 1
+			var i2: int = idx[t * 3 + 2] if idx.size() > 0 else t * 3 + 2
+			var v0 := verts[i0]
+			var v1 := verts[i1]
+			var v2 := verts[i2]
+			if is_nan(v0.x) or is_nan(v1.x) or is_nan(v2.x):
+				nan_verts += 1
+				continue
+			# Godot: clockwise = front, so the outward normal is (v2-v0) x (v1-v0).
+			var face := (v2 - v0).cross(v1 - v0)
+			if face.length_squared() < 1e-12:
+				degenerate += 1
+				continue
+			sampled += 1
+			if norms.size() > i0:
+				var supplied := norms[i0]
+				if not is_nan(supplied.x) and supplied.length_squared() > 1e-12:
+					if face.normalized().dot(supplied.normalized()) > 0.0:
+						agree += 1
+					else:
+						flipped += 1
+			if cam != null:
+				var wv0 := xf * v0
+				var wface := (xf.basis * face)
+				if wface.dot(cam_pos - wv0) > 0.0:
+					facing += 1
+				else:
+					away += 1
+	if total_tris == 0:
+		return {}
+	var out := {"triangles": total_tris, "sampled": sampled, "degenerate": degenerate}
+	if nan_verts > 0:
+		out["nan_vertices"] = nan_verts
+	if cam != null:
+		out["facing_camera"] = facing
+		out["facing_away"] = away
+	var judged := agree + flipped
+	if judged == 0:
+		out["vs_normals"] = "no usable normals"
+	elif agree >= int(judged * 0.9):
+		out["vs_normals"] = "agree"
+	elif flipped >= int(judged * 0.9):
+		out["vs_normals"] = "reversed"
+	else:
+		out["vs_normals"] = "mixed (%d agree / %d reversed)" % [agree, flipped]
+	return out
+
+
+## Turn the winding numbers into the sentence the agent actually needs.
+func _winding_warnings(w: Dictionary, surfaces: Array, warnings: Array) -> void:
+	var culls_back := true
+	for s in surfaces:
+		if s is Dictionary and str(s.get("cull_mode", "back")).begins_with("disabled"):
+			culls_back = false
+	var sampled := int(w.get("sampled", 0))
+	if sampled > 0 and w.has("facing_camera") and int(w["facing_camera"]) == 0 and culls_back:
+		warnings.append("0 of %d sampled triangles face the camera while back-face culling is on — with Godot's CLOCKWISE-is-front convention this is a reversed index buffer, so the whole surface is culled away. Flip the winding, or set cull_mode/render_mode to disabled to confirm it in one step." % sampled)
+	if str(w.get("vs_normals", "")) == "reversed":
+		warnings.append("the index order disagrees with the mesh's own normals on nearly every sampled triangle — winding and normals were generated with opposite conventions")
+	if int(w.get("degenerate", 0)) > 0 and int(w.get("degenerate", 0)) >= sampled:
+		warnings.append("every sampled triangle is degenerate (zero area) — the vertex buffer is collapsed")
+	if int(w.get("nan_vertices", 0)) > 0:
+		warnings.append("%d sampled triangles contain NaN vertices — the whole surface is dropped by the GPU" % int(w["nan_vertices"]))
+
+
+## Hot-swap a .gdshader into every live ShaderMaterial that uses it, so a shader edit
+## costs one call instead of stop -> play -> wait -> re-place the camera (~40 s a round).
+func _reload_shader(msg: Dictionary) -> Dictionary:
+	var path := str(msg.get("path", ""))
+	if not path.begins_with("res://"):
+		return {"ok": false, "error": "path must be a res:// path to a .gdshader file"}
+	if not ResourceLoader.exists(path):
+		return {"ok": false, "error": "no such resource: %s" % path}
+	# CACHE_MODE_IGNORE is the whole point: the running game already holds the OLD text in
+	# its resource cache, so a plain load() would hand back exactly what we are replacing.
+	var res: Resource = ResourceLoader.load(path, "Shader", ResourceLoader.CACHE_MODE_IGNORE)
+	if res == null or not (res is Shader):
+		return {"ok": false, "error": "%s did not load as a Shader" % path}
+	var sh := res as Shader
+	var mats: Array = []
+	_collect_shader_materials(_root(), path, mats)
+	for m in mats:
+		(m as ShaderMaterial).shader = sh
+	var out := {"ok": true, "path": path, "swapped": mats.size()}
+	if mats.is_empty():
+		out["ok"] = false
+		out["error"] = "no live ShaderMaterial in the scene tree references %s" % path
+		out["suggestion"] = "the material may be created in code, assigned to a resource outside the tree, or the game may be running an older scene — check with render_probe on the node you expect to use it"
+		return out
+	# A shader with a compile error still LOADS; the GPU reports it when the frame draws.
+	# Say so rather than implying the swap validated anything.
+	out["note"] = "swapped into %d material(s); any compile error shows up in game_logs on the next frame" % mats.size()
+	return out
+
+
+func _collect_shader_materials(node: Node, path: String, out: Array) -> void:
+	if node == null:
+		return
+	if node is CanvasItem:
+		_note_shader_material((node as CanvasItem).material, path, out)
+	if node is GeometryInstance3D:
+		var gi := node as GeometryInstance3D
+		_note_shader_material(gi.material_override, path, out)
+		_note_shader_material(gi.material_overlay, path, out)
+	if node is MeshInstance3D:
+		var mi := node as MeshInstance3D
+		for s in mi.get_surface_override_material_count():
+			_note_shader_material(mi.get_surface_override_material(s), path, out)
+		if mi.mesh != null:
+			for s in mi.mesh.get_surface_count():
+				_note_shader_material(mi.mesh.surface_get_material(s), path, out)
+	for c in node.get_children():
+		_collect_shader_materials(c, path, out)
+
+
+func _note_shader_material(mat: Material, path: String, out: Array) -> void:
+	if mat == null:
+		return
+	if mat is ShaderMaterial:
+		var sm := mat as ShaderMaterial
+		if sm.shader != null and str(sm.shader.resource_path) == path and not out.has(sm):
+			out.append(sm)
+	# next_pass chains are materials too, and a missed one keeps drawing the stale shader.
+	if mat.next_pass != null:
+		_note_shader_material(mat.next_pass, path, out)
+
+
+func _safe(v: Variant) -> Variant:
+	var t := typeof(v)
+	if t == TYPE_OBJECT:
+		return str(v)
+	# A reply going out in binary (reply_line) carries a struct as it is, and the editor renders it (core/typed_json.gd).
+	if _typed_reply:
+		return v
+	# Stringify built-in math structs — JSON can't encode them and they'd come back
+	# as null (the global_rect / transform 'returns null' trap).
+	var structs := [TYPE_VECTOR2, TYPE_VECTOR2I, TYPE_VECTOR3, TYPE_VECTOR3I,
+		TYPE_VECTOR4, TYPE_VECTOR4I, TYPE_COLOR, TYPE_RECT2, TYPE_RECT2I,
+		TYPE_TRANSFORM2D, TYPE_TRANSFORM3D, TYPE_BASIS, TYPE_QUATERNION,
+		TYPE_AABB, TYPE_PLANE, TYPE_PROJECTION]
+	if t in structs:
+		return str(v)
+	return v
+
+
+func _perf_monitors() -> Dictionary:
+	var pairs := [
+		["fps", Performance.TIME_FPS],
+		["process_time", Performance.TIME_PROCESS],
+		["physics_process_time", Performance.TIME_PHYSICS_PROCESS],
+		["memory_static", Performance.MEMORY_STATIC],
+		["memory_static_max", Performance.MEMORY_STATIC_MAX],
+		["object_count", Performance.OBJECT_COUNT],
+		["resource_count", Performance.OBJECT_RESOURCE_COUNT],
+		["node_count", Performance.OBJECT_NODE_COUNT],
+		["orphan_node_count", Performance.OBJECT_ORPHAN_NODE_COUNT],
+		["draw_calls", Performance.RENDER_TOTAL_DRAW_CALLS_IN_FRAME],
+		["render_objects", Performance.RENDER_TOTAL_OBJECTS_IN_FRAME],
+		["render_primitives", Performance.RENDER_TOTAL_PRIMITIVES_IN_FRAME],
+		["video_mem_used", Performance.RENDER_VIDEO_MEM_USED],
+		["texture_mem", Performance.RENDER_TEXTURE_MEM_USED],
+		["buffer_mem", Performance.RENDER_BUFFER_MEM_USED],
+		["physics_2d_active", Performance.PHYSICS_2D_ACTIVE_OBJECTS],
+		["physics_3d_active", Performance.PHYSICS_3D_ACTIVE_OBJECTS],
+	]
+	var out: Dictionary = {}
+	for p in pairs:
+		out[p[0]] = Performance.get_monitor(p[1])
+	return out
+
+
+## What a perf number was measured ON, asked of the process that measured it. The editor cannot
+## say: a headless editor has no GPU adapter at all and still launches a windowed game. Read-only;
+## playtest op=run stamps these into a perf baseline and compares them on later runs. (The `eval`
+## command cannot do this: an Expression sees no engine singletons, only the scene root's members.)
+## perf_clock (1.17) is what timed frame_ms and fps in this game: runtime/replay_perf.gd's CLOCK.
+func _fingerprint() -> Dictionary:
+	var out := {
+		"ok": true,
+		"gpu": RenderingServer.get_video_adapter_name(),
+		"gpu_vendor": RenderingServer.get_video_adapter_vendor(),
+		"display": DisplayServer.get_name(),
+		"build": "debug" if OS.is_debug_build() else "release",
+		"perf_clock": str(ReplayPerf.CLOCK),
+	}
+	# The driver actually in use (vulkan, d3d12, opengl3...). Newer than the oldest engine this
+	# autoload has to parse on, so it is reached by name and simply left out where it is missing.
+	if RenderingServer.has_method("get_current_rendering_driver_name"):
+		out["rendering_driver"] = str(RenderingServer.call("get_current_rendering_driver_name"))
+	return out
+
+
+# ---------------------------------------------------------------- physics overlap oracle (playtest assert no_overlap)
+
+## The physics bodies of the running game that penetrate each other, and how deep (what is judged, and why the
+## defaults are what they are: runtime/physics_overlap.gd). Loaded when asked, not preloaded: it is a Full-edition
+## module that pack.ps1 trims from Lite, and a build without it says so instead of failing to parse.
+const PHYSICS_OVERLAP_PATH := "res://addons/beckett/runtime/physics_overlap.gd"
+
+
+func _physics_overlap(msg: Dictionary) -> Dictionary:
+	if not ResourceLoader.exists(PHYSICS_OVERLAP_PATH):
+		return {"ok": false, "error": "the physics overlap oracle is a Full-edition feature (runtime/physics_overlap.gd is not part of this build)"}
+	var impl = load(PHYSICS_OVERLAP_PATH)
+	if impl == null:
+		return {"ok": false, "error": "runtime/physics_overlap.gd failed to load (the engine's own error above says why)"}
+	var root := _root()
+	if root == null:
+		return {"ok": false, "error": "no current scene"}
+	return impl.run(get_tree(), root, msg, Callable(self, "_resolve"))
+
+
+# ---------------------------------------------------------------- log capture
+# (extracted to runtime/game_log_sink.gd in the v1.9.1 B7 split; `logs` cmd delegates)
+
+
+# (input codec + Logger sink construction both live in their own runtime/ modules now —
+# input_codec.gd and game_log_sink.gd; see the B7 split notes there.)

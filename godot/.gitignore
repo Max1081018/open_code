@@ -1,3 +1,7 @@
 .godot/
 *.tmp
 export/
+.mcp.json
+.beckett/
+.cursor/
+screenshots/*.import

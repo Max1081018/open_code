@@ -1,0 +1,43 @@
+[gd_scene load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://addons/godot_mcp_bridge/ui/status_panel.gd" id="1_status_panel"]
+
+[node name="MCPStatusPanel" type="Control"]
+custom_minimum_size = Vector2(0, 220)
+layout_mode = 3
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+script = ExtResource("1_status_panel")
+
+[node name="VBox" type="VBoxContainer" parent="."]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+
+[node name="Header" type="HBoxContainer" parent="VBox"]
+layout_mode = 2
+
+[node name="Title" type="Label" parent="VBox/Header"]
+layout_mode = 2
+text = "MCP Bridge"
+
+[node name="Ports" type="HBoxContainer" parent="VBox/Header"]
+layout_mode = 2
+
+[node name="Spacer" type="Control" parent="VBox/Header"]
+layout_mode = 2
+size_flags_horizontal = 3
+
+[node name="ToolCount" type="Label" parent="VBox/Header"]
+layout_mode = 2
+text = "0 tools"
+
+[node name="ToolList" type="Tree" parent="VBox"]
+layout_mode = 2
+size_flags_vertical = 3
