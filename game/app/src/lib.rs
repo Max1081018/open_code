@@ -316,8 +316,11 @@ struct HudText;
 #[derive(Component, Clone, Copy)]
 enum TouchControl {
     Stick,
+    /// The inner disc that follows the thumb inside the stick's ring.
+    StickKnob,
     Jump,
     Build,
+    Attack,
 }
 
 /// Chunks whose tiles changed and which must be re-composited.
@@ -938,14 +941,27 @@ fn setup(
 
     // On-screen controls. Positions and sizes are laid out each frame from
     // the real window size, so they follow rotation and screen size.
-    for control in [TouchControl::Stick, TouchControl::Jump, TouchControl::Build] {
+    for control in [
+        TouchControl::Stick,
+        TouchControl::StickKnob,
+        TouchControl::Jump,
+        TouchControl::Build,
+        TouchControl::Attack,
+    ] {
+        // The knob reads as the moving part, so it is brighter than the
+        // ring it sits in; the ring is only there to show the travel.
+        let alpha = match control {
+            TouchControl::StickKnob => 0.26,
+            _ => 0.10,
+        };
+
         commands.spawn((
             Node {
                 position_type: PositionType::Absolute,
                 border_radius: BorderRadius::MAX,
                 ..default()
             },
-            BackgroundColor(Color::srgba(1.0, 1.0, 1.0, 0.10)),
+            BackgroundColor(Color::srgba(1.0, 1.0, 1.0, alpha)),
             control,
         ));
     }
@@ -993,8 +1009,14 @@ fn setup(
 }
 
 /// Lay the thumb controls out for the current window size.
+///
+/// The movement stick floats: while a thumb holds it, its ring is drawn
+/// around wherever that thumb landed rather than at a fixed spot, and the
+/// knob inside tracks the thumb. A control that is drawn somewhere other
+/// than where it actually is would be worse than no drawing at all.
 fn layout_touch_controls(
     windows: Query<&Window>,
+    touches: Res<Touches>,
     mut controls_ui: Query<(&mut Node, &TouchControl)>,
 ) {
     let Ok(window) = windows.single() else {
@@ -1002,11 +1024,35 @@ fn layout_touch_controls(
     };
     let controls = Controls::new(window.width(), window.height());
 
+    let held = touches.iter().find(|touch| {
+        let at = touch.start_position();
+        controls.zone_at(at.x, at.y) == Zone::Stick
+    });
+
+    let (ring, knob_x) = match held {
+        Some(touch) => {
+            let anchor = touch.start_position();
+            let centre = (anchor.x, anchor.y);
+            (
+                centre,
+                centre.0 + controls.knob_offset(anchor.x, touch.position().x),
+            )
+        }
+        None => {
+            let centre = controls.stick_centre();
+            (centre, centre.0)
+        }
+    };
+
     for (mut node, which) in &mut controls_ui {
         let (centre, radius) = match which {
-            TouchControl::Stick => (controls.stick_centre(), controls.stick_radius()),
+            TouchControl::Stick => (ring, controls.stick_radius()),
+            TouchControl::StickKnob => {
+                ((knob_x, ring.1), controls.stick_radius() * 0.40)
+            }
             TouchControl::Jump => (controls.jump_centre(), controls.button_radius()),
             TouchControl::Build => (controls.build_centre(), controls.button_radius()),
+            TouchControl::Attack => (controls.attack_centre(), controls.button_radius()),
         };
 
         node.left = Val::Px(centre.0 - radius);
@@ -1049,12 +1095,17 @@ fn step_player(
 
     if let Some(controls) = controls_for(&windows) {
         for touch in touches.iter() {
+            // Classify by where the thumb landed, steer by where it is
+            // now. The stick then floats to meet the thumb instead of
+            // making the player find it, and sliding past its edge
+            // mid-run no longer drops the input.
+            let anchor = touch.start_position();
             let point = touch.position();
 
-            match controls.zone_at(point.x, point.y) {
-                Zone::Stick => move_dir += controls.stick_axis(point.x, point.y),
+            match controls.zone_at(anchor.x, anchor.y) {
+                Zone::Stick => move_dir += controls.axis_from(anchor.x, point.x),
                 Zone::Jump => jump = true,
-                Zone::Build | Zone::World => {}
+                Zone::Attack | Zone::Build | Zone::World => {}
             }
         }
     }
@@ -1235,9 +1286,36 @@ fn step_monsters(
     }
 }
 
+/// Whether the player asked to swing this frame.
+///
+/// Both attack systems went through `MouseButton::Left` alone, which meant
+/// that on the platform this game is built for there was no way to fight
+/// at all: swords, four bosses and every enemy, unreachable. The attack
+/// button answers for touch.
+fn swing_requested(
+    mouse: &ButtonInput<MouseButton>,
+    touches: &Touches,
+    windows: &Query<&Window>,
+) -> bool {
+    if mouse.just_pressed(MouseButton::Left) {
+        return true;
+    }
+
+    let Some(controls) = controls_for(windows) else {
+        return false;
+    };
+
+    touches.iter_just_pressed().any(|touch| {
+        let at = touch.start_position();
+        controls.zone_at(at.x, at.y) == Zone::Attack
+    })
+}
+
 /// Swing at whatever enemy is nearest the aim point.
 fn attack_monsters(
     mouse: Res<ButtonInput<MouseButton>>,
+    touches: Res<Touches>,
+    windows: Query<&Window>,
     target: Res<Target>,
     mut monsters: ResMut<Monsters>,
     mut player: ResMut<Player>,
@@ -1245,7 +1323,7 @@ fn attack_monsters(
     mut sounds: ResMut<SoundQueue>,
     mut quests: ResMut<Quests>,
 ) {
-    if !mouse.just_pressed(MouseButton::Left) {
+    if !swing_requested(&mouse, &touches, &windows) {
         return;
     }
 
@@ -2065,14 +2143,17 @@ fn animate_player(
 /// Swing at a boss. Bosses are large, so they are easier to connect with.
 fn attack_bosses(
     mouse: Res<ButtonInput<MouseButton>>,
+    touches: Res<Touches>,
+    windows: Query<&Window>,
     target: Res<Target>,
     player: Res<Player>,
     mut bosses: ResMut<Bosses>,
 ) {
-    let swing = attack_damage(&player.inventory);
-    if !mouse.just_pressed(MouseButton::Left) {
+    if !swing_requested(&mouse, &touches, &windows) {
         return;
     }
+
+    let swing = attack_damage(&player.inventory);
 
     let Some((tile_x, tile_y)) = target.0 else {
         return;
