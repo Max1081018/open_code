@@ -188,3 +188,12 @@ gradle assembleDebug
 - androidx.security-crypto 1.1.0 for keystore-backed key storage (`:app`)
 - CameraX 1.3.4 with ExifInterface (`:camera`)
 - minSdk 24, targetSdk 34
+
+---
+
+## Games
+
+| Game | Directory | Engine |
+| --- | --- | --- |
+| **Lanternbound** | `godot/` | Godot 4.4 — the current game; see `godot/README.md` |
+| Deepdelve | `game/` | Rust + Bevy — the earlier prototype, kept as a reference |

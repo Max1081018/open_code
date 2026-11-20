@@ -418,31 +418,36 @@ func is_night() -> bool:
 
 
 func _update_lighting() -> void:
-	var view := visible_cells().grow(10)
+	# Six tiles of margin is enough for light to bleed in from the edge;
+	# lights further out still seed the cells they reach (see below), so a
+	# wider margin only bought cost — it was most of the update.
+	var view := visible_cells().grow(6)
 	light_map.resize(view)
 	light_map.clear()
 
 	var sky := sky_light()
-	for x in range(view.position.x, view.end.x):
-		if x < 0 or x >= data.width:
-			continue
-		# Direct sunlight reaches down to the first solid cell of a column.
-		var y := 0
-		while y < view.end.y and not data.is_solid(x, y):
-			if y >= view.position.y:
-				light_map.seed_cell(x, y, sky)
-			y += 1
-		if y >= view.position.y and y < view.end.y:
-			light_map.seed_cell(x, y, sky * 0.85)
-
-	for y in range(max(view.position.y, 0), min(view.end.y, data.height)):
-		for x in range(max(view.position.x, 0), min(view.end.x, data.width)):
-			var ore := data.get_ore(x, y)
-			if ore == WorldData.GLOWSHARD:
+	var tiles := data.tiles
+	var ores := data.ores
+	var liquids := data.liquids
+	var walls := data.walls
+	var w := data.width
+	var y0 := maxi(view.position.y, 0)
+	var y1 := mini(view.end.y, data.height)
+	for x in range(maxi(view.position.x, 0), mini(view.end.x, w)):
+		# Direct sunlight down to the first solid cell of the column.
+		var depth := data.sky_depth[x]
+		for y in range(y0, mini(depth, y1)):
+			light_map.seed_cell(x, y, sky)
+		if depth >= y0 and depth < y1:
+			light_map.seed_cell(x, depth, sky * 0.85)
+		# Glowing ore, lava and crystal air, in the same sweep.
+		for y in range(y0, y1):
+			var i := y * w + x
+			if ores[i] == WorldData.GLOWSHARD:
 				light_map.seed_cell(x, y, GLOWSHARD_LIGHT)
-			if data.get_liquid(x, y) == WorldData.LAVA:
+			elif liquids[i] == WorldData.LAVA:
 				light_map.seed_cell(x, y, LAVA_LIGHT)
-			elif data.get_wall(x, y) == WorldData.CRYSTAL and not data.is_solid(x, y):
+			elif walls[i] == WorldData.CRYSTAL and tiles[i] == WorldData.AIR:
 				light_map.seed_cell(x, y, CRYSTAL_AMBIENT)
 
 	for key in _lit_objects:

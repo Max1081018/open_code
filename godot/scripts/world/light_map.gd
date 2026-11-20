@@ -74,59 +74,80 @@ func seed_radial(centre: Vector2, radius: float, color: Color, data: WorldData) 
 
 
 ## Spread the seeded light. `data` supplies what blocks it.
+##
+## Written for speed rather than elegance: this runs up to twenty times a
+## second on a phone. Per-cell helper calls were ~45,000 function calls an
+## update and the single biggest cost, so the pull is inlined and the
+## world is read straight from its byte arrays.
 func propagate(data: WorldData) -> void:
 	var w := region.size.x
 	var h := region.size.y
 	var falloff := PackedFloat32Array()
 	falloff.resize(w * h)
+	var tiles := data.tiles
+	var liquids := data.liquids
+	var dw := data.width
+	var dh := data.height
 	for ly in h:
+		var y := ly + region.position.y
 		for lx in w:
 			var x := lx + region.position.x
-			var y := ly + region.position.y
-			var f := AIR_FALLOFF
-			if data.is_solid(x, y):
-				f = SOLID_FALLOFF
-			elif data.get_liquid(x, y) == WorldData.WATER:
-				f = WATER_FALLOFF
+			var f := SOLID_FALLOFF
+			if x >= 0 and y >= 0 and x < dw and y < dh:
+				var i := y * dw + x
+				if tiles[i] == WorldData.AIR:
+					f = WATER_FALLOFF if liquids[i] == WorldData.WATER else AIR_FALLOFF
 			falloff[ly * w + lx] = f
 
-	# Rightward and downward, then leftward and upward. Two diagonal-order
-	# sweeps reach every cell from every direction within one update.
-	for ly in h:
-		for lx in w:
-			var i := ly * w + lx
-			if lx > 0:
-				_pull(i, i - 1, falloff[i])
-			if ly > 0:
-				_pull(i, i - w, falloff[i])
-	for ly in range(h - 1, -1, -1):
-		for lx in range(w - 1, -1, -1):
-			var i := ly * w + lx
-			if lx < w - 1:
-				_pull(i, i + 1, falloff[i])
-			if ly < h - 1:
-				_pull(i, i + w, falloff[i])
+	_sweep_forward(w, h, falloff)
+	_sweep_backward(w, h, falloff)
 	# A second forward pass lets light turn corners it reached only on the
 	# backward sweep.
+	_sweep_forward(w, h, falloff)
+
+
+func _sweep_forward(w: int, h: int, falloff: PackedFloat32Array) -> void:
 	for ly in h:
+		var row := ly * w
 		for lx in w:
-			var i := ly * w + lx
+			var i := row + lx
+			var f := falloff[i]
+			var best_r := r[i]
+			var best_g := g[i]
+			var best_b := b[i]
 			if lx > 0:
-				_pull(i, i - 1, falloff[i])
+				best_r = maxf(best_r, r[i - 1] * f)
+				best_g = maxf(best_g, g[i - 1] * f)
+				best_b = maxf(best_b, b[i - 1] * f)
 			if ly > 0:
-				_pull(i, i - w, falloff[i])
+				best_r = maxf(best_r, r[i - w] * f)
+				best_g = maxf(best_g, g[i - w] * f)
+				best_b = maxf(best_b, b[i - w] * f)
+			r[i] = best_r
+			g[i] = best_g
+			b[i] = best_b
 
 
-func _pull(into: int, from: int, f: float) -> void:
-	var v := r[from] * f
-	if v > r[into]:
-		r[into] = v
-	v = g[from] * f
-	if v > g[into]:
-		g[into] = v
-	v = b[from] * f
-	if v > b[into]:
-		b[into] = v
+func _sweep_backward(w: int, h: int, falloff: PackedFloat32Array) -> void:
+	for ly in range(h - 1, -1, -1):
+		var row := ly * w
+		for lx in range(w - 1, -1, -1):
+			var i := row + lx
+			var f := falloff[i]
+			var best_r := r[i]
+			var best_g := g[i]
+			var best_b := b[i]
+			if lx < w - 1:
+				best_r = maxf(best_r, r[i + 1] * f)
+				best_g = maxf(best_g, g[i + 1] * f)
+				best_b = maxf(best_b, b[i + 1] * f)
+			if ly < h - 1:
+				best_r = maxf(best_r, r[i + w] * f)
+				best_g = maxf(best_g, g[i + w] * f)
+				best_b = maxf(best_b, b[i + w] * f)
+			r[i] = best_r
+			g[i] = best_g
+			b[i] = best_b
 
 
 func at(x: int, y: int) -> Color:

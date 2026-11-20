@@ -28,6 +28,12 @@ func _initialize() -> void:
 
 	for file in files:
 		var script: GDScript = load("res://tests/" + file)
+		# A suite that fails to parse has no methods to list, which would
+		# otherwise read as "nothing failed". Count it as a failure.
+		if script == null or not script.can_instantiate():
+			failed += 1
+			printerr("FAIL %s: does not compile" % file)
+			continue
 		for method in script.get_script_method_list():
 			var name: String = method.name
 			if not name.begins_with("test_"):

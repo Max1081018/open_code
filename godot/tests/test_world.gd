@@ -222,3 +222,30 @@ func test_full_size_generation_is_fast_enough_for_a_phone() -> void:
 	var seconds := (Time.get_ticks_msec() - started) / 1000.0
 	# A desktop core is several times a phone's; keep generous headroom.
 	check(seconds < 6.0, "generation took %.2fs" % seconds)
+
+
+func test_sunlight_depth_tracks_digging_and_building() -> void:
+	# The lighting reads a cached "first solid row" per column; it must
+	# follow every change or shafts stay dark and roofs leak light.
+	var w := WorldData.new(8, 20)
+	for x in 8:
+		for y in range(10, 20):
+			w.set_tile(x, y, WorldData.ROCK)
+	w.recompute_all_sky()
+	check_eq(w.sky_depth[3], 10, "sunlight stops at the ground")
+	w.set_tile(3, 10, WorldData.AIR)
+	w.set_tile(3, 11, WorldData.AIR)
+	check_eq(w.sky_depth[3], 12, "digging a shaft lets the sun further down")
+	w.set_tile(3, 4, WorldData.PLANKS)
+	check_eq(w.sky_depth[3], 4, "a roof stops it higher up")
+	w.set_tile(3, 4, WorldData.AIR)
+	check_eq(w.sky_depth[3], 12, "removing the roof restores the shaft")
+	w.set_tile(5, 15, WorldData.AIR)
+	check_eq(w.sky_depth[5], 10, "a buried pocket does not see the sky")
+
+
+func test_a_loaded_world_rebuilds_its_sunlight_depths() -> void:
+	var a := WorldData.new(60, 120)
+	a.generate(5)
+	var b := WorldData.from_dict(bytes_to_var(var_to_bytes(a.to_dict())))
+	check(a.sky_depth == b.sky_depth, "derived state rebuilt identically on load")

@@ -61,6 +61,11 @@ var ores := PackedByteArray()
 var liquids := PackedByteArray()
 var surface := PackedInt32Array()
 var biome_columns := PackedByteArray()
+## First solid row of each column, kept current as tiles change: the
+## lighting asks "how far down does sunlight reach" for every visible
+## column several times a second, and scanning from the sky each time
+## was the single most expensive thing it did.
+var sky_depth := PackedInt32Array()
 
 ## cell index -> {"type": String, ...}. Trees, torches, chests, stations.
 var objects := {}
@@ -78,6 +83,7 @@ func _init(w: int = WIDTH, h: int = HEIGHT) -> void:
 	liquids.resize(w * h)
 	surface.resize(w)
 	biome_columns.resize(w)
+	sky_depth.resize(w)
 
 
 # =============================================================================
@@ -103,6 +109,22 @@ func set_tile(x: int, y: int, material: int) -> void:
 		tiles[y * width + x] = material
 		if material == AIR:
 			ores[y * width + x] = ORE_NONE
+			if y == sky_depth[x]:
+				_recompute_sky(x)
+		elif y < sky_depth[x]:
+			sky_depth[x] = y
+
+
+func _recompute_sky(x: int) -> void:
+	var y := 0
+	while y < height and tiles[y * width + x] == AIR:
+		y += 1
+	sky_depth[x] = y
+
+
+func recompute_all_sky() -> void:
+	for x in width:
+		_recompute_sky(x)
 
 
 func is_solid(x: int, y: int) -> bool:
@@ -233,6 +255,7 @@ func generate(world_seed: int, progress := Callable()) -> void:
 	_place_geode()
 	_report(progress, 0.95)
 	_seal_edges()
+	recompute_all_sky()
 	_report(progress, 1.0)
 
 
@@ -633,4 +656,5 @@ static func from_dict(data: Dictionary) -> WorldData:
 	w.objects = data.objects
 	w.spawn = data.spawn
 	w.vault = data.vault
+	w.recompute_all_sky()
 	return w
