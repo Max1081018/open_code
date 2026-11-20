@@ -1,0 +1,22 @@
+Sounds from Soundza — https://soundza.com
+=========================================
+Licensed under the Soundza Standard License: https://soundza.com/license
+Free for commercial and personal use. No attribution required (a link back is appreciated).
+Do not redistribute the files on their own or in a sample pack, resell them, or train AI on them.
+
+The files in this directory have been converted from the originals to mono
+16-bit 22.05 kHz by tools/prepare_sfx.py, and trimmed, level-matched and
+edge-faded. See ASSET_CATALOG.md.
+
+Sounds:
+
+- dig.wav    — "Stones 4" — https://soundza.com/sound/stones-4
+- break.wav  — "Stones 2" — https://soundza.com/sound/stones-2-1
+- hit.wav    — "Blade 3" — https://soundza.com/sound/blade-3
+- hurt.wav   — "Male Pain Grunts" — https://soundza.com/sound/male-pain-grunts
+- jump.wav   — "Footstep on Dirt and Gravel" — https://soundza.com/sound/footstep-on-dirt-and-gravel
+- land.wav   — "Dirt Gravel Footstep Short" — https://soundza.com/sound/dirt-gravel-footstep-short
+- pickup.wav — "Gem 3" — https://soundza.com/sound/gem-3
+- craft.wav  — "Metal Hammer Hit 2" — https://soundza.com/sound/metal-hammer-hit-2
+- roar.wav   — "Creature Roar 2" — https://soundza.com/sound/creature-roar-2
+- click.wav  — "Lock 1" — https://soundza.com/sound/lock-1
