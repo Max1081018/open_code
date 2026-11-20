@@ -21,10 +21,14 @@ and shading style.
 | Background Elements Remastered | trees for every biome, bushes, cacti, clouds, sun, moon | |
 | UI Pack – Adventure | panels, buttons, checkboxes, banners | |
 | Mobile Controls (Style A) | joystick pad and nub, action buttons, icons | |
+| Foliage Pack | ground cover: three grasses (`foliagePack_018–020`) and three flowers (`foliagePack_001–003`) in `scenery/foliage/` | swayed by `shaders/sway.gdshader` |
 | Particle Pack, Light Masks | flames, sparks, dust, smoke, slashes, motes, glow halos | |
 | Survival Kit, Graveyard Kit (3D) | chest, workbench, anvil, grindstone, campfire, barrel, bottle, wood, lanterns, obelisk (wardstone), altar, signpost | rendered to sprites by `tools/render_props.gd` |
 
 ### Derived in `build_assets.py`
+
+- **Leaf** (`fx/leaf.png`): drawn procedurally in `build_foliage()`; no
+  outside source.
 
 - **Terrain atlas** (`tiles/terrain.png`): 9 materials × 16 neighbour masks.
   Two materials are derived: *soil* (grass soil with the grass cap recoloured
