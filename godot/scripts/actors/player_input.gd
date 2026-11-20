@@ -8,6 +8,7 @@ var jump_held := false
 var jump_pressed := false
 var use_held := false  ## using the held item at `aim`
 var aim := Vector2.ZERO  ## world position
+var hover := Vector2.INF  ## mouse position in the world (desktop), INF on touch
 var attack_pressed := false
 var interact_pressed := false
 var block_held := false  ## raising the shield

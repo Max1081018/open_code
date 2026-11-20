@@ -273,6 +273,7 @@ func _refresh_held() -> void:
 
 func _use_items(delta: float) -> void:
 	aim_marker.visible = false
+	_update_ghost()
 	if input.attack_pressed:
 		attack()
 
@@ -477,37 +478,97 @@ func _cancel_mining() -> void:
 	crack.visible = false
 
 
+var ghost: PlacementGhost
+
+
+## While holding something buildable, preview it where it would go: under
+## the finger while it is down, under the mouse on a desktop.
+func _update_ghost() -> void:
+	if ghost == null:
+		ghost = PlacementGhost.new()
+		world.add_child(ghost)
+	var id := held_id()
+	var kind := Items.kind(id) if id != "" else -1
+	var point: Vector2 = input.aim if input.use_held else input.hover
+	if not (kind in [Items.Kind.BLOCK, Items.Kind.PLACEABLE]) or point == Vector2.INF:
+		ghost.hide_ghost()
+		return
+	var cell := World.cell_of(point)
+	ghost.show_at(cell, Items.icon(id), placement_problem(id, cell))
+
+
+## Why an item cannot go in a cell, or "" if it can. The placement ghost
+## shows the same verdict the game will apply.
+func placement_problem(id: String, target: Vector2i) -> String:
+	var data := world.data
+	var centre := global_position - Vector2(0, 100)
+	if Vector2(centre / TILE).distance_to(Vector2(target) + Vector2(0.5, 0.5)) > REACH:
+		return "Too far"
+	if data.is_solid(target.x, target.y) or not world.object_at(target).is_empty():
+		return "Occupied"
+	if data.get_liquid(target.x, target.y) == WorldData.LAVA:
+		return "Lava"
+	# Never build into yourself.
+	var feet := World.cell_of(global_position + Vector2(0, -4))
+	if target.x == feet.x and target.y >= feet.y - 1 and target.y <= feet.y:
+		return "You're standing there"
+	var d := Items.def(id)
+	if d.get("kind", -1) == Items.Kind.BLOCK:
+		if data.get_wall(target.x, target.y) != WorldData.AIR:
+			return ""
+		for offset in [Vector2i.UP, Vector2i.DOWN, Vector2i.LEFT, Vector2i.RIGHT]:
+			if data.is_solid(target.x + offset.x, target.y + offset.y):
+				return ""
+		return "Needs support"
+	if not data.is_solid(target.x, target.y + 1):
+		return "Needs ground"
+	return ""
+
+
 func _place(id: String, target: Vector2i) -> void:
 	if _use_cooldown > 0.0:
 		return
-	var data := world.data
-	if data.is_solid(target.x, target.y) or not world.object_at(target).is_empty():
-		return
-	# Never build a block into yourself.
-	var feet := World.cell_of(global_position + Vector2(0, -4))
-	if target.x == feet.x and target.y >= feet.y - 1 and target.y <= feet.y:
+	if placement_problem(id, target) != "":
 		return
 	var d := Items.def(id)
 	if d.kind == Items.Kind.BLOCK:
-		var supported := data.get_wall(target.x, target.y) != WorldData.AIR
-		for offset in [Vector2i.UP, Vector2i.DOWN, Vector2i.LEFT, Vector2i.RIGHT]:
-			if data.is_solid(target.x + offset.x, target.y + offset.y):
-				supported = true
-		if not supported:
-			return
 		world.set_block(target, d.block)
+		_build_effect(target, false)
 	else:
-		if not data.is_solid(target.x, target.y + 1):
-			return  # placeables stand on something
 		var object := {"type": d.object}
 		if d.object == "chest":
 			object["loot"] = []
 		world.add_object(target, object)
+		_build_effect(target, true)
 	inventory.remove_at(hotbar_index, 1)
 	_use_cooldown = 0.16
 	_swing("place", 0.22)
 	Sfx.play("land", -2.0)
 	level.on_placed(target, id)
+
+
+## Something built: a flash of the new cell and a puff of dust; an object
+## pops up out of the ground rather than appearing.
+func _build_effect(cell: Vector2i, object: bool) -> void:
+	var at := World.centre_of(cell)
+	Effects.burst(level.fx_layer, at + Vector2(0, 50), "smoke", Color(0.85, 0.8, 0.7))
+	if object:
+		var node := world.object_node_at(cell)
+		if node:
+			node.scale = Vector2(1.15, 0.2)
+			node.create_tween().tween_property(node, "scale", Vector2.ONE, 0.32) \
+				.set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
+		Sfx.play("craft", -6.0, 0.05)
+		return
+	var flash := ColorRect.new()
+	flash.color = Color(1, 0.95, 0.8, 0.55)
+	flash.size = Vector2(TILE, TILE)
+	flash.position = Vector2(cell) * TILE
+	flash.z_index = 30
+	level.fx_layer.add_child(flash)
+	var tween := flash.create_tween()
+	tween.tween_property(flash, "color:a", 0.0, 0.25)
+	tween.tween_callback(flash.queue_free)
 
 
 func consume(index: int) -> void:

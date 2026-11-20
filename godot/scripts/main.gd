@@ -114,6 +114,8 @@ func _desktop_input() -> void:
 		input.block_held = Input.is_key_pressed(KEY_K) or Input.is_key_pressed(KEY_SHIFT) \
 			or Input.is_mouse_button_pressed(MOUSE_BUTTON_RIGHT)
 
+	if not _args.has("shot"):
+		input.hover = level.get_global_mouse_position()
 	var over_ui: bool = level.hud != null and level.hud.get("pointer_over_ui") == true
 	if Input.is_mouse_button_pressed(MOUSE_BUTTON_LEFT) and not over_ui:
 		input.use_held = true
@@ -179,6 +181,9 @@ func _apply_scenario() -> void:
 		player.global_position = World.foot_of(stand)
 		level.camera.global_position = player.global_position
 		level.camera.reset_smoothing()
+	if _args.has("hover"):
+		var offset: PackedStringArray = _args.hover.split(",")
+		player.input.hover = player.global_position + Vector2(float(offset[0]), float(offset[1])) * 128.0
 	if _args.has("debug"):
 		Settings.debug_collision = true
 	if _args.has("hold"):
@@ -257,6 +262,14 @@ func _run_scenario() -> void:
 				input.attack_pressed = true
 		"block":
 			input.block_held = _frames > 10
+		"build":
+			# Lay a short wall of blocks in front, one after another.
+			if _frames > 20 and _frames < 80:
+				input.use_held = true
+				var step := int((_frames - 20) / 12)
+				input.aim = level.player.global_position + Vector2(200 + step * 128, -60 - (step % 2) * 0)
+			else:
+				input.use_held = false
 		"chop":
 			if _frames > 20:
 				input.use_held = true

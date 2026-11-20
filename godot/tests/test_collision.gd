@@ -69,3 +69,32 @@ func test_enemies_telegraph_before_they_hit() -> void:
 	check(enemy._windup > 0.0, "the attack starts with a wind-up")
 	check_eq(player.health, player.max_health, "nothing lands during the tell")
 	level.free()
+
+
+func test_placement_rules_match_what_the_ghost_shows() -> void:
+	var level := _make_level()
+	var player := level.player
+	var data := level.data
+	var feet := World.cell_of(player.global_position + Vector2(0, -4))
+	var ground := feet + Vector2i(2, 0)
+	# Find an open cell on the ground two to the right.
+	while data.is_solid(ground.x, ground.y):
+		ground.y -= 1
+	while not data.is_solid(ground.x, ground.y + 1):
+		ground.y += 1
+	check_eq(player.placement_problem("planks", ground), "", "a block beside solid ground is fine")
+	check_eq(player.placement_problem("workbench", ground), "", "a bench on the ground is fine")
+	check_eq(player.placement_problem("planks", feet), "You're standing there", "not inside yourself")
+	var high := ground + Vector2i(0, -4)
+	if data.get_wall(high.x, high.y) == WorldData.AIR:
+		check_eq(player.placement_problem("planks", high), "Needs support", "not floating in the air")
+	check_eq(player.placement_problem("workbench", ground + Vector2i(0, -2)), "Needs ground", "benches stand on something")
+	check_eq(player.placement_problem("planks", feet + Vector2i(40, 0)), "Too far", "out of reach")
+	player.inventory.slots[0] = {"id": "planks", "count": 5}
+	player.hotbar_index = 0
+	player._use_cooldown = 0.0
+	player._place("planks", ground)
+	check(data.is_solid(ground.x, ground.y), "placing where the ghost was green builds")
+	check_eq(player.placement_problem("planks", ground), "Occupied", "and then the cell is taken")
+	check_eq(player.inventory.count("planks"), 4, "one plank used")
+	level.free()
