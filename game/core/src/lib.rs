@@ -20,6 +20,7 @@ pub mod noise;
 pub mod paint;
 pub mod physics;
 pub mod png;
+pub mod quest;
 pub mod save;
 pub mod spawn;
 pub mod sprite;

@@ -40,6 +40,7 @@ use deepdelve_core::decor::{
     PROP_VARIANTS,
 };
 use deepdelve_core::light::{compute_sky_light, LightMap};
+use deepdelve_core::quest::{QuestEvent, QuestLog, QUESTS};
 use deepdelve_core::save::{load, save, PlayerSave, SaveGame};
 use deepdelve_core::noise::hash01;
 use deepdelve_core::item::{def, drop_from, Inventory, ItemId, ItemKind};
@@ -431,6 +432,8 @@ fn crafting(
     keys: Res<ButtonInput<KeyCode>>,
     mut player: ResMut<Player>,
     mut notice: ResMut<Notice>,
+    mut quests: ResMut<Quests>,
+    mut sounds: ResMut<SoundQueue>,
 ) {
     let slots = [KeyCode::F1, KeyCode::F2, KeyCode::F3, KeyCode::F4];
 
@@ -450,6 +453,8 @@ fn crafting(
 
         if craft(&mut player.inventory, recipe, &FIELD_KIT) {
             notice.0 = format!("crafted {}", def(output).name);
+            quests.0.record(QuestEvent::Crafted(output));
+            sounds.play(Sfx::Craft);
         } else {
             notice.0 = format!("could not craft {}", def(output).name);
         }
@@ -614,7 +619,7 @@ pub fn main() {
                 )
                     .chain(),
                 // Player-driven side effects.
-                (crafting, save_and_load).chain(),
+                (crafting, save_and_load, track_quests).chain(),
                 // Audio last of the simulation groups, so everything that
                 // happened this frame has had a chance to queue a sound.
                 (manage_ambience, drain_sounds).chain(),
@@ -724,6 +729,7 @@ fn setup(
     commands.insert_resource(bank);
     commands.insert_resource(Ambience::default());
     commands.insert_resource(SoundQueue::default());
+    commands.insert_resource(Quests(QuestLog::new()));
 
     // Generate every character's frames up front. Doing this per frame at
     // runtime would be ruinous on a phone.
@@ -1116,6 +1122,7 @@ fn attack_monsters(
     mut player: ResMut<Player>,
     mut effects: ResMut<Effects>,
     mut sounds: ResMut<SoundQueue>,
+    mut quests: ResMut<Quests>,
 ) {
     if !mouse.just_pressed(MouseButton::Left) {
         return;
@@ -1161,6 +1168,8 @@ fn attack_monsters(
         for &(item, count) in enemy.loot() {
             player.inventory.add(item, count);
         }
+        quests.0.record(QuestEvent::Slew(enemy.kind));
+        sounds.play(Sfx::Pickup);
     }
 }
 
@@ -1217,6 +1226,7 @@ fn step_bosses(
     mut monsters: ResMut<Monsters>,
     mut player: ResMut<Player>,
     mut notice: ResMut<Notice>,
+    mut quests: ResMut<Quests>,
     mut summon_timer: Local<f32>,
 ) {
     if bosses.0.is_empty() {
@@ -1284,6 +1294,7 @@ fn step_bosses(
             player.inventory.add(item, count);
         }
         notice.0 = format!("{} defeated!", boss_kind_of(boss.kind).name);
+        quests.0.record(QuestEvent::SlewBoss(boss.kind));
     }
 
     bosses.0.retain(|boss| boss.is_alive());
@@ -1354,6 +1365,39 @@ fn sync_boss_sprites(
             ),
             BossSprite(index),
         ));
+    }
+}
+
+/// Quest progress.
+#[derive(Resource)]
+struct Quests(QuestLog);
+
+/// Track depth and stock, and pay out finished quests.
+///
+/// Rewards are claimed automatically: there is no quest-giver to return to,
+/// so making the player press a key to collect would be busywork.
+fn track_quests(
+    mut player: ResMut<Player>,
+    mut quests: ResMut<Quests>,
+    mut notice: ResMut<Notice>,
+    mut sounds: ResMut<SoundQueue>,
+) {
+    let depth = player.body.y / WORLD_TILES_Y as f32;
+    quests.0.record(QuestEvent::DepthReached(depth));
+
+    // Gathering objectives depend on what is held right now, not on an event.
+    let inventory = player.inventory.clone();
+    quests.0.observe_inventory(&inventory);
+
+    for index in 0..QUESTS.len() {
+        if !quests.0.is_complete(index) || quests.0.is_claimed(index) {
+            continue;
+        }
+
+        if quests.0.claim(index, &mut player.inventory) {
+            notice.0 = format!("Quest complete: {}", QUESTS[index].name);
+            sounds.play(Sfx::Craft);
+        }
     }
 }
 
@@ -1698,6 +1742,7 @@ fn dig_or_build(
     mut dirty: ResMut<DirtyChunks>,
     mut effects: ResMut<Effects>,
     mut sounds: ResMut<SoundQueue>,
+    mut quests: ResMut<Quests>,
 ) {
     for (index, key) in [
         KeyCode::Digit1,
@@ -1764,6 +1809,7 @@ fn dig_or_build(
             );
             effects.shake.add(0.05);
             sounds.play(Sfx::Break);
+            quests.0.record(QuestEvent::Mined(broken));
         }
     } else {
         player.mining.cancel();
@@ -1799,6 +1845,7 @@ fn mark_dirty(dirty: &mut DirtyChunks, tile_pos: (usize, usize)) {
 
 fn update_hud(
     player: Res<Player>,
+    quests: Res<Quests>,
     clock: Res<Clock>,
     monsters: Res<Monsters>,
     bosses: Res<Bosses>,
@@ -1858,12 +1905,26 @@ fn update_hud(
         format!("\n> {}", notice.0)
     };
 
+    let quest_line = match quests.0.active() {
+        Some(index) => {
+            let quest = &QUESTS[index];
+            let done = quests.0.progress(index);
+            let needed = quest.objective.required();
+
+            format!(
+                "\nQUEST  {}  [{done}/{needed}]\n       {}",
+                quest.name, quest.blurb
+            )
+        }
+        None => "\nAll quests complete.".to_string(),
+    };
+
     for mut text in &mut hud {
         text.0 = format!(
             "HP [{health_bar}] {:.0}/{:.0}    {sky}    monsters: {}{boss_line}\n\
              Holding: {}  [1-4 to switch]\n{}\n{crafting_line}\n\
              WASD move, space jumps, left click digs/swings, right click builds\n\
-             B summons a boss    F5 saves    F9 loads{notice_line}",
+             B summons a boss    F5 saves    F9 loads{quest_line}{notice_line}",
             player.combat.health,
             player.combat.max_health,
             monsters.0.len(),
