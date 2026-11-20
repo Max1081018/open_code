@@ -4,13 +4,20 @@
 //! so the on-disk layout is explicit and every field's size is visible.
 
 use crate::item::{Inventory, ItemId, Stack, ITEMS};
+use crate::quest::QuestLog;
 use crate::world::{Tile, World};
 
 /// File magic, so a wrong file is rejected rather than misread.
 pub const MAGIC: &[u8; 4] = b"DDLV";
 
-/// Bumped whenever the layout changes incompatibly.
-pub const SAVE_VERSION: u32 = 1;
+/// Current layout version.
+///
+/// Version 2 appended the quest log. Version 1 files still load; their
+/// quests simply come back empty.
+pub const SAVE_VERSION: u32 = 2;
+
+/// First version that carries quest progress.
+const FIRST_VERSION_WITH_QUESTS: u32 = 2;
 
 /// Marks an empty inventory slot in the slot table.
 const EMPTY_SLOT: u16 = u16::MAX;
@@ -23,6 +30,7 @@ pub struct SaveGame {
     pub player: PlayerSave,
     /// Seconds into the day-night cycle.
     pub time_of_day: f32,
+    pub quests: QuestLog,
 }
 
 /// The player's own state.
@@ -55,6 +63,10 @@ const MAX_RUN: usize = u16::MAX as usize;
 
 /// Refuses obviously bogus headers before allocating anything from them.
 const MAX_WORLD_TILES: u64 = 16_000_000;
+
+/// Upper bound on stored quest entries, so a corrupt count cannot ask for
+/// an enormous allocation.
+const MAX_QUEST_ENTRIES: usize = 4096;
 
 /// Serialise a game to bytes.
 pub fn save(game: &SaveGame) -> Vec<u8> {
@@ -121,6 +133,18 @@ pub fn save(game: &SaveGame) -> Vec<u8> {
     }
 
     out.extend_from_slice(&game.time_of_day.to_le_bytes());
+
+    // Version 2 onward: the quest log.
+    let (progress, claimed, deepest) = game.quests.snapshot();
+    out.extend_from_slice(&(progress.len() as u32).to_le_bytes());
+    for value in progress {
+        out.extend_from_slice(&value.to_le_bytes());
+    }
+    out.extend_from_slice(&(claimed.len() as u32).to_le_bytes());
+    for &value in claimed {
+        out.push(u8::from(value));
+    }
+    out.extend_from_slice(&deepest.to_le_bytes());
 
     out
 }
@@ -243,6 +267,34 @@ pub fn load(bytes: &[u8]) -> Result<SaveGame, LoadError> {
 
     let time_of_day = reader.f32()?;
 
+    // Quests arrived in version 2. Older files load with an empty log
+    // rather than being rejected.
+    let quests = if version >= FIRST_VERSION_WITH_QUESTS {
+        let progress_len = reader.u32()? as usize;
+        if progress_len > MAX_QUEST_ENTRIES {
+            return Err(LoadError::Corrupt);
+        }
+        let mut progress = Vec::with_capacity(progress_len);
+        for _ in 0..progress_len {
+            progress.push(reader.u32()?);
+        }
+
+        let claimed_len = reader.u32()? as usize;
+        if claimed_len > MAX_QUEST_ENTRIES {
+            return Err(LoadError::Corrupt);
+        }
+        let mut claimed = Vec::with_capacity(claimed_len);
+        for _ in 0..claimed_len {
+            claimed.push(reader.u8()? != 0);
+        }
+
+        let deepest = reader.f32()?;
+
+        QuestLog::restore(&progress, &claimed, deepest)
+    } else {
+        QuestLog::new()
+    };
+
     Ok(SaveGame {
         seed,
         world: World::from_tiles(width, height, tiles),
@@ -254,6 +306,7 @@ pub fn load(bytes: &[u8]) -> Result<SaveGame, LoadError> {
             inventory,
         },
         time_of_day,
+        quests,
     })
 }
 
@@ -281,6 +334,7 @@ mod tests {
                 inventory,
             },
             time_of_day: 123.25,
+            quests: QuestLog::new(),
         }
     }
 
@@ -369,6 +423,7 @@ mod tests {
                 inventory: Inventory::new(1),
             },
             time_of_day: 0.0,
+            quests: QuestLog::new(),
         };
 
         let encoded = save(&game);
@@ -411,6 +466,59 @@ mod tests {
         assert_eq!(reloaded.world.tile(0, 0), Tile::Dirt);
         assert_eq!(reloaded.world.tile(wide - 1, tall - 1), Tile::Dirt);
         assert_eq!(reloaded.world, game.world);
+    }
+
+    #[test]
+    fn quest_progress_survives_a_save_and_reload() {
+        let mut game = sample_game();
+
+        let mut log = QuestLog::new();
+        for _ in 0..crate::quest::QUESTS[0].objective.required() {
+            log.record(crate::quest::QuestEvent::Mined(Tile::Dirt));
+        }
+        log.claim(0, &mut game.player.inventory);
+        log.record(crate::quest::QuestEvent::DepthReached(0.73));
+        game.quests = log;
+
+        let reloaded = load(&save(&game)).expect("round trip");
+
+        assert!(reloaded.quests.is_complete(0), "finished quest came back undone");
+        assert!(reloaded.quests.is_claimed(0), "reward would be paid twice");
+        assert!(
+            reloaded.quests.is_complete(6),
+            "the deepest point reached should survive a reload"
+        );
+    }
+
+    #[test]
+    fn a_save_from_before_quests_existed_still_loads() {
+        // Version 1 files have no quest section. They must load with an
+        // empty log rather than being rejected or misread.
+        let game = sample_game();
+        let mut bytes = save(&game);
+
+        // Strip the quest section and relabel as version 1.
+        let quest_bytes = {
+            let (progress, claimed, _) = game.quests.snapshot();
+            4 + progress.len() * 4 + 4 + claimed.len() + 4
+        };
+        bytes.truncate(bytes.len() - quest_bytes);
+        bytes[4..8].copy_from_slice(&1u32.to_le_bytes());
+
+        let reloaded = load(&bytes).expect("a version 1 save should still load");
+
+        assert_eq!(reloaded.player.health, game.player.health);
+        assert_eq!(reloaded.quests, QuestLog::new(), "quests start fresh");
+    }
+
+    #[test]
+    fn a_truncated_quest_section_is_refused_rather_than_guessed_at() {
+        let bytes = save(&sample_game());
+
+        // Cut into the middle of the quest data.
+        let result = load(&bytes[..bytes.len() - 6]);
+
+        assert!(result.is_err(), "a half-written quest log must not load");
     }
 
     #[test]

@@ -366,6 +366,7 @@ fn save_and_load(
     mut monsters: ResMut<Monsters>,
     mut dirty: ResMut<DirtyChunks>,
     mut notice: ResMut<Notice>,
+    mut quests: ResMut<Quests>,
 ) {
     if keys.just_pressed(KeyCode::F5) {
         let snapshot = SaveGame {
@@ -379,6 +380,7 @@ fn save_and_load(
                 inventory: player.inventory.clone(),
             },
             time_of_day: clock.0.fraction() * DAY_LENGTH,
+            quests: quests.0.clone(),
         };
 
         notice.0 = match std::fs::write(SAVE_PATH, save(&snapshot)) {
@@ -411,6 +413,7 @@ fn save_and_load(
                 restored_clock.advance(restored.time_of_day);
                 clock.0 = restored_clock;
 
+                quests.0 = restored.quests;
                 monsters.0.clear();
 
                 // Force every chunk to re-composite against the new world.

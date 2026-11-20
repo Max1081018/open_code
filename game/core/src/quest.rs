@@ -167,7 +167,7 @@ pub const QUESTS: &[Quest] = &[
 ];
 
 /// Per-quest progress and reward state.
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, PartialEq)]
 pub struct QuestLog {
     progress: Vec<u32>,
     claimed: Vec<bool>,
@@ -214,6 +214,29 @@ impl QuestLog {
 
     pub fn is_claimed(&self, index: usize) -> bool {
         self.claimed.get(index).copied().unwrap_or(false)
+    }
+
+    /// Everything a save file needs to restore this log.
+    pub fn snapshot(&self) -> (&[u32], &[bool], f32) {
+        (&self.progress, &self.claimed, self.deepest)
+    }
+
+    /// Rebuild a log from a snapshot.
+    ///
+    /// Tolerates a stored length that does not match the current quest
+    /// table, so adding quests does not invalidate existing saves.
+    pub fn restore(progress: &[u32], claimed: &[bool], deepest: f32) -> QuestLog {
+        let mut log = QuestLog::new();
+
+        for (index, &value) in progress.iter().take(QUESTS.len()).enumerate() {
+            log.progress[index] = value.min(QUESTS[index].objective.required());
+        }
+        for (index, &value) in claimed.iter().take(QUESTS.len()).enumerate() {
+            log.claimed[index] = value;
+        }
+        log.deepest = deepest.clamp(0.0, 1.0);
+
+        log
     }
 
     /// The quest the player should be working on: the first available one
@@ -583,6 +606,47 @@ mod tests {
         let mut inventory = stocked();
 
         assert!(!log.claim(999, &mut inventory));
+    }
+
+    #[test]
+    fn a_log_survives_a_snapshot_and_restore() {
+        let mut log = QuestLog::new();
+        let mut inventory = stocked();
+
+        for _ in 0..QUESTS[0].objective.required() {
+            log.record(QuestEvent::Mined(Tile::Dirt));
+        }
+        log.claim(0, &mut inventory);
+        log.record(QuestEvent::Mined(Tile::Stone));
+        log.record(QuestEvent::DepthReached(0.7));
+
+        let (progress, claimed, deepest) = log.snapshot();
+        let restored = QuestLog::restore(progress, claimed, deepest);
+
+        assert!(restored.is_complete(0));
+        assert!(restored.is_claimed(0));
+        assert_eq!(restored.progress(1), 1);
+        assert!(
+            restored.is_complete(6),
+            "the deepest point reached should survive a reload"
+        );
+    }
+
+    #[test]
+    fn restoring_a_shorter_snapshot_leaves_newer_quests_untouched() {
+        // A save written before a quest was added must still load.
+        let restored = QuestLog::restore(&[5], &[false], 0.0);
+
+        assert_eq!(restored.progress(0), 5);
+        assert_eq!(restored.progress(QUESTS.len() - 1), 0);
+    }
+
+    #[test]
+    fn restoring_clamps_values_that_are_out_of_range() {
+        let restored = QuestLog::restore(&[9_999_999], &[true], 7.5);
+
+        assert_eq!(restored.progress(0), QUESTS[0].objective.required());
+        assert!(restored.is_complete(0));
     }
 
     #[test]

@@ -16,8 +16,9 @@ quest. Tests pin the chain's shape: prerequisites point backwards (ruling out
 cycles), exactly one quest opens the chain, every quest traces back to the
 start, and one test drives the whole chain to completion.
 
-**Known gap:** quest progress is not written to save files yet. Saving and
-reloading resets the log. Fixing this means a save format bump.
+Quest progress is written to save files from format version 2; version 1
+files still load, with an empty log. Tests cover the round trip, the old
+format, and a truncated quest section being refused rather than guessed at.
 
 ## Audio
 
