@@ -222,8 +222,14 @@ fn palette_for(tile: Tile) -> Palette {
 pub fn tile_base_colour(tile: Tile) -> [f32; 3] {
     let palette = palette_for(tile);
 
-    // Grass chips should look like turf, not the soil underneath.
-    palette.crown.unwrap_or(palette.base)
+    // What a tile is *recognised* by is not always most of its area. Grass
+    // reads as turf rather than the soil beneath, and an ore reads as its
+    // metal rather than the rock it is embedded in — which matters both for
+    // its icon and for the chips it throws when broken.
+    palette
+        .crown
+        .or(palette.fleck)
+        .unwrap_or(palette.base)
 }
 
 /// Distinct per material, so two materials never share a noise field.
@@ -396,6 +402,42 @@ mod tests {
         let b = tile_texture(Tile::Stone, variant_seed(1, 1)).expect("stone texture");
 
         assert_ne!(a, b, "two variants should not be pixel-identical");
+    }
+
+    #[test]
+    fn each_ore_is_recognised_by_its_metal_not_by_the_rock_around_it() {
+        let rock = tile_base_colour(Tile::Stone);
+
+        let ores = [
+            Tile::CoalOre,
+            Tile::CopperOre,
+            Tile::IronOre,
+            Tile::GoldOre,
+        ];
+
+        // Every ore must be distinct from plain rock...
+        for ore in ores {
+            let colour = tile_base_colour(ore);
+            let distance = colour_distance(colour, rock);
+
+            assert!(
+                distance > 40.0,
+                "{ore:?} reads as plain rock; its icon and chips would be grey"
+            );
+        }
+
+        // ...and from each other.
+        for (index, first) in ores.iter().enumerate() {
+            for second in &ores[index + 1..] {
+                let distance =
+                    colour_distance(tile_base_colour(*first), tile_base_colour(*second));
+
+                assert!(
+                    distance > 40.0,
+                    "{first:?} and {second:?} are the same colour"
+                );
+            }
+        }
     }
 
     #[test]

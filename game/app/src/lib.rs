@@ -20,6 +20,10 @@ use bevy::window::WindowResolution;
 use deepdelve_core::art::{tile_base_colour, Texture};
 use deepdelve_core::daynight::{TimeOfDay, DAY_LENGTH};
 use deepdelve_core::enemy::{bodies_overlap, chase_intent, kind, Combat, Enemy, EnemyKindId};
+use deepdelve_core::sky::{
+    hill_layer, moon_position, star_alpha, star_field, sky_colours, sun_position, SkyColours,
+    HILL_LAYERS, HILL_PARALLAX,
+};
 use deepdelve_core::spawn::{choose_kind, find_standing_spot};
 use deepdelve_core::sprite::{
     boss_style, character_frame, enemy_height_tiles, enemy_style, player_style, CharacterStyle,
@@ -43,6 +47,7 @@ use deepdelve_core::light::{compute_sky_light, LightMap};
 use deepdelve_core::quest::{QuestEvent, QuestLog, QUESTS};
 use deepdelve_core::save::{load, save, PlayerSave, SaveGame};
 use deepdelve_core::noise::hash01;
+use deepdelve_core::icon::{heart_icon, item_icon};
 use deepdelve_core::item::{def, drop_from, Inventory, ItemId, ItemKind};
 use deepdelve_core::physics::{Body, Intent};
 use deepdelve_core::tilemap::{chunk_texture, TileAtlas, CHUNK_TILES};
@@ -641,6 +646,8 @@ pub fn main() {
                     sync_monster_sprites,
                     sync_boss_sprites,
                     follow_camera,
+                    update_backdrop,
+                    update_hotbar,
                     update_hud,
                     layout_touch_controls,
                 )
@@ -780,6 +787,56 @@ fn setup(
     commands.insert_resource(bank);
     commands.insert_resource(PropBank::build(&mut images));
 
+    // Backdrop, all behind the world. Sizes are set every frame from the
+    // real window, so these only need to exist here.
+    commands.spawn((
+        Sprite::default(),
+        Transform::from_xyz(0.0, 0.0, -100.0),
+        SkyGradient,
+    ));
+    commands.spawn((
+        Sprite {
+            image: images.add(to_image(star_field(SEED, 512, 256))),
+            ..default()
+        },
+        Transform::from_xyz(0.0, 0.0, -99.0),
+        StarsLayer,
+    ));
+    commands.spawn((
+        Sprite {
+            image: images.add(disc_image([255.0, 244.0, 214.0])),
+            custom_size: Some(Vec2::splat(150.0)),
+            ..default()
+        },
+        Transform::from_xyz(0.0, 0.0, -98.0),
+        CelestialBody { is_sun: true },
+    ));
+    commands.spawn((
+        Sprite {
+            image: images.add(disc_image([226.0, 232.0, 246.0])),
+            custom_size: Some(Vec2::splat(96.0)),
+            ..default()
+        },
+        Transform::from_xyz(0.0, 0.0, -98.0),
+        CelestialBody { is_sun: false },
+    ));
+    for layer in 0..HILL_LAYERS {
+        let handle = images.add(to_image(hill_layer(SEED, layer)));
+        for copy in 0..HILL_COPIES {
+            commands.spawn((
+                Sprite {
+                    image: handle.clone(),
+                    ..default()
+                },
+                Transform::from_xyz(0.0, 0.0, -97.0 + layer as f32),
+                HillLayer { layer, copy },
+            ));
+        }
+    }
+    commands.insert_resource(SkyStep::default());
+
+    spawn_hud(&mut commands, &mut images);
+
     commands.insert_resource(Effects {
         particles: Particles::new(PARTICLE_CAPACITY),
         shake: ScreenShake::new(),
@@ -821,8 +878,9 @@ fn setup(
         TextColor(Color::WHITE),
         Node {
             position_type: PositionType::Absolute,
-            top: Val::Px(12.0),
-            left: Val::Px(12.0),
+            // Clear of the heart row, which owns the top-left corner.
+            top: Val::Px(52.0),
+            left: Val::Px(14.0),
             ..default()
         },
         HudText,
@@ -1375,6 +1433,388 @@ fn sync_boss_sprites(
 #[derive(Resource)]
 struct Quests(QuestLog);
 
+/// One hotbar cell.
+#[derive(Component)]
+struct HotbarSlot(usize);
+
+/// Marks the icon inside a hotbar cell, so the health hearts can be queried
+/// separately from it.
+#[derive(Component)]
+struct HotbarIcon;
+
+/// The stack count printed on a hotbar cell.
+#[derive(Component)]
+struct HotbarCount(usize);
+
+/// One heart in the health row.
+#[derive(Component)]
+struct HealthPip(usize);
+
+/// Health represented by a single heart.
+const HEALTH_PER_HEART: f32 = 20.0;
+
+/// Hearts shown, covering the player's full health.
+const HEART_COUNT: usize = (PLAYER_HEALTH / HEALTH_PER_HEART) as usize;
+
+/// Side length of a hotbar cell, in logical pixels.
+const SLOT_SIZE: f32 = 58.0;
+
+/// Build the hotbar and health row.
+fn spawn_hud(commands: &mut Commands, images: &mut Assets<Image>) {
+    let full_heart = images.add(to_image(heart_icon(true)));
+    let spent_heart = images.add(to_image(heart_icon(false)));
+
+    // Hotbar, bottom centre: within thumb reach on a phone and out of the
+    // way of the view, which is where the reference puts it.
+    commands
+        .spawn(Node {
+            position_type: PositionType::Absolute,
+            bottom: Val::Px(14.0),
+            left: Val::Px(0.0),
+            right: Val::Px(0.0),
+            justify_content: JustifyContent::Center,
+            column_gap: Val::Px(7.0),
+            ..default()
+        })
+        .with_children(|bar| {
+            for slot in 0..HOTBAR.len() {
+                bar.spawn((
+                    Node {
+                        width: Val::Px(SLOT_SIZE),
+                        height: Val::Px(SLOT_SIZE),
+                        border: UiRect::all(Val::Px(3.0)),
+                        border_radius: BorderRadius::all(Val::Px(6.0)),
+                        justify_content: JustifyContent::Center,
+                        align_items: AlignItems::Center,
+                        ..default()
+                    },
+                    BackgroundColor(Color::srgba(0.07, 0.08, 0.13, 0.78)),
+                    BorderColor::all(Color::srgba(0.45, 0.47, 0.60, 0.9)),
+                    HotbarSlot(slot),
+                ))
+                .with_children(|cell| {
+                    cell.spawn((
+                        ImageNode::new(images.add(to_image(item_icon(HOTBAR[slot])))),
+                        Node {
+                            width: Val::Px(40.0),
+                            height: Val::Px(40.0),
+                            ..default()
+                        },
+                        HotbarIcon,
+                    ));
+
+                    // Count sits in the corner of the cell, over the icon.
+                    cell.spawn((
+                        Text::new(""),
+                        TextFont {
+                            font_size: FontSize::Px(15.0),
+                            ..default()
+                        },
+                        TextColor(Color::srgb(0.96, 0.96, 0.88)),
+                        Node {
+                            position_type: PositionType::Absolute,
+                            bottom: Val::Px(1.0),
+                            right: Val::Px(4.0),
+                            ..default()
+                        },
+                        HotbarCount(slot),
+                    ));
+                });
+            }
+        });
+
+    // Hearts, top left.
+    commands
+        .spawn(Node {
+            position_type: PositionType::Absolute,
+            top: Val::Px(12.0),
+            left: Val::Px(12.0),
+            column_gap: Val::Px(4.0),
+            ..default()
+        })
+        .with_children(|row| {
+            for pip in 0..HEART_COUNT {
+                row.spawn((
+                    ImageNode::new(full_heart.clone()),
+                    Node {
+                        width: Val::Px(34.0),
+                        height: Val::Px(34.0),
+                        ..default()
+                    },
+                    HealthPip(pip),
+                ));
+            }
+        });
+
+    // Keep the spent-heart handle alive for the update system.
+    commands.insert_resource(HeartImages {
+        full: full_heart,
+        spent: spent_heart,
+    });
+}
+
+/// Handles for the two heart states.
+#[derive(Resource)]
+struct HeartImages {
+    full: Handle<Image>,
+    spent: Handle<Image>,
+}
+
+/// Refresh hotbar contents, selection and hearts.
+fn update_hotbar(
+    player: Res<Player>,
+    hearts: Res<HeartImages>,
+    mut slots: Query<(&HotbarSlot, &mut BorderColor, &mut BackgroundColor)>,
+    mut counts: Query<(&HotbarCount, &mut Text)>,
+    mut pips: Query<(&HealthPip, &mut ImageNode), Without<HotbarIcon>>,
+) {
+    for (slot, mut border, mut background) in &mut slots {
+        let selected = slot.0 == player.hotbar_slot;
+
+        // The selected cell is picked out by a bright border and a lighter
+        // field, rather than by moving anything, which would make the bar
+        // jitter as the player cycles through it.
+        *border = BorderColor::all(if selected {
+            Color::srgb(1.0, 0.86, 0.45)
+        } else {
+            Color::srgba(0.45, 0.47, 0.60, 0.9)
+        });
+        background.0 = if selected {
+            Color::srgba(0.18, 0.18, 0.26, 0.85)
+        } else {
+            Color::srgba(0.07, 0.08, 0.13, 0.78)
+        };
+    }
+
+    for (count, mut text) in &mut counts {
+        let held = player.inventory.count(HOTBAR[count.0]);
+
+        // Blank rather than "0", so empty cells stay quiet.
+        text.0 = if held == 0 {
+            String::new()
+        } else {
+            held.to_string()
+        };
+    }
+
+    let remaining = player.combat.health / HEALTH_PER_HEART;
+    for (pip, mut image) in &mut pips {
+        let filled = remaining > pip.0 as f32 + 0.001;
+
+        image.image = if filled {
+            hearts.full.clone()
+        } else {
+            hearts.spent.clone()
+        };
+    }
+}
+
+/// The sky gradient, which fills the screen behind everything.
+#[derive(Component)]
+struct SkyGradient;
+
+#[derive(Component)]
+struct StarsLayer;
+
+/// The sun or the moon.
+#[derive(Component)]
+struct CelestialBody {
+    /// True for the sun, false for the moon.
+    is_sun: bool,
+}
+
+/// One copy of one parallax hill layer. `copy` tiles it horizontally.
+#[derive(Component)]
+struct HillLayer {
+    layer: usize,
+    copy: i32,
+}
+
+/// Copies of each hill layer, enough to cover a wide screen as it scrolls.
+const HILL_COPIES: i32 = 3;
+
+/// How many steps the day is divided into for regenerating the gradient.
+/// The texture is tiny, so this can be generous without costing anything.
+const SKY_STEPS: u32 = 240;
+
+/// Which sky step the gradient texture currently shows.
+#[derive(Resource, Default)]
+struct SkyStep(Option<u32>);
+
+/// Build the vertical sky gradient as a one-pixel-wide strip.
+fn sky_gradient_image(colours: SkyColours) -> Image {
+    const STEPS: u32 = 64;
+
+    let mut pixels = Vec::with_capacity((STEPS * 4) as usize);
+    for step in 0..STEPS {
+        let t = step as f32 / (STEPS - 1) as f32;
+
+        for channel in 0..3 {
+            let value = colours.zenith[channel]
+                + (colours.horizon[channel] - colours.zenith[channel]) * t;
+            pixels.push(value.clamp(0.0, 255.0) as u8);
+        }
+        pixels.push(255);
+    }
+
+    let mut image = Image::new(
+        Extent3d {
+            width: 1,
+            height: STEPS,
+            depth_or_array_layers: 1,
+        },
+        TextureDimension::D2,
+        pixels,
+        TextureFormat::Rgba8UnormSrgb,
+        RenderAssetUsages::RENDER_WORLD,
+    );
+    // Linear, so the gradient is smooth rather than banded.
+    image.sampler = ImageSampler::linear();
+    image
+}
+
+/// A soft disc for the sun or moon.
+fn disc_image(tint: [f32; 3]) -> Image {
+    const SIZE: u32 = 64;
+    let radius = SIZE as f32 / 2.0;
+
+    let mut pixels = Vec::with_capacity((SIZE * SIZE * 4) as usize);
+    for y in 0..SIZE {
+        for x in 0..SIZE {
+            let dx = x as f32 + 0.5 - radius;
+            let dy = y as f32 + 0.5 - radius;
+            let distance = (dx * dx + dy * dy).sqrt() / radius;
+
+            // Solid core with a soft halo, rather than a hard circle.
+            let core = (1.0 - (distance / 0.72).powi(6)).clamp(0.0, 1.0);
+            let halo = (1.0 - distance).clamp(0.0, 1.0).powi(3) * 0.5;
+            let alpha = (core + halo).clamp(0.0, 1.0);
+
+            pixels.push(tint[0] as u8);
+            pixels.push(tint[1] as u8);
+            pixels.push(tint[2] as u8);
+            pixels.push((alpha * 255.0) as u8);
+        }
+    }
+
+    let mut image = Image::new(
+        Extent3d {
+            width: SIZE,
+            height: SIZE,
+            depth_or_array_layers: 1,
+        },
+        TextureDimension::D2,
+        pixels,
+        TextureFormat::Rgba8UnormSrgb,
+        RenderAssetUsages::RENDER_WORLD,
+    );
+    image.sampler = ImageSampler::linear();
+    image
+}
+
+/// Keep the backdrop glued to the camera, with hills lagging behind it.
+#[allow(clippy::type_complexity)]
+fn update_backdrop(
+    mut images: ResMut<Assets<Image>>,
+    windows: Query<&Window>,
+    clock: Res<Clock>,
+    mut step: ResMut<SkyStep>,
+    cameras: Query<
+        &Transform,
+        (
+            With<Camera2d>,
+            Without<SkyGradient>,
+            Without<StarsLayer>,
+            Without<CelestialBody>,
+            Without<HillLayer>,
+        ),
+    >,
+    mut gradient: Query<
+        (&mut Transform, &mut Sprite),
+        (With<SkyGradient>, Without<StarsLayer>, Without<HillLayer>, Without<CelestialBody>),
+    >,
+    mut stars: Query<
+        (&mut Transform, &mut Sprite),
+        (With<StarsLayer>, Without<HillLayer>, Without<CelestialBody>),
+    >,
+    mut bodies: Query<
+        (&CelestialBody, &mut Transform, &mut Sprite),
+        (Without<HillLayer>, Without<StarsLayer>),
+    >,
+    mut hills: Query<(&HillLayer, &mut Transform, &mut Sprite), Without<StarsLayer>>,
+) {
+    let (Ok(window), Ok(camera)) = (windows.single(), cameras.single()) else {
+        return;
+    };
+
+    let width = window.width();
+    let height = window.height();
+    let centre = camera.translation.truncate();
+
+    // Regenerate the gradient only when the sky has actually moved on.
+    let wanted = (clock.0.fraction() * SKY_STEPS as f32) as u32;
+    let refresh = step.0 != Some(wanted);
+    if refresh {
+        step.0 = Some(wanted);
+    }
+
+    for (mut transform, mut sprite) in &mut gradient {
+        transform.translation.x = centre.x;
+        transform.translation.y = centre.y;
+        // Oversized, so a camera shake cannot reveal an edge.
+        sprite.custom_size = Some(Vec2::new(width * 1.4, height * 1.4));
+
+        if refresh {
+            sprite.image = images.add(sky_gradient_image(sky_colours(&clock.0)));
+        }
+    }
+
+    let star_alpha = star_alpha(&clock.0);
+    for (mut transform, mut sprite) in &mut stars {
+        transform.translation.x = centre.x;
+        transform.translation.y = centre.y - height * 0.2;
+        sprite.custom_size = Some(Vec2::new(width * 1.4, height));
+        sprite.color = Color::srgba(1.0, 1.0, 1.0, star_alpha);
+    }
+
+    for (body, mut transform, mut sprite) in &mut bodies {
+        let placement = if body.is_sun {
+            sun_position(&clock.0)
+        } else {
+            moon_position(&clock.0)
+        };
+
+        match placement {
+            Some((x, y)) => {
+                sprite.color = Color::WHITE;
+                transform.translation.x = centre.x + (x - 0.5) * width;
+                transform.translation.y = centre.y + (0.5 - y) * height;
+            }
+            // Parked off screen rather than despawned, so it can come back.
+            None => sprite.color = Color::NONE,
+        }
+    }
+
+    for (hill, mut transform, mut sprite) in &mut hills {
+        let parallax = HILL_PARALLAX[hill.layer];
+        let span = width * 1.1;
+
+        // Scroll against the camera, wrapping so the copies always cover
+        // the screen however far the player walks.
+        let drift = -centre.x * parallax;
+        let wrapped = drift.rem_euclid(span);
+
+        transform.translation.x = centre.x + wrapped + hill.copy as f32 * span - span;
+        transform.translation.y =
+            centre.y - height * 0.08 + hill.layer as f32 * height * 0.04;
+
+        sprite.custom_size = Some(Vec2::new(
+            span + 2.0,
+            height * (0.34 + hill.layer as f32 * 0.05),
+        ));
+    }
+}
+
 /// Track depth and stock, and pay out finished quests.
 ///
 /// Rewards are claimed automatically: there is no quest-giver to return to,
@@ -1857,14 +2297,6 @@ fn update_hud(
 ) {
     let held = HOTBAR[player.hotbar_slot];
 
-    let carried: Vec<String> = HOTBAR
-        .iter()
-        .map(|&item| format!("{} {}", def(item).name, player.inventory.count(item)))
-        .collect();
-
-    let health_blocks = (player.combat.health / 10.0).ceil().max(0.0) as usize;
-    let health_bar: String = "#".repeat(health_blocks) + &"-".repeat(10 - health_blocks.min(10));
-
     let sky = if clock.0.is_night() { "night" } else { "day" };
 
     let craftable = available(&player.inventory, &FIELD_KIT);
@@ -1924,15 +2356,10 @@ fn update_hud(
 
     for mut text in &mut hud {
         text.0 = format!(
-            "HP [{health_bar}] {:.0}/{:.0}    {sky}    monsters: {}{boss_line}\n\
-             Holding: {}  [1-4 to switch]\n{}\n{crafting_line}\n\
-             WASD move, space jumps, left click digs/swings, right click builds\n\
-             B summons a boss    F5 saves    F9 loads{quest_line}{notice_line}",
-            player.combat.health,
-            player.combat.max_health,
+            "{sky}   monsters: {}   holding {}{boss_line}\n{crafting_line}\
+             {quest_line}{notice_line}",
             monsters.0.len(),
             def(held).name,
-            carried.join("   "),
         );
     }
 }
