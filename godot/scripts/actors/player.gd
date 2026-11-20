@@ -138,6 +138,7 @@ func _physics_process(delta: float) -> void:
 	_move(delta)
 	rig.blocking = input.block_held and rig.has_shield() and not rig.swinging()
 	_use_items(delta)
+	_work_craft(delta)
 	if input.interact_pressed:
 		_interact()
 	_update_lantern(delta)
@@ -569,6 +570,88 @@ func _build_effect(cell: Vector2i, object: bool) -> void:
 	var tween := flash.create_tween()
 	tween.tween_property(flash, "color:a", 0.0, 0.25)
 	tween.tween_callback(flash.queue_free)
+
+
+# =============================================================================
+# Crafting: a job that takes a moment of work, not a button that conjures
+# =============================================================================
+
+signal craft_finished(id: String)
+
+var _craft := {}  ## recipe, t, duration, beat
+
+
+## Seconds a recipe takes: more for better gear and heavier stations.
+static func craft_time(recipe: Array) -> float:
+	var tier: int = Items.def(recipe[0]).get("tier", 1)
+	var base := {Items.Station.HAND: 0.7, Items.Station.WORKBENCH: 1.0,
+		Items.Station.ANVIL: 1.4, Items.Station.CAMPFIRE: 1.1}
+	return float(base.get(recipe[2], 1.0)) + 0.18 * tier
+
+
+func start_craft(recipe: Array) -> bool:
+	if not _craft.is_empty() or _dead:
+		return false
+	if not inventory.has_all(recipe[3]) or not (recipe[2] in nearby_stations()):
+		return false
+	_craft = {"recipe": recipe, "t": 0.0, "duration": craft_time(recipe), "beat": 0.0}
+	return true
+
+
+func crafting() -> Array:
+	return _craft.get("recipe", [])
+
+
+func craft_progress() -> float:
+	return 0.0 if _craft.is_empty() else clampf(_craft.t / _craft.duration, 0.0, 1.0)
+
+
+func _work_craft(delta: float) -> void:
+	if _craft.is_empty():
+		return
+	var recipe: Array = _craft.recipe
+	_craft.t += delta
+	_craft.beat -= delta
+	if _craft.beat <= 0.0:
+		# A blow of the hammer (or a stir of the pot) every beat.
+		_craft.beat = 0.32
+		_anim_lock = 0.28
+		body.play("use")
+		body.speed_scale = 1.0
+		var at := global_position + Vector2(facing * 90, -90)
+		match recipe[2]:
+			Items.Station.ANVIL:
+				Sfx.play("hit", -6.0, 0.12)
+				Effects.burst(level.fx_layer, at, "hit")
+			Items.Station.WORKBENCH:
+				Sfx.play("chop", -8.0, 0.15)
+				Effects.burst(level.fx_layer, at, "dig", Color(0.75, 0.55, 0.35))
+			Items.Station.CAMPFIRE:
+				Sfx.play("dig", -14.0, 0.2)
+				Effects.burst(level.fx_layer, at + Vector2(0, -30), "smoke", Color(0.9, 0.9, 0.9))
+			_:
+				Sfx.play("dig", -12.0, 0.2)
+	if _craft.t < _craft.duration:
+		return
+	_craft = {}
+	if inventory.craft(recipe):
+		Sfx.play("craft")
+		Game.crafted.emit(recipe[0], recipe[1])
+		Game.toast("Crafted %s" % Items.item_name(recipe[0]), Items.icon(recipe[0]))
+		# The new thing pops out, so the eye sees where it came from.
+		Effects.burst(level.fx_layer, global_position + Vector2(0, -160), "glow", UITheme.GOLD)
+		var pop := Sprite2D.new()
+		pop.texture = Items.icon(recipe[0])
+		pop.position = global_position + Vector2(0, -170)
+		pop.z_index = 80
+		pop.scale = Vector2(0.3, 0.3)
+		level.fx_layer.add_child(pop)
+		var tween := pop.create_tween()
+		tween.tween_property(pop, "scale", Vector2(1.0, 1.0), 0.18).set_trans(Tween.TRANS_BACK)
+		tween.parallel().tween_property(pop, "position:y", pop.position.y - 90, 0.5).set_ease(Tween.EASE_OUT)
+		tween.tween_property(pop, "modulate:a", 0.0, 0.3)
+		tween.tween_callback(pop.queue_free)
+	craft_finished.emit(recipe[0])
 
 
 func consume(index: int) -> void:

@@ -262,6 +262,13 @@ func _run_scenario() -> void:
 				input.attack_pressed = true
 		"block":
 			input.block_held = _frames > 10
+		"craft":
+			if _frames == 30:
+				level.player.inventory.add("wood", 20)
+				for recipe in Items.recipes:
+					if recipe[0] == "workbench":
+						level.player.start_craft(recipe)
+				level.hud.open_crafting()
 		"build":
 			# Lay a short wall of blocks in front, one after another.
 			if _frames > 20 and _frames < 80:

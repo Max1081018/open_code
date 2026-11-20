@@ -195,15 +195,19 @@ static func _recipe_row(state: Dictionary, recipe: Array) -> Control:
 			Color(1.0, 0.86, 0.6))
 		middle.add_child(where)
 
+	# Crafting is work: the button fills while the character makes it.
 	var craft := Button.new()
-	craft.text = "Craft"
-	craft.custom_minimum_size = Vector2(170, 80)
+	craft.text = "Craft  %.1fs" % Player.craft_time(recipe)
+	craft.custom_minimum_size = Vector2(190, 80)
 	craft.disabled = not can
+	var bar := CraftBar.new()
+	bar.player = player
+	bar.recipe = recipe
+	craft.add_child(bar)
 	craft.pressed.connect(func():
-		if inventory.craft(recipe):
-			Sfx.play("craft")
-			Game.crafted.emit(recipe[0], recipe[1])
-			Game.toast("Crafted %s" % Items.item_name(recipe[0]), Items.icon(recipe[0])))
+		if player.start_craft(recipe):
+			craft.disabled = true
+			craft.text = "Making…")
 	line.add_child(craft)
 	return row
 
@@ -282,3 +286,23 @@ static func _refresh_chest(state: Dictionary) -> void:
 		for i in pair[1].size():
 			var stack = inventory.get_slot(i)
 			pair[1][i].set_item("" if stack == null else stack.id, 0 if stack == null else stack.count)
+
+
+
+## The fill on a Craft button while that recipe is being made. Updates
+## itself each frame; nothing is redrawn while nothing is being made.
+class CraftBar extends ColorRect:
+	var player: Player
+	var recipe: Array
+
+	func _ready() -> void:
+		color = Color(1.0, 0.85, 0.4, 0.45)
+		mouse_filter = Control.MOUSE_FILTER_IGNORE
+		size = Vector2.ZERO
+
+	func _process(_delta: float) -> void:
+		var parent := get_parent() as Control
+		if player == null or parent == null:
+			return
+		var working := player.crafting() == recipe
+		size = Vector2(parent.size.x * (player.craft_progress() if working else 0.0), parent.size.y)
