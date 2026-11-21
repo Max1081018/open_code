@@ -198,3 +198,21 @@ func test_saves_from_before_tobin_still_meet_him() -> void:
 	var again := _make_level(saved)
 	check(again.quests.quest_for("tobin") == "tools_of_the_trade", "his quest is offered")
 	again.free()
+
+
+func test_the_guide_finds_rock_from_far_along_the_meadow() -> void:
+	var level := _make_level()
+	level.quests.talk("wren")
+	for i in 4:
+		level.quests._advance("first_light")
+	# Wherever the player has wandered in the meadow, the arrow points
+	# somewhere to dig.
+	var lost := []
+	for dx in range(-60, 61, 4):
+		var at := level.data.spawn + Vector2i(dx, 0)
+		at.y = level.data.surface[at.x] - 1
+		level.player.global_position = World.foot_of(at)
+		if level.guide._find_target() == Vector2.INF:
+			lost.append(dx)
+	check(lost.is_empty(), "no arrow at these columns from spawn: %s" % [lost])
+	level.free()

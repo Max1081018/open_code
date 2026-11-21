@@ -39,7 +39,7 @@ func _find_target() -> Vector2:
 			"fell":
 				return _nearest_object("tree", 40)
 			"break":
-				return _nearest_rock(24)
+				return _nearest_rock(70)
 			"craft":
 				# Away from the station this needs: point the way to one.
 				for recipe in Items.recipes:
@@ -73,13 +73,14 @@ func _nearest_object(type: String, radius: int) -> Vector2:
 	return best
 
 
+## The nearest rock with open air above it (somewhere a pick can get at),
+## searched in growing square rings so the closest is found first.
 func _nearest_rock(radius: int) -> Vector2:
 	var data := level.data
 	var at := World.cell_of(level.player.global_position)
 	for r in range(1, radius):
-		for dy in range(-r, r + 1):
-			for dx in [-r, r]:
-				var cell := at + Vector2i(dx, dy)
+		for i in range(-r, r + 1):
+			for cell in [at + Vector2i(i, -r), at + Vector2i(i, r), at + Vector2i(-r, i), at + Vector2i(r, i)]:
 				if data.get_tile(cell.x, cell.y) == WorldData.ROCK and not data.is_solid(cell.x, cell.y - 1):
 					return World.centre_of(cell) + Vector2(0, -TILE * 0.9)
 	return Vector2.INF
