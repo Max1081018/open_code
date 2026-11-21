@@ -4,13 +4,33 @@ Branch `ccr-60ac94c6-dyqxhw`. Engine: Godot 4.4.1, GL Compatibility renderer, An
 Read **DESIGN.md** first: it sets the game's direction (light as weapon and key, vaults,
 relics, the Dark Tide, regions).
 
-## Where things stand (tests: 108 pass; tutorial bot passes)
+## Where things stand (tests: 108 pass via `tests/run.sh`)
 
-### This session's big changes (from `6c194f2`)
+### Art-direction overhaul (latest)
+
+Goal (from the brief): a mature, stylized fantasy look: real proportions, layered clothing,
+PBR materials, warm golden key light over blue shadows, restrained bloom.
 
 | Change | What it is | How verified |
 |---|---|---|
-| **Real 3D characters** | `Body3D`: KayKit (CC0) rigged models, each filmed side-on by its own orthographic camera into a SubViewport and shown on a sprite at its feet. Truly side-facing; turns by rotating round through the camera; 19-21 skeletal clips (idle/walk/run/jump/chop/slash/block/dodge/hit/death/cast...), gait speed matched to ground speed; items on the `handslot.r` bone (KayKit 3D weapons, else the item picture on a camera-facing card gripped at its handle). Off-screen bodies stop rendering and animating; enemies render at 1x without MSAA. Setting `characters_3d` falls back to the old cut-out rig | Tests (hand-bone parenting, turn, footsteps), filmstrips of dig/chop/slash/torch/walk |
+| **New cast** | Quaternius Universal Base Characters + Modular Fantasy Outfits + Universal Animation Library 1&2 (CC0), built per character by `CharacterKit` (one shared 65-bone skeleton; outfits/hair reparented onto it; texture variants; 44 clips in one shared library). Player: hooded ranger in dusk-coloured leathers. Wren: lavender peasant wool, hair in buns. Bram: grey buzz-cut and beard, dark work clothes. Mira: ranger coat, long auburn hair. Tobin: ginger beard. Sir Aldous: steel-toned ranger plate, pauldron, long grey hair. Dead: ash skin, rags or rust, glowing eyes; zombies/shades shamble (zombie clips); the Warden is a giant in rusted plate, the Gloam a hooded violet wraith | Cast lineup (`tools/preview_kit.gd`), captures, hand-bone test |
+| Hands | Items gripped by a node on `hand_r`/`hand_l` placed across the knuckles (index to pinky) and into the palm, so handles sit in the fist | Test, filmstrips of slash/dig/torch |
+| Lighting of characters | Warm key (1.0, 0.86, 0.66), cool blue rim and ambient, per-character SubViewport | Captures |
+| Portraits | Re-rendered close on the new faces (`tools/render_portraits.gd`) | Dialogue capture |
+| **Terrain** | Atlas rebuilt from ambientCG photo materials (soil, rock, brick, sand, snow, planks, grass cap) with soft edge shading, levelled to the game's light (`tools/build_terrain_atlas.py`, fetches its sources) | Surface + cave captures |
+| **Forest** | Playfield trees, bushes, ferns, flowers, rocks are renders of the Stylized Nature MegaKit; the parallax tree lines use the same renders behind fog, so near and far match | Captures |
+| **Houses and ruins** | `WorldData.buildings` (saved): the cabin is drawn as a cutaway cottage (timber-framed plaster back wall with windows, tiled gable roof and chimney rendered from the Medieval Village MegaKit); ruins and the Warden's hall get an ivy-hung brick arcade repeated at character scale | Captures (`--x=s-6`, `--scenario=ruin`) |
+| Size | KayKit character models removed (11 MB); only KayKit weapons remain | Tests |
+
+Not done yet from the brief (next): talking animation and better panels in dialogue; sealed
+vaults/Drowned Halls back-wall art; more building types (a village for the NPCs); water and
+foreground layer restyle; global colour grade pass; Android texture budget check on a device.
+
+### Earlier this session (from `6c194f2`)
+
+| Change | What it is | How verified |
+|---|---|---|
+| **Real 3D characters** | `Body3D`: rigged models (first KayKit, now the Quaternius cast above), each filmed side-on by its own orthographic camera into a SubViewport and shown on a sprite at its feet. Truly side-facing; turns by rotating round through the camera; 19-21 skeletal clips (idle/walk/run/jump/chop/slash/block/dodge/hit/death/cast...), gait speed matched to ground speed; items on the `handslot.r` bone (KayKit 3D weapons, else the item picture on a camera-facing card gripped at its handle). Off-screen bodies stop rendering and animating; enemies render at 1x without MSAA. Setting `characters_3d` falls back to the old cut-out rig | Tests (hand-bone parenting, turn, footsteps), filmstrips of dig/chop/slash/torch/walk |
 | Cast | Player = hooded wanderer (Rogue_Hooded), Wren = Mage, Bram = Barbarian, Tobin = Barbarian palette-swapped, Mira = Rogue palette-swapped, **Sir Aldous** = Knight (new). Undead: zombie/robot/shade/Warden/Gloam are KayKit skeletons with bone weapons; ordinary dead claw out of the ground on spawn | Cast preview (`tools/preview_cast.gd`), captures |
 | Portraits | Rendered from the models (`tools/render_portraits.gd`) | Dialogue capture |
 | **Flare** | Star button / Q: 25 glow; burns the dead, staggers the living, lights braziers within 3.5 tiles, wakes light-runes | Test, capture |
@@ -54,12 +74,14 @@ quests; tutorial bot; save/load; weather and thunderstorms; foliage shader; ligh
 
 ## How to check things
 
-- Tests: `godot --headless --path godot -s res://tests/run_tests.gd [-- name_filter]`
+- Tests: `godot/tests/run.sh [name_filter]` (wraps `run_tests.gd`; also fails on any SCRIPT ERROR,
+  which inside a test would otherwise abort it silently and count as a pass)
 - New `class_name` scripts need `godot --headless --path godot --import` once.
 - Captures: `xvfb-run -a -s "-screen 0 2340x1080x24" godot --path godot --rendering-driver opengl3 --resolution 2340x1080 --fixed-fps 60 -- --shot=out.png --touch --frames=N`
   plus `--scenario=cave|crystal|deep|ruin|vault|vault_open|...`, `--action=dig|chop|attack|walk|flare|tutorial|soak|...`,
   `--hold=item`, `--wear=relic_a,relic_b`, `--tide`, `--spawn=kinds`, `--boss=warden`, `--x=s-30`, `--strip=N --every=K`.
-- Tools: `tools/preview_cast.gd`, `tools/preview_body.gd`, `tools/render_portraits.gd`,
-  `tools/render_props.gd -- dungeon`, `tools/kaykit_palette.py`, `tools/slim_glb.py`,
+- Tools: `tools/preview_cast.gd`, `tools/preview_kit.gd`, `tools/preview_body.gd`, `tools/render_portraits.gd`,
+  `tools/render_props.gd -- dungeon`, `tools/render_cottage.gd`, `tools/build_terrain_atlas.py`,
+  `tools/character_palettes.py`, `tools/build_anim_library.gd`, `tools/slim_glb.py`,
   `tools/draw_relics.py`, `tools/bake_voices.py`.
 - Software rendering is slow with several 3D bodies: keep captures short or use 1170x540.

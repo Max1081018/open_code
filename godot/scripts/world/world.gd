@@ -102,6 +102,8 @@ func _build_layers() -> void:
 	walls.material = Visuals.terrain(true)
 	add_child(walls)
 
+	_build_houses()
+
 	object_root = Node2D.new()
 	object_root.z_index = -2
 	add_child(object_root)
@@ -147,6 +149,65 @@ func _build_layers() -> void:
 	glow_root = Node2D.new()
 	glow_root.z_index = 60
 	add_child(glow_root)
+
+
+## Houses are cutaways: rendered art of the back wall behind the rooms and
+## the roof seen end-on above them (Medieval Village MegaKit renders). The
+## tiles stay the walls you can dig; the art is only what they look like.
+func _build_houses() -> void:
+	for building in data.buildings:
+		var rect: Array = building.rect
+		var left := float(rect[0]) * float(TILE)
+		var top := float(rect[1]) * float(TILE)
+		var width := float(rect[2]) * float(TILE)
+		var height := float(rect[3]) * float(TILE)
+		if building.kind == "ruin":
+			_build_ruin_wall(left, top, width, height)
+			continue
+		var wall := Sprite2D.new()
+		wall.texture = load("res://assets/rendered/village/cottage_wall.png")
+		wall.centered = false
+		# Over the rooms, tucked half a tile under the side walls and ceiling.
+		var inner := Rect2(left + float(TILE) * 0.5, top + float(TILE) * 0.5, width - float(TILE), height - float(TILE) * 0.5)
+		wall.position = inner.position
+		wall.scale = inner.size / wall.texture.get_size()
+		# Set back like the wall tiles, a little warmer: lived-in.
+		wall.modulate = Color(0.62, 0.58, 0.58)
+		wall.z_index = -4
+		add_child(wall)
+		var roof := Sprite2D.new()
+		roof.texture = load("res://assets/rendered/village/cottage_roof.png")
+		roof.centered = false
+		var k := (width + float(TILE) * 1.4) / roof.texture.get_width()
+		roof.scale = Vector2(k, k)
+		var size := roof.texture.get_size() * k
+		# Eaves overhang both sides; the gable's sill sits on the ceiling row.
+		roof.position = Vector2(left + width * 0.5 - size.x * 0.5, top + float(TILE) * 0.45 - size.y)
+		roof.modulate = Color(0.8, 0.76, 0.76)
+		roof.z_index = -1
+		add_child(roof)
+
+
+## A ruin's back wall: old brick, arches and ivy, repeated along the hall.
+func _build_ruin_wall(left: float, top: float, width: float, height: float) -> void:
+	var wall := Sprite2D.new()
+	var texture: Texture2D = load("res://assets/rendered/village/ruin_wall.png")
+	wall.texture = texture
+	wall.centered = false
+	wall.texture_repeat = CanvasItem.TEXTURE_REPEAT_ENABLED
+	var inner := Rect2(left + float(TILE) * 0.5, top + float(TILE) * 0.5, width - float(TILE), height - float(TILE))
+	# At the characters' scale (the render is 96 px a metre; people here
+	# stand about 105 px a metre), repeated upward from the floor so tall
+	# halls get upper storeys of arches.
+	var k := 1.1
+	var shown := inner.size / k
+	wall.region_enabled = true
+	wall.region_rect = Rect2(0, texture.get_height() - shown.y, shown.x, shown.y)
+	wall.scale = Vector2(k, k)
+	wall.position = inner.position
+	wall.modulate = Color(0.6, 0.56, 0.54)
+	wall.z_index = -4
+	add_child(wall)
 
 
 func _build_tileset() -> TileSet:

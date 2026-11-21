@@ -259,6 +259,12 @@ func _find_scenario_cell(kind: String) -> Vector2i:
 				for dx in [2, 3, -2, -3]:
 					if data.get_liquid(x + dx, y) == WorldData.LAVA or data.get_liquid(x + dx, y + 1) == WorldData.LAVA:
 						return Vector2i(x, y)
+	if kind == "ruin":
+		# In the first ruined hall, a few cells in from its left door.
+		for building in data.buildings:
+			if building.kind == "ruin":
+				var rect: Array = building.rect
+				return Vector2i(int(rect[0]) + 5, int(rect[1]) + int(rect[3]) - 2)
 	var rng := RandomNumberGenerator.new()
 	rng.seed = 5
 	for attempt in 40000:

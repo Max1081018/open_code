@@ -2,19 +2,16 @@
 
 importer="texture"
 type="CompressedTexture2D"
-uid="uid://bjqxsrbvpgmtx"
-path="res://.godot/imported/Skeleton_Rogue_skeleton_texture.png-fce5d866e8e8a0ce8b8372beb0ddabe1.ctex"
+uid="uid://br47dl7e8lkmk"
+path="res://.godot/imported/ruin_wall.png-65dc777076ea5286170d07c1605202e5.ctex"
 metadata={
 "vram_texture": false
-}
-generator_parameters={
-"md5": "661544b1e8ba10b5a0c98b638eae6d0b"
 }
 
 [deps]
 
-source_file="res://assets/models/kaykit/characters/Skeleton_Rogue_skeleton_texture.png"
-dest_files=["res://.godot/imported/Skeleton_Rogue_skeleton_texture.png-fce5d866e8e8a0ce8b8372beb0ddabe1.ctex"]
+source_file="res://assets/rendered/village/ruin_wall.png"
+dest_files=["res://.godot/imported/ruin_wall.png-65dc777076ea5286170d07c1605202e5.ctex"]
 
 [params]
 
@@ -24,7 +21,7 @@ compress/lossy_quality=0.7
 compress/hdr_compression=1
 compress/normal_map=0
 compress/channel_pack=0
-mipmaps/generate=true
+mipmaps/generate=false
 mipmaps/limit=-1
 roughness/mode=0
 roughness/src_normal=""

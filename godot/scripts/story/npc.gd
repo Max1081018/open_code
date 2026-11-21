@@ -67,6 +67,13 @@ func _process(delta: float) -> void:
 	body.motion = Vector2.ZERO
 	body.grounded = true
 
+	# Talking with their hands while their line plays.
+	var talking: bool = level.hud != null and level.hud.dialogue.speaking() == id
+	if talking and body.animation != "talk":
+		body.play("talk")
+	elif not talking and body.animation == "talk":
+		body.play("idle")
+
 	# A wave now and then while the player is about.
 	_fidget -= delta
 	if _fidget <= 0.0:

@@ -126,6 +126,32 @@ func test_npcs_stand_on_the_ground_near_the_start() -> void:
 	level.free()
 
 
+func test_npcs_talk_with_their_hands_while_their_line_plays() -> void:
+	var level := _make_level()
+	var wren: Npc = null
+	var bram: Npc = null
+	for npc in Engine.get_main_loop().get_nodes_in_group("npcs"):
+		if level.is_ancestor_of(npc):
+			if npc.id == "wren":
+				wren = npc
+			elif npc.id == "bram":
+				bram = npc
+	var hud: Node = load("res://scripts/ui/hud.gd").new()
+	hud.level = level
+	level.hud = hud
+	level.add_child(hud)
+	level.hud.dialogue.say(["wren_premise"])
+	check_eq(level.hud.dialogue.speaking(), "wren", "the box knows who is speaking")
+	wren._process(0.016)
+	bram._process(0.016)
+	check_eq(wren.body.animation, "talk", "Wren gestures while she speaks")
+	check(bram.body.animation != "talk", "Bram does not mouth Wren's words")
+	level.hud.dialogue.stop()
+	wren._process(0.016)
+	check_eq(wren.body.animation, "idle", "and settles when the line is done")
+	level.free()
+
+
 func test_a_crafting_step_says_what_is_missing() -> void:
 	var level := _make_level()
 	var q := level.quests

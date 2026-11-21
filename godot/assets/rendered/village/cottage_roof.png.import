@@ -2,19 +2,16 @@
 
 importer="texture"
 type="CompressedTexture2D"
-uid="uid://dck1d4kf42ukw"
-path="res://.godot/imported/Rogue_Hooded_rogue_texture.png-2eb6eba34bb3ec76eff9ef34fdd7c50a.ctex"
+uid="uid://cwipt3pqw7hpv"
+path="res://.godot/imported/cottage_roof.png-fcf111901a16ed7bcaa78614382d3ecd.ctex"
 metadata={
 "vram_texture": false
-}
-generator_parameters={
-"md5": "5b6fbb4d6c67e8c66dd2dffbb40f8812"
 }
 
 [deps]
 
-source_file="res://assets/models/kaykit/characters/Rogue_Hooded_rogue_texture.png"
-dest_files=["res://.godot/imported/Rogue_Hooded_rogue_texture.png-2eb6eba34bb3ec76eff9ef34fdd7c50a.ctex"]
+source_file="res://assets/rendered/village/cottage_roof.png"
+dest_files=["res://.godot/imported/cottage_roof.png-fcf111901a16ed7bcaa78614382d3ecd.ctex"]
 
 [params]
 
@@ -24,7 +21,7 @@ compress/lossy_quality=0.7
 compress/hdr_compression=1
 compress/normal_map=0
 compress/channel_pack=0
-mipmaps/generate=true
+mipmaps/generate=false
 mipmaps/limit=-1
 roughness/mode=0
 roughness/src_normal=""

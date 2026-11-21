@@ -7,3 +7,4 @@ captures/
 .DS_Store
 .signing/
 godot/tools/terrain_src/
+godot/assets/models/village_src/

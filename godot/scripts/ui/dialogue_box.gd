@@ -97,6 +97,14 @@ func is_talking() -> bool:
 	return visible
 
 
+## Who is speaking right now ("" between lines), while their voice runs:
+## NPCs talk with their hands while it is them.
+func speaking() -> String:
+	if not visible or _current == "" or _line_time >= _line_length:
+		return ""
+	return String(Story.line(_current).get("speaker", ""))
+
+
 ## Say these lines, one after another.
 func say(lines: Array) -> void:
 	for id in lines:

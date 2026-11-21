@@ -52,7 +52,7 @@ Crafting needs stations: by hand (workbench, torches, campfire), at a
 
 ```sh
 godot --path godot                 # play (Godot 4.4.1)
-godot --headless --path godot -s res://tests/run_tests.gd    # 44 tests
+godot/tests/run.sh          # all tests; also fails on any script error
 ```
 
 ### Screenshots without a person at the controls

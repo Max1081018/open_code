@@ -195,8 +195,8 @@ func test_the_3d_character_holds_items_on_its_hand_bone() -> void:
 	var level := _make_level(true)
 	var player := level.player
 	var body: Body3D = player.body
-	var bone: BoneAttachment3D = body.right_hand.get_parent() if body.kit else body.right_hand
-	check(bone != null and bone.bone_name == ("hand_r" if body.kit else "handslot.r"), "a grip on the right hand bone")
+	var bone: BoneAttachment3D = body.right_hand.get_parent()
+	check(bone != null and bone.bone_name == "hand_r", "a grip on the right hand bone")
 	for id in ["iron_pickaxe", "iron_axe", "wood_hammer", "iron_sword", "torch", "planks"]:
 		player.inventory.slots[0] = {"id": id, "count": 1}
 		player.hotbar_index = 0

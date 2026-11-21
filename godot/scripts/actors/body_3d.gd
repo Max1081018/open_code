@@ -33,35 +33,6 @@ const PIXELS_PER_METRE := 108.0
 ## pure profile. A little less keeps the face readable.
 const SIDE_YAW := 72.0
 
-## Game clip -> [model animation, loops, seconds at speed 1].
-const CLIPS := {
-	"idle": ["Idle", true],
-	"walk": ["Walking_A", true],
-	"run": ["Running_A", true],
-	"jump": ["Jump_Idle", true],
-	"fall": ["Jump_Idle", true],
-	"land": ["Jump_Land", false],
-	"swing_mine": ["2H_Melee_Attack_Chop", false],
-	"swing_chop": ["1H_Melee_Attack_Chop", false],
-	"slash": ["1H_Melee_Attack_Slice_Diagonal", false],
-	"stab": ["1H_Melee_Attack_Stab", false],
-	"use": ["Interact", false],
-	"interact": ["Interact", false],
-	"pickup": ["PickUp", false],
-	"talk": ["Interact", false],
-	"dodge": ["Dodge_Forward", false],
-	"hurt": ["Hit_A", false],
-	"death": ["Death_A", false],
-	"block": ["Blocking", true],
-	"cheer": ["Cheer", false],
-	"cast": ["Spellcast_Shoot", false],
-	"attack": ["1H_Melee_Attack_Chop", false],
-	"spin": ["2H_Melee_Attack_Spin", false],
-	"throw": ["Throw", false],
-	"rise": ["Spawn_Ground_Skeletons", false],
-	"taunt": ["Taunt", false],
-}
-
 ## The same game clips on the Quaternius characters (Universal Animation
 ## Library 1 and 2): [clip, loops].
 const KIT_CLIPS := {
@@ -83,27 +54,11 @@ const UNDEAD_CLIPS := {
 }
 const SHAMBLERS := ["zombie", "shade"]
 
-## Who plays whom: game character -> [KayKit model, palette swap or ""].
-const CAST := {
-	"player": ["Rogue_Hooded", ""],
-	"wren": ["Mage", ""],
-	"bram": ["Barbarian", ""],
-	"tobin": ["Barbarian", "tobin"],
-	"mira": ["Rogue", "mira"],
-	"aldous": ["Knight", ""],
-	"zombie": ["Skeleton_Minion", ""],
-	"robot": ["Skeleton_Warrior", ""],
-	"shade": ["Skeleton_Rogue", ""],
-	"warden": ["Skeleton_Warrior", ""],
-	"gloam": ["Skeleton_Mage", ""],
-}
+## Who can be played by a 3D body: every CharacterKit recipe.
+const CAST := CharacterKit.RECIPES
 
-var character := "Knight"
-var palette := ""
 var role := ""
-## True for the Quaternius cast (CharacterKit), false for the KayKit one.
-var kit := false
-var clips: Dictionary = CLIPS
+var clips: Dictionary = KIT_CLIPS
 var animation := "idle"
 var speed_scale := 1.0
 var motion := Vector2.ZERO
@@ -136,15 +91,10 @@ var _clock := 0.0
 
 
 func _init(who := "Knight") -> void:
-	role = who
-	kit = CharacterKit.has(who)
-	var cast: Array = CAST.get(who, [who, ""])
-	character = cast[0]
-	palette = cast[1]
-	if kit:
-		clips = KIT_CLIPS.duplicate()
-		if who in SHAMBLERS:
-			clips.merge(UNDEAD_CLIPS, true)
+	role = who if CharacterKit.has(who) else "player"
+	clips = KIT_CLIPS.duplicate()
+	if role in SHAMBLERS:
+		clips.merge(UNDEAD_CLIPS, true)
 
 
 func _ready() -> void:
@@ -170,21 +120,19 @@ func _build() -> void:
 	environment.environment = Environment.new()
 	environment.environment.ambient_light_source = Environment.AMBIENT_SOURCE_COLOR
 	# Art direction: warm golden key, cool blue shadow and rim.
-	environment.environment.ambient_light_color = Color(0.48, 0.54, 0.7) if kit else Color(0.62, 0.62, 0.7)
-	environment.environment.ambient_light_energy = 0.75 if kit else 0.9
+	environment.environment.ambient_light_color = Color(0.48, 0.54, 0.7)
+	environment.environment.ambient_light_energy = 0.75
 	world.add_child(environment)
 	# Key light from the upper front, a cool rim from behind.
 	var key := DirectionalLight3D.new()
 	key.rotation_degrees = Vector3(-38, -28, 0)
-	key.light_energy = 1.15
-	if kit:
-		key.light_color = Color(1.0, 0.86, 0.66)
-		key.light_energy = 1.35
+	key.light_color = Color(1.0, 0.86, 0.66)
+	key.light_energy = 1.35
 	world.add_child(key)
 	var rim := DirectionalLight3D.new()
 	rim.rotation_degrees = Vector3(-15, 160, 0)
-	rim.light_energy = 0.9 if kit else 0.5
-	rim.light_color = Color(0.62, 0.76, 1.0) if kit else Color(0.75, 0.85, 1.0)
+	rim.light_energy = 0.9
+	rim.light_color = Color(0.62, 0.76, 1.0)
 	world.add_child(rim)
 
 	camera = Camera3D.new()
@@ -199,34 +147,17 @@ func _build() -> void:
 	camera.rotation_degrees = Vector3(-6.8, 0, 0)
 	world.add_child(camera)
 
-	if kit:
-		model = CharacterKit.build(role)
-	else:
-		var scene: PackedScene = load("res://assets/models/kaykit/characters/%s.glb" % character)
-		model = scene.instantiate()
+	model = CharacterKit.build(role)
 	world.add_child(model)
-	if palette != "" and not kit:
-		_repaint(model, load("res://assets/models/kaykit/textures/%s.png" % palette))
 	skeleton = _find(model, func(n): return n is Skeleton3D)
 	anim = _find(model, func(n): return n is AnimationPlayer)
 	for clip in clips.values():
 		var a := anim.get_animation(clip[0]) if anim and anim.has_animation(clip[0]) else null
 		if a:
 			a.loop_mode = Animation.LOOP_LINEAR if clip[1] else Animation.LOOP_NONE
-	# Everything the pack hangs on the hands by default is hidden; held
-	# items are chosen by the game.
 	if skeleton:
-		for child in skeleton.get_children():
-			if child is BoneAttachment3D:
-				for item in child.get_children():
-					if item is MeshInstance3D:
-						item.visible = false
-		if kit:
-			right_hand = _grip("hand_r", "index_01_r", "pinky_01_r", "middle_01_r")
-			left_hand = _grip("hand_l", "index_01_l", "pinky_01_l", "middle_01_l")
-		else:
-			right_hand = _attachment("handslot.r")
-			left_hand = _attachment("handslot.l")
+		right_hand = _grip("hand_r", "index_01_r", "pinky_01_r", "middle_01_r")
+		left_hand = _grip("hand_l", "index_01_l", "pinky_01_l", "middle_01_l")
 
 	picture = Sprite2D.new()
 	picture.texture = viewport.get_texture()
@@ -244,19 +175,6 @@ func _build() -> void:
 	notifier.screen_entered.connect(_on_screen.bind(true))
 	notifier.screen_exited.connect(_on_screen.bind(false))
 	add_child(notifier)
-
-
-## Swap the texture on every surface of the model (a palette variant).
-static func _repaint(node: Node, texture: Texture2D) -> void:
-	if node is MeshInstance3D:
-		for i in node.mesh.get_surface_count():
-			var material: Material = node.mesh.surface_get_material(i)
-			if material is BaseMaterial3D:
-				var copy: BaseMaterial3D = material.duplicate()
-				copy.albedo_texture = texture
-				node.set_surface_override_material(i, copy)
-	for child in node.get_children():
-		_repaint(child, texture)
 
 
 func _on_screen(shown: bool) -> void:
@@ -404,12 +322,10 @@ func hold_off_hand_model(name: String) -> void:
 
 func _weapon(name: String) -> Node3D:
 	var scene: PackedScene = load("res://assets/models/kaykit/weapons/%s.gltf" % name)
-	if kit:
-		# KayKit's arms are sized for its big-handed figures; a person's are smaller.
-		var held: Node3D = scene.instantiate()
-		held.scale = Vector3.ONE * 0.62
-		return held
-	return scene.instantiate()
+	# KayKit's weapons are sized for its big-handed figures; a person's hands are smaller.
+	var held: Node3D = scene.instantiate()
+	held.scale = Vector3.ONE * 0.62
+	return held
 
 
 func _make_card(texture: Texture2D, key: String, kind: String) -> Node3D:

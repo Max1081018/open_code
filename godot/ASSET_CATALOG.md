@@ -104,16 +104,36 @@ tree fall, wood chop, close and distant thunder; ambience loops for rain
 through trees, a forest bird chorus and cave drips. Loops are cut to 40 s
 with an equal-power crossfade by `tools/make_loop.py`.
 
-## 3D characters, weapons and dungeon props — KayKit (CC0)
+## 3D characters, buildings and nature — Quaternius (CC0)
+
+By Quaternius (quaternius.com), CC0 1.0 (`assets/models/quaternius/LICENSE-Quaternius.txt`).
+
+| Pack | Used for |
+|---|---|
+| Universal Base Characters | Every person and every risen dead: one 65-bone body (male/female) with face, eyes and skin |
+| Modular Character Outfits – Fantasy | Ranger and peasant outfits, hoods, pauldrons, hair and beards, mixed per character in `scripts/actors/character_kit.gd` |
+| Universal Animation Library 1 and 2 | The 44 clips the cast plays (`assets/models/quaternius/anim/humanoid_anims.res`, built by `tools/build_anim_library.gd`) |
+| Stylized Nature MegaKit | Rendered to sprites (`assets/rendered/nature/`): trees, pines, dead and twisted trees, bushes, ferns, flowers, rocks — in the playfield and the parallax backdrops |
+| Medieval Village MegaKit | Rendered (`tools/render_cottage.gd`, `assets/rendered/village/`): the cottage's timber-framed wall and gable roof, the ruins' brick arcades |
+
+Outfit colour variants (dusk ranger, steel, rust, lavender, rags, ash skin) are recolours of the
+pack textures by `tools/character_palettes.py`. Source glTFs not shipped (nature, village) go in
+`assets/models/nature_src` / `village_src`, which are git-ignored.
+
+## Terrain materials — ambientCG (CC0)
+
+By ambientCG (ambientcg.com), CC0 1.0: Ground048 (soil), Rock058 (rock, basalt, crystal), Bricks089,
+Ground054 (sand), Snow010A, Grass004 (grass cap), Planks012. Built into `assets/tiles/terrain.png`
+by `tools/build_terrain_atlas.py`, which downloads them itself.
+
+## Weapons and dungeon props — KayKit (CC0)
 
 By Kay Lousberg (www.kaylousberg.com), CC0 1.0. Licences kept beside the files
 (`assets/models/kaykit/LICENSE-KayKit-*.txt`, `assets/models/LICENSE-KayKit-Dungeon.txt`).
 
 | Pack | Used for |
 |---|---|
-| KayKit Adventurers 1.0 | Player (Rogue_Hooded), Wren (Mage), Bram and Tobin (Barbarian), Mira (Rogue), Sir Aldous (Knight); swords, axes, shields, staff |
-| KayKit Skeletons 1.0 | The risen dead and both bosses; their bone weapons and shields |
+| KayKit Adventurers 1.0 | Swords, axes, shields, staff held in the characters' hands |
 | KayKit Dungeon Remastered 1.0 | Rendered to sprites: gilded relic chest, braziers, candles, banner, trophy and other vault props |
 
-Animations trimmed to the clips the game plays (`tools/slim_glb.py`); Tobin and Mira are
-palette swaps of the pack's textures (`tools/kaykit_palette.py`).
+(The KayKit character models were the cast before the Quaternius one; they are no longer shipped.)

@@ -95,6 +95,7 @@ static func build(name: String) -> Node3D:
 	for path in parts:
 		var scene: Node = load(Q + path).instantiate()
 		for mesh in scene.find_children("*", "MeshInstance3D", true, false):
+			mesh.owner = null
 			mesh.get_parent().remove_child(mesh)
 			skeleton.add_child(mesh)
 			mesh.skeleton = NodePath("..")

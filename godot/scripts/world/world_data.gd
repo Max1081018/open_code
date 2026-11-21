@@ -76,6 +76,9 @@ var spawn := Vector2i.ZERO
 var vault := Vector2i.ZERO
 ## Sealed vaults: {"door": [cells], "braziers": [cells], "chest": cell, "open": bool}.
 var vaults: Array = []
+## Houses drawn over their tiles: {"kind": "cottage", "rect": [x, top, w, h]}
+## (cells; the bottom of the rect is the floor).
+var buildings: Array = []  ## kinds: "cottage", "ruin"
 ## Hidden caches: {"rune": the rock face cell marked with a light-rune, "chest": cell}.
 var caches: Array = []
 ## The Drowned Halls: flooded ruin caverns, as Rect2i of cells.
@@ -475,6 +478,7 @@ func _build_ruins() -> void:
 		if abs(x + w / 2 - width / 2) < 30:
 			continue
 		_carve_room(x, y, w, h, BRICK)
+		buildings.append({"kind": "ruin", "rect": [x, y, w, h]})
 		# A doorway on each side, so they connect to the caves.
 		for dy in range(h - 4, h - 1):
 			set_tile(x, y + dy, AIR)
@@ -492,6 +496,7 @@ func _build_ruins() -> void:
 	var vx := width / 2 - vw / 2 + _rng.randi_range(-120, 120)
 	var vy := DEEP_Y + 40
 	_carve_room(vx, vy, vw, vh, BRICK)
+	buildings.append({"kind": "ruin", "rect": [vx, vy, vw, vh]})
 	for dy in range(vh - 4, vh - 1):
 		set_tile(vx, vy + dy, AIR)
 	vault = Vector2i(vx + vw / 2, vy + vh - 2)
@@ -751,6 +756,7 @@ func _build_cabin() -> void:
 	for y in range(ground - 3, ground):
 		tiles[idx(cx, y)] = AIR
 		tiles[idx(cx + w - 1, y)] = AIR
+	buildings.append({"kind": "cottage", "rect": [cx, top, w, h]})
 	_put_object(cx + 2, ground - 1, {"type": "workbench"})
 	_put_object(cx + 6, ground - 1, {"type": "chest", "loot": [
 		{"id": "wood", "count": 20}, {"id": "torch", "count": 10},
@@ -774,13 +780,22 @@ const SHRUBS := {
 }
 
 
+## True for columns a building stands on (its roof is not a meadow).
+func _under_roof(x: int) -> bool:
+	for building in buildings:
+		var rect: Array = building.rect
+		if x >= int(rect[0]) - 1 and x <= int(rect[0]) + int(rect[2]):
+			return true
+	return false
+
+
 func _plant_surface() -> void:
 	var next_tree := 0
 	for x in range(4, width - 4):
 		var y := surface[x] - 1
 		if not is_solid(x, y + 1) or is_solid(x, y) or objects.has(idx(x, y)):
 			continue
-		if abs(x - spawn.x) < 3:
+		if abs(x - spawn.x) < 3 or _under_roof(x):
 			continue
 		var biome := biome_columns[x]
 		var roll := _rng.randf()
@@ -867,6 +882,7 @@ func to_dict() -> Dictionary:
 		"vaults": vaults,
 		"caches": caches,
 		"drowned": drowned,
+		"buildings": buildings,
 	}
 
 
@@ -888,5 +904,6 @@ static func from_dict(data: Dictionary) -> WorldData:
 	w.vaults = data.get("vaults", [])
 	w.caches = data.get("caches", [])
 	w.drowned = data.get("drowned", [])
+	w.buildings = data.get("buildings", [])
 	w.recompute_all_sky()
 	return w

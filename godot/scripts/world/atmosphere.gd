@@ -19,13 +19,14 @@ const TILE := 128.0
 const BIOMES := {
 	WorldData.Biome.MEADOW: {
 		"far": "fade_trees", "near": "color_hills",
-		"trees": ["tree", "treeLong", "treePine", "tree", "treeSmall_green1"],
+		"trees": ["nature/CommonTree_1", "nature/Pine_2", "nature/CommonTree_3", "nature/Pine_4",
+			"nature/CommonTree_5", "nature/TwistedTree_2", "nature/Pine_1"],
 		"fog": Color(0.40, 0.56, 0.54), "sky_top": Color(0.30, 0.50, 0.70),
 		"sky_low": Color(0.62, 0.74, 0.72),
 	},
 	WorldData.Biome.TUNDRA: {
 		"far": "fade_hills", "near": "color_hills",
-		"trees": ["treePineSnow", "treeSnow", "treePineFrozen", "treeFrozen"],
+		"trees": ["nature/Pine_1", "nature/Pine_3", "nature/DeadTree_2", "nature/Pine_4", "nature/DeadTree_3"],
 		"fog": Color(0.62, 0.70, 0.80), "sky_top": Color(0.30, 0.42, 0.62),
 		"sky_low": Color(0.76, 0.82, 0.90),
 	},
@@ -42,7 +43,7 @@ const LAYERS := [
 	[0.04, 0.78, 0.0, 0.10, "far"],
 	[0.10, 0.62, 0.55, 0.22, "trees"],
 	[0.22, 0.42, 0.85, 0.38, "trees"],
-	[0.38, 0.18, 0.0, 0.55, "near"],
+	[0.38, 0.38, 0.0, 0.55, "near"],
 ]
 
 var world: World
@@ -180,7 +181,11 @@ func _fill_tree_line(layer: Node2D, kinds: Array, scale: float, seed_value: int)
 	rng.seed = 100 + seed_value
 	var x := 0.0
 	while x < _strip_width:
-		var tex: Texture2D = load("res://assets/scenery/%s.png" % kinds[rng.randi() % kinds.size()])
+		var kind: String = kinds[rng.randi() % kinds.size()]
+		# "nature/..." are the rendered Stylized Nature MegaKit trees, the
+		# same ones that grow in the playfield, so the distance matches.
+		var tex: Texture2D = load(("res://assets/rendered/%s.png" if "/" in kind else
+			"res://assets/scenery/%s.png") % kind)
 		var s := Sprite2D.new()
 		s.texture = tex
 		s.centered = false
