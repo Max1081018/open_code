@@ -102,8 +102,6 @@ func _build_layers() -> void:
 	walls.material = Visuals.terrain(true)
 	add_child(walls)
 
-	_build_houses()
-
 	object_root = Node2D.new()
 	object_root.z_index = -2
 	add_child(object_root)
@@ -155,6 +153,8 @@ func _build_layers() -> void:
 	glow_root = Node2D.new()
 	glow_root.z_index = 60
 	add_child(glow_root)
+	# Houses and scenery (their z-index places them; lamps need glow_root).
+	_build_houses()
 
 
 ## Houses are cutaways: rendered art of the back wall behind the rooms and
@@ -169,6 +169,9 @@ func _build_houses() -> void:
 		var height := float(rect[3]) * float(TILE)
 		if building.kind == "ruin":
 			_build_ruin_wall(left, top, width, height)
+			continue
+		if building.kind == "scenery":
+			_build_scenery(building)
 			continue
 		var wall := Sprite2D.new()
 		wall.texture = load("res://assets/rendered/village/cottage_wall.png")
@@ -192,6 +195,30 @@ func _build_houses() -> void:
 		roof.modulate = Color(0.8, 0.76, 0.76)
 		roof.z_index = -1
 		add_child(roof)
+
+
+## A building or prop standing behind the play plane on the ground (renders
+## of downloaded models, assets/rendered/scenery3d). Set back a little in
+## tone; a lantern post gets its warm glow.
+func _build_scenery(building: Dictionary) -> void:
+	var art: String = building.art
+	var texture: Texture2D = load("res://assets/rendered/scenery3d/%s.png" % art)
+	if texture == null:
+		return
+	var sprite := Sprite2D.new()
+	sprite.texture = texture
+	sprite.centered = false
+	var k := float(building.height) / texture.get_height()
+	sprite.scale = Vector2(k, k)
+	var foot := Vector2((float(building.x) + 0.5) * float(TILE), float(building.ground) * float(TILE) + 18.0)
+	sprite.position = foot - Vector2(texture.get_width() * k * 0.5, texture.get_height() * k)
+	sprite.modulate = Color(0.74, 0.73, 0.78)
+	sprite.z_index = -4
+	add_child(sprite)
+	if art == "lamp":
+		var glow := Glow.make(Color(1.0, 0.72, 0.38), 1.4)
+		glow.position = foot + Vector2(texture.get_width() * k * 0.28, -texture.get_height() * k * 0.78)
+		glow_root.add_child(glow)
 
 
 ## A ruin's back wall: old brick, arches and ivy, repeated along the hall.

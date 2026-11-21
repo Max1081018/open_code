@@ -19,17 +19,19 @@ const TILE := 128.0
 const BIOMES := {
 	WorldData.Biome.MEADOW: {
 		"far": "fade_trees",
+		# Landmarks on the far hills: [render, place along the strip, height px].
+		"landmarks": [["castle", 0.22, 900.0], ["waterfall", 0.58, 520.0], ["castle", 0.86, 760.0]],
 		# The nearest layer is forest too (an Array is a tree line): the
 		# cartoon hill there read as a toy among the rendered trees.
-		"near": ["nature/CommonTree_2", "nature/Bush_Common", "nature/Pine_3", "nature/CommonTree_4",
-			"nature/Bush_Common_Flowers", "nature/Pine_2"],
+		"near": ["nature/CommonTree_2", "nature/Pine_3", "nature/CommonTree_4", "nature/Pine_2", "nature/CommonTree_1"],
 		"trees": ["nature/CommonTree_1", "nature/Pine_2", "nature/CommonTree_3", "nature/Pine_4",
-			"nature/CommonTree_5", "nature/TwistedTree_2", "nature/Pine_1"],
+			"nature/CommonTree_5", "nature/Pine_1"],
 		"fog": Color(0.40, 0.56, 0.54), "sky_top": Color(0.30, 0.50, 0.70),
 		"sky_low": Color(0.62, 0.74, 0.72),
 	},
 	WorldData.Biome.TUNDRA: {
 		"far": "fade_hills", "near": "color_hills",
+		"landmarks": [["abbey", 0.35, 420.0], ["bridge", 0.75, 320.0]],
 		"trees": ["nature/Pine_1", "nature/Pine_3", "nature/DeadTree_2", "nature/Pine_4", "nature/DeadTree_3"],
 		"fog": Color(0.62, 0.70, 0.80), "sky_top": Color(0.30, 0.42, 0.62),
 		"sky_low": Color(0.76, 0.82, 0.90),
@@ -167,7 +169,21 @@ func _build_layers() -> void:
 						s.use_parent_material = true
 						layer.add_child(s)
 					layer.set_meta("repeat", count * w - w)
+
 				"trees":
+					# Castles, ruins and falls rise out of the farthest forest
+					# (renders of downloaded models), in its fog, trees in front.
+					if i == 1 and spec.has("landmarks"):
+						for mark in spec.landmarks:
+							var art: Texture2D = load("res://assets/rendered/scenery3d/%s.png" % mark[0])
+							var m := Sprite2D.new()
+							m.texture = art
+							m.centered = false
+							var k: float = float(mark[2]) / art.get_height()
+							m.scale = Vector2(k, k)
+							m.position = Vector2(_strip_width * float(mark[1]), 60.0 - art.get_height() * k)
+							m.use_parent_material = true
+							layer.add_child(m)
 					_fill_tree_line(layer, spec.trees, layer_spec[2], i)
 					layer.set_meta("repeat", _strip_width)
 			set.append(layer)

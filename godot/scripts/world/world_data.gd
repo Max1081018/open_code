@@ -265,6 +265,7 @@ func generate(world_seed: int, progress := Callable()) -> void:
 	_hide_caches()
 	_build_drowned_halls()
 	_build_cabin()
+	_build_village()
 	_report(progress, 0.85)
 	_plant_surface()
 	_place_geode()
@@ -728,6 +729,30 @@ func _ruin_loot(depth_y: int) -> Array:
 	if _rng.randf() < 0.45:
 		loot.append({"id": "vault_key", "count": 1})
 	return loot
+
+
+## The village around the start: houses, a tavern and lantern posts (renders
+## of downloaded models), standing just behind the play plane on the ground,
+## where Tobin trades and Wren and Mira live. Scenery only: nothing to dig.
+## [art, columns from spawn, height in pixels, width in tiles]
+const VILLAGE := [
+	["tavern", -40, 860, 11], ["house_timber", -26, 800, 7], ["lamp", -31, 390, 1],
+	["house_tall", 13, 980, 4], ["lamp", 8, 390, 1], ["house_generic", 24, 880, 6], ["lamp", 19, 390, 1],
+]
+
+
+func _build_village() -> void:
+	for spec in VILLAGE:
+		var x: int = spawn.x + int(spec[1])
+		if x < 4 or x > width - 5:
+			continue
+		var w: int = spec[3]
+		# Seated on the ground at its middle; slopes either side hide or
+		# show a little of the base, as a real building on a hillside.
+		var ground := surface[x]
+		var h_tiles := int(ceil(float(spec[2]) / 128.0))
+		buildings.append({"kind": "scenery", "art": spec[0], "x": x, "height": spec[2],
+			"rect": [x - w / 2, ground - h_tiles, w, h_tiles], "ground": ground})
 
 
 func _build_cabin() -> void:

@@ -121,10 +121,11 @@ pack textures by `tools/character_palettes.py`. Source glTFs not shipped (nature
 `assets/models/nature_src` / `village_src`, which are git-ignored.
 
 
-## Characters and hand-held items: Sketchfab (CC BY 4.0)
+## Characters, hand-held items and scenery: Sketchfab (CC BY 4.0)
 
 Downloaded through the Sketchfab API, retargeted onto one humanoid rig (`tools/retarget_setup.gd`),
-packed for phones (`tools/pack_characters.gd`, `tools/pack_items.gd`). Licensed CC BY 4.0
+packed for phones (`tools/pack_characters.gd`, `tools/pack_items.gd`); scenery rendered to sprites
+(`tools/render_scenery.gd`, `assets/rendered/scenery3d/`). Licensed CC BY 4.0
 (https://creativecommons.org/licenses/by/4.0/): credit below; the models were rescaled, re-rigged,
 re-textured (downsized) and some recoloured.
 
@@ -147,6 +148,16 @@ re-textured (downsized) and some recoloured.
 | Iron shield | [Medieval Shield](https://sketchfab.com/3d-models/b98b8f64d935415aab0fe9b70074511f) | CGArtem |
 | Wood shield | [Medieval Shield](https://sketchfab.com/3d-models/471f1dfb2d1d40d6994be92047de3645) | Kirhl |
 | Fishing rod | [Fishing Rod](https://sketchfab.com/3d-models/ab78aaf5ea154edcabdc118196916ddd) | Inuciian |
+
+| Castles on the far hills | [Fantastic castle](https://sketchfab.com/3d-models/08a018e4e7b3486dbec7b0341be3aeb4) | lepkarepka14 |
+| Waterfall on the far hills | [Waterfall display at Hilton, Waikiki Hawaii](https://sketchfab.com/3d-models/bd4fb9aaf01043a29591ac9dc4a0ead8) | jtressle |
+| Village tavern | [Medieval Tavern (2k vertices) - free game asset](https://sketchfab.com/3d-models/a06dfdc919334bfc95de720ad98f4295) | Andywoodhead |
+| Village house | [Medieval House 3](https://sketchfab.com/3d-models/cf179aa6dc0944f1974ce3f7812031a6) | animau3d |
+| Village tower house | [Medieval House 1](https://sketchfab.com/3d-models/0bbda345359349ea95280f597c8a4bd4) | animau3d |
+| Village house | [Medieval house \| Generic Textures \| Game ready](https://sketchfab.com/3d-models/3eb9e3b600264e2f99100fc43619497e) | by__Rx |
+| Lantern posts | [Medieval Street Lamp - Lowpoly -](https://sketchfab.com/3d-models/8ea60759ff8d4cf6b953ccd2676d56b7) | hugo859859 |
+| Abbey ruins (tundra backdrop) | [Abbey Wall Ruins](https://sketchfab.com/3d-models/37936ba6a1674f15be60075315469a43) | tonyflanagan |
+| Stone bridge (tundra backdrop) | [Stone Bridge_3arch](https://sketchfab.com/3d-models/58691a67ba774f2bbccff7ce8f85d1d8) | xplanepilot |
 
 Animations on all of them: Quaternius Universal Animation Library 1 and 2 (CC0), retargeted.
 
