@@ -70,7 +70,9 @@ func _cut(sprite: Sprite2D, tree: Node2D, from_x: float) -> void:
 		piece.rotation = randf() * TAU
 		piece.z_index = 12
 		add_child(piece)
-		var velocity := Vector2(away * randf_range(120, 420) + randf_range(-120, 120), -randf_range(380, 760))
+		# Thrown clear of the stump, but not so far up that wood lands on
+		# ledges out of reach.
+		var velocity := Vector2(away * randf_range(110, 330) + randf_range(-90, 90), -randf_range(360, 600))
 		_pieces.append({"node": piece, "velocity": velocity, "spin": randf_range(-10.0, 10.0),
 			"trunk": true, "rest": 0.0, "life": randf_range(1.8, 2.6)})
 	# Splinters and dust where the trunk broke.
