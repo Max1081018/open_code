@@ -126,7 +126,10 @@ func _build() -> void:
 	viewport.size = Vector2i(FRAME * supersample)
 	viewport.transparent_bg = true
 	viewport.own_world_3d = true
-	viewport.msaa_3d = Viewport.MSAA_2X if smooth and Settings.lighting >= 1 else Viewport.MSAA_DISABLED
+	# (Settings is an autoload; tool scripts that film bodies run without it.)
+	var settings: Node = (Engine.get_main_loop() as SceneTree).root.get_node_or_null("Settings")
+	var low_end: bool = settings != null and settings.lighting < 1
+	viewport.msaa_3d = Viewport.MSAA_2X if smooth and not low_end else Viewport.MSAA_DISABLED
 	viewport.render_target_update_mode = SubViewport.UPDATE_WHEN_PARENT_VISIBLE
 	add_child(viewport)
 
