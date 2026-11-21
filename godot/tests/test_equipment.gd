@@ -124,3 +124,38 @@ func test_a_dodge_rolls_through_blows_and_then_cools_down() -> void:
 	if not player.is_on_floor():
 		check(not player.dodging(), "only one dash in the air until you land")
 	level.free()
+
+
+func test_arm_ik_puts_the_hand_on_the_target() -> void:
+	var level := _make_level()
+	var body := level.player.body
+	var shoulder := body.shoulder_rig(true)
+	var length := body.arm_length()
+	for angle in [-150.0, -90.0, -30.0, 0.0, 45.0, 90.0]:
+		var target := shoulder + Vector2.from_angle(deg_to_rad(angle)) * length * 0.8
+		body.reach(true, target, angle)
+		check(body.hand_rig(true).distance_to(target) < 1.5,
+			"hand reaches %d degrees (off by %.1f px)" % [angle, body.hand_rig(true).distance_to(target)])
+	var far := shoulder + Vector2(length * 3.0, 0)
+	body.reach(true, far)
+	var hand := body.hand_rig(true)
+	check(hand.distance_to(shoulder) > length * 0.97, "out of reach: the arm straightens")
+	check(absf((hand - shoulder).angle()) < 0.05, "and points at the target")
+	level.free()
+
+
+func test_the_held_item_sits_in_the_fist() -> void:
+	var level := _make_level()
+	var player := level.player
+	player.inventory.slots[0] = {"id": "iron_pickaxe", "count": 1}
+	player.hotbar_index = 0
+	player._refresh_held()
+	var rig := player.rig
+	rig.swing("mine", 0.4)
+	for i in 12:
+		player.body._process(1.0 / 60.0)
+		rig._process(1.0 / 60.0)
+		var fist := player.to_local(player.body.front_hand())
+		check(fist.distance_to(rig.main.position) < 3.0,
+			"frame %d: grip and fist together (off by %.1f px)" % [i, fist.distance_to(rig.main.position)])
+	level.free()
