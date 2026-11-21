@@ -52,6 +52,8 @@ var _pelvis: Node2D
 var _torso: Node2D
 var _neck: Node2D
 var _head: Sprite2D
+var _limb_front: Limb
+var _limb_back: Limb
 var _shoulder_front: Node2D
 var _shoulder_back: Node2D
 var _hand_front: Node2D
@@ -163,32 +165,19 @@ func _build() -> void:
 		hair.z_index = -2
 		_neck.add_child(hair)
 
-	# Arms from the shoulders; hands at the arms' ends.
-	_shoulder_back = Node2D.new()
-	_shoulder_back.position = sh_b - waist
-	_shoulder_back.z_index = -3
-	_torso.add_child(_shoulder_back)
-	_shoulder_back.add_child(_sprite(_tex("arm"), arm_b.position - sh_b, true))
-	_hand_back = Node2D.new()
-	_hand_back.position = hand_b.get_center() - sh_b
-	_shoulder_back.add_child(_hand_back)
-	var hb := _sprite(_tex("hand"), -hand_b.size * 0.5, true)
-	_hand_back.add_child(hb)
-
-	_shoulder_front = Node2D.new()
-	_shoulder_front.position = sh_f - waist
-	_shoulder_front.z_index = 2
-	_torso.add_child(_shoulder_front)
-	_shoulder_front.add_child(_sprite(_tex("arm"), arm_f.position - sh_f))
-	_hand_front = Node2D.new()
-	_hand_front.position = hand_f.get_center() - sh_f
-	_hand_front.z_index = 2  # over a held item (z 13), which is over the arm (12)
-	_shoulder_front.add_child(_hand_front)
-	_hand_front.add_child(_sprite(_tex("hand"), -hand_f.size * 0.5))
-
-	_rest_front = rad_to_deg(_hand_front.position.angle())
-	_rest_back = rad_to_deg(Vector2(-_hand_back.position.x, _hand_back.position.y).angle())
-	_rest_back = 180.0 - _rest_back
+	# Arms: shoulder, elbow, wrist. The arm drawing is a sleeve above a
+	# forearm, so it is cut at the elbow into two segments; the hand hangs
+	# off the forearm's end.
+	_limb_back = Limb.new()
+	_limb_back.build(self, _torso, sh_b - waist, arm_b, hand_b, sh_b, true, -3)
+	_limb_front = Limb.new()
+	_limb_front.build(self, _torso, sh_f - waist, arm_f, hand_f, sh_f, false, 2)
+	_shoulder_back = _limb_back.shoulder
+	_shoulder_front = _limb_front.shoulder
+	_hand_back = _limb_back.hand
+	_hand_front = _limb_front.hand
+	_rest_front = _limb_front.rest_angle()
+	_rest_back = _limb_back.rest_angle()
 
 
 # --- The AnimatedSprite2D-like surface ------------------------------------
@@ -231,9 +220,47 @@ func head_position() -> Vector2:
 	return _neck.global_position if _neck else global_position
 
 
-## The front arm's current direction, rig space degrees.
+## The front arm's natural direction this frame (before any reach),
+## rig space degrees.
 func front_arm_angle() -> float:
-	return rad_to_deg(_shoulder_front.rotation) + _rest_front if _shoulder_front else _rest_front
+	return _natural_front
+
+
+## Bend at the elbows for the current gait (degrees), set by the pose.
+var elbow_bend := 12.0
+## 0..1: how far the shoulders are turned toward a two-handed grip.
+var twist := 0.0
+var _twist_now := 0.0
+var _natural_front := 79.0
+
+
+## A shoulder's position in rig space (facing right, feet at 0).
+func shoulder_rig(front: bool) -> Vector2:
+	var limb := _limb_front if front else _limb_back
+	return (_pelvis.transform * _torso.transform) * limb.shoulder.position
+
+
+## Shoulder-to-wrist length when straight.
+func arm_length() -> float:
+	return _limb_front.upper_length + _limb_front.fore_length
+
+
+## Put a hand on a point (rig space) with two-bone IK; `hand_angle` turns
+## the wrist so the fist lines up with a handle (degrees, rig space).
+func reach(front: bool, target_rig: Vector2, hand_angle := NAN) -> void:
+	if _pelvis == null:
+		return
+	var limb := _limb_front if front else _limb_back
+	var torso := _pelvis.transform * _torso.transform
+	var local := torso.affine_inverse() * target_rig
+	var hand_local := NAN if is_nan(hand_angle) else hand_angle - rad_to_deg(_torso.rotation)
+	limb.reach(local, hand_local)
+
+
+## Where a hand is, in rig space.
+func hand_rig(front: bool) -> Vector2:
+	var hand := _hand_front if front else _hand_back
+	return _flip.get_global_transform().affine_inverse() * hand.global_position
 
 
 # --- Animation -------------------------------------------------------------
@@ -389,9 +416,19 @@ func _process(delta: float) -> void:
 	_leg_back.rotation = deg_to_rad(leg_b)
 	_leg_front_sprite.texture = _tex("legBend" if bend_f else "leg")
 	_leg_back_sprite.texture = _tex("legBend" if bend_b else "leg")
-	_shoulder_front.rotation = deg_to_rad(arm_f - _rest_front)
+	_natural_front = arm_f
+	var bend := elbow_bend
+	_limb_front.pose(arm_f, bend + (8.0 if animation == "idle" else 0.0))
+	_limb_back.pose(arm_b, bend + 6.0)
 	_shoulder_front.z_index = -2 if arm_behind else 2
-	_shoulder_back.rotation = deg_to_rad(arm_b - _rest_back)
+	# A two-handed grip turns the shoulders toward the work: the far
+	# shoulder comes forward so both hands can reach the handle.
+	_twist_now = move_toward(_twist_now, twist, get_process_delta_time() * 6.0)
+	_shoulder_back.position = _limb_back.base + Vector2(58.0 * _twist_now, 4.0 * _twist_now)
+	# Reaching across the chest for the handle, the far arm is seen in front
+	# of the body (still under the near arm); otherwise it hangs behind.
+	_shoulder_back.z_index = 1 if _twist_now > 0.4 else -3
+	_shoulder_front.position = _limb_front.base - Vector2(10.0 * _twist_now, 0)
 	if animation == "death":
 		# Topple backwards and lie still.
 		rotation = deg_to_rad(-88.0 * smoothstep(0.0, 1.0, _death)) * (-1.0 if flip_h else 1.0)
@@ -405,3 +442,84 @@ func _process(delta: float) -> void:
 	else:
 		rotation = 0.0
 		position = Vector2.ZERO
+
+
+
+## One arm: shoulder -> elbow -> wrist, cut from a single arm drawing.
+class Limb:
+	var shoulder: Node2D
+	var elbow: Node2D
+	var hand: Node2D
+	var base := Vector2.ZERO       ## shoulder position in the torso at rest
+	var upper_length := 1.0
+	var fore_length := 1.0
+	var _upper_rest := 0.0         ## radians: shoulder->elbow at rest
+	var _fore_rest := 0.0          ## radians: elbow->wrist at rest
+
+	func build(body: CutoutBody, torso: Node2D, at: Vector2, arm: Rect2, hand_rect: Rect2,
+			shoulder_pose: Vector2, flipped: bool, z: int) -> void:
+		var wrist := hand_rect.get_center()
+		# The elbow: 45% of the way down, where sleeve meets forearm.
+		var elbow_pose := shoulder_pose.lerp(wrist, 0.45)
+		var cut := clampf(elbow_pose.y - arm.position.y, 4.0, arm.size.y - 4.0)
+		base = at
+		shoulder = Node2D.new()
+		shoulder.position = at
+		shoulder.z_index = z
+		torso.add_child(shoulder)
+		var texture: Texture2D = body._tex("arm")
+		var upper := AtlasTexture.new()
+		upper.atlas = texture
+		upper.region = Rect2(0, 0, arm.size.x, cut + 3.0)
+		shoulder.add_child(body._sprite(upper, arm.position - shoulder_pose, flipped))
+		elbow = Node2D.new()
+		elbow.position = elbow_pose - shoulder_pose
+		shoulder.add_child(elbow)
+		var lower := AtlasTexture.new()
+		lower.atlas = texture
+		lower.region = Rect2(0, cut - 3.0, arm.size.x, arm.size.y - cut + 3.0)
+		elbow.add_child(body._sprite(lower, arm.position + Vector2(0, cut - 3.0) - elbow_pose, flipped))
+		hand = Node2D.new()
+		hand.position = wrist - elbow_pose
+		hand.z_index = 2 if not flipped else 0
+		elbow.add_child(hand)
+		hand.add_child(body._sprite(body._tex("hand"), -hand_rect.size * 0.5, flipped))
+		upper_length = elbow.position.length()
+		fore_length = hand.position.length()
+		_upper_rest = elbow.position.angle()
+		_fore_rest = hand.position.angle()
+
+	## Direction shoulder->wrist at rest (degrees), for the pose tables.
+	func rest_angle() -> float:
+		return rad_to_deg((elbow.position + hand.position).angle())
+
+	## A natural pose: the arm points at `angle` (shoulder to wrist), bent
+	## `bend` degrees at the elbow with the forearm coming forward.
+	func pose(angle: float, bend: float) -> void:
+		var a := deg_to_rad(angle)
+		var b := deg_to_rad(bend)
+		var upper_dir := a + b * 0.5
+		var fore_dir := a - b * 0.5
+		shoulder.rotation = upper_dir - _upper_rest
+		elbow.rotation = (fore_dir - upper_dir) - (_fore_rest - _upper_rest)
+		hand.rotation = 0.0
+
+	## Two-bone IK: put the wrist on `target` (torso space), the elbow bent
+	## the natural way; turn the wrist to `hand_angle` if given (degrees).
+	func reach(target: Vector2, hand_angle := NAN) -> void:
+		var to := target - shoulder.position
+		var l1 := upper_length
+		var l2 := fore_length
+		var d := clampf(to.length(), absf(l1 - l2) + 0.5, l1 + l2 - 0.5)
+		var aim := to.angle()
+		var cos_a := clampf((l1 * l1 + d * d - l2 * l2) / (2.0 * l1 * d), -1.0, 1.0)
+		var upper_dir := aim + acos(cos_a)
+		var joint := Vector2.from_angle(upper_dir) * l1
+		var fore_dir := (to.normalized() * d - joint).angle()
+		shoulder.rotation = upper_dir - _upper_rest
+		elbow.rotation = (fore_dir - upper_dir) - (_fore_rest - _upper_rest)
+		if not is_nan(hand_angle):
+			# The fist drawing holds a handle at about -60 degrees; turn it
+			# from there so the handle runs straight through the grip.
+			var total := deg_to_rad(hand_angle + 60.0)
+			hand.rotation = total - (fore_dir - _fore_rest)

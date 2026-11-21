@@ -208,6 +208,7 @@ func _process(delta: float) -> void:
 	var body := player.body
 	var angle := _rest_angle()
 	var swinging_now := not _swing.is_empty()
+	var swing_kind: String = _swing.get("kind", "")
 	if not _swing.is_empty():
 		_swing.t += delta / _swing.duration
 		var kind: String = _swing.kind
@@ -220,34 +221,54 @@ func _process(delta: float) -> void:
 			_swing = {}
 	if blocking:
 		angle = -70.0
-	# The front arm carries the item: through a swing it points along the
-	# blow (the item extends past the hand); a torch is held up and out;
-	# otherwise the arm swings freely and the item rides along with it.
+	# The item is placed first, then the hands are put on it.
+	#
+	# Where the grip is: at the end of the front arm, pointing along the
+	# blow during a swing, held up and out for a torch, otherwise wherever
+	# the arm's natural swing has it (walking, breathing). The arm is not
+	# quite straight, so the elbow always shows a little bend.
+	var arm_dir: float
+	var reach := body.arm_length()
 	if swinging_now:
-		body.arm_override = clampf(angle + 55.0, -150.0, 120.0)
-		body.arm_blend = 1.0
+		arm_dir = clampf(angle + 55.0, -150.0, 120.0)
+		reach *= 0.95
 	elif _held_kind == "torch":
-		body.arm_override = 28.0
-		body.arm_blend = 1.0
+		arm_dir = 28.0
+		reach *= 0.9
 	else:
-		body.arm_override = NAN
-		body.arm_blend = 0.0
+		arm_dir = body.front_arm_angle()
+		reach *= 0.88
 		if _held_kind in ["tool", "sword"]:
 			# Carried forward and a little up, clear of the face.
-			angle = body.front_arm_angle() - (98.0 if _held_kind == "tool" else 105.0)
+			angle = arm_dir - (98.0 if _held_kind == "tool" else 105.0)
+	if blocking:
+		angle = -70.0
+	var grip := body.shoulder_rig(true) + Vector2.from_angle(deg_to_rad(arm_dir)) * reach
+	if main.visible and main.texture:
+		body.reach(true, grip, angle)
+	# Picks and axes are swung with both hands: the far hand takes the
+	# handle further up, and the shoulders turn into the blow.
+	var two_handed: bool = swinging_now and _held_kind == "tool" and swing_kind in ["mine", "chop"]
+	body.twist = 1.0 if two_handed else 0.0
+	if two_handed and not _grip.is_empty():
+		var length: float = _grip[2] * main.scale.x
+		var second := grip + Vector2.from_angle(deg_to_rad(angle)) * length * 0.26
+		body.reach(false, second, angle)
 	body.guard = blocking
 	# Lifted back over the shoulder, the item and arm go behind the head.
 	var behind := swinging_now and angle < -105.0
 	body.arm_behind = behind
 	main.z_index = -3 if behind else 3
-	_place_main(front, angle, facing)
+	_place_main(_rig_to_player(grip), angle, facing)
 	_update_trail(delta)
 
-	# --- The shield ----------------------------------------------------------
+	# --- The shield: held in the far hand --------------------------------------
 	if shield.visible:
-		# On the back arm's hand: slung behind the body, or brought round in
-		# front of the chest when guarding.
-		shield.position = back + Vector2(0, -18)
+		if blocking:
+			# Brought round in front of the chest, the far arm holding it out.
+			var guard_at := body.shoulder_rig(false) + Vector2(70, 26)
+			body.reach(false, guard_at, -90.0)
+		shield.position = _rig_to_player(body.hand_rig(false)) + Vector2(0, -6)
 		shield.z_index = 3 if blocking else -4
 		shield.rotation = 0.0 if blocking else -0.25 * facing
 		shield.flip_h = facing < 0
@@ -261,6 +282,11 @@ func _process(delta: float) -> void:
 	lantern.position = hip
 	lantern.rotation = _lantern_angle
 	lantern.visible = _held_kind != "torch"
+
+
+## A point in the rig's space (facing right) to the player's space.
+func _rig_to_player(p: Vector2) -> Vector2:
+	return player.to_local(player.body._flip.to_global(p))
 
 
 ## The skeleton's hands, in the player's space.
