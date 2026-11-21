@@ -297,7 +297,7 @@ func hold_item(id: String, kind: String, picture: Texture2D = null, grip_key := 
 	_card = null
 	if id == "" or right_hand == null:
 		return
-	var item := _item_model(id)
+	var item := item_model(id)
 	if item:
 		_held = item
 		_card_tip = float(item.get_meta("length", 0.9))
@@ -319,7 +319,7 @@ func hold_off_hand(id: String) -> void:
 	_off = null
 	if id == "" or left_hand == null:
 		return
-	_off = _item_model(id)
+	_off = item_model(id)
 	if _off == null:
 		_off = _weapon(MODELS.get(id, "shield_round"))
 	left_hand.add_child(_off)
@@ -361,7 +361,7 @@ const ITEM_MODELS := {
 }
 
 
-func _item_model(id: String) -> Node3D:
+static func item_model(id: String) -> Node3D:
 	if not ITEM_MODELS.has(id):
 		return null
 	var spec: Array = ITEM_MODELS[id]
