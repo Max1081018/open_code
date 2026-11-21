@@ -22,6 +22,7 @@ RELICS = {
     "swiftroot": ((120, 200, 96), "arrow"),
     "seers_eye": ((176, 120, 236), "eye"),
     "luckstone": ((96, 220, 120), "clover"),
+    "tidecaller": ((60, 150, 230), "wave"),
 }
 
 
@@ -58,6 +59,10 @@ def glyph(d, kind, c=(255, 252, 240, 255)):
         d.polygon([p(cx - 24, cy), p(cx - 8, cy - 14), p(cx + 8, cy - 14), p(cx + 24, cy), p(cx + 8, cy + 14), p(cx - 8, cy + 14)], fill=c)
         d.ellipse([p(cx - 9, cy - 9), p(cx + 9, cy + 9)], fill=(110, 60, 170, 255))
         d.ellipse([p(cx - 4, cy - 4), p(cx + 4, cy + 4)], fill=INK)
+    elif kind == "wave":
+        for i, yy in enumerate((-10, 2, 14)):
+            pts = [p(cx - 22 + t * 4, cy + yy + 5 * math.sin(t * 0.9 + i)) for t in range(12)]
+            d.line(pts, fill=c, width=4 * S)
     elif kind == "clover":
         for a in range(4):
             ang = a * math.pi / 2 + math.pi / 4

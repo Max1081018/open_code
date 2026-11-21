@@ -159,6 +159,18 @@ func _apply_scenario() -> void:
 			level.camera.global_position = player.global_position
 			level.camera.reset_smoothing()
 			level.world.load_area(target, 2)
+		"drowned", "drowned_deep":
+			# On a pillar top above the black water of the first Drowned Hall
+			# (or down at its sunken shrine).
+			var hall: Rect2i = level.data.drowned[0]
+			var stand := Vector2i(hall.position.x + 6 + 8 * 2, hall.position.y + 3)
+			if _args.scenario == "drowned_deep":
+				stand = Vector2i(hall.position.x + hall.size.x / 2 - 3, hall.end.y - 2)
+			player.global_position = World.foot_of(stand)
+			player.glow = player.max_glow()
+			level.world.load_area(stand, 2)
+			level.camera.global_position = player.global_position
+			level.camera.reset_smoothing()
 		"vault", "vault_open":
 			# In the first sealed vault's antechamber, between its braziers.
 			var vault: Dictionary = level.data.vaults[0]

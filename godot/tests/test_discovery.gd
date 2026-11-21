@@ -182,3 +182,62 @@ func test_fishing_casts_waits_for_a_bite_and_lands_a_catch() -> void:
 			shallow_glowfin = entry[1]
 	check(deep_glowfin > shallow_glowfin * 5.0, "glowfin are a deep-water catch")
 	level.free()
+
+
+func test_the_drowned_halls_are_flooded_with_air_pockets_and_a_shrine() -> void:
+	var data := WorldData.new()
+	data.generate(5150)
+	check_eq(data.drowned.size(), 2, "two drowned halls")
+	var hall: Rect2i = data.drowned[0]
+	var wet := 0
+	var pockets := 0
+	for x in range(hall.position.x + 1, hall.end.x - 1):
+		for y in range(hall.position.y + 5, hall.end.y - 1):
+			if data.get_liquid(x, y) == WorldData.WATER:
+				wet += 1
+			elif not data.is_solid(x, y) and data.is_solid(x, y - 1):
+				pockets += 1
+	check(wet > 300, "mostly under water (%d cells)" % wet)
+	check(pockets >= 2, "with air trapped under bells on the way down (%d)" % pockets)
+	var shrine := Vector2i(hall.position.x + hall.size.x / 2, hall.end.y - 2)
+	var chest: Dictionary = data.objects.get(data.idx(shrine.x, shrine.y), {})
+	check_eq(chest.get("type", ""), "relic_chest", "the sunken shrine")
+	check(chest.get("loot", []).any(func(s): return s.id == "relic_tidecaller"), "keeps the Tidecaller's Scale")
+	check(data.in_drowned_halls(shrine), "and the place knows its name")
+
+
+func test_breath_runs_out_under_water_unless_you_wear_the_scale() -> void:
+	var level := _make_level()
+	var p := level.player
+	var head := World.cell_of(p.global_position + Vector2(0, -170))
+	for dy in range(-1, 3):
+		level.data.set_tile(head.x, head.y + dy, WorldData.AIR)
+		level.data.liquids[level.data.idx(head.x, head.y + dy)] = WorldData.WATER
+	var hp := p.health
+	for i in 60 * 12:
+		p._breathe(1.0 / 60.0)
+	check_eq(p.breath, 0.0, "twelve seconds under: no air left")
+	check(p.health < hp, "and drowning hurts")
+	p.health = hp
+	p.relics.append("relic_tidecaller")
+	p.breath = Player.BREATH
+	for i in 60 * 12:
+		p._breathe(1.0 / 60.0)
+	check_eq(p.breath, Player.BREATH, "the Scale: water is air")
+	check_eq(p.health, hp, "and no harm")
+	level.free()
+
+
+func test_biters_keep_to_the_water() -> void:
+	var level := _make_level()
+	var hall: Rect2i = level.data.drowned[0]
+	# A cell in the top row of the water, with air above it.
+	var top := Vector2i(hall.position.x + 3, hall.position.y + 4)
+	check_eq(level.data.get_liquid(top.x, top.y), WorldData.WATER, "the water line")
+	check(level.data.get_liquid(top.x, top.y - 1) == WorldData.DRY, "with air above")
+	var biter := level.spawn_enemy("biter", World.centre_of(top) + Vector2(0, 40))
+	check_eq(biter.spec.mode, Enemy.Mode.SWIM, "a swimmer")
+	biter.velocity = Vector2(0, -400)  # heading for the surface
+	biter._swim(1.0 / 60.0, Vector2(0, -600), false)
+	check(biter.velocity.y > 0.0, "turns back down rather than leave the water")
+	level.free()

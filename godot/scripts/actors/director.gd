@@ -140,9 +140,13 @@ func _try_spawn() -> void:
 		if not data.in_bounds(x, y) or not world.is_loaded(Vector2i(x, y)):
 			continue
 		var kind := _choose(x, y, desperate)
+		var cell := Vector2i(x, y)
+		# In the Drowned Halls' water, biters.
+		if data.get_liquid(x, y) == WorldData.WATER and data.in_drowned_halls(cell):
+			level.spawn_enemy("biter", World.centre_of(cell) + Vector2(0, 40))
+			return
 		if kind == "":
 			continue
-		var cell := Vector2i(x, y)
 		var mode: int = Enemy.KINDS[kind].mode
 		if mode == Enemy.Mode.WALK or mode == Enemy.Mode.HOP or mode == Enemy.Mode.ROOTED:
 			cell = _ground_below(x, y)

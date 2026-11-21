@@ -5,6 +5,7 @@ extends CanvasLayer
 var level: Level
 var minimap: Minimap
 var _relic_row: HBoxContainer
+var _breath_row: Label
 
 ## Read by main.gd and TouchControls.
 var touch_active := false
@@ -185,6 +186,16 @@ func _build_vitals() -> void:
 	_glow_bar.custom_minimum_size = Vector2(300, 54)
 	_glow_bar.draw.connect(_draw_glow_bar)
 	glow_row.add_child(_glow_bar)
+
+	# Breath: bubbles that appear only under water.
+	_breath_row = Label.new()
+	_breath_row.add_theme_font_size_override("font_size", 34)
+	_breath_row.add_theme_color_override("font_color", Color(0.75, 0.92, 1.0))
+	_breath_row.visible = false
+	box.add_child(_breath_row)
+	level.player.breath_changed.connect(func(left: float, full: float):
+		_breath_row.visible = left < full
+		_breath_row.text = "○ ".repeat(int(ceil(left / full * 8.0))))
 
 	# Relics worn, as a row of small medallions under the glow bar.
 	_relic_row = HBoxContainer.new()
@@ -600,6 +611,8 @@ func _process(delta: float) -> void:
 		WorldData.Biome.DEPTHS: "The Deep Dark",
 	}
 	var place: String = names.get(data.biome_at(cell.x, cell.y), "")
+	if data.in_drowned_halls(cell):
+		place = "The Drowned Halls"
 	_place_label.text = place if depth < 4 else "%s · %dm" % [place, depth * 2]
 
 	can_interact = false

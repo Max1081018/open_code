@@ -8,7 +8,7 @@ signal died_at(position: Vector2)
 const TILE := 128.0
 const GRAVITY := 2600.0
 
-enum Mode { WALK, HOP, FLY, PHASE, ROOTED }
+enum Mode { WALK, HOP, FLY, PHASE, ROOTED, SWIM }
 
 ## kind -> definition
 const KINDS := {
@@ -36,6 +36,9 @@ const KINDS := {
 	"spitter": {"frames": "barnacle_attack", "mode": Mode.ROOTED, "health": 50, "damage": 12,
 		"speed": 0, "scale": 0.95, "loot": [["glowshard", 0.3, 1], ["coal", 0.4, 2]],
 		"light": Color(0.5, 1.0, 0.35), "range": 9.0},
+	# The Drowned Halls' hunters: they keep to the water and rush swimmers.
+	"biter": {"frames": "fish_blue", "mode": Mode.SWIM, "health": 32, "damage": 11, "speed": 420,
+		"scale": 0.9, "loot": [["fish", 0.6, 1], ["pearl", 0.12, 1]]},
 	"zombie": {"toon": "zombie", "mode": Mode.WALK, "health": 70, "damage": 14, "speed": 210,
 		"scale": 0.95, "loot": [["raw_meat", 0.55, 1], ["torch", 0.2, 2]]},
 	"robot": {"toon": "robot", "mode": Mode.WALK, "health": 130, "damage": 24, "speed": 250,
@@ -309,6 +312,8 @@ func _physics_process(delta: float) -> void:
 			_fly(delta, to_player, near)
 		Mode.ROOTED:
 			_rooted(delta, to_player)
+		Mode.SWIM:
+			_swim(delta, to_player, near)
 
 	_sprite.flip_h = facing > 0 if not _toon else facing < 0
 	if _toon:
@@ -401,6 +406,40 @@ func _rooted(delta: float, to_player: Vector2) -> void:
 		Sfx.play("growl", -12.0, 0.1, 1.5)
 	else:
 		_spit_timer = 0.4
+
+
+## A biter swims only in water. A swimmer close by is rushed; otherwise it
+## drifts and turns. Stranded on dry ground it flops, helpless.
+func _swim(delta: float, to_player: Vector2, near: bool) -> void:
+	var here := World.cell_of(global_position + Vector2(0, -40))
+	var wet := level.data.get_liquid(here.x, here.y) == WorldData.WATER
+	if not wet:
+		velocity.y = minf(velocity.y + GRAVITY * delta, 1600.0)
+		velocity.x = move_toward(velocity.x, 0.0, 800.0 * delta)
+		move_and_slide()
+		_play("rest")
+		return
+	var player_cell := World.cell_of(player.global_position + Vector2(0, -90))
+	var hunting := near and to_player.length() < 9.0 * TILE \
+		and level.data.get_liquid(player_cell.x, player_cell.y) == WorldData.WATER
+	var desired: Vector2
+	if hunting:
+		desired = (to_player + Vector2(0, -80)).normalized() * float(spec.speed)
+	else:
+		_phase += delta
+		desired = Vector2(cos(_phase * 0.6) * 160.0, sin(_phase * 1.3) * 60.0)
+	if _hurt_timer > 0.0:
+		desired *= 0.2
+	velocity = velocity.lerp(desired, 2.5 * delta)
+	# Never swim up out of the water.
+	# (Looking more than half a tile up, so it turns before breaking the surface.)
+	var above := World.cell_of(global_position + Vector2(0, -40 - 80))
+	if velocity.y < 0.0 and level.data.get_liquid(above.x, above.y) != WorldData.WATER:
+		velocity.y = 60.0
+	move_and_slide()
+	if absf(velocity.x) > 20.0:
+		facing = 1 if velocity.x > 0 else -1
+	_play("move")
 
 
 ## Nothing solid between this creature's mouth and `point`.

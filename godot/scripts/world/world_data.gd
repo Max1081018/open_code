@@ -78,6 +78,8 @@ var vault := Vector2i.ZERO
 var vaults: Array = []
 ## Hidden caches: {"rune": the rock face cell marked with a light-rune, "chest": cell}.
 var caches: Array = []
+## The Drowned Halls: flooded ruin caverns, as Rect2i of cells.
+var drowned: Array = []
 
 
 func _init(w: int = WIDTH, h: int = HEIGHT) -> void:
@@ -258,6 +260,7 @@ func generate(world_seed: int, progress := Callable()) -> void:
 	_build_ruins()
 	_build_sealed_vaults()
 	_hide_caches()
+	_build_drowned_halls()
 	_build_cabin()
 	_report(progress, 0.85)
 	_plant_surface()
@@ -636,6 +639,78 @@ func _hide_caches() -> void:
 		caches.append({"rune": face, "chest": pocket})
 
 
+## The Drowned Halls: a Lightwarden hall that flooded when the dark came.
+## Brick pillars stand in black water up to near the roof; a strip of air
+## runs along the top, and a few air pockets are trapped under brick bells
+## on the way down. At the bottom, the sunken shrine keeps the Tidecaller's
+## Scale. Biters hunt the water, and glowfin swim in it.
+func _build_drowned_halls() -> void:
+	drowned.clear()
+	var rng := RandomNumberGenerator.new()
+	rng.seed = hash([seed, "drowned"])
+	var wanted := mini(width * height / 115200, 2)  # two in a full-size world
+	var attempts := 0
+	while drowned.size() < wanted and attempts < 120:
+		attempts += 1
+		var w := 44
+		var h := 20
+		var x := rng.randi_range(30, width - 30 - w)
+		var y := rng.randi_range(SURFACE_Y + 55, DEEP_Y - h - 8)
+		var site := Rect2i(x - 2, y - 2, w + 4, h + 4)
+		if abs(x + w / 2 - width / 2) < 40 or _overlaps_feature(site) or _has_liquid(site):
+			continue
+		for overlap in drowned:
+			if (overlap as Rect2i).grow(10).intersects(site):
+				site = Rect2i()
+		if site.size == Vector2i.ZERO:
+			continue
+		_carve_room(x, y, w, h, BRICK)
+		# Pillars, two wide, with arches: the hall's bones.
+		for px in range(x + 6, x + w - 4, 8):
+			for py in range(y + 4, y + h - 1):
+				set_tile(px, py, BRICK)
+				set_tile(px + 1, py, BRICK)
+			# An arch gap low down, to swim through.
+			for py in range(y + h - 5, y + h - 2):
+				set_tile(px, py, AIR)
+				set_tile(px + 1, py, AIR)
+		var water_line := y + 4
+		for cx in range(x + 1, x + w - 1):
+			for cy in range(water_line, y + h - 1):
+				if not is_solid(cx, cy):
+					liquids[idx(cx, cy)] = WATER
+		# Air pockets under brick bells, a breath on the way down.
+		for i in 3:
+			var bx := x + 3 + i * 14 + rng.randi_range(0, 3)
+			var by := water_line + 5 + i % 2 * 4
+			for cell in [Vector2i(bx - 1, by - 1), Vector2i(bx, by - 1), Vector2i(bx + 1, by - 1),
+					Vector2i(bx + 2, by - 1), Vector2i(bx - 1, by), Vector2i(bx + 2, by)]:
+				set_tile(cell.x, cell.y, BRICK)
+				liquids[idx(cell.x, cell.y)] = DRY  # brick holds no water
+			for dx in range(0, 2):
+				liquids[idx(bx + dx, by)] = DRY
+		# Glowshard seams in the walls give the water a cold light.
+		for i in 10:
+			var gx := x + rng.randi_range(0, w - 1)
+			var gy := y + rng.randi_range(h - 2, h - 1) if i % 2 == 0 else y
+			if get_tile(gx, gy) == BRICK:
+				ores[idx(gx, gy)] = GLOWSHARD
+		# The sunken shrine: the chest on the floor in the middle.
+		var shrine := Vector2i(x + w / 2, y + h - 2)
+		_put_object(shrine.x, shrine.y, {"type": "relic_chest", "vault": -1, "loot": [
+			{"id": "relic_tidecaller", "count": 1} if drowned.is_empty() else {"id": "heart_crystal", "count": 2},
+			{"id": "gold_coin", "count": rng.randi_range(25, 45)}, {"id": "pearl", "count": rng.randi_range(2, 5)}]})
+		drowned.append(Rect2i(x, y, w, h))
+
+
+## Whether a cell lies in the Drowned Halls.
+func in_drowned_halls(cell: Vector2i) -> bool:
+	for rect in drowned:
+		if (rect as Rect2i).has_point(cell):
+			return true
+	return false
+
+
 func _ruin_loot(depth_y: int) -> Array:
 	var loot := [{"id": "torch", "count": _rng.randi_range(4, 9)}]
 	var pool := ["copper_ore", "iron_ore", "coal", "glowshard", "apple"]
@@ -791,6 +866,7 @@ func to_dict() -> Dictionary:
 		"explored": explored.compress(FileAccess.COMPRESSION_ZSTD),
 		"vaults": vaults,
 		"caches": caches,
+		"drowned": drowned,
 	}
 
 
@@ -811,5 +887,6 @@ static func from_dict(data: Dictionary) -> WorldData:
 		w.explored = (data.explored as PackedByteArray).decompress(n, FileAccess.COMPRESSION_ZSTD)
 	w.vaults = data.get("vaults", [])
 	w.caches = data.get("caches", [])
+	w.drowned = data.get("drowned", [])
 	w.recompute_all_sky()
 	return w

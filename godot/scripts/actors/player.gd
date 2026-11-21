@@ -65,7 +65,10 @@ var _anim_lock := 0.0
 var _dead := false
 var _mining_cell := Vector2i(-1, -1)
 var _mining_progress := 0.0
-var _breath := 0.0
+## Seconds of air left underwater (the Tidecaller's Scale makes it endless).
+const BREATH := 10.0
+var breath := BREATH
+signal breath_changed(left: float, full: float)
 var _step_timer := 0.0
 
 ## The character: a rigged 3D model (Body3D), or the older cut-out rig
@@ -168,7 +171,7 @@ func _move(delta: float) -> void:
 	var in_water := world.data.get_liquid(cell.x, cell.y) == WorldData.WATER
 	var in_lava := world.data.get_liquid(cell.x, cell.y) == WorldData.LAVA
 	var gravity := GRAVITY * (0.32 if in_water else 1.0)
-	var top_speed := RUN_SPEED * (0.55 if in_water else 1.0) * (0.45 if rig.blocking else 1.0) \
+	var top_speed := RUN_SPEED * ((0.95 if has_relic("relic_tidecaller") else 0.55) if in_water else 1.0) * (0.45 if rig.blocking else 1.0) \
 		* (1.18 if has_relic("relic_swiftroot") else 1.0)
 
 	var target := input.move * top_speed
@@ -230,6 +233,7 @@ func _move(delta: float) -> void:
 			Effects.burst(level.fx_layer, Vector2(global_position.x + randf_range(-50, 50), surface_y), "splash")
 		Sfx.play("land", -8.0, 0.2)
 	_was_in_water = in_water
+	_breathe(delta)
 
 
 ## Walk up one-tile ledges without jumping, as Terraria does. On a phone
@@ -1180,6 +1184,26 @@ func nearby_stations() -> Array:
 				"campfire":
 					stations.append(Items.Station.CAMPFIRE)
 	return stations
+
+
+## Head under water: breath runs down, then you drown. Air (or the Scale)
+## restores it.
+func _breathe(delta: float) -> void:
+	var head := World.cell_of(global_position + Vector2(0, -170))
+	var under := world.data.get_liquid(head.x, head.y) == WorldData.WATER and not has_relic("relic_tidecaller")
+	var before := breath
+	if under:
+		breath = maxf(breath - delta, 0.0)
+		if breath <= 0.0:
+			hurt(7.0 * delta, global_position, false)
+			if fmod(Time.get_ticks_msec() / 1000.0, 1.0) < delta:
+				Effects.float_text(level.fx_layer, global_position + Vector2(0, -250), "Drowning!", Color(0.5, 0.8, 1.0), 34)
+		elif randf() < delta * 2.0:
+			Effects.burst(level.fx_layer, global_position + Vector2(20 * facing, -180), "glow", Color(0.8, 0.95, 1.0))
+	else:
+		breath = minf(breath + delta * 4.0, BREATH)
+	if breath != before:
+		breath_changed.emit(breath, BREATH)
 
 
 # =============================================================================

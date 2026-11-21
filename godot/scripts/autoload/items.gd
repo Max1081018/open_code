@@ -184,6 +184,8 @@ var defs := {
 		"stack": 1, "desc": "Woven from roots that never stop growing. You move faster."},
 	"relic_seers_eye": {"name": "Seer's Eye", "icon": "items/relic_seers_eye", "kind": Kind.RELIC,
 		"stack": 1, "desc": "Light-runes show themselves to you without a flare, and you remember more of where you have been."},
+	"relic_tidecaller": {"name": "Tidecaller's Scale", "icon": "items/relic_tidecaller", "kind": Kind.RELIC,
+		"stack": 1, "desc": "From the shrine at the bottom of the Drowned Halls. You breathe water as if it were air, and swim like a fish."},
 	"relic_luckstone": {"name": "Luckstone", "icon": "items/relic_luckstone", "kind": Kind.RELIC,
 		"stack": 1, "desc": "Chests hold one more find, and rare things fall twice as often."},
 }
@@ -319,7 +321,7 @@ const RARITY_COLORS := [Color(0.78, 0.76, 0.72), Color(0.45, 0.85, 0.45), Color(
 	Color(0.78, 0.50, 1.0), Color(1.0, 0.78, 0.25)]
 const SPECIAL := {"relic_featherbone": 3, "relic_ember_heart": 3, "relic_deepsong": 3,
 	"relic_moth_lantern": 3, "relic_bulwark": 3, "relic_swiftroot": 3, "relic_seers_eye": 3,
-	"relic_luckstone": 3, "lumen_core": 4, "heart_crystal": 3, "vault_key": 3, "lumen_pickaxe": 4,
+	"relic_luckstone": 3, "relic_tidecaller": 4, "lumen_core": 4, "heart_crystal": 3, "vault_key": 3, "lumen_pickaxe": 4,
 	"lumen_sword": 4, "wardstone": 2, "glow_flask": 1, "ruby": 2, "emerald": 2}
 
 
