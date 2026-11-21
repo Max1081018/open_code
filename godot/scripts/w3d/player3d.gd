@@ -110,7 +110,9 @@ func _physics_process(delta: float) -> void:
 	if input == null or cam == null:
 		return
 	cam.apply_look(input.look)
+	input.look = Vector2.ZERO
 	if input.toggle_view:
+		input.toggle_view = false
 		cam.first_person = not cam.first_person
 		set_first_person(cam.first_person)
 
@@ -125,7 +127,9 @@ func _physics_process(delta: float) -> void:
 	_action -= delta
 	_dodge -= delta
 	invulnerable = _dodge > DODGE_TIME * 0.25
-	if input.dodge and _dodge <= 0.0 and is_on_floor() and _spend(22.0):
+	var dodge_now := input.dodge
+	input.dodge = false
+	if dodge_now and _dodge <= 0.0 and is_on_floor() and _spend(22.0):
 		_dodge = DODGE_TIME
 		_dodge_dir = wish.normalized() if wish.length() > 0.1 else -model.global_transform.basis.z
 		_play("Roll", 1.25, true)
@@ -160,7 +164,9 @@ func _physics_process(delta: float) -> void:
 		velocity.y = lerpf(velocity.y, (float_y - global_position.y) * 3.0 + (3.0 if input.jump else 0.0), 1.0 - exp(-4.0 * delta))
 	else:
 		velocity.y -= GRAVITY * delta
-		if input.jump and is_on_floor() and _dodge <= 0.0 and _spend(8.0):
+		var jump_now := input.jump
+		input.jump = false
+		if jump_now and is_on_floor() and _dodge <= 0.0 and _spend(8.0):
 			velocity.y = JUMP
 			_play("Jump_Start", 1.4, true)
 	var was_air := not is_on_floor()

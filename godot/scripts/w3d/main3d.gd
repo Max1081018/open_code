@@ -11,6 +11,7 @@ var player: Player3D
 var cam: CameraRig
 var input: Input3D
 var hud: Hud3D
+var play: Play3D
 var sun: DirectionalLight3D
 var environment: Environment
 var water: MeshInstance3D
@@ -19,6 +20,7 @@ var day_length := 900.0     ## seconds for a full day
 
 var _args := {}
 var _frames := 0
+var _strip: Array[Image] = []
 
 
 func _ready() -> void:
@@ -51,12 +53,14 @@ func _ready() -> void:
 	cam.target = player
 	cam.head = player.head_anchor
 	cam.global_position = spawn + Vector3(0, 2, 4)
-	if _args.has("yaw"):
-		cam.yaw = float(_args.yaw)
-	if _args.has("pitch"):
-		cam.pitch = float(_args.pitch)
-	player.hold(_args.get("hold", "iron_sword"))
+	cam.set_view(float(_args.get("yaw", "0")), float(_args.get("pitch", "-0.16")))
 	_build_water()
+	play = Play3D.new()
+	add_child(play)
+	play.setup(self)
+	if _args.has("hold"):
+		play.inventory.slots[0] = {"id": _args.hold, "count": 1}
+		play.select(0)
 	hud = Hud3D.new()
 	add_child(hud)
 	hud.setup(self)
@@ -121,14 +125,39 @@ func _build_water() -> void:
 	add_child(water)
 
 
+func _unhandled_input(event: InputEvent) -> void:
+	if event is InputEventKey and event.pressed and not event.echo:
+		var k: int = event.physical_keycode
+		if k >= KEY_1 and k <= KEY_8:
+			play.select(k - KEY_1)
+	if event is InputEventMouseButton and event.pressed:
+		if event.button_index == MOUSE_BUTTON_WHEEL_DOWN:
+			play.select((play.hotbar_index + 1) % Inventory.HOTBAR_SIZE)
+		elif event.button_index == MOUSE_BUTTON_WHEEL_UP:
+			play.select((play.hotbar_index + Inventory.HOTBAR_SIZE - 1) % Inventory.HOTBAR_SIZE)
+
+
 func _process(delta: float) -> void:
 	_frames += 1
 	if _args.has("shot"):
 		_script_input()
-		if _frames == int(_args.get("frames", "120")):
+		# --strip=N --every=K: N frames K apart ending at --frames, side by side.
+		var last := int(_args.get("frames", "120"))
+		var count := int(_args.get("strip", "1"))
+		var every := int(_args.get("every", "10"))
+		var first := last - (count - 1) * every
+		if _frames >= first and (_frames - first) % every == 0 and _frames <= last:
 			await RenderingServer.frame_post_draw
-			get_viewport().get_texture().get_image().save_png(_args.shot)
-			get_tree().quit()
+			var img := get_viewport().get_texture().get_image()
+			img.resize(img.get_width() / 2, img.get_height() / 2)
+			_strip.append(img)
+			if _frames == last:
+				var w := img.get_width()
+				var out := Image.create(w * _strip.size(), img.get_height(), false, img.get_format())
+				for i in _strip.size():
+					out.blit_rect(_strip[i], Rect2i(Vector2i.ZERO, img.get_size()), Vector2i(i * w, 0))
+				out.save_png(_args.shot)
+				get_tree().quit()
 	time_of_day = fposmod(time_of_day + delta / day_length, 1.0)
 	_update_sun(delta)
 	world.focus = player.global_position
@@ -182,13 +211,19 @@ func _script_input() -> void:
 		"fp":
 			input.toggle_view = f == 10
 			input.look = Vector2(0.004, 0.0) if f > 20 else Vector2.ZERO
+			input.attack = f == 40
 		"attack":
 			input.attack = f > 20 and f % 30 == 0
 		"heavy":
 			input.heavy = f == 30
 		"chop", "mine":
-			player.hold("iron_axe" if _args.action == "chop" else "iron_pickaxe")
+			if f == 2:
+				play.select(1 if _args.action == "chop" else 2)
 			input.attack = f > 20 and f % 40 == 0
+		"fight":
+			if f == 2:
+				play.spawn_enemy(_args.get("enemy", "zombie"), player.global_position + Vector3(0, 0, -5))
+			input.attack = f > 30 and f % 36 == 0
 		"tour":
 			input.move = Vector2(0.15, 1)
 			input.sprint = true

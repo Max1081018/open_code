@@ -40,7 +40,7 @@ func _initialize() -> void:
 	var library: AnimationLibrary = load(LIB)
 	var models := []
 	for i in ids.size():
-		var model: Node3D = load("res://assets/models/sf_src/%s.glb" % ids[i]).instantiate()
+		var model: Node3D = load(("res://assets/models/sf_src/%s.glb" % ids[i]) if not ids[i].begins_with("a") else ("res://assets/models/sf_src/anime/%s.glb" % ids[i])).instantiate()
 		var holder := Node3D.new()
 		vp.add_child(holder)
 		holder.add_child(model)

@@ -159,6 +159,12 @@ re-textured (downsized) and some recoloured.
 | Abbey ruins (tundra backdrop) | [Abbey Wall Ruins](https://sketchfab.com/3d-models/37936ba6a1674f15be60075315469a43) | tonyflanagan |
 | Stone bridge (tundra backdrop) | [Stone Bridge_3arch](https://sketchfab.com/3d-models/58691a67ba774f2bbccff7ce8f85d1d8) | xplanepilot |
 
+| Player (white-haired heroine) | [3D Anime Character girl for Blender](https://sketchfab.com/3d-models/7f5659043b074c139b91cf0ece1b8069) | CGBlender |
+| Wren | [【Anime Character】Arisa (Free / Unity 3D)](https://sketchfab.com/3d-models/284317925844496994d76ef4ea6024b6) | alex94i60 |
+| Mira | [(Free)sara(original character) - vrchat Avatar](https://sketchfab.com/3d-models/4cd06aebd9ff4bd9ae7f66bde35fb288) | scoco |
+| Tobin | [character boy #1 (FBX)](https://sketchfab.com/3d-models/f6c26ef822cb4744aa780c866e0565ca) | asset_for_games |
+| Sir Aldous (temporary) | [3D Anime Character girl for Blender](https://sketchfab.com/3d-models/906b6874327844de9f794c7986127f3f) | CGBlender |
+
 Animations on all of them: Quaternius Universal Animation Library 1 and 2 (CC0), retargeted.
 
 ## Terrain materials — ambientCG (CC0)

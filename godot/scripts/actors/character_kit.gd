@@ -61,7 +61,7 @@ const RECIPES := {
 const HEROES := {
 	"player": ["player", null],          # hooded assassin: hood, leathers, cloak
 	"wren": ["wren", null],
-	"mira": ["wren", Color(0.86, 0.96, 0.8)],  # the herbalist: greener cloth
+	"mira": ["mira", null],
 	"bram": ["bram", null],
 	"tobin": ["tobin", null],
 	"aldous": ["aldous", null],          # bearded knight in blue plate

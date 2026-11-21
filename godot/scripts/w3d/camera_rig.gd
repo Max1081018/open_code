@@ -10,8 +10,11 @@ var target: Node3D
 var head: Node3D            ## first-person anchor (a BoneAttachment3D on Head)
 var first_person := false
 var yaw := 0.0
-var pitch := -0.18
-var distance := 4.4
+var pitch := -0.16
+var distance := 4.8
+## Where the look input wants the camera; yaw/pitch glide toward these.
+var yaw_target := 0.0
+var pitch_target := -0.16
 var arm: SpringArm3D
 var camera: Camera3D
 var _blend := 0.0           ## 0 third person, 1 first person (eased)
@@ -35,26 +38,41 @@ func _ready() -> void:
 
 
 func apply_look(look: Vector2) -> void:
-	yaw -= look.x
-	pitch = clampf(pitch - look.y, -1.25, 0.95 if first_person else 0.55)
+	yaw_target -= look.x
+	pitch_target = clampf(pitch_target - look.y, -1.2, 0.95 if first_person else 0.5)
+
+
+## Set the view directly (no glide), e.g. at spawn or in tests.
+func set_view(new_yaw: float, new_pitch: float) -> void:
+	yaw = new_yaw
+	yaw_target = new_yaw
+	pitch = new_pitch
+	pitch_target = new_pitch
 
 
 func _physics_process(delta: float) -> void:
 	if target == null:
 		return
 	_blend = move_toward(_blend, 1.0 if first_person else 0.0, delta * 4.0)
-	# Third-person pivot: above the shoulder, a little to the right.
-	var pivot_tp := target.global_position + Vector3(0, 1.55, 0)
-	var right := Vector3(cos(yaw), 0, -sin(yaw))
-	pivot_tp += right * 0.45
-	var pivot_fp: Vector3 = head.global_position + Vector3(0, 0.08, 0) if head else target.global_position + Vector3(0, 1.65, 0)
+	# Look glides toward its target: responsive but never jerky.
+	var glide := 1.0 - exp(-delta * 18.0)
+	yaw = lerp_angle(yaw, yaw_target, glide)
+	pitch = lerpf(pitch, pitch_target, glide)
+	# Third-person pivot: centred on the hero at upper-chest height, so they
+	# stand in the middle of the frame (as in Genshin), the world around them.
+	var pivot_tp := target.global_position + Vector3(0, 1.45, 0)
+	var pivot_fp: Vector3 = head.global_position + Vector3(0, 0.1, 0) if head else target.global_position + Vector3(0, 1.65, 0)
+	# Just ahead of the eyes, along the view, so the face (part of the body
+	# mesh) stays behind the camera while arms and weapon come into view.
+	var look_dir := Vector3(-sin(yaw) * cos(pitch), sin(pitch), -cos(yaw) * cos(pitch))
+	pivot_fp += look_dir * 0.26
 	var pivot := pivot_tp.lerp(pivot_fp, _blend)
 	# Ease the pivot toward its target (smooth follow), snapping in first person.
-	var follow := 1.0 - exp(-delta * (22.0 if _blend > 0.5 else 12.0))
+	var follow := 1.0 - exp(-delta * (24.0 if _blend > 0.5 else 10.0))
 	global_position = global_position.lerp(pivot, follow) if global_position.distance_to(pivot) < 6.0 else pivot
 	rotation = Vector3(pitch, yaw, 0)
 	arm.spring_length = lerpf(distance, 0.0, _blend)
-	camera.fov = lerpf(62.0, 74.0, _blend)
+	camera.fov = lerpf(58.0, 72.0, _blend)
 
 
 func forward_flat() -> Vector3:
