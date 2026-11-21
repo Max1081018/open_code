@@ -17,6 +17,12 @@
       "title": "Herbalist",
       "voice": "en_GB-jenny_dioco-medium",
       "length_scale": 1.0
+    },
+    "tobin": {
+      "name": "Tobin",
+      "title": "Travelling smith",
+      "voice": "en_GB-northern_english_male-medium",
+      "length_scale": 1.0
     }
   },
   "lines": {
@@ -139,6 +145,30 @@
     "quest_complete": {
       "speaker": "wren",
       "text": "Well done."
+    },
+    "tobin_greet": {
+      "speaker": "tobin",
+      "text": "Ho there! Tobin, smith of no fixed forge. I go where the iron is, and lately the iron's gone quiet. Like everything else round here."
+    },
+    "tobin_tools_offer": {
+      "speaker": "tobin",
+      "text": "You've a builder's hands, I can see it. But a builder has to unbuild too. Make yourself a wooden hammer at the bench, and I'll show you how it's done."
+    },
+    "tobin_task_knock": {
+      "speaker": "tobin",
+      "text": "That's the one. Now put up something rough and knock it down again. Three good blows. A hammer gives back what it takes, so nothing's wasted."
+    },
+    "tobin_task_build": {
+      "speaker": "tobin",
+      "text": "There. Now build it again, properly this time. Ten blocks. Every wall you raise is one more the dark has to climb."
+    },
+    "tobin_tools_done": {
+      "speaker": "tobin",
+      "text": "That's the way of it. Here, take my spare. Iron head, ash handle. It's seen more walls come down than I've had hot dinners."
+    },
+    "tobin_idle": {
+      "speaker": "tobin",
+      "text": "A good hammer and a fire, and a body can make anything. Even a home. Even here, at the edge of the dark."
     }
   }
 }

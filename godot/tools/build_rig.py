@@ -160,7 +160,7 @@ def main():
         lines.append('\t"%s": [Vector2(%.1f, %.1f), Vector2(%.1f, %.1f)],' % (name, f[0], f[1], b[0], b[1]))
     lines += ['}', '', '## Character -> part -> Rect2 of the part in the idle pose (pose pixels).',
               '## The cut-out rig hangs its joints off these.', 'const LAYOUT := {']
-    for character in ("player", "zombie", "robot", "wren", "mira", "bram"):
+    for character in ("player", "zombie", "robot", "wren", "mira", "bram", "tobin"):
         if not os.path.isdir(os.path.join(ROOT, "assets/characters", character, "parts")):
             continue
         found = layout(character)
@@ -199,7 +199,7 @@ def side_heads():
     and skin, dropping the shirt collar below it) as parts/headSide.png, so
     the rig can face where it is going."""
     import numpy as np
-    for character in ("player", "zombie", "wren", "mira", "bram"):
+    for character in ("player", "zombie", "wren", "mira", "bram", "tobin"):
         root = os.path.join(ROOT, "assets/characters", character)
         src = os.path.join(root, "side.png")
         if not os.path.exists(src):

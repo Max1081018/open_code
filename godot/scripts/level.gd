@@ -166,11 +166,13 @@ static func _raise_outcrop(data: WorldData) -> void:
 
 
 ## The people of the meadow: Wren by the spawn, Mira at the cottage, Bram
-## at the mouth of the nearest mine shaft.
+## at the mouth of the nearest mine shaft, Tobin the smith camped out past
+## Mira's.
 func _place_npcs() -> void:
 	var spawn := data.spawn
 	_spawn_npc("wren", spawn.x + 4)
 	_spawn_npc("mira", spawn.x - 16)
+	_spawn_npc("tobin", spawn.x - 34)
 	var shaft := spawn.x + 26
 	for dx in range(14, 70):
 		for side in [1, -1]:

@@ -1,64 +1,48 @@
 # Progress report — Lanternbound
 
-Last updated at commit after `10ba25e` on branch `ccr-60ac94c6-dyqxhw`.
+Last updated on branch `ccr-60ac94c6-dyqxhw`, after the session that started from `eeb5b35`
+(see `git log eeb5b35..HEAD`).
 Engine: Godot 4.4.1, GL Compatibility renderer, Android-first.
 
-## Working and verified (tests: 76 pass; soak bot: 3 runs, 4.6 min of play, no script errors)
+## Working and verified (tests: 91 pass; soak bot runs with no script errors)
 
 | Area | State | How verified |
 |---|---|---|
-| Characters | Jointed cut-out rig (Kenney Toon parts) for hero, NPCs, zombies, robots, bosses; strides matched to speed, arm swing, breathing, three-quarter head, expressions, death topple | Filmstrips at fixed 60 fps |
-| Item holding | Fist-anchored grips measured from art, item in front of arm and under the fingers, behind the head on overhead wind-ups; mine / chop / slash / place curves; torch with flame; belt lantern; shields | Filmstrips, 8 equipment tests |
-| Story | 3 voiced NPCs (Wren, Bram, Mira); 5 main + 2 side quests; tutorial taught through play; tracker; guide arrow; save-compatible | 7 quest tests incl. full tutorial play-through, captures |
-| Voices | Piper TTS baked offline to Ogg (30 lines), one voice per NPC, subtitles timed to audio, music ducking, Voices volume | Every line checked for real length and loudness; not listened to |
-| Gathering | Trees topple and scatter wood; material-specific mining sounds; impact-timed effects | Captures |
-| Building | Placement ghost with reasons; one validity check for ghost and build; can't build into bodies | Placement test (incl. straddling) |
-| Crafting | Timed jobs with station sounds and work animation; progress fill | 4 crafting tests, capture |
-| World | 2.5D foliage shader per species, bevelled terrain, light-directed relief, foreground layer, coloured light scatter, water/lava shaders, weather incl. thunderstorms, ambience beds | Captures |
-| Combat | Fitted creature boxes, front-only sword reach, telegraphed enemy attacks, shield block | 4 collision tests |
-| Death | Death screen with Rise countdown | Capture |
-
-## Tutorial verified end to end by a bot
-
-`--action=tutorial` plays First Light through the real game with real
-inputs, reading only the quest tracker. It now finishes all eight steps in
-about 1,600 frames. Getting there found and fixed six real problems:
-
-1. The tutorial spent all its wood on the bench and never said the axe
-   needs eight more (now asks for 18; the tracker names what is missing).
-2. Rock lay under many tiles of soil near the start (new worlds get a
-   surface outcrop; tested on five seeds).
-3. Creatures harried the player during the tutorial (the surface is safe
-   until First Light is done).
-4. The jump (2.2 tiles) could not clear the 3-tile ledges common in the
-   terrain (now about 3.2 tiles).
-5. Away from the bench, nothing pointed the way back (the guide arrow now
-   points to the station a crafting step needs).
-6. A block could be built into the player's own body (soak bot).
+| Characters | Jointed cut-out rig (Kenney Toon parts) for hero, NPCs, zombies, robots, bosses. Arms have elbows and two-bone IK. The hands are placed on the item, not the item in the hand | IK test (hand lands on target), filmstrips |
+| Locomotion | Relaxed idle: breathing, weight shift, head drift, fidgets (look round, stretch). Distinct walk and run (stride, lean, arm swing, bounce scale with speed). Card turn (body narrows and flips), with the held item and shield narrowing too. Footsteps fire from the stride, so no sliding | Filmstrips: walk, run, turn |
+| Item holding | Grips measured from each icon. Picks and axes swung two-handed (far hand on the handle, shoulders turn into the blow). Hammers, swords and torches one-handed. Shield in the far hand, brought in front to block. Lantern hangs on the belt as a pendulum | Filmstrips of pickaxe, axe, sword, hammer, torch, shield, block, planks, workbench, belt lantern. 3 equipment tests |
+| Trees | Chopping stages: a notch that deepens, a lean away from the axe, a shudder, and a creak past half. Bark, leaf and splinter bursts on every blow. On the last blow the crown bursts into leaves and the trunk splits into wood chunks that tumble, bounce and settle into collectable wood | Filmstrips |
+| Mining / combat feel | Debris per material (rock chips, crystal shards, earth). Hit-stop on sword hits (longer on criticals). Enemies squash on impact | Capture; time-scale recovery checked |
+| Building | Placement ghost with reasons. Materials sound different going down (timber knock, stone thud). Hammers (wood, iron) take down placed objects and planks/brick tiles in one blow and refund them | Hammer test, placement test |
+| Pickups | Drops glint at rest (in rarity colour when rare), shrink as they fly in, sparkle on collection, and climb in pitch through a haul | Pickup test |
+| Audio | Surface footsteps (grass, stone, wood, snow). Anvil ring while forging. Creature snarl before attacks, grunts when hurt, body fall on death. Tree fall, thunder. A test checks every `Sfx.play` name has a file | Lengths/loudness only (no sound device) |
+| Story | 4 voiced NPCs (Wren, Bram, Mira, and Tobin the travelling smith, a recoloured Bram). 5 main and 3 side quests. Tobin's "Tools of the Trade" teaches the hammer (craft one, knock down 3 built things, build 10, get his iron hammer). Old saves get quests added since | 11 quest tests incl. the tutorial and Tobin's quest played with real hammer blows |
+| Tutorial | Plays through to the end by bot (`--action=tutorial`) | Bot run |
+| World, crafting, death, weather | As before: 2.5D foliage, light scatter, water/lava, thunderstorms, timed crafting with station sounds, death screen | Captures, tests |
 
 ## Not verified / not done
 
-- **No real device** has run the game; no APK has been built (future deliverable).
-- **Audio is unheard**: there is no sound device here. Clips are checked by
-  length/loudness only. Piper may mispronounce names.
-- Robot keeps a front-facing head (its three-quarter cut lost the face).
-- Running vs walking as separate gaits, pick-up animation:
-  not done (the brief asks for them).
-- Inventory: drag and drop, rarity, sort and richer details are done; equipment slots (shield/lantern) are not:
-  the best shield carried is used automatically.
-- More NPCs/quests, map/minimap, armour, liquids flowing: not done.
+- **No real device** has run the game, and no APK has been built.
+- **Audio is unheard**: there is no sound device here. Clips are checked by length and loudness only. Piper may mispronounce names.
+- Robot keeps a front-facing head.
+- Wood chunks use the generic wood icon, which reads a little stick-like.
+- The belt lantern does not narrow during the card turn (it is small).
+- Equipment slots for shield and lantern: the best shield carried is used automatically.
+- Map/minimap, armour and flowing liquids: not done.
 
 ## Exact next tasks
 
-1. (done: dodge roll) Running gait above walking speed; pick-up gesture.
-2. Equipment slots for shield and lantern (drag and drop, rarity, sort done).
-3. (done: pooled bursts, enemy death finish) Material chips per tile type.
-4. A second region of story content (Bram's mine as a built location,
-   more voiced lines; re-run `python3 tools/bake_voices.py`).
+1. Visual pass on caves and underground lighting: colour grading per depth, more cave props.
+2. A second region of story content (Bram's mine as a built location, more voiced lines).
+   Re-run `python3 tools/bake_voices.py` after editing `assets/story/dialogue.json`.
+3. Equipment slots for shield and lantern.
+4. Enemy variety: a ranged enemy (spitter) and a cave bat.
 5. Performance pass on the foliage shader and light scatter at Low/Medium.
 
 ## How to check things
 
-- Tests: `godot --headless --path godot -s res://tests/run_tests.gd`
+- Tests: `godot --headless --path godot -s res://tests/run_tests.gd [-- name_filter]`
+- New `class_name` scripts need `godot --headless --path godot --import` once.
 - Soak: `xvfb-run -a godot --path godot --rendering-driver opengl3 --fixed-fps 60 -- --shot=out.png --touch --frames=6000 --action=soak --seed=7`, then grep the log for `SCRIPT ERROR`.
-- Captures: see `--action`, `--scenario`, `--hold`, `--strip`, `--story`, `--hover`, `--debug` in `scripts/main.gd`.
+- Captures: see `--action`, `--scenario`, `--hold`, `--strip` (with `--every=N` frame spacing), `--story`, `--hover`, `--debug` in `scripts/main.gd`.
+- Rig layout after adding a character: `python3 tools/build_rig.py` (about 2.5 minutes).

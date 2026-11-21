@@ -163,7 +163,10 @@ func _apply_scenario() -> void:
 	if _args.has("weather"):
 		level.life.set_weather(WorldLife.Weather.RAIN if _args.weather == "rain" else WorldLife.Weather.SNOW, 1.0)
 	if _args.has("x"):
-		var target := Vector2i(int(_args.x), 0)
+		# --x=COLUMN, or --x=s-30 / s+12 for a column relative to the spawn.
+		var column := String(_args.x)
+		var x := level.data.spawn.x + int(column.substr(1)) if column.begins_with("s") else int(column)
+		var target := Vector2i(x, 0)
 		target.y = level.data.surface[target.x] - 1
 		player.global_position = World.foot_of(target)
 		level.world.load_area(target, 2)

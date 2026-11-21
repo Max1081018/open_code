@@ -530,7 +530,9 @@ func _hammer(target: Vector2i, tool: Dictionary) -> void:
 		Sfx.play("chop" if tile == WorldData.PLANKS or item != "" else "hit", -2.0, 0.1)
 		Effects.burst(level.fx_layer, at, "splinters", Color(0.8, 0.66, 0.46) if tile != WorldData.BRICK else Color(0.7, 0.66, 0.66))
 		Effects.burst(level.fx_layer, at, "smoke", Color(0.85, 0.8, 0.7))
-		level.shake(2.0))
+		level.shake(2.0)
+		if level.quests:
+			level.quests.event("hammer"))
 
 
 ## Each material answers the pick in its own voice: dirt thuds, stone

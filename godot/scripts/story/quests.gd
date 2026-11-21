@@ -16,6 +16,7 @@ extends Node
 ##   ["break", material, n]   tiles of a material dug out ("stone" = rock)
 ##   ["depth", metres]        reach this depth below the surface
 ##   ["kill", kind]           defeat a creature or boss
+##   ["hammer", count]        built things taken down with a hammer
 
 signal changed
 signal completed(quest_id: String)
@@ -38,7 +39,7 @@ const DEFS := {
 		],
 		"done": ["wren_done_first"],
 		"reward": {"glow_flask": 2, "wood_shield": 1},
-		"next": ["below_the_roots", "a_hearty_meal"],
+		"next": ["below_the_roots", "a_hearty_meal", "tools_of_the_trade"],
 	},
 	"below_the_roots": {
 		"title": "Below the Roots", "giver": "bram", "main": true,
@@ -106,6 +107,19 @@ const DEFS := {
 		"reward": {"stew": 3},
 		"next": [],
 	},
+	"tools_of_the_trade": {
+		"title": "Tools of the Trade", "giver": "tobin", "main": false,
+		"offer": ["tobin_greet", "tobin_tools_offer"],
+		"steps": [
+			{"goal": ["craft", "wood_hammer", 1], "text": "Make a wooden hammer at the bench"},
+			{"goal": ["hammer", 3], "text": "Knock down three things you built", "line": "tobin_task_knock"},
+			{"goal": ["build", 10], "text": "Build it again, properly", "line": "tobin_task_build"},
+			{"goal": ["talk", "tobin"], "text": "Return to Tobin"},
+		],
+		"done": ["tobin_tools_done"],
+		"reward": {"iron_hammer": 1, "torch": 5},
+		"next": [],
+	},
 	"glowcaps": {
 		"title": "Liquid Light", "giver": "mira", "main": false,
 		"offer": ["mira_shards_offer"],
@@ -132,6 +146,13 @@ func setup(the_level: Level, saved := {}) -> void:
 	if state.is_empty():
 		# The opening quest is offered by Wren the moment the game starts.
 		state["first_light"] = {"step": 0, "count": 0, "state": "offered"}
+	# Quests added since a save was made open up as if they had always been
+	# there: anything a finished quest leads to is offered.
+	for id in state.keys():
+		if state[id].state == "done":
+			for next in DEFS[id].get("next", []):
+				if not state.has(next):
+					state[next] = {"step": 0, "count": 0, "state": "offered"}
 
 
 func to_dict() -> Dictionary:
@@ -206,7 +227,7 @@ func missing_for(item: String) -> String:
 
 func _needed(goal: Array) -> int:
 	match goal[0]:
-		"fell", "build":
+		"fell", "build", "hammer":
 			return int(goal[1])
 		"have", "craft", "break":
 			return int(goal[2])
@@ -253,7 +274,7 @@ func event(kind: String, what := "", amount := 1) -> void:
 		if goal.is_empty() or goal[0] != kind:
 			continue
 		match kind:
-			"fell", "build":
+			"fell", "build", "hammer":
 				_add(id, amount, int(goal[1]))
 			"craft", "break":
 				if goal[1] == what:

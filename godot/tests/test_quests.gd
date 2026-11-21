@@ -71,6 +71,7 @@ func test_the_tutorial_plays_through() -> void:
 	check(inv.count("glow_flask") >= 2 and inv.count("wood_shield") == 1, "the reward is given")
 	check(q.quest_for("bram") == "below_the_roots", "Bram has the next main quest")
 	check(q.quest_for("mira") == "a_hearty_meal", "Mira has a side quest")
+	check(q.quest_for("tobin") == "tools_of_the_trade", "Tobin has one too")
 	level.free()
 
 
@@ -121,7 +122,7 @@ func test_npcs_stand_on_the_ground_near_the_start() -> void:
 		check(level.data.is_solid(cell.x, cell.y + 1), "%s stands on ground" % npc.id)
 		check(absf(npc.global_position.x - level.player.global_position.x) < 80 * 128, "%s is near the start" % npc.id)
 	ids.sort()
-	check_eq(ids, ["bram", "mira", "wren"], "all three are in the world")
+	check_eq(ids, ["bram", "mira", "tobin", "wren"], "all four are in the world")
 	level.free()
 
 
@@ -157,3 +158,43 @@ func test_the_meadow_is_safe_during_the_tutorial() -> void:
 		level.director._try_spawn()
 	check_eq(Engine.get_main_loop().get_nodes_in_group("enemies").size(), before, "nothing spawns on the surface yet")
 	level.free()
+
+
+func test_tobin_teaches_the_hammer() -> void:
+	var level := _make_level()
+	var q := level.quests
+	q.state["tools_of_the_trade"] = {"step": 0, "count": 0, "state": "offered"}
+	var lines: Array = q.talk("tobin")
+	check(lines.has("tobin_tools_offer"), "he offers the quest")
+	q.event("craft", "wood_hammer", 1)
+	check_eq(q.state.tools_of_the_trade.step, 1, "the hammer is made")
+	# Really knock things down: build planks, then hammer them.
+	var p := level.player
+	var cell := World.cell_of(p.global_position + Vector2(0, -4)) + Vector2i(2, 0)
+	while level.data.is_solid(cell.x, cell.y):
+		cell.y -= 1
+	for i in 3:
+		level.world.set_block(cell, WorldData.PLANKS)
+		p._use_cooldown = 0.0
+		p._hammer(cell, Items.def("wood_hammer"))
+		p.rig._process(0.5)  # the blow lands
+	check_eq(q.state.tools_of_the_trade.step, 2, "three things taken down with the hammer")
+	for i in 10:
+		q.event("build")
+	check_eq(q.state.tools_of_the_trade.step, 3, "and built again")
+	var done: Array = q.talk("tobin")
+	check(done.has("tobin_tools_done"), "he is pleased")
+	check_eq(p.inventory.count("iron_hammer"), 1, "and gives you his spare hammer")
+	level.free()
+
+
+func test_saves_from_before_tobin_still_meet_him() -> void:
+	var level := _make_level()
+	var saved_quests := {"first_light": {"step": 8, "count": 0, "state": "done"},
+		"below_the_roots": {"step": 0, "count": 0, "state": "offered"}}
+	var saved := {"world": level.data.to_dict(), "player": level.player.to_dict(),
+		"time": 0.4, "quests": saved_quests}
+	level.free()
+	var again := _make_level(saved)
+	check(again.quests.quest_for("tobin") == "tools_of_the_trade", "his quest is offered")
+	again.free()

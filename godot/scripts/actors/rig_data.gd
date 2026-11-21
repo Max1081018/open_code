@@ -97,6 +97,16 @@ const LAYOUT := {
 		"leg_front": Rect2(98, 198, 36, 58),
 		"leg_back": Rect2(58, 198, 36, 58),
 	},
+	"tobin": {
+		"head": Rect2(46, 69, 106, 96),
+		"body": Rect2(58, 142, 76, 78),
+		"arm_front": Rect2(120, 162, 42, 60),
+		"arm_back": Rect2(30, 162, 42, 60),
+		"hand_front": Rect2(127, 209, 37, 34),
+		"hand_back": Rect2(28, 209, 37, 34),
+		"leg_front": Rect2(98, 198, 36, 58),
+		"leg_back": Rect2(58, 198, 36, 58),
+	},
 }
 
 ## Icon -> [grip in icon pixels, handle-to-head angle (radians), length].
