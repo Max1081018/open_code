@@ -42,6 +42,7 @@ var lantern: Sprite2D    ## on the belt
 var trail: Line2D
 var _flame: Node2D
 var _held_kind := ""     ## "tool", "sword", "torch", "block" or ""
+var _two_handed := false ## picks and axes; a hammer is swung one-handed
 var _grip := []          ## RigData.GRIPS entry of the held icon
 var _swing := {}         ## kind, t, duration, on_impact, impacted
 var _lantern_angle := 0.0
@@ -131,8 +132,9 @@ func hold(id: String) -> void:
 		halo.scale /= main.scale
 		_flame.add_child(halo)
 		main.add_child(_flame)
-	elif kind in [Items.Kind.PICKAXE, Items.Kind.AXE]:
+	elif kind in [Items.Kind.PICKAXE, Items.Kind.AXE, Items.Kind.HAMMER]:
 		_set_main(Items.icon(id), _icon_key(id), "tool")
+		_two_handed = kind != Items.Kind.HAMMER
 	elif kind == Items.Kind.SWORD:
 		_set_main(Items.icon(id), _icon_key(id), "sword")
 	elif kind in [Items.Kind.BLOCK, Items.Kind.PLACEABLE]:
@@ -248,7 +250,7 @@ func _process(delta: float) -> void:
 		body.reach(true, grip, angle)
 	# Picks and axes are swung with both hands: the far hand takes the
 	# handle further up, and the shoulders turn into the blow.
-	var two_handed: bool = swinging_now and _held_kind == "tool" and swing_kind in ["mine", "chop"]
+	var two_handed: bool = swinging_now and _held_kind == "tool" and _two_handed and swing_kind in ["mine", "chop"]
 	body.twist = 1.0 if two_handed else 0.0
 	if two_handed and not _grip.is_empty():
 		var length: float = _grip[2] * main.scale.x

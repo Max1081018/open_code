@@ -367,6 +367,8 @@ func _use_items(delta: float) -> void:
 			attack()
 		Items.Kind.BLOCK, Items.Kind.PLACEABLE:
 			_place(id, target)
+		Items.Kind.HAMMER:
+			_hammer(target, Items.def(id))
 		Items.Kind.CONSUMABLE:
 			if _use_cooldown <= 0.0:
 				consume(hotbar_index)
@@ -496,6 +498,39 @@ func _chop_hit(target: Vector2i, object: Dictionary, tool: Dictionary) -> void:
 		Sfx.play("break", 0.0, 0.05)
 		Sfx.play("tree_fall", -4.0, 0.05)
 		level.shake(7.0)
+
+
+## Things you built come down to a hammer in one blow and come back whole:
+## planks, brick, and placed objects (an emptied chest only). Natural rock
+## and soil are for the pick.
+const HAMMERABLE := [WorldData.PLANKS, WorldData.BRICK]
+
+
+func _hammer(target: Vector2i, tool: Dictionary) -> void:
+	if _use_cooldown > 0.0:
+		return
+	_use_cooldown = tool.get("speed", 0.3)
+	var object := world.object_at(target)
+	var tile := world.data.get_tile(target.x, target.y)
+	var item := ObjectArt.item_for(object) if not object.is_empty() else ""
+	var can: bool = (item != "" and not (object.get("type", "") == "chest" and not (object.get("loot", []) as Array).is_empty())) \
+		or (object.is_empty() and tile in HAMMERABLE)
+	_swing("mine", _use_cooldown, func():
+		if not can:
+			Sfx.play("hit", -10.0, 0.1)
+			if object.get("type", "") == "chest":
+				Effects.float_text(level.fx_layer, World.centre_of(target), "Empty it first", UITheme.DANGER, 30)
+			return
+		var at := World.centre_of(target)
+		if item != "":
+			world.remove_object(target, true)
+		else:
+			world.set_block(target, WorldData.AIR)
+			level.spawn_drop(Items.drop_for_tile(tile), 1, at)
+		Sfx.play("chop" if tile == WorldData.PLANKS or item != "" else "hit", -2.0, 0.1)
+		Effects.burst(level.fx_layer, at, "splinters", Color(0.8, 0.66, 0.46) if tile != WorldData.BRICK else Color(0.7, 0.66, 0.66))
+		Effects.burst(level.fx_layer, at, "smoke", Color(0.85, 0.8, 0.7))
+		level.shake(2.0))
 
 
 ## Each material answers the pick in its own voice: dirt thuds, stone

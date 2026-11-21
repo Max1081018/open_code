@@ -66,3 +66,27 @@ func test_finished_crafts_count_for_quests() -> void:
 	level.player._work_craft(10.0)
 	check_eq(level.quests.state.first_light.step, 3, "crafting the bench moved the tutorial on")
 	level.free()
+
+
+func test_a_hammer_takes_down_what_you_built_and_gives_it_back() -> void:
+	var level := _make_level()
+	var player := level.player
+	var data := level.data
+	var feet := World.cell_of(player.global_position + Vector2(0, -4))
+	var cell := feet + Vector2i(2, 0)
+	while data.is_solid(cell.x, cell.y):
+		cell.y -= 1
+	level.world.set_block(cell, WorldData.PLANKS)
+	player._use_cooldown = 0.0
+	player._hammer(cell, Items.def("wood_hammer"))
+	player.rig._process(0.5)  # the blow lands
+	check(not data.is_solid(cell.x, cell.y), "the planks come down in one blow")
+	var natural := feet + Vector2i(0, 3)
+	while not data.is_solid(natural.x, natural.y) or data.get_tile(natural.x, natural.y) == WorldData.PLANKS:
+		natural.y += 1
+	player._use_cooldown = 0.0
+	player._hammer(natural, Items.def("wood_hammer"))
+	player.rig._process(0.5)
+	check(data.is_solid(natural.x, natural.y), "natural ground is for the pick")
+	check(Items.exists("wood_hammer") and RigData.GRIPS.has(String(Items.def("wood_hammer").icon)), "the hammer has a grip")
+	level.free()
