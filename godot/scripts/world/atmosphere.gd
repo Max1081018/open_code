@@ -22,7 +22,7 @@ const BIOMES := {
 		# The nearest layer is forest too (an Array is a tree line): the
 		# cartoon hill there read as a toy among the rendered trees.
 		"near": ["nature/CommonTree_2", "nature/Bush_Common", "nature/Pine_3", "nature/CommonTree_4",
-			"nature/Bush_Common_Flowers", "nature/TwistedTree_3", "nature/Pine_2"],
+			"nature/Bush_Common_Flowers", "nature/Pine_2"],
 		"trees": ["nature/CommonTree_1", "nature/Pine_2", "nature/CommonTree_3", "nature/Pine_4",
 			"nature/CommonTree_5", "nature/TwistedTree_2", "nature/Pine_1"],
 		"fog": Color(0.40, 0.56, 0.54), "sky_top": Color(0.30, 0.50, 0.70),
@@ -301,6 +301,10 @@ func _build_grade() -> void:
 	rect.material = _grade
 	layer.add_child(rect)
 	rect.visible = Settings.shader_fx >= 1
+	# The heavier parts of the grade follow the graphics settings.
+	_grade.set_shader_parameter("bloom", 0.3 if Settings.bloom else 0.0)
+	_grade.set_shader_parameter("sharpen", 0.55 if Settings.shader_fx >= 2 else 0.0)
+	_grade.set_shader_parameter("grain", 0.018 if Settings.shader_fx >= 2 else 0.0)
 
 
 # =============================================================================

@@ -132,9 +132,15 @@ func _build_layers() -> void:
 	light_sprite.centered = false
 	light_sprite.z_index = 50
 	light_sprite.texture_filter = CanvasItem.TEXTURE_FILTER_LINEAR
-	var multiply := CanvasItemMaterial.new()
-	multiply.blend_mode = CanvasItemMaterial.BLEND_MODE_MUL
-	light_sprite.material = multiply
+	# Smooth (bicubic) light on good settings; plain bilinear otherwise.
+	if Settings.lighting >= 2:
+		var smooth := ShaderMaterial.new()
+		smooth.shader = load("res://scripts/shaders/light_overlay.gdshader")
+		light_sprite.material = smooth
+	else:
+		var multiply := CanvasItemMaterial.new()
+		multiply.blend_mode = CanvasItemMaterial.BLEND_MODE_MUL
+		light_sprite.material = multiply
 	add_child(light_sprite)
 	scatter_sprite = Sprite2D.new()
 	scatter_sprite.centered = false

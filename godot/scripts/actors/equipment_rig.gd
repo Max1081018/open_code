@@ -269,9 +269,16 @@ func _process(delta: float) -> void:
 	else:
 		arm_dir = body.front_arm_angle()
 		reach *= 0.88
-		if _held_kind in ["tool", "sword"]:
+		if _held_kind == "tool":
+			# Carried upright in front, the way you'd walk with a pick: the
+			# fist forward at the hip and the head up by the face, its flat
+			# side to the camera, leaning a little into the walk.
+			arm_dir = 38.0 + (body.front_arm_angle() - 90.0) * 0.25
+			reach = body.arm_length() * 0.92
+			angle = -78.0 + (body.front_arm_angle() - 90.0) * 0.15
+		elif _held_kind == "sword":
 			# Carried forward and a little up, clear of the face.
-			angle = arm_dir - (98.0 if _held_kind == "tool" else 105.0)
+			angle = arm_dir - 105.0
 	if blocking:
 		angle = -70.0
 	var grip := body.shoulder_rig(true) + Vector2.from_angle(deg_to_rad(arm_dir)) * reach

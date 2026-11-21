@@ -298,6 +298,8 @@ func _run_scenario() -> void:
 	match _args.get("action", ""):
 		"walk":
 			input.move = 1.0 if _frames > 20 else 0.0
+		"walk_left":
+			input.move = -1.0 if _frames > 20 else 0.0
 		"dig":
 			if _frames > 20:
 				input.use_held = true

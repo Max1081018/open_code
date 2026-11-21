@@ -6,9 +6,11 @@ render_mode blend_add;
 // the light on top (torches, lava, crystals, glowing mushrooms), so they
 // wash nearby rock with their colour. White sunlight has no colour excess
 // and adds nothing, so daylight scenes are untouched.
+#include "res://scripts/shaders/bicubic.gdshaderinc"
+
 uniform float strength = 0.55;
 void fragment() {
-	vec3 light = texture(TEXTURE, UV).rgb;
+	vec3 light = bicubic(TEXTURE, UV, TEXTURE_PIXEL_SIZE).rgb;
 	float hi = max(light.r, max(light.g, light.b));
 	float lo = min(light.r, min(light.g, light.b));
 	float colour = hi - lo;
