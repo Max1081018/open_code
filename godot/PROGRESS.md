@@ -18,6 +18,24 @@ Engine: Godot 4.4.1, GL Compatibility renderer, Android-first.
 | Combat | Fitted creature boxes, front-only sword reach, telegraphed enemy attacks, shield block | 4 collision tests |
 | Death | Death screen with Rise countdown | Capture |
 
+## Tutorial verified end to end by a bot
+
+`--action=tutorial` plays First Light through the real game with real
+inputs, reading only the quest tracker. It now finishes all eight steps in
+about 1,600 frames. Getting there found and fixed six real problems:
+
+1. The tutorial spent all its wood on the bench and never said the axe
+   needs eight more (now asks for 18; the tracker names what is missing).
+2. Rock lay under many tiles of soil near the start (new worlds get a
+   surface outcrop; tested on five seeds).
+3. Creatures harried the player during the tutorial (the surface is safe
+   until First Light is done).
+4. The jump (2.2 tiles) could not clear the 3-tile ledges common in the
+   terrain (now about 3.2 tiles).
+5. Away from the bench, nothing pointed the way back (the guide arrow now
+   points to the station a crafting step needs).
+6. A block could be built into the player's own body (soak bot).
+
 ## Not verified / not done
 
 - **No real device** has run the game; no APK has been built (future deliverable).
