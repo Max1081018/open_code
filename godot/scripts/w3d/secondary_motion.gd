@@ -59,6 +59,7 @@ static func setup(skeleton: Skeleton3D) -> int:
 	var sim := SpringBoneSimulator3D.new()
 	sim.name = "SoftBones"
 	skeleton.add_child(sim)
+	_add_body_colliders(skeleton, sim)
 	sim.setting_count = chains.size()
 	for n in chains.size():
 		var c: Array = chains[n]
@@ -71,4 +72,33 @@ static func setup(skeleton: Skeleton3D) -> int:
 		sim.set_drag(n, p[1])
 		sim.set_gravity(n, p[2])
 		sim.set_radius(n, p[3])
+		# Cloth, tails and hair stay outside the legs and hips.
+		sim.set_enable_all_child_collisions(n, c[2] in ["skirt", "tail", "coat", "cape", "cloak", "ribon", "ribbon", "hair"])
 	return chains.size()
+
+
+## Capsules along the thighs and shins and a sphere-ish one at the hips,
+## sized from the rig itself, that the soft chains collide with.
+static func _add_body_colliders(skeleton: Skeleton3D, sim: SpringBoneSimulator3D) -> void:
+	var pairs := [["LeftUpperLeg", "LeftLowerLeg", 0.32], ["RightUpperLeg", "RightLowerLeg", 0.32],
+		["LeftLowerLeg", "LeftFoot", 0.22], ["RightLowerLeg", "RightFoot", 0.22], ["Hips", "Spine", 0.9]]
+	for pr in pairs:
+		var a := skeleton.find_bone(pr[0])
+		var b := skeleton.find_bone(pr[1])
+		if a < 0 or b < 0:
+			continue
+		var from := skeleton.get_bone_global_rest(a)
+		var to := skeleton.get_bone_global_rest(b).origin
+		var local_to := from.affine_inverse() * to
+		var length := local_to.length()
+		if length < 0.0001:
+			continue
+		var cap := SpringBoneCollisionCapsule3D.new()
+		cap.bone_name = pr[0]
+		var r: float = length * float(pr[2])
+		cap.radius = r
+		cap.height = length + r * 2.0 if pr[0] != "Hips" else r * 2.2
+		cap.position_offset = local_to * 0.5 if pr[0] != "Hips" else Vector3.ZERO
+		# Capsules run along their Y axis: turn Y onto the bone.
+		cap.rotation_offset = Quaternion(Vector3.UP, local_to.normalized())
+		sim.add_child(cap)

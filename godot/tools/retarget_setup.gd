@@ -43,6 +43,29 @@ const TABLE := {
 }
 
 
+## Exact names (normalised) for rigs whose sides aren't derivable, e.g. the
+## Spanish-named "Fantasy Girl" rig. Checked before TABLE.
+const EXACT := {
+	"Hips": ["hip"], "Spine": ["abdomen"], "Chest": ["pecho"], "Neck": ["cuello"], "Head": ["cabeza"],
+	"LeftShoulder": ["clavicula_l"], "RightShoulder": ["clavicula_r"],
+	"LeftUpperArm": ["brazo_l"], "RightUpperArm": ["brazo_r"],
+	"LeftLowerArm": ["antebrazo_l"], "RightLowerArm": ["antebrazo_r"],
+	"LeftHand": ["mano_l"], "RightHand": ["mano_r"],
+	"LeftUpperLeg": ["pierna_l"], "RightUpperLeg": ["pierna_r"],
+	"LeftLowerLeg": ["pantorrilla_l"], "RightLowerLeg": ["pantorrilla_r"],
+	"LeftFoot": ["talon_l"], "RightFoot": ["talon_r"],
+	"LeftToes": ["pie_l"], "RightToes": ["pie_r"],
+	"LeftThumbMetacarpal": ["dedogordo_l_002"], "LeftThumbProximal": ["dedogordo_l_001"], "LeftThumbDistal": ["dedogordo_l_003"],
+	"RightThumbMetacarpal": ["dedogordo_r"], "RightThumbProximal": ["dedogordo_r_001"], "RightThumbDistal": ["dedogordo_r_002"],
+	"LeftIndexProximal": ["dedoindice_l_002"], "LeftIndexIntermediate": ["dedoindice_l_001"], "LeftIndexDistal": ["dedoindice_l_003"],
+	"RightIndexProximal": ["dedoindice_r"], "RightIndexIntermediate": ["dedoindice_r_001"], "RightIndexDistal": ["dedoindice_r_002"],
+	"LeftMiddleProximal": ["dedomedio_l_002"], "LeftMiddleIntermediate": ["dedomedio_l_001"], "LeftMiddleDistal": ["dedomedio_l_003"],
+	"RightMiddleProximal": ["dedomedio_r"], "RightMiddleIntermediate": ["dedomedio_r_001"], "RightMiddleDistal": ["dedomedio_r_002"],
+	"LeftRingProximal": ["dedoanu_l_002"], "LeftRingIntermediate": ["dedoanu_l_001"], "LeftRingDistal": ["dedoanu_l_003"],
+	"RightRingProximal": ["dedoanu_r"], "RightRingIntermediate": ["dedoanu_r_001"], "RightRingDistal": ["dedoanu_r_002"],
+}
+
+
 static func normalise(bone: String, strip_number := true) -> String:
 	var n := bone.to_lower().replace(" ", "_").replace(".", "_")
 	# Valve rigs carry the model name after the bone: drop it.
@@ -114,6 +137,18 @@ func _setup(path: String, strip_numbers: bool) -> void:
 	map.profile = SkeletonProfileHumanoid.new()
 	var found := 0
 	var missing := []
+	# Exact matches first (only used when the rig has them).
+	for profile_bone in EXACT:
+		for c in EXACT[profile_bone]:
+			if by_norm.has(c):
+				map.set_skeleton_bone_name(StringName(profile_bone), StringName(by_norm[c]))
+				found += 1
+				table.erase(profile_bone)
+				table.erase(profile_bone.replace("Left", "Right"))  # re-added below if still needed
+				break
+	for pb in EXACT:
+		if map.get_skeleton_bone_name(StringName(pb)) == StringName() and TABLE.has(pb):
+			table[pb] = TABLE[pb]
 	for profile_bone in table.keys():
 		var sides := [[profile_bone, table[profile_bone]]]
 		if profile_bone.begins_with("Left"):
@@ -122,6 +157,8 @@ func _setup(path: String, strip_numbers: bool) -> void:
 				candidates.append(right(c))
 			sides.append([profile_bone.replace("Left", "Right"), candidates])
 		for side in sides:
+			if map.get_skeleton_bone_name(StringName(side[0])) != StringName():
+				continue
 			var hit := ""
 			for c in side[1]:
 				if by_norm.has(c):

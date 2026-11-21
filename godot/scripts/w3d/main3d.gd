@@ -158,7 +158,8 @@ func _process(delta: float) -> void:
 		if _frames >= first and (_frames - first) % every == 0 and _frames <= last:
 			await RenderingServer.frame_post_draw
 			var img := get_viewport().get_texture().get_image()
-			img.resize(img.get_width() / 2, img.get_height() / 2)
+			if count > 1:
+				img.resize(img.get_width() / 2, img.get_height() / 2)
 			_strip.append(img)
 			if _frames == last:
 				var w := img.get_width()
@@ -182,7 +183,7 @@ func _update_sun(_delta: float) -> void:
 	var low := clampf(1.0 - absf(elevation) * 2.2, 0.0, 1.0) * day
 	sun.rotation = Vector3(-maxf(absf(elevation), 0.12) * 1.25 - 0.1, deg_to_rad(-35.0) + cos(angle) * 0.9, 0)
 	sun.light_color = Color(1.0, 0.95, 0.86).lerp(Color(1.0, 0.62, 0.34), low).lerp(Color(0.45, 0.55, 0.85), 1.0 - day)
-	sun.light_energy = lerpf(0.18, 1.6, day)
+	sun.light_energy = lerpf(0.18, 1.35, day)
 	environment.ambient_light_energy = lerpf(0.2, 0.55, day)
 	environment.fog_light_color = Color(0.7, 0.74, 0.78).lerp(Color(0.95, 0.66, 0.46), low).lerp(Color(0.08, 0.1, 0.18), 1.0 - day)
 	var sky_mat := environment.sky.sky_material as ProceduralSkyMaterial

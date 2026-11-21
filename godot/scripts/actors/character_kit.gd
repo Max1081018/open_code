@@ -74,7 +74,7 @@ const HEROES := {
 ## (clip overrides on the shared library, playback speed). Anime heroines
 ## are small and light on their feet; knights heavy; the dead shamble.
 const HERO_STYLE := {
-	"player": {"height": 1.56, "clips": {"Walk": "Walk_Formal"}, "speed": 1.12},
+	"player": {"height": 1.56, "library": "anim/heroine.res", "speed": 1.0},
 	"wren": {"height": 1.6, "clips": {"Idle": "Idle_Talking"}, "speed": 1.05},
 	"mira": {"height": 1.58, "clips": {"Walk": "Walk_Formal"}, "speed": 1.0},
 	"tobin": {"height": 1.72, "clips": {"Idle": "Idle_FoldArms"}, "speed": 0.95},
@@ -210,12 +210,42 @@ static func _build_hero(name: String) -> Node3D:
 	player.root_node = NodePath("../" + String(root.get_path_to(model)))
 	if _hero_library == null:
 		_hero_library = load(HERO_ANIMS)
-	player.add_animation_library("", _hero_library)
+	var own: String = HERO_STYLE.get(name, {}).get("library", "")
+	if own != "" and ResourceLoader.exists(HERO_DIR + own):
+		player.add_animation_library("", load(HERO_DIR + own))
+	else:
+		player.add_animation_library("", _hero_library)
 	root.set_meta("style", HERO_STYLE.get(name, {}))
 	for mesh in model.find_children("*", "MeshInstance3D", true, false):
 		_toon(mesh as MeshInstance3D)
 	SecondaryMotion.setup(skeleton)
 	return root
+
+
+## Pale pinkish-peach on average: a skin and face atlas.
+static func _looks_like_skin(tex: Texture2D) -> bool:
+	if tex == null:
+		return false
+	var img := tex.get_image()
+	if img == null:
+		return false
+	if img.is_compressed():
+		img = img.duplicate()
+		img.decompress()
+	img = img.duplicate()
+	img.resize(16, 16)
+	var sum := Color(0, 0, 0)
+	var n := 0
+	for y in 16:
+		for x in 16:
+			var c := img.get_pixel(x, y)
+			if c.r + c.g + c.b > 0.3:
+				sum += c
+				n += 1
+	if n == 0:
+		return false
+	sum /= n
+	return sum.r > 0.6 and sum.r > sum.g * 1.08 and sum.g > sum.b * 0.9 and sum.r - sum.b < 0.35
 
 
 static var _toon_shader: Shader
@@ -241,16 +271,34 @@ static func _toon(mesh: MeshInstance3D) -> void:
 		if base.transparency != BaseMaterial3D.TRANSPARENCY_DISABLED:
 			cut = 0.5
 		m.set_shader_parameter("alpha_cut", cut)
-		if base.emission_enabled:
-			m.set_shader_parameter("emission_boost", 0.6)
+		# Only truly glowing parts glow (many exports switch emission on empty).
+		if base.emission_enabled and (base.emission_texture != null or base.emission.get_luminance() * base.emission_energy_multiplier > 0.15):
+			m.set_shader_parameter("emission_boost", 0.4)
 		var soft_face := false
 		for word in ["eye", "brow", "lash", "mouth", "teeth", "tongue", "highlight", "face", "skin", "body"]:
 			if name.contains(word):
 				soft_face = true
+		if not soft_face and _looks_like_skin(base.albedo_texture):
+			soft_face = true
 		if soft_face:
-			# Skin and faces: lighter, warmer shade, less rim.
-			m.set_shader_parameter("shade_color", Color(0.93, 0.8, 0.82))
-			m.set_shader_parameter("rim_strength", 0.15)
+			# Skin and faces: lit almost flat (anime faces barely shade),
+			# warm soft shade, little rim, a touch darker so they never clip.
+			m.set_shader_parameter("shade_color", Color(0.95, 0.84, 0.84))
+			m.set_shader_parameter("shade_threshold", 0.25)
+			m.set_shader_parameter("rim_strength", 0.08)
+			m.set_shader_parameter("spec_strength", 0.0)
+			m.set_shader_parameter("light_scale", 0.62)
+			m.set_shader_parameter("fill", 0.2)
+		if name.contains("shadow"):
+			# A VRoid-style shade layer (under the fringe): multiplied over.
+			var mul := StandardMaterial3D.new()
+			mul.blend_mode = BaseMaterial3D.BLEND_MODE_MUL
+			mul.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+			mul.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+			mul.albedo_texture = base.albedo_texture
+			mul.albedo_color = Color(1, 1, 1, 0.6)
+			mesh.set_surface_override_material(i, mul)
+			continue
 		var skip_line := false
 		for word in ["eye", "brow", "lash", "mouth", "teeth", "tongue", "highlight"]:
 			if name.contains(word):

@@ -164,6 +164,8 @@ re-textured (downsized) and some recoloured.
 | Mira | [(Free)sara(original character) - vrchat Avatar](https://sketchfab.com/3d-models/4cd06aebd9ff4bd9ae7f66bde35fb288) | scoco |
 | Tobin | [character boy #1 (FBX)](https://sketchfab.com/3d-models/f6c26ef822cb4744aa780c866e0565ca) | asset_for_games |
 | Player heroine (twin tails, horns, wings) | [3D Anime Character girl for Blender](https://sketchfab.com/3d-models/906b6874327844de9f794c7986127f3f) | CGBlender |
+| Heroine's animations: idles, walk, run, sword attacks, dash, jumps, hits | [Fantasy Girl](https://sketchfab.com/3d-models/1ca6d15fe2f34bd199252bf73d896e13) | loriserio |
+| Heroine's animations: talking, landing, gathering, interact, climb | [Low Poly Girl](https://sketchfab.com/3d-models/4cb87c1d3c3c4b9ea3b4c61ab407500a) | manoeldarochadeoliveira |
 
 Animations on all of them: Quaternius Universal Animation Library 1 and 2 (CC0), retargeted.
 

@@ -47,7 +47,7 @@ var _head_meshes: Array = []
 var _idle_time := 0.0
 var _idle_break := 0.0
 ## Little things she does when left standing.
-const IDLE_BREAKS := [["Idle_FoldArms", 3.2, 1.0], ["Yes", 1.8, 1.0], ["Idle_No", 1.8, 1.0], ["Idle_Talking", 3.0, 0.9]]
+const IDLE_BREAKS := [["Idle_FoldArms", 2.6, 1.0], ["Yes", 2.0, 1.0], ["Idle_No", 2.0, 1.0], ["Idle_Rest", 2.0, 1.0]]
 
 
 func _ready() -> void:
