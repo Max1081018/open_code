@@ -524,8 +524,10 @@ func summon_boss(cell: Vector2i) -> void:
 
 
 func boss_phase(enemy: Enemy) -> void:
-	Game.toast("%s is enraged!" % enemy.spec.boss)
+	var words := {2: "%s calls the dead to its side!", 3: "%s makes its last stand!"}
+	Game.toast(words.get(enemy.boss_phase, "%s stirs") % enemy.spec.boss)
 	shake(18.0)
+	Sfx.play("roar", 0.0, 0.05, 0.75)
 
 
 func _on_boss_died(_at: Vector2) -> void:

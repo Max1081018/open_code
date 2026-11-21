@@ -78,7 +78,6 @@ var _phase := 0.0
 var _dead := false
 var _boss_state := 0
 var _boss_timer := 2.0
-var _summoned := false
 
 
 func setup(kind_name: String) -> void:
@@ -482,39 +481,184 @@ func _lunge() -> void:
 # Bosses
 # =============================================================================
 
+## Bosses fight in three phases (above two thirds of their health, above
+## one third, and the last stand), and every move has a tell: a taunt, a
+## crouch, a glow. The player learns them, and the fight gets harder as
+## it goes on rather than only longer.
+var boss_phase := 1
+var _move := 0
+var _charging := 0.0
+var _spinning := 0.0
+var _rocks := 0.0
+
+
 func _boss_think(delta: float, to_player: Vector2) -> void:
 	_boss_timer -= delta
-	var enraged := health < max_health * 0.5
-	if enraged and not _summoned:
-		_summoned = true
+	var phase := 1 if health > max_health * 0.66 else (2 if health > max_health * 0.33 else 3)
+	if phase > boss_phase:
+		boss_phase = phase
 		level.boss_phase(self)
-		for i in 3:
-			var minion := "robot" if kind == "warden" else "shade"
-			level.spawn_enemy(minion, global_position + Vector2(randf_range(-400, 400), -200))
-	if _boss_timer > 0.0:
+		_play("taunt")
+		_boss_timer = 1.4
+		var minion := "robot" if kind == "warden" else "shade"
+		for i in 2 + phase - 2:
+			level.spawn_enemy(minion, global_position + Vector2(randf_range(-500, 500), -120))
+	_update_boss_hazards(delta, to_player)
+	if _boss_timer > 0.0 or _charging > 0.0 or _spinning > 0.0:
 		return
+	var quick := 0.8 if boss_phase == 3 else 1.0
 	match kind:
 		"warden":
-			# Leap and slam: a shockwave the player must jump over.
-			_boss_timer = 3.4 if not enraged else 2.4
-			if is_on_floor():
-				velocity = Vector2(signf(to_player.x) * 700.0, -1500.0)
-				await get_tree().create_timer(0.25).timeout
-				while is_inside_tree() and not is_on_floor():
-					await get_tree().physics_frame
-				if not is_inside_tree() or _dead:
-					return
-				level.shake(22.0)
-				Sfx.play("break", 2.0)
-				Effects.burst(level.fx_layer, global_position, "smoke", Color(0.75, 0.68, 0.6))
-				if absf(player.global_position.x - global_position.x) < 6.0 * TILE \
-						and player.is_on_floor():
-					player.hurt(spec.damage * 0.8, global_position)
+			_move = (_move + 1) % 3
+			match _move:
+				0:
+					_boss_timer = 3.2 * quick
+					_warden_slam(to_player)
+				1:
+					_boss_timer = 3.0 * quick
+					_warden_charge(to_player)
+				2:
+					_boss_timer = 3.0 * quick
+					_warden_spin()
 		"gloam":
-			# Swoops: a fast dive through the player, then a retreat.
-			_boss_timer = 2.8 if not enraged else 1.8
-			velocity = to_player.normalized() * 1500.0
-			Sfx.play("roar", -4.0)
+			_move = (_move + 1) % 3
+			match _move:
+				0:
+					# Swoop: a fast dive through the player, then away.
+					_boss_timer = 2.4 * quick
+					velocity = to_player.normalized() * 1500.0
+					Sfx.play("roar", -4.0)
+				1:
+					_boss_timer = 2.6 * quick
+					_gloam_volley()
+				2:
+					_boss_timer = 2.2 * quick
+					_gloam_blink()
+
+
+## Leap and slam: the shockwave rolls along the ground, outward, and only a
+## jump clears it. In the last stand it rolls both ways and the roof falls.
+func _warden_slam(to_player: Vector2) -> void:
+	if not is_on_floor():
+		return
+	_play("taunt")
+	await get_tree().create_timer(0.45).timeout
+	if not is_inside_tree() or _dead:
+		return
+	velocity = Vector2(signf(to_player.x) * 700.0, -1500.0)
+	await get_tree().create_timer(0.25).timeout
+	while is_inside_tree() and not is_on_floor():
+		await get_tree().physics_frame
+	if not is_inside_tree() or _dead:
+		return
+	level.shake(22.0)
+	Sfx.play("break", 2.0)
+	Sfx.play("bodyfall", 0.0, 0.05, 0.6)
+	for direction in ([-1.0, 1.0] if boss_phase >= 2 else [signf(to_player.x)]):
+		_shockwave(global_position, direction)
+	if boss_phase == 3:
+		_rocks = 2.5
+
+
+## A wave of dust rolling along the ground; it hurts whoever is standing
+## in its way when it passes.
+func _shockwave(origin: Vector2, direction: float) -> void:
+	var travelled := 0.0
+	var hit := false
+	while travelled < 9.0 * TILE and is_inside_tree():
+		travelled += 26.0
+		var at := origin + Vector2(direction * travelled, -10)
+		if int(travelled) % 104 < 26:
+			Effects.burst(level.fx_layer, at, "smoke", Color(0.8, 0.7, 0.6))
+		if not hit and absf(player.global_position.x - at.x) < 60.0 and player.is_on_floor() \
+				and absf(player.global_position.y - origin.y) < TILE * 1.5:
+			hit = true
+			player.hurt(spec.damage * 0.7, at)
+		await get_tree().physics_frame
+
+
+## Shield up, then a rush across the hall. While charging it cannot be hurt
+## from the front: get behind it.
+func _warden_charge(to_player: Vector2) -> void:
+	if _sprite is Body3D:
+		_sprite.play("block")
+	_flash_target().self_modulate = Color(1.6, 1.1, 1.1)
+	await get_tree().create_timer(0.6).timeout
+	if not is_inside_tree() or _dead:
+		return
+	_flash_target().self_modulate = Color.WHITE
+	facing = 1 if to_player.x > 0 else -1
+	_charging = 1.1
+	Sfx.play("roar", -2.0, 0.05, 0.8)
+
+
+func _warden_spin() -> void:
+	_play("taunt")
+	await get_tree().create_timer(0.5).timeout
+	if not is_inside_tree() or _dead:
+		return
+	_spinning = 1.3
+	if _sprite is Body3D:
+		_sprite.play("spin")
+	Sfx.play("swing", 0.0, 0.05, 0.7)
+
+
+## The Gloam raises its staff and hurls three bolts of violet fire.
+func _gloam_volley() -> void:
+	if _sprite is Body3D:
+		_sprite.play("cast")
+	for i in 3 if boss_phase < 3 else 5:
+		await get_tree().create_timer(0.28).timeout
+		if not is_inside_tree() or _dead or player == null:
+			return
+		var mouth := global_position + Vector2(0, -170 * float(spec.scale))
+		var aim := player.global_position + Vector2(randf_range(-120, 120), -90)
+		var bolt := Spit.lob(level, mouth, aim, spec.damage * 0.5, 0.55)
+		bolt.colour = Color(0.72, 0.42, 1.0)
+		Sfx.play("swing", -4.0, 0.05, 1.4)
+
+
+## Gone in a puff of dark, and back behind you.
+func _gloam_blink() -> void:
+	Effects.burst(level.fx_layer, global_position + Vector2(0, -120), "smoke", Color(0.3, 0.15, 0.45))
+	var behind := player.global_position + Vector2(-player.facing * 380.0, -260.0)
+	global_position = behind
+	velocity = Vector2.ZERO
+	Effects.burst(level.fx_layer, global_position + Vector2(0, -120), "smoke", Color(0.3, 0.15, 0.45))
+	Sfx.play("growl2", -2.0, 0.05, 0.7)
+	if boss_phase == 3 and player.glow > 0.0 and level.world.brightness_at(player.global_position - Vector2(0, 100)) < 0.5:
+		# The last stand: a pulse of dark that drinks the lantern unless you stand in light.
+		player.glow = maxf(player.glow - 15.0, 0.0)
+		player.glow_changed.emit(player.glow, player.max_glow())
+		Effects.float_text(level.fx_layer, player.global_position + Vector2(0, -250), "The dark drinks your light", Color(0.7, 0.5, 1.0), 34)
+
+
+func _update_boss_hazards(delta: float, to_player: Vector2) -> void:
+	if _charging > 0.0:
+		_charging -= delta
+		velocity.x = facing * 1150.0
+		if absf(to_player.x) < 120.0 * float(spec.scale) and absf(to_player.y) < 200.0 * float(spec.scale):
+			player.hurt(spec.damage, global_position)
+			_charging = 0.0
+		if is_on_wall():
+			_charging = 0.0
+			level.shake(10.0)
+	if _spinning > 0.0:
+		_spinning -= delta
+		velocity.x = signf(to_player.x) * 260.0
+		if to_player.length() < 2.6 * TILE:
+			player.hurt(spec.damage * 0.6, global_position)
+	if _rocks > 0.0:
+		_rocks -= delta
+		if randf() < delta * 5.0:
+			var above := player.global_position + Vector2(randf_range(-600, 600), -900)
+			var rock := Spit.lob(level, above, above + Vector2(randf_range(-40, 40), 900), spec.damage * 0.4, 0.75)
+			rock.colour = Color(0.55, 0.46, 0.4)
+
+
+## Charging, the Warden's raised shield takes blows from the front.
+func shielded_from(from: Vector2) -> bool:
+	return kind == "warden" and _charging > 0.0 and signf(from.x - global_position.x) == float(facing)
 
 
 # =============================================================================
@@ -523,6 +667,11 @@ func _boss_think(delta: float, to_player: Vector2) -> void:
 
 func take_hit(amount: float, from: Vector2, crit := false, quiet := false) -> void:
 	if _dead:
+		return
+	if is_boss and shielded_from(from):
+		Sfx.play("anvil", -6.0, 0.05, 1.3)
+		Effects.burst(level.fx_layer, global_position + Vector2(facing * 90, -200), "hit")
+		Effects.float_text(level.fx_layer, global_position + Vector2(0, -330), "Blocked!", Color(0.8, 0.85, 1.0), 40)
 		return
 	health -= amount
 	if not quiet:

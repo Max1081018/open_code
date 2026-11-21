@@ -148,3 +148,29 @@ func test_a_spitters_glob_lands_on_the_player_and_a_shield_turns_it() -> void:
 	data.set_tile(feet.x - 3, feet.y, WorldData.ROCK)
 	check(not spitter.can_see(target), "behind rock it does not")
 	level.free()
+
+
+func test_bosses_fight_in_phases_and_the_warden_shields_its_charge() -> void:
+	var level := Level.new()
+	Engine.get_main_loop().root.add_child(level)
+	level.start(5150, {})
+	var p := level.player
+	var boss := level.spawn_enemy("warden", p.global_position + Vector2(700, -80))
+	check_eq(boss.boss_phase, 1, "it starts in its first phase")
+	var before: int = Engine.get_main_loop().get_nodes_in_group("enemies").size()
+	boss.health = boss.max_health * 0.6
+	boss._boss_think(0.016, p.global_position - boss.global_position)
+	check_eq(boss.boss_phase, 2, "two thirds down, the second phase")
+	check(Engine.get_main_loop().get_nodes_in_group("enemies").size() > before, "and the dead come to its side")
+	boss.health = boss.max_health * 0.2
+	boss._boss_think(0.016, p.global_position - boss.global_position)
+	check_eq(boss.boss_phase, 3, "the last stand")
+	# Charging, its shield takes blows from the front.
+	boss.facing = -1
+	boss._charging = 1.0
+	var hp: float = boss.health
+	boss.take_hit(30.0, boss.global_position + Vector2(-200, 0))
+	check_eq(boss.health, hp, "struck from the front: blocked")
+	boss.take_hit(30.0, boss.global_position + Vector2(200, 0))
+	check(boss.health < hp, "from behind: it lands")
+	level.free()
