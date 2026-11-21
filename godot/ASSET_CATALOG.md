@@ -103,3 +103,17 @@ From [Soundza](https://soundza.com) under the Soundza Standard License
 tree fall, wood chop, close and distant thunder; ambience loops for rain
 through trees, a forest bird chorus and cave drips. Loops are cut to 40 s
 with an equal-power crossfade by `tools/make_loop.py`.
+
+## 3D characters, weapons and dungeon props — KayKit (CC0)
+
+By Kay Lousberg (www.kaylousberg.com), CC0 1.0. Licences kept beside the files
+(`assets/models/kaykit/LICENSE-KayKit-*.txt`, `assets/models/LICENSE-KayKit-Dungeon.txt`).
+
+| Pack | Used for |
+|---|---|
+| KayKit Adventurers 1.0 | Player (Rogue_Hooded), Wren (Mage), Bram and Tobin (Barbarian), Mira (Rogue), Sir Aldous (Knight); swords, axes, shields, staff |
+| KayKit Skeletons 1.0 | The risen dead and both bosses; their bone weapons and shields |
+| KayKit Dungeon Remastered 1.0 | Rendered to sprites: gilded relic chest, braziers, candles, banner, trophy and other vault props |
+
+Animations trimmed to the clips the game plays (`tools/slim_glb.py`); Tobin and Mira are
+palette swaps of the pack's textures (`tools/kaykit_palette.py`).

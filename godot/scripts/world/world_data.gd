@@ -503,11 +503,15 @@ func _build_ruins() -> void:
 ## a gilded chest holding a relic.
 func _build_sealed_vaults() -> void:
 	vaults.clear()
+	# Their own random stream, so adding them never reshuffles the rest of
+	# a world (the meadow, the cabin, the trees) generated after them.
+	var rng := RandomNumberGenerator.new()
+	rng.seed = hash([seed, "vaults"])
 	var relics: Array = ["relic_featherbone", "relic_ember_heart", "relic_deepsong", "relic_moth_lantern",
 		"relic_bulwark", "relic_swiftroot", "relic_seers_eye", "relic_luckstone"]
 	# Shuffled by the world's seed, so each world hands them out differently.
 	for i in range(relics.size() - 1, 0, -1):
-		var j := _rng.randi_range(0, i)
+		var j := rng.randi_range(0, i)
 		var t = relics[i]
 		relics[i] = relics[j]
 		relics[j] = t
@@ -515,12 +519,12 @@ func _build_sealed_vaults() -> void:
 	var wanted := mini(width * height / 38400, 6)  # six in a full-size world
 	while vaults.size() < wanted and attempts < 200:
 		attempts += 1
-		var side := 1 if _rng.randf() < 0.5 else -1   # which way the antechamber opens
+		var side := 1 if rng.randf() < 0.5 else -1   # which way the antechamber opens
 		var rw := 9
 		var rh := 6
 		var hall := 13
-		var x := _rng.randi_range(40, width - 40 - rw - hall)
-		var y := _rng.randi_range(SURFACE_Y + 28, DEEP_Y + 30)
+		var x := rng.randi_range(40, width - 40 - rw - hall)
+		var y := rng.randi_range(SURFACE_Y + 28, DEEP_Y + 30)
 		var room_x := x if side > 0 else x + hall
 		# The hall runs from the door outward, away from the room.
 		var hall_x := room_x + rw - 1 if side > 0 else room_x
@@ -561,8 +565,8 @@ func _build_sealed_vaults() -> void:
 		# Inside: the chest, candles, a banner and the old dead's weapons.
 		var chest := Vector2i(room_x + rw / 2, floor_y)
 		var loot := [{"id": relics[index % relics.size()], "count": 1},
-			{"id": "gold_coin", "count": _rng.randi_range(12, 30)},
-			{"id": "glowshard", "count": _rng.randi_range(3, 8)}]
+			{"id": "gold_coin", "count": rng.randi_range(12, 30)},
+			{"id": "glowshard", "count": rng.randi_range(3, 8)}]
 		if y > SURFACE_Y + 100:
 			loot.append({"id": "heart_crystal", "count": 1})
 		_put_object(chest.x, chest.y, {"type": "relic_chest", "vault": index, "loot": loot})
@@ -595,13 +599,15 @@ func _overlaps_feature(rect: Rect2i) -> bool:
 ## flare (or the Seer's Eye) shows: dig there.
 func _hide_caches() -> void:
 	caches.clear()
+	var rng := RandomNumberGenerator.new()
+	rng.seed = hash([seed, "caches"])
 	var attempts := 0
 	var wanted := mini(width * height / 19200, 12)
 	while caches.size() < wanted and attempts < 4000:
 		attempts += 1
-		var x := _rng.randi_range(30, width - 30)
-		var y := _rng.randi_range(SURFACE_Y + 18, height - 20)
-		var side := 1 if _rng.randf() < 0.5 else -1
+		var x := rng.randi_range(30, width - 30)
+		var y := rng.randi_range(SURFACE_Y + 18, height - 20)
+		var side := 1 if rng.randf() < 0.5 else -1
 		# A cave floor cell with solid rock beside it, four cells deep.
 		if is_solid(x, y) or not is_solid(x, y + 1) or get_liquid(x, y) != DRY:
 			continue
@@ -621,11 +627,11 @@ func _hide_caches() -> void:
 		set_tile(pocket.x, pocket.y - 1, AIR)
 		set_tile(pocket.x + side, pocket.y, AIR)
 		set_tile(pocket.x + side, pocket.y - 1, AIR)
-		var loot := [{"id": "gold_coin", "count": _rng.randi_range(6, 18)}]
+		var loot := [{"id": "gold_coin", "count": rng.randi_range(6, 18)}]
 		var pool := ["glowshard", "glow_flask", "iron_ore", "silver_ore", "gold_ore", "ruby", "emerald", "heart_crystal"]
-		for n in _rng.randi_range(2, 3):
-			var id: String = pool[_rng.randi() % pool.size()]
-			loot.append({"id": id, "count": 1 if id in ["heart_crystal", "glow_flask", "ruby", "emerald"] else _rng.randi_range(3, 9)})
+		for n in rng.randi_range(2, 3):
+			var id: String = pool[rng.randi() % pool.size()]
+			loot.append({"id": id, "count": 1 if id in ["heart_crystal", "glow_flask", "ruby", "emerald"] else rng.randi_range(3, 9)})
 		_put_object(pocket.x, pocket.y, {"type": "chest", "loot": loot})
 		caches.append({"rune": face, "chest": pocket})
 

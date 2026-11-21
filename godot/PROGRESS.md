@@ -1,50 +1,62 @@
 # Progress report — Lanternbound
 
-Last updated on branch `ccr-60ac94c6-dyqxhw`, after the session that started from `eeb5b35`
-(see `git log eeb5b35..HEAD`).
-Engine: Godot 4.4.1, GL Compatibility renderer, Android-first.
+Branch `ccr-60ac94c6-dyqxhw`. Engine: Godot 4.4.1, GL Compatibility renderer, Android-first.
+Read **DESIGN.md** first: it sets the game's direction (light as weapon and key, vaults,
+relics, the Dark Tide, regions).
 
-## Working and verified (tests: 95 pass; cave soak 4,000 frames and 3 tutorial bot runs, no script errors)
+## Where things stand (tests: 103 pass)
 
-| Area | State | How verified |
+### This session's big changes (from `6c194f2`)
+
+| Change | What it is | How verified |
 |---|---|---|
-| Characters | Jointed cut-out rig (Kenney Toon parts) for hero, NPCs, zombies, robots, bosses. Arms have elbows and two-bone IK. The hands are placed on the item, not the item in the hand | IK test (hand lands on target), filmstrips |
-| Locomotion | Relaxed idle: breathing, weight shift, head drift, fidgets (look round, stretch). Distinct walk and run (stride, lean, arm swing, bounce scale with speed). Card turn (body narrows and flips), with the held item and shield narrowing too. Footsteps fire from the stride, so no sliding | Filmstrips: walk, run, turn |
-| Item holding | Grips measured from each icon. Picks and axes swung two-handed (far hand on the handle, shoulders turn into the blow). Hammers, swords and torches one-handed. Shield in the far hand, brought in front to block. Lantern hangs on the belt as a pendulum | Filmstrips of pickaxe, axe, sword, hammer, torch, shield, block, planks, workbench, belt lantern. 3 equipment tests |
-| Trees | Chopping stages: a notch that deepens, a lean away from the axe, a shudder, and a creak past half. Bark, leaf and splinter bursts on every blow. On the last blow the crown bursts into leaves and the trunk splits into wood chunks that tumble, bounce and settle into collectable wood | Filmstrips |
-| Mining / combat feel | Debris per material (rock chips, crystal shards, earth). Hit-stop on sword hits (longer on criticals). Enemies squash on impact | Capture; time-scale recovery checked |
-| Building | Placement ghost with reasons. Materials sound different going down (timber knock, stone thud). Hammers (wood, iron) take down placed objects and planks/brick tiles in one blow and refund them | Hammer test, placement test |
-| Pickups | Drops glint at rest (in rarity colour when rare), shrink as they fly in, sparkle on collection, and climb in pitch through a haul | Pickup test |
-| Audio | Surface footsteps (grass, stone, wood, snow). Anvil ring while forging. Creature snarl before attacks, grunts when hurt, body fall on death. Tree fall, thunder. A test checks every `Sfx.play` name has a file | Lengths/loudness only (no sound device) |
-| Story | 4 voiced NPCs (Wren, Bram, Mira, and Tobin the travelling smith, a recoloured Bram). 5 main and 3 side quests. Tobin's "Tools of the Trade" teaches the hammer (craft one, knock down 3 built things, build 10, get his iron hammer). Old saves get quests added since | 11 quest tests incl. the tutorial and Tobin's quest played with real hammer blows |
-| Tutorial | Plays through to the end by bot (`--action=tutorial`), 3 of 3 runs, about 2,200 frames. Fixed this session: the guide arrow vanished during "Mine stone" from 7 of 31 meadow positions; a pooled particle emitter freed with a felled tree errored | Bot runs, 2 regression tests |
-| Enemies | 11 regular kinds + 2 bosses. New: the spitter (rooted in caves, gapes as a tell, lobs acid on an arc only with line of sight; shield or roll to answer it) and ladybugs in the meadow | Spit test (hits, shield, line of sight), cave soak |
-| Caves | Stalactite clusters hang from rock, basalt and soil ceilings (cleared when the ceiling is dug), pebbles and mushrooms on floors | Captures |
-| Map | Corner minimap: explored cells (fog of war, saved with the world), NPC dots, quest-target mark | Map test (reveal, save, old saves), capture |
-| World, crafting, death, weather | As before: 2.5D foliage, light scatter, water/lava, thunderstorms, timed crafting with station sounds, death screen | Captures, tests |
+| **Real 3D characters** | `Body3D`: KayKit (CC0) rigged models, each filmed side-on by its own orthographic camera into a SubViewport and shown on a sprite at its feet. Truly side-facing; turns by rotating round through the camera; 19-21 skeletal clips (idle/walk/run/jump/chop/slash/block/dodge/hit/death/cast...), gait speed matched to ground speed; items on the `handslot.r` bone (KayKit 3D weapons, else the item picture on a camera-facing card gripped at its handle). Off-screen bodies stop rendering and animating; enemies render at 1x without MSAA. Setting `characters_3d` falls back to the old cut-out rig | Tests (hand-bone parenting, turn, footsteps), filmstrips of dig/chop/slash/torch/walk |
+| Cast | Player = hooded wanderer (Rogue_Hooded), Wren = Mage, Bram = Barbarian, Tobin = Barbarian palette-swapped, Mira = Rogue palette-swapped, **Sir Aldous** = Knight (new). Undead: zombie/robot/shade/Warden/Gloam are KayKit skeletons with bone weapons; ordinary dead claw out of the ground on spawn | Cast preview (`tools/preview_cast.gd`), captures |
+| Portraits | Rendered from the models (`tools/render_portraits.gd`) | Dialogue capture |
+| **Flare** | Star button / Q: 25 glow; burns the dead, staggers the living, lights braziers within 3.5 tiles, wakes light-runes | Test, capture |
+| **Sealed vaults** (6/world) | Brick room behind an unbreakable rune-stone door; antechamber with 3 cold braziers (one on a ledge); lit all = door opens on a gilded relic chest that bursts its loot | Test (layout, opening, chest), capture |
+| **Hidden caches** (12/world) | Chest sealed in rock behind a cave wall, marked by a light-rune visible only after a flare (or with the Seer's Eye) | Test |
+| **Relics** (8, 3 slots) | Featherbone (air jump), Ember Heart (ignite), Deepsong (ore glints), Moth Lantern (glow regrows), Bulwark (-25% harm), Swiftroot (+18% speed), Seer's Eye (runes, double map reveal), Luckstone (richer loot). Wear/take off in the pack panel; row under the vitals; saved | Test |
+| **Dark Tide** | 2nd night, then ~1 in 3: sky turns violet-red, the dead rise around the player (max 5) except within 8 tiles of a lit light; extra glowshards; dawn refills the lantern | Test, capture |
+| Sir Aldous's quests | "The Lightwardens' Vaults" (open a vault, wear a relic) then "The Hidden Marks" (find 2 caches); voiced | Quest tests driven by real vault/relic/cache events |
+| Tobin trades | Old Coins (vaults, caches) buy torches, food, flasks, ore, wardstones, iron tools, heart crystals | Test |
+| Cave near layer | Dark stalactite/stalagmite silhouettes at 1.5x parallax framing caves (2.5D depth) | Captures |
+| Model size | `tools/slim_glb.py` keeps only used clips: characters 33 MB -> 11 MB | Cast preview, tests |
+
+### Earlier (still true)
+Trees chop in stages and break into log chunks; mining debris per material; hit-stop; hammers;
+footsteps per surface; minimap with saved fog of war; spitters; cave dressing; 5 main + 5 side
+quests; tutorial bot; save/load; weather and thunderstorms; foliage shader; light map.
 
 ## Not verified / not done
 
-- **No real device** has run the game, and no APK has been built.
-- **Audio is unheard**: there is no sound device here. Clips are checked by length and loudness only. Piper may mispronounce names.
-- Robot keeps a front-facing head (accepted: it is a machine; no side view in the art).
-- The belt lantern does not narrow during the card turn (it is small).
-- Equipment slots for shield and lantern: the best shield carried is used automatically.
-- A full-screen map (the minimap only), armour and flowing liquids: not done.
+- **No real device** has run the game; no APK built. 3D characters each render their own
+  SubViewport: fine in software rendering here, but **phone performance is unmeasured**.
+- **Audio is unheard** (no sound device): checked by length/loudness only.
+- Tutorial bot: was 3/3 before the 3D characters; re-run after making vault/cache generation
+  use its own random stream (it had reshuffled the meadow). Check the latest run's result.
+- Regions are still the original five biomes; DESIGN.md's region table is the target.
+- No fishing, farming, pets, mounts, armour, enchanting yet.
 
-## Exact next tasks
+## Next tasks (in order)
 
-1. Underground lighting: colour grading per depth (caves are dressed now).
-2. A second region of story content (Bram's mine as a built location, more voiced lines).
-   Re-run `python3 tools/bake_voices.py` after editing `assets/story/dialogue.json`.
-3. Equipment slots for shield and lantern.
-4. Enemy variety: a cave bat (spitter done).
-5. Performance pass on the foliage shader and light scatter at Low/Medium.
+1. Confirm the tutorial bot passes again; fix whatever it finds.
+2. Boss fights as adventures: give the Warden and Gloam multi-phase patterns with the new
+   skeleton clips (taunt, spin, summon via Spawn_Ground_Skeletons), and arenas in vaults.
+3. A region with its own identity (e.g. Drowned Halls: underground lake ruins), using
+   KayKit dungeon props and a new enemy.
+4. Fishing in pools (the item art exists: fish, fishingPole), cooking recipes with buffs.
+5. Treasure maps (a chest find that marks an unopened vault on the minimap).
+6. Phone build and real-device performance check of Body3D.
 
 ## How to check things
 
 - Tests: `godot --headless --path godot -s res://tests/run_tests.gd [-- name_filter]`
 - New `class_name` scripts need `godot --headless --path godot --import` once.
-- Soak: `xvfb-run -a godot --path godot --rendering-driver opengl3 --fixed-fps 60 -- --shot=out.png --touch --frames=6000 --action=soak --seed=7`, then grep the log for `SCRIPT ERROR`.
-- Captures: `--x=s-30` stands the player 30 columns left of spawn; see also `--action`, `--scenario`, `--hold`, `--strip` (with `--every=N` frame spacing), `--story`, `--hover`, `--debug` in `scripts/main.gd`.
-- Rig layout after adding a character: `python3 tools/build_rig.py` (about 2.5 minutes).
+- Captures: `xvfb-run -a -s "-screen 0 2340x1080x24" godot --path godot --rendering-driver opengl3 --resolution 2340x1080 --fixed-fps 60 -- --shot=out.png --touch --frames=N`
+  plus `--scenario=cave|crystal|deep|ruin|vault|vault_open|...`, `--action=dig|chop|attack|walk|flare|tutorial|soak|...`,
+  `--hold=item`, `--wear=relic_a,relic_b`, `--tide`, `--spawn=kinds`, `--boss=warden`, `--x=s-30`, `--strip=N --every=K`.
+- Tools: `tools/preview_cast.gd`, `tools/preview_body.gd`, `tools/render_portraits.gd`,
+  `tools/render_props.gd -- dungeon`, `tools/kaykit_palette.py`, `tools/slim_glb.py`,
+  `tools/draw_relics.py`, `tools/bake_voices.py`.
+- Software rendering is slow with several 3D bodies: keep captures short or use 1170x540.
