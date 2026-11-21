@@ -90,9 +90,11 @@ under the licence on its model card:
 | Wren | en_US-amy-medium |
 | Old Bram | en_GB-alan-medium |
 | Mira | en_GB-jenny_dioco-medium |
+| Tobin | en_GB-northern_english_male-medium (dataset: OpenSLR 83, CC BY-SA 4.0) |
 
 NPC bodies: Kenney Toon Characters (CC0) — Female adventurer (Wren),
-Female person (Mira), Male person (Bram), Parts HD on the cut-out rig.
+Female person (Mira), Male person (Bram; recoloured for Tobin by a script:
+ginger hair, leather apron, dark trousers), Parts HD on the cut-out rig.
 
 ## Ambience and new effects — Soundza
 
