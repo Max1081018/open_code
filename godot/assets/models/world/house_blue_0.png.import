@@ -1,0 +1,37 @@
+[remap]
+
+importer="texture"
+type="CompressedTexture2D"
+uid="uid://d0plct71ql6k0"
+path="res://.godot/imported/house_blue_0.png-9747122d5d2f9ce10ae9b51a44302e03.ctex"
+metadata={
+"vram_texture": false
+}
+generator_parameters={
+"md5": "c49ad23079c3de502765e69ace284cd9"
+}
+
+[deps]
+
+source_file="res://assets/models/world/house_blue_0.png"
+dest_files=["res://.godot/imported/house_blue_0.png-9747122d5d2f9ce10ae9b51a44302e03.ctex"]
+
+[params]
+
+compress/mode=0
+compress/high_quality=false
+compress/lossy_quality=0.7
+compress/hdr_compression=1
+compress/normal_map=0
+compress/channel_pack=0
+mipmaps/generate=true
+mipmaps/limit=-1
+roughness/mode=0
+roughness/src_normal=""
+process/fix_alpha_border=true
+process/premult_alpha=false
+process/normal_map_invert_y=false
+process/hdr_as_srgb=false
+process/hdr_clamp_exposure=false
+process/size_limit=0
+detect_3d/compress_to=1

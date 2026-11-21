@@ -22,6 +22,10 @@ const RECIPES := {
 	"sword_fine": {"file": "sword_fine", "kind": "sword", "length": 1.05, "grip": 0.08},
 	"torch": {"file": "torch", "kind": "torch", "length": 0.6, "grip": 0.18, "flip": true},
 	"rod": {"file": "rod", "parts": [["fishing_rod_0", 0.0]], "kind": "rod", "length": 1.7, "grip": 0.1, "flip": true},
+	"starlit": {"file": "sword_star", "kind": "sword", "length": 1.0, "grip": 0.1, "pca": true},
+	"autumn": {"file": "sword_autumn", "kind": "sword", "length": 1.05, "grip": 0.1},
+	"crystal": {"file": "sword_crystal", "kind": "sword", "length": 1.05, "grip": 0.1},
+	"jade": {"file": "sword_jade", "kind": "sword", "length": 1.05, "grip": 0.1},
 	"shield_iron": {"file": "shield_iron", "kind": "shield", "length": 0.62},
 	"shield_wood": {"file": "shield_wood", "kind": "shield", "length": 0.6},
 }
@@ -104,13 +108,36 @@ func _frame(recipe: Dictionary, points: PackedVector3Array, box: AABB) -> Transf
 	var wide_axis: Vector3 = axes[order[1]]
 	var thin_axis: Vector3 = axes[order[2]]
 	var centre := box.get_center()
+	if recipe.get("pca", false):
+		# Modelled at an angle: take the axes from the shape itself.
+		var pc := _principal(points)
+		long_axis = pc[0]
+		wide_axis = pc[1]
+		thin_axis = long_axis.cross(wide_axis).normalized()
+		var lo_l := INF
+		var hi_l := -INF
+		var lo_w := INF
+		var hi_w := -INF
+		var lo_t := INF
+		var hi_t := -INF
+		for p in points:
+			lo_l = minf(lo_l, long_axis.dot(p))
+			hi_l = maxf(hi_l, long_axis.dot(p))
+			lo_w = minf(lo_w, wide_axis.dot(p))
+			hi_w = maxf(hi_w, wide_axis.dot(p))
+			lo_t = minf(lo_t, thin_axis.dot(p))
+			hi_t = maxf(hi_t, thin_axis.dot(p))
+		centre = long_axis * (lo_l + hi_l) * 0.5 + wide_axis * (lo_w + hi_w) * 0.5 + thin_axis * (lo_t + hi_t) * 0.5
+		sizes = [hi_l - lo_l, hi_w - lo_w, hi_t - lo_t]
+		order = [0, 1, 2]
+		box = AABB(centre - long_axis * sizes[0] * 0.5, Vector3.ZERO)
 	if recipe.kind == "shield":
 		# Face (thin axis) toward +Z; scale the disc to the wanted size.
 		var k: float = recipe.length / sizes[order[0]]
 		var basis := Basis(long_axis, wide_axis, thin_axis).transposed()
 		return Transform3D(basis.scaled(Vector3.ONE * k), -(basis * centre) * k)
 	var extent: float = sizes[order[0]]
-	var lo := long_axis.dot(box.position)
+	var lo := long_axis.dot(box.position) if not recipe.get("pca", false) else long_axis.dot(centre) - extent * 0.5
 	# Width of the item in a slice along its length, as a fraction 0..1.
 	var width := func(from: float, to: float) -> float:
 		var w := 0.0
@@ -212,3 +239,30 @@ func _textures(name: String, holder: Node3D) -> void:
 				own.surface_set_material(s, mesh_instance.get_surface_override_material(s))
 				mesh_instance.set_surface_override_material(s, null)
 			mesh_instance.mesh = own
+
+
+## Main and second axes of a point cloud (power iteration on the covariance).
+func _principal(points: PackedVector3Array) -> Array:
+	var mean := Vector3.ZERO
+	for p in points:
+		mean += p
+	mean /= maxf(points.size(), 1)
+	var c := [[0.0, 0.0, 0.0], [0.0, 0.0, 0.0], [0.0, 0.0, 0.0]]
+	for p in points:
+		var d := p - mean
+		var v := [d.x, d.y, d.z]
+		for i in 3:
+			for j in 3:
+				c[i][j] += v[i] * v[j]
+	var axes := []
+	for k in 2:
+		var v := Vector3(1, 0.7, 0.3) if k == 0 else Vector3(0.2, 1, 0.5)
+		for it in 60:
+			var nv := Vector3(c[0][0] * v.x + c[0][1] * v.y + c[0][2] * v.z,
+				c[1][0] * v.x + c[1][1] * v.y + c[1][2] * v.z,
+				c[2][0] * v.x + c[2][1] * v.y + c[2][2] * v.z)
+			if k == 1:
+				nv -= axes[0] * axes[0].dot(nv)
+			v = nv.normalized()
+		axes.append(v)
+	return axes

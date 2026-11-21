@@ -5,7 +5,7 @@ extends SceneTree
 
 func _initialize() -> void:
 	await process_frame
-	var names := ["pickaxe", "axe", "hammer", "sword", "sword_fine", "torch", "rod", "shield_iron", "shield_wood"]
+	var names := ["starlit", "autumn", "crystal", "jade"]
 	var vp := SubViewport.new()
 	vp.size = Vector2i(220 * names.size(), 420)
 	vp.own_world_3d = true

@@ -353,9 +353,9 @@ const ITEM_MODELS := {
 	"gold_pickaxe": ["pickaxe", 0.88, Color(1.25, 1.0, 0.45)], "lumen_pickaxe": ["pickaxe", 0.88, Color(0.6, 1.1, 1.3)],
 	"wood_axe": ["axe", 0.8, Color(0.62, 0.5, 0.4)], "iron_axe": ["axe", 0.8, null],
 	"wood_hammer": ["hammer", 0.7, Color(0.62, 0.5, 0.4)], "iron_hammer": ["hammer", 0.7, null],
-	"wood_sword": ["sword", 1.0, Color(0.62, 0.5, 0.4)], "copper_sword": ["sword", 1.0, Color(1.0, 0.66, 0.45)],
-	"iron_sword": ["sword", 1.0, Color(1.6, 1.6, 1.7)], "silver_sword": ["sword_fine", 1.05, Color(1.15, 1.18, 1.25)],
-	"gold_sword": ["sword_fine", 1.05, Color(1.25, 1.0, 0.45)], "lumen_sword": ["sword_fine", 1.05, Color(0.6, 1.1, 1.3)],
+	"wood_sword": ["starlit", 1.0, null], "copper_sword": ["autumn", 1.05, null],
+	"iron_sword": ["crystal", 1.05, null], "silver_sword": ["jade", 1.05, null],
+	"gold_sword": ["autumn", 1.1, Color(1.25, 1.05, 0.6)], "lumen_sword": ["crystal", 1.1, Color(0.6, 1.1, 1.4)],
 	"torch": ["torch", 0.6, null], "fishing_rod": ["rod", 1.7, null],
 	"wood_shield": ["shield_wood", 0.6, null], "iron_shield": ["shield_iron", 0.62, null],
 }

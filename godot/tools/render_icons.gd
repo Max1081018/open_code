@@ -44,10 +44,7 @@ func _initialize() -> void:
 	for id in ids:
 		var item: Node3D = Body3D.item_model(id)
 		if item == null:
-			var p := Pickup3D.new()
-			p.setup(id, 1, null, Vector3.ZERO)
-			p.set_physics_process(false)
-			item = p
+			continue
 		var holder := Node3D.new()
 		vp.add_child(holder)
 		holder.add_child(item)

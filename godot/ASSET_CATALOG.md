@@ -166,6 +166,23 @@ re-textured (downsized) and some recoloured.
 | Player heroine (twin tails, horns, wings) | [3D Anime Character girl for Blender](https://sketchfab.com/3d-models/906b6874327844de9f794c7986127f3f) | CGBlender |
 | Heroine's animations: idles, walk, run, sword attacks, dash, jumps, hits | [Fantasy Girl](https://sketchfab.com/3d-models/1ca6d15fe2f34bd199252bf73d896e13) | loriserio |
 | Heroine's animations: talking, landing, gathering, interact, climb | [Low Poly Girl](https://sketchfab.com/3d-models/4cb87c1d3c3c4b9ea3b4c61ab407500a) | manoeldarochadeoliveira |
+| Starlit Blade | [Stylized Sword](https://sketchfab.com/3d-models/28897cc3c47a452ebd5624c758b6dce4) | a_wilczek |
+| Autumn Ember / Sunforged Ember | [Autumn Sword](https://sketchfab.com/3d-models/28c2c7262e334e529709fb88e019a716) | SimberGI |
+| Crystalline Sword / Starfall Crystal | [Crystal Sword - Sword](https://sketchfab.com/3d-models/0b98e49ee5854fbdb5a5402b73796d5b) | Wawann |
+| Jadewind Saber | [Crystal Sword](https://sketchfab.com/3d-models/37fd07bd2ee94598908efc82e060f35a) | sirerdees |
+| Town house | [Stylized House](https://sketchfab.com/3d-models/a89396566b6f43f7a1796ff8cf45c1b7) | MatthewTheoblad |
+| Town house | [wooden stylized Medieval house](https://sketchfab.com/3d-models/7752ef315f7b4a258902b9c2f57cdd6e) | sferix |
+| Town house | [FREE Stylized Medieval Fantasy House](https://sketchfab.com/3d-models/a204ae71becb4e66a5b7d94bfc698a4e) | Hamanzz |
+| Town tower house | [Fantasy House](https://sketchfab.com/3d-models/ed9c83a3f88a4b5682a40e1180ab91e0) | lowlypoly |
+| Magic tower | [Stylized Magic Tower](https://sketchfab.com/3d-models/5c98a209e3b54912a87ef1d34f7b4be6) | Alex.Latigun |
+| Sky-isle dwelling | [stylised sky player home dioroma](https://sketchfab.com/3d-models/6597e6c9a5184f07a638ac33c08c2ad5) | Sander.Vander.Meiren |
+| Sky shrine | [Sky Giants - The First Holy Key](https://sketchfab.com/3d-models/f9511982431e45aeaffdbfa4b55ebb43) | mistrain |
+| Waypoint shrine | [Stone shrine](https://sketchfab.com/3d-models/fc4a9a9504224a71bb5d47f409100f75) | FeatheredSnek |
+| Street lanterns | [Stylised Lantern](https://sketchfab.com/3d-models/9a75e34946404a0fb8cd9227bfcf83fa) | ben.lebreux |
+| Ruined arch | [Ancient ruined arch - 3D diorama low poly](https://sketchfab.com/3d-models/ee7f68d8b22849a29ee10c91b62cb3a9) | Karthiknaidu97 |
+| Town statue | [PBR Stylized Statue - Mage / Wizard](https://sketchfab.com/3d-models/f0293fab679e44d1bfa38798e06db307) | Ignas3D |
+| Treasure chests | [Stylized Treasure Chest](https://sketchfab.com/3d-models/dbeae8db89eb433f832d0ef48f12480e) | VerbeeckTom |
+| Starlit chests | [Magic Chest](https://sketchfab.com/3d-models/f1da2ce3fcc9461fac5cca28fcb4d323) | lunequinox |
 
 Animations on all of them: Quaternius Universal Animation Library 1 and 2 (CC0), retargeted.
 
