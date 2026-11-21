@@ -4,7 +4,7 @@ Last updated on branch `ccr-60ac94c6-dyqxhw`, after the session that started fro
 (see `git log eeb5b35..HEAD`).
 Engine: Godot 4.4.1, GL Compatibility renderer, Android-first.
 
-## Working and verified (tests: 94 pass; cave soak 4,000 frames with no script errors)
+## Working and verified (tests: 95 pass; cave soak 4,000 frames and 3 tutorial bot runs, no script errors)
 
 | Area | State | How verified |
 |---|---|---|
@@ -17,7 +17,7 @@ Engine: Godot 4.4.1, GL Compatibility renderer, Android-first.
 | Pickups | Drops glint at rest (in rarity colour when rare), shrink as they fly in, sparkle on collection, and climb in pitch through a haul | Pickup test |
 | Audio | Surface footsteps (grass, stone, wood, snow). Anvil ring while forging. Creature snarl before attacks, grunts when hurt, body fall on death. Tree fall, thunder. A test checks every `Sfx.play` name has a file | Lengths/loudness only (no sound device) |
 | Story | 4 voiced NPCs (Wren, Bram, Mira, and Tobin the travelling smith, a recoloured Bram). 5 main and 3 side quests. Tobin's "Tools of the Trade" teaches the hammer (craft one, knock down 3 built things, build 10, get his iron hammer). Old saves get quests added since | 11 quest tests incl. the tutorial and Tobin's quest played with real hammer blows |
-| Tutorial | Plays through to the end by bot (`--action=tutorial`) | Bot run |
+| Tutorial | Plays through to the end by bot (`--action=tutorial`), 3 of 3 runs, about 2,200 frames. Fixed this session: the guide arrow vanished during "Mine stone" from 7 of 31 meadow positions; a pooled particle emitter freed with a felled tree errored | Bot runs, 2 regression tests |
 | Enemies | 11 regular kinds + 2 bosses. New: the spitter (rooted in caves, gapes as a tell, lobs acid on an arc only with line of sight; shield or roll to answer it) and ladybugs in the meadow | Spit test (hits, shield, line of sight), cave soak |
 | Caves | Stalactite clusters hang from rock, basalt and soil ceilings (cleared when the ceiling is dug), pebbles and mushrooms on floors | Captures |
 | Map | Corner minimap: explored cells (fog of war, saved with the world), NPC dots, quest-target mark | Map test (reveal, save, old saves), capture |
@@ -27,7 +27,7 @@ Engine: Godot 4.4.1, GL Compatibility renderer, Android-first.
 
 - **No real device** has run the game, and no APK has been built.
 - **Audio is unheard**: there is no sound device here. Clips are checked by length and loudness only. Piper may mispronounce names.
-- Robot keeps a front-facing head.
+- Robot keeps a front-facing head (accepted: it is a machine; no side view in the art).
 - The belt lantern does not narrow during the card turn (it is small).
 - Equipment slots for shield and lantern: the best shield carried is used automatically.
 - A full-screen map (the minimap only), armour and flowing liquids: not done.
