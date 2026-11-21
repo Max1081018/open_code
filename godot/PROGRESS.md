@@ -4,7 +4,7 @@ Branch `ccr-60ac94c6-dyqxhw`. Engine: Godot 4.4.1, GL Compatibility renderer, An
 Read **DESIGN.md** first: it sets the game's direction (light as weapon and key, vaults,
 relics, the Dark Tide, regions).
 
-## Where things stand (tests: 103 pass)
+## Where things stand (tests: 105 pass; tutorial bot passes)
 
 ### This session's big changes (from `6c194f2`)
 
@@ -33,19 +33,19 @@ quests; tutorial bot; save/load; weather and thunderstorms; foliage shader; ligh
 - **No real device** has run the game; no APK built. 3D characters each render their own
   SubViewport: fine in software rendering here, but **phone performance is unmeasured**.
 - **Audio is unheard** (no sound device): checked by length/loudness only.
-- Tutorial bot: was 3/3 before the 3D characters; re-run after making vault/cache generation
-  use its own random stream (it had reshuffled the meadow). Check the latest run's result.
+- Tutorial bot passes with the 3D characters (done at frame 2161, no script errors) after vault and
+  cache generation got its own random stream (it had reshuffled the meadow and stranded the bot).
 - Regions are still the original five biomes; DESIGN.md's region table is the target.
 - No fishing, farming, pets, mounts, armour, enchanting yet.
 
 ## Next tasks (in order)
 
 1. Confirm the tutorial bot passes again; fix whatever it finds.
-2. Boss fights as adventures: give the Warden and Gloam multi-phase patterns with the new
-   skeleton clips (taunt, spin, summon via Spawn_Ground_Skeletons), and arenas in vaults.
+2. (done: three-phase bosses with telegraphed moves, shockwaves, shield charge, spin, volleys,
+   blink, falling rocks, glow drain.) Next: give each boss an arena worth the fight.
 3. A region with its own identity (e.g. Drowned Halls: underground lake ruins), using
    KayKit dungeon props and a new enemy.
-4. Fishing in pools (the item art exists: fish, fishingPole), cooking recipes with buffs.
+4. (done: fishing with bite timing, glowfin, Mira's quest.) Cooking buffs (meals that last).
 5. Treasure maps (a chest find that marks an unopened vault on the minimap).
 6. Phone build and real-device performance check of Body3D.
 
