@@ -59,6 +59,8 @@ var tiles := PackedByteArray()
 var walls := PackedByteArray()
 var ores := PackedByteArray()
 var liquids := PackedByteArray()
+## 1 where the player has seen: the map's fog of war. Saved.
+var explored := PackedByteArray()
 var surface := PackedInt32Array()
 var biome_columns := PackedByteArray()
 ## First solid row of each column, kept current as tiles change: the
@@ -81,6 +83,7 @@ func _init(w: int = WIDTH, h: int = HEIGHT) -> void:
 	walls.resize(w * h)
 	ores.resize(w * h)
 	liquids.resize(w * h)
+	explored.resize(w * h)
 	surface.resize(w)
 	biome_columns.resize(w)
 	sky_depth.resize(w)
@@ -640,6 +643,7 @@ func to_dict() -> Dictionary:
 		"objects": objects,
 		"spawn": spawn,
 		"vault": vault,
+		"explored": explored.compress(FileAccess.COMPRESSION_ZSTD),
 	}
 
 
@@ -656,5 +660,7 @@ static func from_dict(data: Dictionary) -> WorldData:
 	w.objects = data.objects
 	w.spawn = data.spawn
 	w.vault = data.vault
+	if data.has("explored"):  # saves from before the map have nothing explored
+		w.explored = (data.explored as PackedByteArray).decompress(n, FileAccess.COMPRESSION_ZSTD)
 	w.recompute_all_sky()
 	return w

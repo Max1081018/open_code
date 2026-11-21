@@ -379,3 +379,17 @@ func test_bursts_are_pooled_not_rebuilt() -> void:
 	check_eq(Effects.pooled("hit"), before - 1, "taken from the pool")
 	check(made.visible and made.position == Vector2(50, 0), "moved and shown")
 	holder.free()
+
+
+func test_the_map_reveals_what_you_pass_and_remembers_it() -> void:
+	var data := WorldData.new()
+	data.generate(7)
+	var fresh := Minimap.reveal(data, 40, 20, 5)
+	check(fresh > 60 and fresh < 100, "a circle of cells is revealed (%d)" % fresh)
+	check_eq(Minimap.reveal(data, 40, 20, 5), 0, "seen cells are not new again")
+	check(data.explored[20 * data.width + 40] == 1 and data.explored[20 * data.width + 60] == 0, "only round the player")
+	var again := WorldData.from_dict(data.to_dict())
+	check(again.explored[20 * data.width + 40] == 1, "the fog of war is saved")
+	var old := data.to_dict()
+	old.erase("explored")
+	check(WorldData.from_dict(old).explored.size() == data.width * data.height, "saves from before the map still load")

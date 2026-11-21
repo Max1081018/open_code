@@ -3,6 +3,7 @@ extends CanvasLayer
 ## touch controls, and the panels that open over the world.
 
 var level: Level
+var minimap: Minimap
 
 ## Read by main.gd and TouchControls.
 var touch_active := false
@@ -80,6 +81,16 @@ func _ready() -> void:
 		if fill.size.x > 2:
 			_boss_bar.draw_style_box(UITheme.flat(UITheme.DANGER, 14), fill))
 	_boss_box.add_child(_boss_bar)
+
+	# The map: top right, beside the menu buttons.
+	minimap = Minimap.new()
+	minimap.set_anchors_preset(Control.PRESET_TOP_RIGHT)
+	minimap.offset_left = -260 - Minimap.SIZE.x
+	minimap.offset_right = -260
+	minimap.offset_top = 22
+	minimap.offset_bottom = 22 + Minimap.SIZE.y
+	_root.add_child(minimap)
+	minimap.setup.call_deferred(level)
 
 	tracker = QuestTracker.new()
 	_root.add_child(tracker)
