@@ -2,13 +2,16 @@ extends TestCase
 ## Equipment drawn in the hands: anchors, grips, swings, blocking.
 
 
-func _make_level(three_d := true) -> Level:
-	var was := Settings.characters_3d
+## three_d: the player is the 3D model instead of the cut-out hero (the default).
+func _make_level(three_d := false) -> Level:
+	var was := [Settings.characters_3d, Settings.player_3d]
 	Settings.characters_3d = three_d
+	Settings.player_3d = three_d
 	var level := Level.new()
 	Engine.get_main_loop().root.add_child(level)
 	level.start(777)
-	Settings.characters_3d = was
+	Settings.characters_3d = was[0]
+	Settings.player_3d = was[1]
 	return level
 
 

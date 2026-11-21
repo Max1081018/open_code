@@ -37,6 +37,8 @@ var bloom := true
 var weather := true
 ## Rigged 3D characters (on) or the flat cut-out rig (off, for weak phones).
 var characters_3d := true
+## The player is the hand-drawn cut-out hero (the 3D one is still available).
+var player_3d := false
 
 var music_volume := 0.7
 var sfx_volume := 0.9

@@ -97,7 +97,7 @@ func _ready() -> void:
 	shape.position = Vector2(0, -98)
 	add_child(shape)
 
-	body = Body3D.new("player") if Settings.characters_3d else CutoutBody.new("player")
+	body = Body3D.new("player") if Settings.characters_3d and Settings.player_3d else CutoutBody.new("player")
 	body.run_speed = RUN_SPEED
 	body.z_index = 10
 	add_child(body)

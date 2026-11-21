@@ -33,7 +33,8 @@ static func portrait(speaker_id: String) -> Texture2D:
 	# Rendered from the 3D characters (tools/render_portraits.gd); the old
 	# cut-out head otherwise.
 	var rendered := "res://assets/portraits/%s.png" % speaker_id
-	if ResourceLoader.exists(rendered) and Settings.characters_3d:
+	var three_d := Settings.player_3d if speaker_id == "player" else Settings.characters_3d
+	if ResourceLoader.exists(rendered) and three_d:
 		return load(rendered)
 	var path := "res://assets/characters/%s/parts/head.png" % speaker_id
 	return load(path) if ResourceLoader.exists(path) else null
