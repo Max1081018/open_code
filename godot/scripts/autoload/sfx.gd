@@ -65,7 +65,7 @@ func has(name: String) -> bool:
 
 
 ## Play an effect. `jitter` varies pitch so repeats do not sound robotic.
-func play(name: String, volume_db := 0.0, jitter := 0.08) -> void:
+func play(name: String, volume_db := 0.0, jitter := 0.08, pitch := 1.0) -> void:
 	var stream: AudioStream = _streams.get(name)
 	if stream == null:
 		return
@@ -78,7 +78,7 @@ func play(name: String, volume_db := 0.0, jitter := 0.08) -> void:
 	_next = (_next + 1) % _pool.size()
 	player.stream = stream
 	player.volume_db = volume_db
-	player.pitch_scale = 1.0 + randf_range(-jitter, jitter)
+	player.pitch_scale = pitch + randf_range(-jitter, jitter)
 	player.play()
 
 

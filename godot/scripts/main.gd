@@ -82,8 +82,9 @@ func _process(_delta: float) -> void:
 			# A filmstrip: crops around the player every third frame up to
 			# the last, to check an animation rather than a single pose.
 			var count := int(_args.strip)
-			var first := last - (count - 1) * 3
-			if _frames >= first and (_frames - first) % 3 == 0 and _frames <= last:
+			var every := int(_args.get("every", "3"))  # --every=N spaces the frames out
+			var first := last - (count - 1) * every
+			if _frames >= first and (_frames - first) % every == 0 and _frames <= last:
 				_grab_strip_frame(_frames == last)
 		elif _frames == last:
 			_capture(_args.shot)

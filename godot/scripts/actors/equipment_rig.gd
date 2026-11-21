@@ -40,6 +40,10 @@ var main: Sprite2D       ## the front hand's item
 var shield: Sprite2D     ## the back arm's shield
 var lantern: Sprite2D    ## on the belt
 var trail: Line2D
+## Holds the item and shield; squeezed sideways while the body turns over,
+## so what is held narrows and widens with the body instead of staying flat.
+var _turn: Node2D
+var _squeeze := 1.0
 var _flame: Node2D
 var _held_kind := ""     ## "tool", "sword", "torch", "block" or ""
 var _two_handed := false ## picks and axes; a hammer is swung one-handed
@@ -53,17 +57,19 @@ var blocking := false
 
 func setup(the_player: Player) -> void:
 	player = the_player
+	_turn = Node2D.new()
+	add_child(_turn)
 	main = Sprite2D.new()
 	# Draw order around the hand: the front arm (12) behind the item (13),
 	# the fist (14) over it, so the item is gripped in front of the arm and
 	# the fingers close round the handle, rather than the arm hiding it.
 	main.z_index = 3
-	add_child(main)
+	_turn.add_child(main)
 
 	shield = Sprite2D.new()
 	shield.texture = null
 	shield.z_index = -2
-	add_child(shield)
+	_turn.add_child(shield)
 
 	lantern = Sprite2D.new()
 	lantern.texture = load("res://assets/rendered/lantern-glass.png")
@@ -202,6 +208,8 @@ func _process(delta: float) -> void:
 	if player == null:
 		return
 	var facing := float(player.facing)
+	_squeeze = maxf(absf(player.body._flip.scale.x), 0.3)
+	_turn.scale.x = _squeeze
 	var hands := _hands()
 	var front: Vector2 = hands[0]
 	var back: Vector2 = hands[1]
@@ -270,7 +278,7 @@ func _process(delta: float) -> void:
 			# Brought round in front of the chest, the far arm holding it out.
 			var guard_at := body.shoulder_rig(false) + Vector2(70, 26)
 			body.reach(false, guard_at, -90.0)
-		shield.position = _rig_to_player(body.hand_rig(false)) + Vector2(0, -6)
+		shield.position = (_rig_to_player(body.hand_rig(false)) + Vector2(0, -6)) / Vector2(_squeeze, 1.0)
 		shield.z_index = 3 if blocking else -4
 		shield.rotation = 0.0 if blocking else -0.25 * facing
 		shield.flip_h = facing < 0
@@ -317,7 +325,7 @@ func _place_main(hand: Vector2, angle_deg: float, facing: float) -> void:
 	if not main.visible or main.texture == null:
 		return
 	var size := main.texture.get_size()
-	main.position = hand
+	main.position = hand / Vector2(_squeeze, 1.0)
 	if _grip.is_empty():
 		# No grip data (blocks): centred on the palm, no spin.
 		main.offset = Vector2.ZERO

@@ -168,3 +168,21 @@ func test_rarity_rises_with_the_good_stuff() -> void:
 	check_eq(Items.rarity("lumen_core"), 4, "a Lumen Core is legendary")
 	for id in Items.defs:
 		check(Items.rarity(id) >= 0 and Items.rarity(id) < Items.RARITY_NAMES.size(), "%s has a valid rarity" % id)
+
+
+func test_drops_fly_to_the_player_and_a_haul_climbs_in_pitch() -> void:
+	var level := Level.new()
+	Engine.get_main_loop().root.add_child(level)
+	level.start(5150, {})
+	var before := level.player.inventory.count("wood")
+	for i in 4:
+		level.spawn_drop("wood", 1, level.player.global_position + Vector2(120 + i * 40, -200))
+	ItemDrop._streak = 0
+	ItemDrop._streak_at = 0
+	for frame in 120:
+		for drop in level.drop_layer.get_children():
+			if drop is ItemDrop and not drop.is_queued_for_deletion():
+				drop._physics_process(1.0 / 60.0)
+	check_eq(level.player.inventory.count("wood"), before + 4, "all four were gathered in")
+	check(ItemDrop._streak >= 2, "picked up in a run, the pitch climbs (streak %d)" % ItemDrop._streak)
+	level.free()
