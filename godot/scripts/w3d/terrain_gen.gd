@@ -15,6 +15,24 @@ const VILLAGE := Vector2(0, 0)
 const VILLAGE_RADIUS := 70.0
 const VILLAGE_HEIGHT := 9.0
 
+## Starfall Haven's paving: a round plaza at the village centre and roads
+## out of it, [from, to, half-width] in metres. Shared by the terrain shader
+## (which draws the cobbles), the foliage (which keeps off them) and the town.
+const PLAZA_RADIUS := 15.0
+const ROADS := [
+	[Vector2(0, 0), Vector2(0, -44), 2.6],       # up to the magic tower
+	[Vector2(0, 0), Vector2(14, 70), 2.8],       # the south road out of town
+	[Vector2(14, 70), Vector2(42, 160), 2.4],
+	[Vector2(0, 0), Vector2(72, 8), 2.6],        # the east road
+	[Vector2(72, 8), Vector2(160, 34), 2.2],
+	[Vector2(0, 0), Vector2(-72, -6), 2.4],      # the west road
+	[Vector2(0, 0), Vector2(-24, -16), 1.6],     # garden paths to the houses
+	[Vector2(0, 0), Vector2(24, -18), 1.6],
+	[Vector2(0, 0), Vector2(-27, 14), 1.6],
+	[Vector2(0, 0), Vector2(25, 17), 1.6],
+	[Vector2(0, 0), Vector2(-7, 45), 1.6],
+]
+
 enum Biome { FOREST, DARK_FOREST, SNOW, DRY, VOLCANIC, CORRUPTED, BEACH }
 const BIOME_NAMES := ["Greenwood", "The Gloomwood", "The Frostpeaks", "The Sunscar", "The Ashlands", "The Blight", "The Shore"]
 
@@ -83,6 +101,21 @@ func normal(x: float, z: float, step := 1.5) -> Vector3:
 	var hx := height(x + step, z) - height(x - step, z)
 	var hz := height(x, z + step) - height(x, z - step)
 	return Vector3(-hx, step * 2.0, -hz).normalized()
+
+
+## How much of the ground here is paved, 0..1 (the plaza and roads).
+func paved(x: float, z: float) -> float:
+	var p := Vector2(x, z)
+	if p.length() > 240.0:
+		return 0.0
+	var d := p.length() - PLAZA_RADIUS
+	for r in ROADS:
+		var a: Vector2 = r[0]
+		var b: Vector2 = r[1]
+		var ab := b - a
+		var t := clampf((p - a).dot(ab) / ab.length_squared(), 0.0, 1.0)
+		d = minf(d, p.distance_to(a + ab * t) - float(r[2]))
+	return 1.0 - smoothstep(-0.4, 0.4, d)
 
 
 ## How wooded the land is here, 0..1: groves and open meadows alternate.

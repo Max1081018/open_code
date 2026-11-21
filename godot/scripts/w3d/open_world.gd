@@ -33,6 +33,17 @@ func setup(the_seed: int) -> void:
 	_material.shader = load("res://scripts/shaders/terrain3d.gdshader")
 	for t in ["grass", "soil", "rock", "snow", "sand"]:
 		_material.set_shader_parameter(t + "_tex", load("res://assets/textures/terrain/%s.jpg" % t))
+	_material.set_shader_parameter("paving_tex", load("res://assets/textures/town/paving.jpg"))
+	_material.set_shader_parameter("paving_normal", load("res://assets/textures/town/paving_normal.jpg"))
+	var roads := PackedVector4Array()
+	var widths := PackedFloat32Array()
+	for r in TerrainGen.ROADS:
+		roads.append(Vector4(r[0].x, r[0].y, r[1].x, r[1].y))
+		widths.append(r[2])
+	_material.set_shader_parameter("roads", roads)
+	_material.set_shader_parameter("road_hw", widths)
+	_material.set_shader_parameter("road_count", roads.size())
+	_material.set_shader_parameter("plaza_radius", TerrainGen.PLAZA_RADIUS)
 	match Settings.quality if "quality" in Settings else 2:
 		0:
 			rings = [1, 2, 3]

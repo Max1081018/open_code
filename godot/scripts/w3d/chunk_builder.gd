@@ -129,6 +129,8 @@ static func _flora(gen: TerrainGen, coord: Vector2i, origin: Vector2) -> Array:
 					continue
 				if Vector2(x, z).distance_to(TerrainGen.VILLAGE) < TerrainGen.VILLAGE_RADIUS * 0.9:
 					continue  # the village square stays clear
+				if gen.paved(x, z) > 0.0 or gen.paved(x + 2.5, z) > 0.0 or gen.paved(x - 2.5, z) > 0.0:
+					continue  # and so do the roads
 				var b := gen.biome(x, z)
 				var table: Array = FLORA.get(b, [])
 				var total := 0
@@ -165,6 +167,8 @@ static func _grass(gen: TerrainGen, coord: Vector2i, origin: Vector2) -> Diction
 			continue
 		var h := gen.height(x, z)
 		if h < TerrainGen.WATER + 0.5 or gen.normal(x, z).y < 0.8:
+			continue
+		if gen.paved(x, z) > 0.2:
 			continue
 		var kind: String = GRASS[b]
 		if not by_kind.has(kind):

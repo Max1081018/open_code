@@ -183,10 +183,18 @@ re-textured (downsized) and some recoloured.
 | Town statue | [PBR Stylized Statue - Mage / Wizard](https://sketchfab.com/3d-models/f0293fab679e44d1bfa38798e06db307) | Ignas3D |
 | Treasure chests | [Stylized Treasure Chest](https://sketchfab.com/3d-models/dbeae8db89eb433f832d0ef48f12480e) | VerbeeckTom |
 | Starlit chests | [Magic Chest](https://sketchfab.com/3d-models/f1da2ce3fcc9461fac5cca28fcb4d323) | lunequinox |
+| Plaza fountain | [Stylized fountain 3DEX tutorial](https://sketchfab.com/3d-models/1b88af909c6d4862a268823d0b0f1eed) | hermiMarske |
+| Wall fountain | [Stylized Fountain](https://sketchfab.com/3d-models/959f5011bcdd4a8c8700d6830824d1e1) | kesenkai |
+| Market stalls | [Hand-Painted Fish Market Stall](https://sketchfab.com/3d-models/cf2ed4d11385403d980fea31a0102093) | duckcracker02 |
+| Flower buckets | [Stylized Flower Pot](https://sketchfab.com/3d-models/458ac3558d0846c6bde75d5b6c343de6) | nirvanastudio |
+| Benches | [Stylized Bench](https://sketchfab.com/3d-models/11deb5e3a4fa4f31b766cda4d36f8bc0) | lazarys |
+| Crates | [Stylized wooden boxes pack](https://sketchfab.com/3d-models/91157eea8c1e4c159db0d81df5419cbb) | M_Michalak |
 
 Animations on all of them: Quaternius Universal Animation Library 1 and 2 (CC0), retargeted.
 
 ## Terrain materials — ambientCG (CC0)
+
+Town cobbles (`assets/textures/town/paving*.jpg`): PavingStones070 by ambientCG, CC0 1.0.
 
 By ambientCG (ambientcg.com), CC0 1.0: Ground048 (soil), Rock058 (rock, basalt, crystal), Bricks089,
 Ground054 (sand), Snow010A, Grass004 (grass cap), Planks012. Built into `assets/tiles/terrain.png`
