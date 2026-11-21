@@ -711,7 +711,13 @@ func _place(id: String, target: Vector2i) -> void:
 	inventory.remove_at(hotbar_index, 1)
 	_use_cooldown = 0.16
 	_swing("place", 0.22)
-	Sfx.play("land", -2.0)
+	# The sound of the material going down: timber knocks, earth and stone thud.
+	if d.kind == Items.Kind.BLOCK and d.block == WorldData.PLANKS:
+		Sfx.play("place_wood", -3.0, 0.1)
+	elif d.kind == Items.Kind.BLOCK:
+		Sfx.play("place_stone", -2.0, 0.12)
+	else:
+		Sfx.play("place_wood", -1.0, 0.06)
 	level.on_placed(target, id)
 
 
@@ -788,7 +794,7 @@ func _work_craft(delta: float) -> void:
 		var at := global_position + Vector2(facing * 90, -90)
 		match recipe[2]:
 			Items.Station.ANVIL:
-				Sfx.play("hit", -6.0, 0.12)
+				Sfx.play("anvil", -8.0, 0.05)
 				Effects.burst(level.fx_layer, at, "hit")
 			Items.Station.WORKBENCH:
 				Sfx.play("chop", -8.0, 0.15)

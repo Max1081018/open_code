@@ -342,6 +342,9 @@ func _begin_windup() -> void:
 	_windup = 0.12 if is_boss else 0.32
 	if _toon:
 		_play("attack")
+		# The tell is heard as well as seen: a snarl before the blow.
+		if randf() < 0.6:
+			Sfx.play("growl2" if randf() < 0.5 else "growl", -7.0, 0.12)
 	var s: float = spec.scale
 	var tween := create_tween()
 	tween.tween_property(_sprite, "scale", Vector2(s * 1.12, s * 0.86), _windup * 0.8) \
@@ -412,6 +415,8 @@ func take_hit(amount: float, from: Vector2, crit := false, quiet := false) -> vo
 		var push := 1.0 if not is_boss else 0.15
 		velocity = Vector2(signf(global_position.x - from.x) * 520.0 * push, -360.0 * push)
 		Sfx.play("hit")
+		if _toon and randf() < 0.45:
+			Sfx.play("growl", -9.0, 0.15)  # a grunt of pain, not every blow
 		var s: float = spec.scale
 		Effects.burst(level.fx_layer, global_position + Vector2(0, -60 * s), "hit")
 		Effects.float_text(level.fx_layer, global_position + Vector2(0, -150 * s),
@@ -431,7 +436,9 @@ func _die() -> void:
 	_dead = true
 	collision_layer = 0
 	remove_from_group("enemies")
-	Sfx.play("break" if not _toon else "hurt", -2.0)
+	Sfx.play("break" if not _toon else "growl2", -2.0, 0.1)
+	if _toon:
+		Sfx.play("bodyfall", -3.0, 0.1)
 	var s: float = spec.scale
 	Effects.burst(level.fx_layer, global_position + Vector2(0, -60 * s), "smoke",
 		spec.get("tint", Color(0.9, 0.9, 0.9)))

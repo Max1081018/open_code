@@ -328,6 +328,27 @@ func test_every_game_script_compiles() -> void:
 	check(broken.is_empty(), "scripts failing to compile: %s" % [broken])
 
 
+func test_every_sound_the_game_plays_exists() -> void:
+	# Sfx.play() on a name with no file is silently quiet; catch typos here.
+	var missing := []
+	var pattern := RegEx.create_from_string("Sfx\\.play\\(\"([a-z_0-9]+)\"")
+	var dirs := ["res://scripts"]
+	while not dirs.is_empty():
+		var dir: String = dirs.pop_back()
+		for sub in DirAccess.get_directories_at(dir):
+			dirs.append(dir.path_join(sub))
+		for file in DirAccess.get_files_at(dir):
+			if not file.ends_with(".gd"):
+				continue
+			var text := FileAccess.get_file_as_string(dir.path_join(file))
+			for m in pattern.search_all(text):
+				var sound := m.get_string(1)
+				if not Sfx._streams.has(sound) and not missing.has(sound):
+					missing.append(sound)
+	check(Sfx._streams.size() > 20, "the sound library loaded (%d)" % Sfx._streams.size())
+	check(missing.is_empty(), "sounds with no file: %s" % [missing])
+
+
 func test_ambience_follows_where_the_player_is() -> void:
 	var life := WorldLife.new()
 	var was: bool = Settings.weather

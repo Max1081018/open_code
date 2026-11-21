@@ -42,3 +42,9 @@ Music (assets/audio/music, converted to Ogg Vorbis q2 by ffmpeg):
 - step_stone2.ogg — "Stone Footstep 2" — https://soundza.com/sound/stone-footstep-2
 - step_wood.ogg — "Wood Footstep 2" — https://soundza.com/sound/wood-footstep-2
 - step_snow.ogg — "Footstep in Snow" — https://soundza.com/sound/footstep-in-snow
+- place_wood.ogg — "Wood Bowl Put Wood 1" — https://soundza.com/sound/wood-bowl-put-wood-1
+- place_stone.ogg — "Concrete Block Set Down" — https://soundza.com/sound/concrete-block-set-down
+- growl.ogg — "Monster 15" — https://soundza.com/sound/monster-15
+- growl2.ogg — "Monster Sound 23" — https://soundza.com/sound/monster-sound-23
+- anvil.ogg — "Metal Hammer Hit 2" — https://soundza.com/sound/metal-hammer-hit-2
+- bodyfall.ogg — "Thud, Fall" — https://soundza.com/sound/thud-fall
