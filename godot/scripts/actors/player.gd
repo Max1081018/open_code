@@ -430,7 +430,7 @@ func _dig(target: Vector2i, delta: float) -> void:
 		var material := data.get_tile(target.x, target.y)
 		_swing("mine", _use_cooldown, func():
 			_mine_sound(material)
-			Effects.burst(level.fx_layer, World.centre_of(target), "dig", dust)
+			_mine_debris(material, World.centre_of(target), dust)
 			_squash(Vector2(1.04, 0.97)))
 
 	var stage := clampi(int(_mining_progress * 3.0), 0, 2)
@@ -561,6 +561,20 @@ func _tree_damage(cell: Vector2i, object: Dictionary) -> void:
 	tween.tween_property(node, "rotation", lean, 0.12).set_trans(Tween.TRANS_SINE)
 	if damage > 0.5:
 		Sfx.play("chop", -10.0, 0.3)  # a creak in the wood
+
+
+## What flies off the pick depends on what it hits: clumps from soil,
+## grey chips and sparks from stone, violet shards from crystal.
+func _mine_debris(material: int, at: Vector2, dust: Color) -> void:
+	match material:
+		WorldData.ROCK, WorldData.BASALT, WorldData.BRICK:
+			Effects.burst(level.fx_layer, at, "splinters", dust.darkened(0.1))
+			Effects.burst(level.fx_layer, at, "hit")
+		WorldData.CRYSTAL:
+			Effects.burst(level.fx_layer, at, "splinters", Color(0.8, 0.6, 1.0))
+			Effects.burst(level.fx_layer, at, "glow", Color(0.7, 0.5, 1.0))
+		_:
+			Effects.burst(level.fx_layer, at, "dig", dust)
 
 
 func _dust_color(cell: Vector2i) -> Color:
@@ -887,8 +901,11 @@ func _slash_hit() -> void:
 			var crit := randf() < 0.1
 			enemy.take_hit(damage * (1.8 if crit else 1.0), global_position, crit)
 			landed = true
+			if crit:
+				level.hit_stop(0.09)
 	if landed:
 		level.shake(3.0)
+		level.hit_stop(0.045)
 
 
 func hurt(amount: float, from: Vector2, knock := true) -> void:

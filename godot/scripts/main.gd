@@ -577,5 +577,5 @@ func _capture(path: String) -> void:
 	await RenderingServer.frame_post_draw
 	var image := get_viewport().get_texture().get_image()
 	image.save_png(path)
-	print("captured ", path, " ", image.get_size())
+	print("captured ", path, " ", image.get_size(), " time_scale ", Engine.time_scale)
 	get_tree().quit()

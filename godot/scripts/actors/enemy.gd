@@ -421,6 +421,8 @@ func take_hit(amount: float, from: Vector2, crit := false, quiet := false) -> vo
 		var tween := create_tween()
 		_sprite.self_modulate = Color(3, 3, 3)
 		tween.tween_property(_sprite, "self_modulate", Color.WHITE, 0.15)
+		# The blow lands on the body: squashed against it, then springing back.
+		_squash(Vector2(1.25, 0.78) if not is_boss else Vector2(1.08, 0.94))
 	if health <= 0.0:
 		_die()
 

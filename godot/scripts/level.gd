@@ -255,6 +255,26 @@ func _process(delta: float) -> void:
 		save()
 
 
+## Hit-stop: the world all but freezes for a few hundredths of a second
+## when a blow lands, which is most of what makes a hit feel heavy.
+var _stop_until := 0
+
+
+func hit_stop(seconds: float) -> void:
+	var until := Time.get_ticks_msec() + int(seconds * 1000.0)
+	if until <= _stop_until:
+		return
+	_stop_until = until
+	Engine.time_scale = 0.08
+	get_tree().create_timer(seconds, true, false, true).timeout.connect(func():
+		if Time.get_ticks_msec() >= _stop_until - 2:
+			Engine.time_scale = 1.0)
+
+
+func _exit_tree() -> void:
+	Engine.time_scale = 1.0
+
+
 func shake(amount: float) -> void:
 	_shake = maxf(_shake, amount)
 
