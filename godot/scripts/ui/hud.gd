@@ -90,6 +90,7 @@ func _ready() -> void:
 	minimap.offset_top = 22
 	minimap.offset_bottom = 22 + Minimap.SIZE.y
 	_root.add_child(minimap)
+	_root.move_child(minimap, _panel_layer.get_index())  # under open panels
 	minimap.setup.call_deferred(level)
 
 	tracker = QuestTracker.new()
@@ -439,6 +440,7 @@ func _open(panel: Control) -> void:
 	_open_panel = panel
 	_panel_layer.add_child(panel)
 	touch.visible = false
+	minimap.visible = false
 	panel.modulate.a = 0.0
 	var inner: Control = panel.get_child(0).get_child(0)
 	inner.pivot_offset = inner.size * 0.5
@@ -457,6 +459,7 @@ func close_panel() -> void:
 		_open_panel.get_meta("on_close_callable").call()
 	_open_panel.queue_free()
 	_open_panel = null
+	minimap.visible = true
 	get_tree().paused = false
 	touch.visible = touch_active or _is_touch_device()
 	_refresh_hotbar()
