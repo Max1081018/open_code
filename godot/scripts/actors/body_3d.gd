@@ -156,8 +156,13 @@ func _build() -> void:
 		if a:
 			a.loop_mode = Animation.LOOP_LINEAR if clip[1] else Animation.LOOP_NONE
 	if skeleton:
-		right_hand = _grip("hand_r", "index_01_r", "pinky_01_r", "middle_01_r")
-		left_hand = _grip("hand_l", "index_01_l", "pinky_01_l", "middle_01_l")
+		if skeleton.find_bone("RightHand") >= 0:
+			# A retargeted humanoid (the downloaded cast): standard bone names.
+			right_hand = _grip("RightHand", "RightIndexProximal", "RightLittleProximal", "RightMiddleProximal")
+			left_hand = _grip("LeftHand", "LeftIndexProximal", "LeftLittleProximal", "LeftMiddleProximal")
+		else:
+			right_hand = _grip("hand_r", "index_01_r", "pinky_01_r", "middle_01_r")
+			left_hand = _grip("hand_l", "index_01_l", "pinky_01_l", "middle_01_l")
 
 	picture = Sprite2D.new()
 	picture.texture = viewport.get_texture()
@@ -196,15 +201,26 @@ func _grip(hand: String, index: String, pinky: String, middle: String) -> Node3D
 	var p := to_local * skeleton.get_bone_global_rest(skeleton.find_bone(pinky)).origin
 	var m := to_local * skeleton.get_bone_global_rest(skeleton.find_bone(middle)).origin
 	var along := (i - p).normalized()
+	# On the retargeted humanoids (unified bone axes) the knuckle line runs
+	# the other way round relative to the fist: the shaft leaves the thumb side.
+	if hand.begins_with("Left") or hand.begins_with("Right"):
+		along = -along
 	var fingers := m.normalized()
 	var palm := along.cross(fingers).normalized()
-	if hand.ends_with("_l"):
+	if hand.ends_with("_l") or hand.begins_with("Left"):
 		palm = -palm
 	fingers = palm.cross(along).normalized()
 	var grip := Node3D.new()
 	grip.name = "Grip"
-	grip.transform = Transform3D(Basis(fingers, along, palm), (i + p) * 0.5 * 0.9 + palm * 0.035)
+	# Into the palm by a third of the hand's length (3.5 cm on a person),
+	# measured in the rig's own units, whatever they are.
+	grip.transform = Transform3D(Basis(fingers, along, palm), (i + p) * 0.5 * 0.9 + palm * m.length() * 0.35)
 	attachment.add_child(grip)
+	# Held things are made in metres: undo any scale the rig carries (some
+	# are in centimetres under a 0.01 node) so a sword stays sword-sized.
+	var rig_scale := (skeleton.global_transform * skeleton.get_bone_global_rest(h)).basis.get_scale()
+	var model_scale := model.global_transform.basis.get_scale() if model else Vector3.ONE
+	grip.scale = model_scale / rig_scale
 	return grip
 
 
@@ -281,6 +297,12 @@ func hold_item(id: String, kind: String, picture: Texture2D = null, grip_key := 
 	_card = null
 	if id == "" or right_hand == null:
 		return
+	var item := _item_model(id)
+	if item:
+		_held = item
+		_card_tip = float(item.get_meta("length", 0.9))
+		right_hand.add_child(_held)
+		return
 	var model_name: String = MODELS.get(id, MODELS.get(kind, "")) if kind == "sword" else MODELS.get(id, "")
 	if model_name != "":
 		_held = _weapon(model_name)
@@ -297,7 +319,9 @@ func hold_off_hand(id: String) -> void:
 	_off = null
 	if id == "" or left_hand == null:
 		return
-	_off = _weapon(MODELS.get(id, "shield_round"))
+	_off = _item_model(id)
+	if _off == null:
+		_off = _weapon(MODELS.get(id, "shield_round"))
 	left_hand.add_child(_off)
 
 
@@ -318,6 +342,59 @@ func hold_off_hand_model(name: String) -> void:
 		_off.queue_free()
 	_off = _weapon(name)
 	left_hand.add_child(_off)
+
+
+## Real 3D hand-held items (Sketchfab, CC-BY; tools/pack_items.gd), all in
+## one frame: grip at the origin, shaft +Y, head +X. id -> [scene, length
+## in metres, tint for the metal (null: as modelled)].
+const ITEM_MODELS := {
+	"wood_pickaxe": ["pickaxe", 0.88, Color(0.62, 0.5, 0.4)], "copper_pickaxe": ["pickaxe", 0.88, Color(1.0, 0.66, 0.45)],
+	"iron_pickaxe": ["pickaxe", 0.88, null], "silver_pickaxe": ["pickaxe", 0.88, Color(1.15, 1.18, 1.25)],
+	"gold_pickaxe": ["pickaxe", 0.88, Color(1.25, 1.0, 0.45)], "lumen_pickaxe": ["pickaxe", 0.88, Color(0.6, 1.1, 1.3)],
+	"wood_axe": ["axe", 0.8, Color(0.62, 0.5, 0.4)], "iron_axe": ["axe", 0.8, null],
+	"wood_hammer": ["hammer", 0.7, Color(0.62, 0.5, 0.4)], "iron_hammer": ["hammer", 0.7, null],
+	"wood_sword": ["sword", 1.0, Color(0.62, 0.5, 0.4)], "copper_sword": ["sword", 1.0, Color(1.0, 0.66, 0.45)],
+	"iron_sword": ["sword", 1.0, Color(1.6, 1.6, 1.7)], "silver_sword": ["sword_fine", 1.05, Color(1.15, 1.18, 1.25)],
+	"gold_sword": ["sword_fine", 1.05, Color(1.25, 1.0, 0.45)], "lumen_sword": ["sword_fine", 1.05, Color(0.6, 1.1, 1.3)],
+	"torch": ["torch", 0.6, null], "fishing_rod": ["rod", 1.7, null],
+	"wood_shield": ["shield_wood", 0.6, null], "iron_shield": ["shield_iron", 0.62, null],
+}
+
+
+func _item_model(id: String) -> Node3D:
+	if not ITEM_MODELS.has(id):
+		return null
+	var spec: Array = ITEM_MODELS[id]
+	var path := "res://assets/models/items/%s.scn" % spec[0]
+	if not ResourceLoader.exists(path):
+		return null
+	var item: Node3D = load(path).instantiate()
+	item.set_meta("length", spec[1])
+	if spec[2] != null:
+		# Tint the metal, not the wooden handle (the tallest, thinnest part).
+		var meshes := item.find_children("*", "MeshInstance3D", true, false)
+		var handle: MeshInstance3D = null
+		var best := 0.0
+		for m in meshes:
+			var box: AABB = (m as MeshInstance3D).get_aabb()
+			var ratio: float = box.size.y / maxf(maxf(box.size.x, box.size.z), 0.001)
+			if meshes.size() > 1 and ratio > best:
+				best = ratio
+				handle = m
+		for m in meshes:
+			if m == handle:
+				continue
+			for i in (m as MeshInstance3D).mesh.get_surface_count():
+				var material := (m as MeshInstance3D).get_active_material(i) as BaseMaterial3D
+				if material:
+					var copy: BaseMaterial3D = material.duplicate()
+					copy.albedo_color = copy.albedo_color * spec[2]
+					if id.begins_with("lumen"):
+						copy.emission_enabled = true
+						copy.emission = Color(0.35, 0.85, 1.0)
+						copy.emission_energy_multiplier = 0.8
+					(m as MeshInstance3D).set_surface_override_material(i, copy)
+	return item
 
 
 func _weapon(name: String) -> Node3D:

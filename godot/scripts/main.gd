@@ -524,10 +524,11 @@ func _tutorial_bot() -> void:
 				else:
 					input.use_held = true
 					input.aim = World.centre_of(rock)
-			elif level.guide._target != Vector2.INF:
-				# Nothing close: follow the guide arrow, as a player would.
-				input.move = signf(level.guide._target.x - player.global_position.x)
-				_bot_jump(player)
+			else:
+				# No rock showing nearby: dig straight down to it, as a
+				# player would (the stone lies under the soil).
+				input.use_held = true
+				input.aim = World.centre_of(at + Vector2i(0, 1))
 		"build":
 			for i in Inventory.HOTBAR_SIZE:
 				var stack = player.inventory.get_slot(i)

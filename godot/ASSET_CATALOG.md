@@ -120,6 +120,36 @@ Outfit colour variants (dusk ranger, steel, rust, lavender, rags, ash skin) are 
 pack textures by `tools/character_palettes.py`. Source glTFs not shipped (nature, village) go in
 `assets/models/nature_src` / `village_src`, which are git-ignored.
 
+
+## Characters and hand-held items: Sketchfab (CC BY 4.0)
+
+Downloaded through the Sketchfab API, retargeted onto one humanoid rig (`tools/retarget_setup.gd`),
+packed for phones (`tools/pack_characters.gd`, `tools/pack_items.gd`). Licensed CC BY 4.0
+(https://creativecommons.org/licenses/by/4.0/): credit below; the models were rescaled, re-rigged,
+re-textured (downsized) and some recoloured.
+
+| Used for | Model | Author |
+|---|---|---|
+| Player (hooded wanderer) | [Deadly Assassin - Warrior Body Armor Weapons](https://sketchfab.com/3d-models/62acff8d004948b7b99ac714c99954d7) | halfbrainanimations |
+| Wren; Mira (tinted) | [.Fuse Woman 1](https://sketchfab.com/3d-models/c6436897da494b4e8e1f8188aea620c6) | livrosparacriancas |
+| Old Bram | [.Fuse Civilian 2](https://sketchfab.com/3d-models/671bd73d045f47b4952fe2899772e124) | livrosparacriancas |
+| Tobin | [.Fuse Civilian 1](https://sketchfab.com/3d-models/6fc4bddf4d364e6b9fa2f050011e03ce) | livrosparacriancas |
+| Sir Aldous | [The Swordman](https://sketchfab.com/3d-models/fac346b163ee4c38b4141867d570189b) | Patyot.Suttipreecha |
+| Villager | [Medieval Civilian 3](https://sketchfab.com/3d-models/d99ca22f06134e8dab28fdfa75d87f31) | livrosparacriancas (Sketchfab Free Standard licence, not CC BY) |
+| The risen dead; shades (tinted) | [Free Stylized Dark Fantasy Skeleton V1](https://sketchfab.com/3d-models/13b75487badc4c54a6e1644376fe6900) | HotstrikeStudio |
+| Rusted guards (tinted) | [knight](https://sketchfab.com/3d-models/b05342642ee1475985c746a5b64332fc) | sanyaork |
+| The Rusted Warden (boss) | [Cursed Knight - UE5 Character (Game Ready)](https://sketchfab.com/3d-models/f204e0ad3af645bcb0ecffd9e9ae9a15) | Blue-Spirit |
+| Pickaxes | [Survival Pickaxe](https://sketchfab.com/3d-models/d1fe496bfc16495187d5515433fd1eb8) | Tnkii |
+| Axes, hammers | [Survival Game Tool Pack \| FREE \| Agustin Honnun](https://sketchfab.com/3d-models/0c91f8a91314413e8171cb7ecdbee08d) | Agustin_Honnun |
+| Wood/copper/iron swords | [Damascus Longsword (game ready asset)](https://sketchfab.com/3d-models/32bbfe5bbad74d8f9640a60251ec31e9) | apariciosilva3D |
+| Silver/gold/lumen swords | [Chevalier Sword](https://sketchfab.com/3d-models/b2662f2666a844e8a1bd0e7c4a7672d8) | rubenve |
+| Torch | [Torch stick](https://sketchfab.com/3d-models/d8eadee1a5c14483aade99b1fe5bc150) | bumstrum |
+| Iron shield | [Medieval Shield](https://sketchfab.com/3d-models/b98b8f64d935415aab0fe9b70074511f) | CGArtem |
+| Wood shield | [Medieval Shield](https://sketchfab.com/3d-models/471f1dfb2d1d40d6994be92047de3645) | Kirhl |
+| Fishing rod | [Fishing Rod](https://sketchfab.com/3d-models/ab78aaf5ea154edcabdc118196916ddd) | Inuciian |
+
+Animations on all of them: Quaternius Universal Animation Library 1 and 2 (CC0), retargeted.
+
 ## Terrain materials — ambientCG (CC0)
 
 By ambientCG (ambientcg.com), CC0 1.0: Ground048 (soil), Rock058 (rock, basalt, crystal), Bricks089,

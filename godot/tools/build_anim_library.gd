@@ -14,8 +14,16 @@ const KEEP := ["Idle", "Idle_Talking", "Idle_Torch", "Idle_Lantern", "Idle_FoldA
 	"Zombie_Walk_Fwd", "Zombie_Scratch", "LayToIdle", "Melee_Hook", "Punch_Jab", "ClimbUp_1m"]
 
 func _initialize() -> void:
+	# Optional: "-- <output.res> <source.glb>..." builds a library from other
+	# sources (e.g. the UAL files imported with humanoid retargeting).
+	var args := OS.get_cmdline_user_args()
+	var output := "res://assets/models/quaternius/anim/humanoid_anims.res"
+	var sources: Array = SOURCES
+	if args.size() >= 2:
+		output = args[0]
+		sources = args.slice(1)
 	var library := AnimationLibrary.new()
-	for source in SOURCES:
+	for source in sources:
 		var scene: Node = load(source).instantiate()
 		var player: AnimationPlayer = scene.find_children("*", "AnimationPlayer", true, false)[0]
 		for name in player.get_animation_list():
@@ -23,7 +31,7 @@ func _initialize() -> void:
 				var clip: Animation = player.get_animation(name).duplicate(true)
 				# Drop the root bone's motion: the game moves the body itself.
 				for t in range(clip.get_track_count() - 1, -1, -1):
-					if String(clip.track_get_path(t)).ends_with(":root"):
+					if String(clip.track_get_path(t)).ends_with(":root") or String(clip.track_get_path(t)).ends_with(":Root"):
 						clip.remove_track(t)
 				clip.compress()
 				library.add_animation(name, clip)
@@ -33,5 +41,6 @@ func _initialize() -> void:
 		if not library.has_animation(name):
 			missing.append(name)
 	print("kept ", library.get_animation_list().size(), " missing ", missing)
-	ResourceSaver.save(library, "res://assets/models/quaternius/anim/humanoid_anims.res", ResourceSaver.FLAG_COMPRESS)
+	DirAccess.make_dir_recursive_absolute(ProjectSettings.globalize_path(output.get_base_dir()))
+	ResourceSaver.save(library, output, ResourceSaver.FLAG_COMPRESS)
 	quit()

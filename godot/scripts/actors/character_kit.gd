@@ -55,6 +55,25 @@ const RECIPES := {
 		"eyes": Color(0.8, 0.5, 1.0), "undead": true},
 }
 
+## The downloaded cast (Sketchfab, CC-BY; see ASSET_CATALOG.md), packed by
+## tools/pack_characters.gd onto one retargeted humanoid rig and driven by
+## one shared animation library. name -> [packed scene, tint or null].
+const HEROES := {
+	"player": ["player", null],          # hooded assassin: hood, leathers, cloak
+	"wren": ["wren", null],
+	"mira": ["wren", Color(0.86, 0.96, 0.8)],  # the herbalist: greener cloth
+	"bram": ["bram", null],
+	"tobin": ["tobin", null],
+	"aldous": ["aldous", null],          # bearded knight in blue plate
+	"zombie": ["skeleton", null],
+	"shade": ["skeleton", Color(0.62, 0.5, 0.85)],
+	"robot": ["knight", Color(0.8, 0.62, 0.5)],  # rust-eaten plate
+	"warden": ["warden", null],          # the cursed knight
+}
+const HERO_DIR := "res://assets/models/heroes/"
+const HERO_ANIMS := HERO_DIR + "anim/humanoid.res"
+static var _hero_library: AnimationLibrary
+
 const BODIES := {"male": "bodies/Superhero_Male_FullBody.gltf", "female": "bodies/Superhero_Female_FullBody.gltf"}
 
 ## Metres the clothing is pushed out over the body.
@@ -64,7 +83,7 @@ static var _library: AnimationLibrary
 
 
 static func has(name: String) -> bool:
-	return RECIPES.has(name)
+	return RECIPES.has(name) or HEROES.has(name)
 
 
 static func library() -> AnimationLibrary:
@@ -76,6 +95,8 @@ static func library() -> AnimationLibrary:
 ## A ready character: Node3D root with Armature/Skeleton3D and an
 ## AnimationPlayer holding the shared clips.
 static func build(name: String) -> Node3D:
+	if HEROES.has(name) and ResourceLoader.exists(HERO_DIR + String(HEROES[name][0]) + ".scn"):
+		return _build_hero(name)
 	var recipe: Dictionary = RECIPES[name]
 	var root: Node3D = load(Q + BODIES[recipe.body]).instantiate()
 	root.name = name
@@ -142,4 +163,57 @@ static func _tint(mesh: MeshInstance3D, colour: Color) -> void:
 		if material:
 			var copy: BaseMaterial3D = material.duplicate()
 			copy.albedo_color = colour
+			mesh.set_surface_override_material(i, copy)
+
+
+## A downloaded character: the packed model, stood 1.8 m tall with its feet
+## at the origin, and an AnimationPlayer with the shared retargeted clips.
+static func _build_hero(name: String) -> Node3D:
+	var spec: Array = HEROES[name]
+	var model: Node3D = load(HERO_DIR + String(spec[0]) + ".scn").instantiate()
+	var root := Node3D.new()
+	root.name = name
+	root.add_child(model)
+	var skeleton: Skeleton3D = model.find_children("*", "Skeleton3D", true, false)[0]
+	# Measure head over feet in the root's space (rigs come in metres or
+	# centimetres under scaled nodes), then scale and seat the model.
+	var to_root := _transform_to(skeleton, root)
+	var head := (to_root * skeleton.get_bone_global_rest(skeleton.find_bone("Head"))).origin
+	var foot_l := (to_root * skeleton.get_bone_global_rest(skeleton.find_bone("LeftFoot"))).origin
+	var foot_r := (to_root * skeleton.get_bone_global_rest(skeleton.find_bone("RightFoot"))).origin
+	var floor_y := minf(foot_l.y, foot_r.y)
+	var span := maxf(head.y - floor_y, 0.0001)
+	# Head bone to crown is about an eighth of a person; ankle to sole ~4 %.
+	var k := 1.8 / (span * 1.17)
+	model.scale = Vector3.ONE * k
+	model.position = Vector3(0, -(floor_y - span * 0.05) * k, 0)
+	if spec[1] != null:
+		for mesh in model.find_children("*", "MeshInstance3D", true, false):
+			_tint_all(mesh, spec[1])
+	var player := AnimationPlayer.new()
+	player.name = "AnimationPlayer"
+	root.add_child(player)
+	player.root_node = NodePath("../" + String(root.get_path_to(model)))
+	if _hero_library == null:
+		_hero_library = load(HERO_ANIMS)
+	player.add_animation_library("", _hero_library)
+	return root
+
+
+static func _transform_to(node: Node3D, ancestor: Node3D) -> Transform3D:
+	var t := Transform3D.IDENTITY
+	var n: Node = node
+	while n != null and n != ancestor:
+		if n is Node3D:
+			t = (n as Node3D).transform * t
+		n = n.get_parent()
+	return t
+
+
+static func _tint_all(mesh: MeshInstance3D, colour: Color) -> void:
+	for i in mesh.mesh.get_surface_count():
+		var material := mesh.get_active_material(i) as BaseMaterial3D
+		if material:
+			var copy: BaseMaterial3D = material.duplicate()
+			copy.albedo_color = copy.albedo_color * colour
 			mesh.set_surface_override_material(i, copy)
