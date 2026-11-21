@@ -156,6 +156,35 @@ static func _refresh(state: Dictionary) -> void:
 				state.picked = -1
 				_refresh(state))
 			details.add_child(use)
+		if d.kind == Items.Kind.RELIC:
+			var wear := Button.new()
+			wear.text = "Wear (%d of %d)" % [player.relics.size(), Player.RELIC_SLOTS]
+			wear.custom_minimum_size = Vector2(300, 76)
+			wear.disabled = player.relics.size() >= Player.RELIC_SLOTS or player.has_relic(picked.id)
+			var index: int = state.picked
+			wear.pressed.connect(func():
+				player.wear_relic(index)
+				state.picked = -1
+				_refresh(state))
+			details.add_child(wear)
+	elif not player.relics.is_empty():
+		# Nothing picked: show what is worn, each with a way to take it off.
+		details.add_child(UITheme.text("Relics worn", 30, UITheme.GOLD))
+		var row := HBoxContainer.new()
+		row.add_theme_constant_override("separation", 14)
+		details.add_child(row)
+		for id in player.relics:
+			var off := Button.new()
+			off.icon = Items.icon(id)
+			off.expand_icon = true
+			off.custom_minimum_size = Vector2(96, 96)
+			off.tooltip_text = "%s — tap to take off" % Items.item_name(id)
+			var relic: String = id
+			off.pressed.connect(func():
+				player.remove_relic(relic)
+				_refresh(state))
+			row.add_child(off)
+		details.add_child(UITheme.text("Tap a relic to take it off.", 24, UITheme.INK))
 
 	var list: VBoxContainer = state.recipes
 	for child in list.get_children():

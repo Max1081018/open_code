@@ -13,6 +13,7 @@ var attack_pressed := false
 var interact_pressed := false
 var block_held := false  ## raising the shield
 var dodge_pressed := false
+var flare_pressed := false  ## the lantern's flare
 var hotbar_select := -1
 
 
@@ -22,4 +23,5 @@ func end_frame() -> void:
 	attack_pressed = false
 	interact_pressed = false
 	dodge_pressed = false
+	flare_pressed = false
 	hotbar_select = -1

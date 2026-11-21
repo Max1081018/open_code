@@ -53,6 +53,7 @@ func _layout() -> void:
 		"interact": [Vector2(right - 40 * unit, bottom - 215 * unit), 70.0, "icon_hand"],
 		"block": [Vector2(right - 255 * unit, bottom - 175 * unit), 66.0, "icon_shield"],
 		"dodge": [Vector2(right - 430 * unit, bottom + 50 * unit), 66.0, "icon_arrow_rotate"],
+		"flare": [Vector2(right - 420 * unit, bottom - 140 * unit), 62.0, "icon_star"],
 	}
 	_buttons.clear()
 	for role in spec:
@@ -138,6 +139,8 @@ func _finger_down(index: int, p: Vector2) -> void:
 			input.interact_pressed = true
 		"dodge":
 			input.dodge_pressed = true
+		"flare":
+			input.flare_pressed = true
 	get_viewport().set_input_as_handled()
 
 

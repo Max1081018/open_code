@@ -14,6 +14,10 @@ const ART := {
 	"altar": ["res://assets/rendered/altar-stone.png", 0.70],
 	"wardstone": ["res://assets/rendered/pillar-obelisk.png", 1.9],
 	"sign": ["res://assets/rendered/signpost.png", 1.25],
+	"relic_chest": ["res://assets/rendered/chest-gold.png", 0.95],
+	"candles": ["res://assets/rendered/candle-triple.png", 0.7],
+	"trophy": ["res://assets/rendered/sword-shield-gold.png", 1.1],
+	"banner": ["res://assets/rendered/banner-patternA-red.png", 1.5],
 }
 
 ## Placed objects that give their item back when broken.
@@ -55,6 +59,7 @@ static func make(object: Dictionary, cell: Vector2i) -> Node2D:
 const SHADOW_WIDTH := {
 	"tree": 1.5, "workbench": 1.0, "anvil": 1.0, "chest": 0.9, "barrel": 0.8,
 	"campfire": 0.9, "altar": 1.1, "wardstone": 0.9, "sign": 0.5, "geode": 1.0,
+	"relic_chest": 1.0, "brazier": 0.6, "candles": 0.6, "trophy": 0.9,
 }
 
 
@@ -67,6 +72,15 @@ static func _build(object: Dictionary, hash_value: int) -> Node2D:
 			return _shrub(object, foot, hash_value)
 		"torch":
 			return _torch(object, foot)
+		"brazier":
+			return _brazier(object, foot)
+		"relic_chest":
+			var chest := _prop("relic_chest", foot)
+			if object.get("opened", false):
+				chest.modulate = Color(0.7, 0.66, 0.62)
+			else:
+				chest.add_child(Effects.motes(Vector2(0, -70), Color(1.0, 0.85, 0.4), 1.6))
+			return chest
 		"wardstone":
 			return _wardstone(foot)
 		"campfire":
@@ -233,6 +247,17 @@ static func _shrub(object: Dictionary, foot: Vector2, hash_value: int) -> Node2D
 	root.add_child(sprite)
 	if art.begins_with("gem"):
 		root.add_child(Glow.make(Color(0.4, 0.75, 1.0), 1.6))
+	return root
+
+
+## A vault brazier: cold iron, or alight with a real fire and embers.
+static func _brazier(object: Dictionary, foot: Vector2) -> Node2D:
+	if not object.get("lit", false):
+		return _sprite_standing(texture("res://assets/rendered/torch-mounted.png"), foot, 1.25)
+	var root := Node2D.new()
+	root.add_child(_sprite_standing(texture("res://assets/rendered/torch-lit.png"), foot, 1.25))
+	root.add_child(Effects.fire(foot - Vector2(0, TILE * 1.08)))
+	root.add_child(Effects.embers(foot - Vector2(0, TILE * 1.2)))
 	return root
 
 

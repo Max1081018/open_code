@@ -74,6 +74,10 @@ var objects := {}
 
 var spawn := Vector2i.ZERO
 var vault := Vector2i.ZERO
+## Sealed vaults: {"door": [cells], "braziers": [cells], "chest": cell, "open": bool}.
+var vaults: Array = []
+## Hidden caches: {"rune": the rock face cell marked with a light-rune, "chest": cell}.
+var caches: Array = []
 
 
 func _init(w: int = WIDTH, h: int = HEIGHT) -> void:
@@ -252,6 +256,8 @@ func generate(world_seed: int, progress := Callable()) -> void:
 	_fill_pools()
 	_report(progress, 0.72)
 	_build_ruins()
+	_build_sealed_vaults()
+	_hide_caches()
 	_build_cabin()
 	_report(progress, 0.85)
 	_plant_surface()
@@ -491,6 +497,139 @@ func _build_ruins() -> void:
 	_put_object(vx + vw - 4, vy + 3, {"type": "torch", "lit": true})
 
 
+## Sealed vaults: a brick room behind a door of rune-stone that no pick can
+## break, with an antechamber where braziers stand cold. Light every one
+## (a torch in hand, or the lantern's flare up close) and the door opens on
+## a gilded chest holding a relic.
+func _build_sealed_vaults() -> void:
+	vaults.clear()
+	var relics: Array = ["relic_featherbone", "relic_ember_heart", "relic_deepsong", "relic_moth_lantern",
+		"relic_bulwark", "relic_swiftroot", "relic_seers_eye", "relic_luckstone"]
+	# Shuffled by the world's seed, so each world hands them out differently.
+	for i in range(relics.size() - 1, 0, -1):
+		var j := _rng.randi_range(0, i)
+		var t = relics[i]
+		relics[i] = relics[j]
+		relics[j] = t
+	var attempts := 0
+	var wanted := mini(width * height / 38400, 6)  # six in a full-size world
+	while vaults.size() < wanted and attempts < 200:
+		attempts += 1
+		var side := 1 if _rng.randf() < 0.5 else -1   # which way the antechamber opens
+		var rw := 9
+		var rh := 6
+		var hall := 13
+		var x := _rng.randi_range(40, width - 40 - rw - hall)
+		var y := _rng.randi_range(SURFACE_Y + 28, DEEP_Y + 30)
+		var room_x := x if side > 0 else x + hall
+		# The hall runs from the door outward, away from the room.
+		var hall_x := room_x + rw - 1 if side > 0 else room_x
+		var site := Rect2i(x - 2, y - 2, rw + hall + 4, rh + 4)
+		if abs(x - width / 2) < 24 or _overlaps_feature(site) or _has_liquid(site.grow(2)) \
+				or not Rect2i(2, 2, width - 4, height - 4).encloses(site):
+			continue
+		_carve_room(room_x, y, rw, rh, BRICK)
+		# The antechamber: a brick-floored hall, open at its far end to the rock.
+		for hx in range(hall):
+			var cx := hall_x + hx * side
+			for hy in range(1, rh - 1):
+				set_tile(cx, y + hy, AIR)
+				walls[idx(cx, y + hy)] = BRICK
+			set_tile(cx, y + rh - 1, BRICK)
+			set_tile(cx, y, BRICK)
+		# The door: the shared wall, sealed with rune-stone.
+		var door_x := room_x + rw - 1 if side > 0 else room_x
+		var door := []
+		for dy in range(rh - 4, rh - 1):
+			set_tile(door_x, y + dy, BEDROCK)
+			door.append(Vector2i(door_x, y + dy))
+		set_tile(door_x, y + 1, BRICK)
+		# Braziers spaced so no single flare reaches them all; the far one
+		# stands on a ledge you must climb to.
+		var floor_y := y + rh - 2
+		var braziers := []
+		for offset in [3, 7]:
+			var bx: int = door_x + offset * side
+			braziers.append(Vector2i(bx, floor_y))
+		var ledge_x := door_x + 11 * side
+		set_tile(ledge_x, floor_y, BRICK)
+		set_tile(ledge_x - side, floor_y, BRICK)
+		braziers.append(Vector2i(ledge_x, floor_y - 1))
+		var index := vaults.size()
+		for cell in braziers:
+			_put_object(cell.x, cell.y, {"type": "brazier", "lit": false, "vault": index})
+		# Inside: the chest, candles, a banner and the old dead's weapons.
+		var chest := Vector2i(room_x + rw / 2, floor_y)
+		var loot := [{"id": relics[index % relics.size()], "count": 1},
+			{"id": "gold_coin", "count": _rng.randi_range(12, 30)},
+			{"id": "glowshard", "count": _rng.randi_range(3, 8)}]
+		if y > SURFACE_Y + 100:
+			loot.append({"id": "heart_crystal", "count": 1})
+		_put_object(chest.x, chest.y, {"type": "relic_chest", "vault": index, "loot": loot})
+		_put_object(room_x + 2, floor_y, {"type": "candles"})
+		_put_object(room_x + rw - 3, floor_y, {"type": "trophy"})
+		_put_object(chest.x, y + 2, {"type": "banner"})
+		vaults.append({"door": door, "braziers": braziers, "chest": chest, "open": false})
+
+
+func _has_liquid(rect: Rect2i) -> bool:
+	for x in range(rect.position.x, rect.end.x):
+		for y in range(rect.position.y, rect.end.y):
+			if in_bounds(x, y) and get_liquid(x, y) != DRY:
+				return true
+	return false
+
+
+## Whether a rectangle would cut into something already built (ruins,
+## vaults, the Warden's hall, the cabin).
+func _overlaps_feature(rect: Rect2i) -> bool:
+	for x in range(rect.position.x, rect.end.x, 2):
+		for y in range(rect.position.y, rect.end.y, 2):
+			if in_bounds(x, y) and (get_tile(x, y) in [BRICK, BEDROCK] or get_wall(x, y) == BRICK):
+				return true
+	return false
+
+
+## Hidden caches: a pocket sealed in solid rock just behind a cave wall,
+## holding a chest. The wall face is marked with a light-rune that only a
+## flare (or the Seer's Eye) shows: dig there.
+func _hide_caches() -> void:
+	caches.clear()
+	var attempts := 0
+	var wanted := mini(width * height / 19200, 12)
+	while caches.size() < wanted and attempts < 4000:
+		attempts += 1
+		var x := _rng.randi_range(30, width - 30)
+		var y := _rng.randi_range(SURFACE_Y + 18, height - 20)
+		var side := 1 if _rng.randf() < 0.5 else -1
+		# A cave floor cell with solid rock beside it, four cells deep.
+		if is_solid(x, y) or not is_solid(x, y + 1) or get_liquid(x, y) != DRY:
+			continue
+		var ok := true
+		for d in range(1, 6):
+			for dy in [-1, 0]:
+				var t := get_tile(x + d * side, y + dy)
+				if t not in [ROCK, SOIL, BASALT]:
+					ok = false
+		if not ok:
+			continue
+		var face := Vector2i(x + side, y)
+		var pocket := Vector2i(x + 3 * side, y)
+		if _has_liquid(Rect2i(mini(x, pocket.x + side) - 2, y - 3, 8, 6)):
+			continue
+		set_tile(pocket.x, pocket.y, AIR)
+		set_tile(pocket.x, pocket.y - 1, AIR)
+		set_tile(pocket.x + side, pocket.y, AIR)
+		set_tile(pocket.x + side, pocket.y - 1, AIR)
+		var loot := [{"id": "gold_coin", "count": _rng.randi_range(6, 18)}]
+		var pool := ["glowshard", "glow_flask", "iron_ore", "silver_ore", "gold_ore", "ruby", "emerald", "heart_crystal"]
+		for n in _rng.randi_range(2, 3):
+			var id: String = pool[_rng.randi() % pool.size()]
+			loot.append({"id": id, "count": 1 if id in ["heart_crystal", "glow_flask", "ruby", "emerald"] else _rng.randi_range(3, 9)})
+		_put_object(pocket.x, pocket.y, {"type": "chest", "loot": loot})
+		caches.append({"rune": face, "chest": pocket})
+
+
 func _ruin_loot(depth_y: int) -> Array:
 	var loot := [{"id": "torch", "count": _rng.randi_range(4, 9)}]
 	var pool := ["copper_ore", "iron_ore", "coal", "glowshard", "apple"]
@@ -644,6 +783,8 @@ func to_dict() -> Dictionary:
 		"spawn": spawn,
 		"vault": vault,
 		"explored": explored.compress(FileAccess.COMPRESSION_ZSTD),
+		"vaults": vaults,
+		"caches": caches,
 	}
 
 
@@ -662,5 +803,7 @@ static func from_dict(data: Dictionary) -> WorldData:
 	w.vault = data.vault
 	if data.has("explored"):  # saves from before the map have nothing explored
 		w.explored = (data.explored as PackedByteArray).decompress(n, FileAccess.COMPRESSION_ZSTD)
+	w.vaults = data.get("vaults", [])
+	w.caches = data.get("caches", [])
 	w.recompute_all_sky()
 	return w

@@ -9,7 +9,8 @@ extends SceneTree
 ## here, with one camera angle and one light rig for every prop, keeps
 ## the set consistent with each other and with the items.
 
-const SOURCES := ["res://assets/models/survival", "res://assets/models/graveyard"]
+const SOURCES := ["res://assets/models/survival", "res://assets/models/graveyard", "res://assets/models/dungeon"]
+## Pass folder names after "--" to render only those (e.g. -- dungeon).
 const OUTPUT := "res://assets/rendered/"
 const SIZE := 512
 const MAX_OUTPUT := 160
@@ -51,7 +52,10 @@ func _initialize() -> void:
 	viewport.add_child(camera)
 
 	var rendered := 0
+	var only := OS.get_cmdline_user_args()
 	for source in SOURCES:
+		if not only.is_empty() and not (source.get_file() in only):
+			continue
 		var dir := DirAccess.open(source)
 		for file in dir.get_files():
 			# Each model is listed twice, as itself and as its .import.

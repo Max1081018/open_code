@@ -140,6 +140,8 @@ func _unhandled_input(event: InputEvent) -> void:
 				level.player.input.interact_pressed = true
 			KEY_L, KEY_CTRL:
 				level.player.input.dodge_pressed = true
+			KEY_Q:
+				level.player.input.flare_pressed = true
 
 
 # =============================================================================
@@ -157,6 +159,19 @@ func _apply_scenario() -> void:
 			level.camera.global_position = player.global_position
 			level.camera.reset_smoothing()
 			level.world.load_area(target, 2)
+		"vault", "vault_open":
+			# In the first sealed vault's antechamber, between its braziers.
+			var vault: Dictionary = level.data.vaults[0]
+			var stand: Vector2i = vault.braziers[0]
+			stand.x += signi(vault.braziers[1].x - vault.braziers[0].x) * 2
+			player.global_position = World.foot_of(stand)
+			player.glow = player.max_glow()
+			level.world.load_area(stand, 2)
+			if _args.scenario == "vault_open":
+				for cell in vault.braziers:
+					level.light_brazier(cell)
+			level.camera.global_position = player.global_position
+			level.camera.reset_smoothing()
 		"cabin":
 			player.global_position = World.foot_of(data.spawn) + Vector2(-13 * 128, 0)
 			level.world.load_area(World.cell_of(player.global_position), 2)
@@ -177,6 +192,10 @@ func _apply_scenario() -> void:
 			offset += 260.0
 	if _args.has("boss"):
 		level.boss = level.spawn_enemy(_args.boss, player.global_position + Vector2(700, -80))
+	if _args.has("wear"):
+		for id in _args.wear.split(","):
+			player.relics.append(id)
+		player.relics_changed.emit()
 	if _args.has("give"):
 		for id in _args.give.split(","):
 			player.inventory.add(id, 20)
@@ -272,6 +291,8 @@ func _run_scenario() -> void:
 			_soak()
 		"tutorial":
 			_tutorial_bot()
+		"flare":
+			input.flare_pressed = _frames == 30
 		"dodge":
 			input.move = 1.0 if _frames > 15 else 0.0
 			input.dodge_pressed = _frames == 24

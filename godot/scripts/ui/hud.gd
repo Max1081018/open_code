@@ -4,6 +4,7 @@ extends CanvasLayer
 
 var level: Level
 var minimap: Minimap
+var _relic_row: HBoxContainer
 
 ## Read by main.gd and TouchControls.
 var touch_active := false
@@ -185,6 +186,13 @@ func _build_vitals() -> void:
 	_glow_bar.draw.connect(_draw_glow_bar)
 	glow_row.add_child(_glow_bar)
 
+	# Relics worn, as a row of small medallions under the glow bar.
+	_relic_row = HBoxContainer.new()
+	_relic_row.add_theme_constant_override("separation", 6)
+	box.add_child(_relic_row)
+	level.player.relics_changed.connect(_refresh_relics)
+	_refresh_relics.call_deferred()
+
 	_place_label = Label.new()
 	_place_label.add_theme_font_override("font", UITheme.title_font())
 	_place_label.add_theme_font_size_override("font_size", 30)
@@ -192,6 +200,19 @@ func _build_vitals() -> void:
 	_place_label.add_theme_color_override("font_outline_color", Color(0.05, 0.05, 0.1, 0.8))
 	_place_label.add_theme_constant_override("outline_size", 10)
 	box.add_child(_place_label)
+
+
+func _refresh_relics() -> void:
+	for child in _relic_row.get_children():
+		child.queue_free()
+	for id in level.player.relics:
+		var icon := TextureRect.new()
+		icon.texture = Items.icon(id)
+		icon.custom_minimum_size = Vector2(54, 54)
+		icon.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+		icon.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+		icon.tooltip_text = Items.item_name(id)
+		_relic_row.add_child(icon)
 
 
 func _refresh_hearts() -> void:

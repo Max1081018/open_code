@@ -4,7 +4,7 @@ extends Node
 ## Items are plain dictionaries keyed by a string id, so save files store
 ## readable names rather than indices that shift when the table changes.
 
-enum Kind { BLOCK, ORE, MATERIAL, PICKAXE, AXE, SWORD, PLACEABLE, CONSUMABLE, KEY, SHIELD, HAMMER }
+enum Kind { BLOCK, ORE, MATERIAL, PICKAXE, AXE, SWORD, PLACEABLE, CONSUMABLE, KEY, SHIELD, HAMMER, RELIC }
 
 enum Station { HAND, WORKBENCH, ANVIL, CAMPFIRE }
 
@@ -154,7 +154,33 @@ var defs := {
 	# --- Keys -----------------------------------------------------------------
 	"vault_key": {"name": "Vault Key", "icon": "props/key_yellow", "kind": Kind.KEY, "stack": 1,
 		"desc": "Opens the sealed vault at the bottom of the ruins."},
+
+	# --- Treasure ---------------------------------------------------------------
+	"gold_coin": {"name": "Old Coin", "icon": "props/coin_gold", "kind": Kind.MATERIAL, "stack": 999,
+		"desc": "Struck by people who lived here before the dark. Someone will still trade for them."},
+
+	# --- Relics: found, never made. Worn in three relic slots. -----------------
+	"relic_featherbone": {"name": "Featherbone Charm", "icon": "items/relic_featherbone", "kind": Kind.RELIC,
+		"stack": 1, "desc": "Light as a wing. You can jump again in the air."},
+	"relic_ember_heart": {"name": "Ember Heart", "icon": "items/relic_ember_heart", "kind": Kind.RELIC,
+		"stack": 1, "desc": "Still warm. Your blows set the dead alight."},
+	"relic_deepsong": {"name": "Deepsong Shell", "icon": "items/relic_deepsong", "kind": Kind.RELIC,
+		"stack": 1, "desc": "Hold it to your ear and the rock hums back. Ore nearby glimmers through stone."},
+	"relic_moth_lantern": {"name": "Moth Lantern", "icon": "items/relic_moth_lantern", "kind": Kind.RELIC,
+		"stack": 1, "desc": "Moths gather in the dark and feed your flame. Glow slowly returns while all is black."},
+	"relic_bulwark": {"name": "Bulwark Sigil", "icon": "items/relic_bulwark", "kind": Kind.RELIC,
+		"stack": 1, "desc": "A Lightwarden's mark. You take a quarter less harm."},
+	"relic_swiftroot": {"name": "Swiftroot Anklet", "icon": "items/relic_swiftroot", "kind": Kind.RELIC,
+		"stack": 1, "desc": "Woven from roots that never stop growing. You move faster."},
+	"relic_seers_eye": {"name": "Seer's Eye", "icon": "items/relic_seers_eye", "kind": Kind.RELIC,
+		"stack": 1, "desc": "Light-runes show themselves to you without a flare, and you remember more of where you have been."},
+	"relic_luckstone": {"name": "Luckstone", "icon": "items/relic_luckstone", "kind": Kind.RELIC,
+		"stack": 1, "desc": "Chests hold one more find, and rare things fall twice as often."},
 }
+
+## Every relic, in the order the world hands them out.
+const RELICS := ["relic_featherbone", "relic_ember_heart", "relic_deepsong", "relic_moth_lantern",
+	"relic_bulwark", "relic_swiftroot", "relic_seers_eye", "relic_luckstone"]
 
 ## [result, count, station, {ingredient: count}]
 var recipes := [
@@ -273,7 +299,9 @@ func drop_for_ore(ore: int) -> String:
 const RARITY_NAMES := ["Common", "Uncommon", "Rare", "Epic", "Legendary"]
 const RARITY_COLORS := [Color(0.78, 0.76, 0.72), Color(0.45, 0.85, 0.45), Color(0.40, 0.70, 1.0),
 	Color(0.78, 0.50, 1.0), Color(1.0, 0.78, 0.25)]
-const SPECIAL := {"lumen_core": 4, "heart_crystal": 3, "vault_key": 3, "lumen_pickaxe": 4,
+const SPECIAL := {"relic_featherbone": 3, "relic_ember_heart": 3, "relic_deepsong": 3,
+	"relic_moth_lantern": 3, "relic_bulwark": 3, "relic_swiftroot": 3, "relic_seers_eye": 3,
+	"relic_luckstone": 3, "lumen_core": 4, "heart_crystal": 3, "vault_key": 3, "lumen_pickaxe": 4,
 	"lumen_sword": 4, "wardstone": 2, "glow_flask": 1, "ruby": 2, "emerald": 2}
 
 

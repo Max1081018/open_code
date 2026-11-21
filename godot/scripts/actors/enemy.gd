@@ -244,6 +244,39 @@ func _own_light() -> Array:
 	return [[(global_position - Vector2(0, 80 * s)) / TILE, 3.0 * s, spec.light * 0.8]]
 
 
+## The risen dead: what light hurts and the Flare burns.
+func is_undead() -> bool:
+	return kind in ["zombie", "robot", "shade", "warden", "gloam"]
+
+
+var _burning := 0.0
+var _burn_tick := 0.0
+
+
+## Set alight (the Ember Heart): a few seconds of fire.
+func ignite(seconds := 3.0) -> void:
+	if _dead:
+		return
+	if _burning <= 0.0:
+		var fire := Effects.fire(Vector2(0, -80 * float(spec.scale)))
+		fire.name = "Burning"
+		add_child(fire)
+	_burning = maxf(_burning, seconds)
+
+
+func _update_burning(delta: float) -> void:
+	if _burning <= 0.0:
+		return
+	_burning -= delta
+	_burn_tick -= delta
+	if _burn_tick <= 0.0:
+		_burn_tick = 0.5
+		take_hit(4.0, global_position + Vector2(0, -10), false, true)
+		Effects.float_text(level.fx_layer, global_position + Vector2(0, -160 * float(spec.scale)), "4", Color(1.0, 0.6, 0.25), 36)
+	if _burning <= 0.0 and has_node("Burning"):
+		get_node("Burning").queue_free()
+
+
 func is_alive() -> bool:
 	return not _dead
 
@@ -257,6 +290,7 @@ func _physics_process(delta: float) -> void:
 		return
 	_attack_timer -= delta
 	_hurt_timer -= delta
+	_update_burning(delta)
 	var to_player := player.global_position - global_position
 	var near := to_player.length() < 14.0 * TILE and not player.is_dead()
 	if absf(to_player.x) > 20:
@@ -522,7 +556,8 @@ func _die() -> void:
 	Effects.burst(level.fx_layer, global_position + Vector2(0, -60 * s), "smoke",
 		spec.get("tint", Color(0.9, 0.9, 0.9)))
 	for drop in spec.loot:
-		if randf() < drop[1]:
+		var chance: float = drop[1] * (2.0 if player and player.has_relic("relic_luckstone") else 1.0)
+		if randf() < chance:
 			level.spawn_drop(drop[0], max(1, randi_range(1, drop[2])), global_position + Vector2(0, -80))
 	died_at.emit(global_position)
 	if _toon:

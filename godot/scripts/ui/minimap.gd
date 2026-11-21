@@ -99,7 +99,8 @@ func _process(delta: float) -> void:
 	if _timer <= 0.0:
 		_timer = 0.25
 		var at := World.cell_of(level.player.global_position + Vector2(0, -60))
-		if reveal(level.data, at.x, at.y, REVEAL_RADIUS, _image) > 0:
+		var radius := REVEAL_RADIUS * (2 if level.player.has_relic("relic_seers_eye") else 1)
+		if reveal(level.data, at.x, at.y, radius, _image) > 0:
 			_dirty = true
 	_upload_timer -= delta
 	if _dirty and _upload_timer <= 0.0:

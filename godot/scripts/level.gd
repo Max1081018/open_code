@@ -17,6 +17,7 @@ var camera: Camera2D
 var foreground: Foreground
 var quests: Quests
 var guide: QuestGuide
+var runes: RuneLayer
 var _saved_quests := {}
 var collision_debug: CollisionDebug
 var atmosphere: Atmosphere
@@ -117,6 +118,9 @@ func start(seed_value: int, saved := {}) -> void:
 	guide = QuestGuide.new()
 	world.add_child(guide)
 	guide.setup(self)
+	runes = RuneLayer.new()
+	world.add_child(runes)
+	runes.setup(self)
 	Sfx.play_music("explore")
 
 
@@ -338,6 +342,128 @@ func interact_with(cell: Vector2i, object: Dictionary) -> void:
 		"altar", "geode":
 			if hud and hud.has_method("summon_at_altar"):
 				hud.summon_at_altar(cell)
+		"brazier":
+			if object.get("lit", false):
+				return
+			if player.held_id() == "torch":
+				light_brazier(cell)
+			else:
+				Game.toast("Cold iron. It wants a flame: a torch, or your lantern's flare")
+		"relic_chest":
+			open_relic_chest(cell, object)
+
+
+# =============================================================================
+# Sealed vaults, relic chests and the flare
+# =============================================================================
+
+## How close a flare must be to catch a brazier, in tiles.
+const FLARE_LIGHTS := 3.5
+
+
+func light_brazier(cell: Vector2i) -> void:
+	var object := world.object_at(cell)
+	if object.get("type", "") != "brazier" or object.get("lit", false):
+		return
+	object["lit"] = true
+	world.remove_object(cell)
+	world.add_object(cell, object)
+	var at := World.centre_of(cell) + Vector2(0, -60)
+	Effects.burst(fx_layer, at, "glow", Color(1.0, 0.7, 0.35))
+	Effects.burst(fx_layer, at, "smoke", Color(0.9, 0.7, 0.5))
+	Sfx.play("craft", -4.0, 0.05, 0.8)
+	_check_vault(int(object.get("vault", -1)))
+
+
+## A vault opens when every one of its braziers burns.
+func _check_vault(index: int) -> void:
+	if index < 0 or index >= data.vaults.size():
+		return
+	var vault: Dictionary = data.vaults[index]
+	if vault.get("open", false):
+		return
+	var lit := 0
+	for cell in vault.braziers:
+		if world.object_at(cell).get("lit", false):
+			lit += 1
+	if lit < (vault.braziers as Array).size():
+		Game.toast("%d of %d braziers burn" % [lit, (vault.braziers as Array).size()])
+		return
+	vault["open"] = true
+	for cell in vault.door:
+		world.set_block(cell, WorldData.AIR)
+		Effects.burst(fx_layer, World.centre_of(cell), "break", Color(0.55, 0.5, 0.62))
+		Effects.burst(fx_layer, World.centre_of(cell), "glow", Color(1.0, 0.85, 0.5))
+	shake(10.0)
+	Sfx.play("tree_fall", -2.0, 0.05, 0.6)
+	Sfx.play("break", 0.0, 0.05, 0.7)
+	Game.toast("The rune-door grinds open")
+
+
+func open_relic_chest(cell: Vector2i, object: Dictionary) -> void:
+	if object.get("opened", false):
+		return
+	var index := int(object.get("vault", -1))
+	if index >= 0 and index < data.vaults.size() and not data.vaults[index].get("open", false):
+		Game.toast("Sealed. The braziers outside must all burn")
+		return
+	object["opened"] = true
+	var loot: Array = object.get("loot", [])
+	if player.has_relic("relic_luckstone"):
+		loot = loot + [{"id": "gold_coin", "count": 10}]
+	object["loot"] = []
+	world.remove_object(cell)
+	world.add_object(cell, object)
+	# The lid flies, and the treasure spills out in a fountain.
+	var at := World.centre_of(cell) + Vector2(0, -40)
+	Effects.burst(fx_layer, at, "glow", Color(1.0, 0.85, 0.4))
+	Effects.burst(fx_layer, at, "heal", Color(1.0, 0.9, 0.5))
+	Sfx.play("chest", 0.0)
+	Sfx.play("pickup", -2.0, 0.02, 0.8)
+	shake(5.0)
+	for stack in loot:
+		spawn_drop(stack.id, int(stack.count), at + Vector2(randf_range(-30, 30), -40))
+		if Items.kind(stack.id) == Items.Kind.RELIC:
+			Game.toast("A relic: %s" % Items.item_name(stack.id), Items.icon(stack.id))
+
+
+## The flare: a ring of light rolling out, braziers catching, runes waking.
+func on_flare(centre: Vector2) -> void:
+	var here := World.cell_of(centre)
+	var reach := int(ceil(FLARE_LIGHTS))
+	for dy in range(-reach, reach + 1):
+		for dx in range(-reach, reach + 1):
+			var cell := here + Vector2i(dx, dy)
+			if Vector2(dx, dy).length() > FLARE_LIGHTS:
+				continue
+			if world.object_at(cell).get("type", "") == "brazier":
+				light_brazier(cell)
+	if runes and runes.flare(centre, Player.FLARE_REACH * 1.4) > 0:
+		Game.toast("Something in the rock answers the light")
+
+
+func flare_ring(centre: Vector2, radius: float) -> void:
+	# The ring's radius is animated through its points: scaling a Line2D
+	# would scale its width too.
+	var ring := Line2D.new()
+	ring.width = 22.0
+	ring.default_color = Color(1.0, 0.9, 0.6, 0.85)
+	ring.material = Effects.additive()
+	ring.position = centre
+	ring.z_as_relative = false
+	ring.z_index = 60
+	fx_layer.add_child(ring)
+	var grow := func(r: float) -> void:
+		var points := PackedVector2Array()
+		for i in 49:
+			points.append(Vector2.from_angle(TAU * i / 48.0) * r)
+		ring.points = points
+	grow.call(20.0)
+	var tween := ring.create_tween().set_parallel()
+	tween.tween_method(grow, 20.0, radius, 0.45).set_ease(Tween.EASE_OUT).set_trans(Tween.TRANS_CUBIC)
+	tween.tween_property(ring, "modulate:a", 0.0, 0.45).set_ease(Tween.EASE_IN)
+	tween.tween_property(ring, "width", 4.0, 0.45)
+	tween.chain().tween_callback(ring.queue_free)
 
 
 func spawn_enemy(kind: String, at: Vector2) -> Enemy:

@@ -42,6 +42,14 @@ var hotbar_index := 0
 var max_health := 100.0
 var health := 100.0
 var lantern_tier := 0
+## Relics worn (item ids), at most RELIC_SLOTS.
+var relics: Array[String] = []
+const RELIC_SLOTS := 3
+const FLARE_COST := 25.0
+const FLARE_REACH := 6.5 * 128.0
+var _flare_cooldown := 0.0
+var _air_jumps := 0
+signal relics_changed
 var glow := 100.0
 var dark_time := 0.0
 var spawn_point := Vector2.ZERO
@@ -135,6 +143,9 @@ func _physics_process(delta: float) -> void:
 	_invulnerable = maxf(_invulnerable - delta, 0.0)
 	_use_cooldown = maxf(_use_cooldown - delta, 0.0)
 	_anim_lock = maxf(_anim_lock - delta, 0.0)
+	_flare_cooldown = maxf(_flare_cooldown - delta, 0.0)
+	if input.flare_pressed:
+		flare()
 
 	if input.hotbar_select >= 0:
 		select_hotbar(input.hotbar_select)
@@ -156,7 +167,8 @@ func _move(delta: float) -> void:
 	var in_water := world.data.get_liquid(cell.x, cell.y) == WorldData.WATER
 	var in_lava := world.data.get_liquid(cell.x, cell.y) == WorldData.LAVA
 	var gravity := GRAVITY * (0.32 if in_water else 1.0)
-	var top_speed := RUN_SPEED * (0.55 if in_water else 1.0) * (0.45 if rig.blocking else 1.0)
+	var top_speed := RUN_SPEED * (0.55 if in_water else 1.0) * (0.45 if rig.blocking else 1.0) \
+		* (1.18 if has_relic("relic_swiftroot") else 1.0)
 
 	var target := input.move * top_speed
 	var accel := ACCEL if is_on_floor() else AIR_ACCEL
@@ -169,6 +181,7 @@ func _move(delta: float) -> void:
 
 	if is_on_floor():
 		_coyote = COYOTE
+		_air_jumps = 1 if has_relic("relic_featherbone") else 0
 	else:
 		_coyote -= delta
 	if input.jump_pressed:
@@ -182,6 +195,14 @@ func _move(delta: float) -> void:
 		_coyote = 0.0
 		Sfx.play("jump", -6.0)
 		_squash(Vector2(0.86, 1.14))
+	elif input.jump_pressed and _air_jumps > 0 and not in_water and _coyote <= 0.0:
+		# The Featherbone Charm: a second leap from thin air.
+		_air_jumps -= 1
+		_buffer = 0.0
+		velocity.y = -JUMP_SPEED * 0.88
+		Sfx.play("jump", -4.0, 0.05, 1.25)
+		Effects.burst(level.fx_layer, global_position + Vector2(0, -20), "smoke", Color(0.85, 0.92, 1.0))
+		_squash(Vector2(0.8, 1.2))
 	if not input.jump_held and velocity.y < 0.0 and not in_water:
 		velocity.y *= JUMP_CUT if velocity.y < -JUMP_SPEED * 0.35 else 1.0
 
@@ -375,6 +396,10 @@ func _use_items(delta: float) -> void:
 		Items.Kind.CONSUMABLE:
 			if _use_cooldown <= 0.0:
 				consume(hotbar_index)
+				_use_cooldown = 0.5
+		Items.Kind.RELIC:
+			if _use_cooldown <= 0.0:
+				wear_relic(hotbar_index)
 				_use_cooldown = 0.5
 		_:
 			# Pickaxes, axes and bare hands all dig.
@@ -946,6 +971,8 @@ func _slash_hit() -> void:
 		if in_swing_reach(enemy.body_rect()):
 			var crit := randf() < 0.1
 			enemy.take_hit(damage * (1.8 if crit else 1.0), global_position, crit)
+			if has_relic("relic_ember_heart"):
+				enemy.ignite(3.0)
 			landed = true
 			if crit:
 				level.hit_stop(0.09)
@@ -957,6 +984,8 @@ func _slash_hit() -> void:
 func hurt(amount: float, from: Vector2, knock := true) -> void:
 	if _dead or (_invulnerable > 0.0 and knock):
 		return
+	if has_relic("relic_bulwark"):
+		amount *= 0.75
 	# A raised shield takes a blow from the front.
 	if rig.blocking and knock and signf(from.x - global_position.x) == float(facing):
 		var shield_id := inventory.best_of_kind(Items.Kind.SHIELD)
@@ -1081,6 +1110,8 @@ func _update_lantern(delta: float) -> void:
 			pressure = maxf(3.2 - lantern_tier * 0.9, 1.0)
 		change -= GLOW_DRAIN * pressure
 
+	if has_relic("relic_moth_lantern") and underground and world.brightness_at(global_position - Vector2(0, 100)) < 0.3:
+		change += GLOW_DRAIN * 1.6  # moths feed the flame in the black
 	var before := glow
 	glow = clampf(glow + change * delta, 0.0, max_glow())
 	if int(glow) != int(before):
@@ -1118,7 +1149,7 @@ func _interact() -> void:
 			var c := cell + Vector2i(dx, dy)
 			var o := world.object_at(c)
 			if o.is_empty() or not (o.type in ["chest", "workbench", "anvil", "campfire", "sign",
-					"altar", "wardstone", "torch", "geode"]):
+					"altar", "wardstone", "torch", "geode", "brazier", "relic_chest"]):
 				continue
 			var d := Vector2(dx, dy).length()
 			if d < best:
@@ -1144,6 +1175,78 @@ func nearby_stations() -> Array:
 				"campfire":
 					stations.append(Items.Station.CAMPFIRE)
 	return stations
+
+
+# =============================================================================
+# Relics and the lantern's flare
+# =============================================================================
+
+func has_relic(id: String) -> bool:
+	return id in relics
+
+
+## Put on the relic in this inventory slot, if a relic slot is free.
+func wear_relic(index: int) -> bool:
+	var stack = inventory.get_slot(index)
+	if stack == null or Items.kind(stack.id) != Items.Kind.RELIC:
+		return false
+	if relics.size() >= RELIC_SLOTS:
+		Game.toast("Your relic slots are full: take one off first")
+		return false
+	if has_relic(stack.id):
+		return false
+	relics.append(stack.id)
+	inventory.remove_at(index, 1)
+	Sfx.play("craft", -4.0, 0.05, 1.3)
+	Effects.burst(level.fx_layer, global_position + Vector2(0, -120), "glow", Items.RARITY_COLORS[3])
+	Game.toast("%s — worn" % Items.item_name(stack.id), Items.icon(stack.id))
+	relics_changed.emit()
+	return true
+
+
+## Take a relic off, back into the pack.
+func remove_relic(id: String) -> bool:
+	if not has_relic(id) or not inventory.can_fit(id, 1):
+		return false
+	relics.erase(id)
+	inventory.add(id, 1)
+	relics_changed.emit()
+	return true
+
+
+## The Flare: the lantern blazes for a moment. The dead burn and reel, the
+## living flinch away, cold braziers close by catch, and light-runes in
+## the rock answer. Costs glow, so it is a choice, not a reflex.
+func flare() -> bool:
+	if _flare_cooldown > 0.0 or _dead:
+		return false
+	if glow < FLARE_COST:
+		Game.toast("Not enough light to flare")
+		return false
+	glow -= FLARE_COST
+	glow_changed.emit(glow, max_glow())
+	_flare_cooldown = 1.2
+	_anim_lock = 0.35
+	body.play("cast")
+	body.speed_scale = body.clip_length("cast") / 0.5
+	var centre := global_position + Vector2(0, -110)
+	Effects.burst(level.fx_layer, centre, "glow", Color(1.0, 0.9, 0.6))
+	Effects.burst(level.fx_layer, centre, "heal", Color(1.0, 0.85, 0.5))
+	level.flare_ring(centre, FLARE_REACH)
+	Sfx.play("thunder_far", -10.0, 0.05, 1.8)
+	Sfx.play("craft", -2.0, 0.05, 1.6)
+	level.shake(4.0)
+	for enemy in get_tree().get_nodes_in_group("enemies"):
+		if not enemy.is_alive():
+			continue
+		var d: float = enemy.global_position.distance_to(global_position)
+		if d > FLARE_REACH:
+			continue
+		if enemy.is_undead():
+			enemy.take_hit(28.0 + (30.0 if enemy.kind == "shade" else 0.0), global_position)
+		enemy.velocity = Vector2(signf(enemy.global_position.x - global_position.x) * 900.0, -420.0)
+	level.on_flare(centre)
+	return true
 
 
 # =============================================================================
@@ -1177,6 +1280,7 @@ func to_dict() -> Dictionary:
 		"hotbar": hotbar_index,
 		"spawn": spawn_point,
 		"facing": facing,
+		"relics": relics.duplicate(),
 	}
 
 
@@ -1187,6 +1291,9 @@ func from_dict(state: Dictionary) -> void:
 	lantern_tier = state.get("lantern_tier", 0)
 	glow = state.get("glow", max_glow())
 	inventory.from_array(state.get("inventory", []))
+	relics.clear()
+	for id in state.get("relics", []):
+		relics.append(String(id))
 	hotbar_index = state.get("hotbar", 0)
 	spawn_point = state.get("spawn", global_position)
 	facing = state.get("facing", 1)
