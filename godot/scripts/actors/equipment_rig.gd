@@ -151,6 +151,8 @@ func hold(id: String) -> void:
 		_two_handed = kind != Items.Kind.HAMMER
 	elif kind == Items.Kind.SWORD:
 		_set_main(Items.icon(id), _icon_key(id), "sword")
+	elif kind == Items.Kind.ROD:
+		_set_main(Items.icon(id), "", "tool")
 	elif kind in [Items.Kind.BLOCK, Items.Kind.PLACEABLE]:
 		# Blocks and placeables are carried flat in the palm.
 		_set_main(Items.icon(id), "", "block")

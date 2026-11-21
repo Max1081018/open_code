@@ -4,7 +4,7 @@ extends Node
 ## Items are plain dictionaries keyed by a string id, so save files store
 ## readable names rather than indices that shift when the table changes.
 
-enum Kind { BLOCK, ORE, MATERIAL, PICKAXE, AXE, SWORD, PLACEABLE, CONSUMABLE, KEY, SHIELD, HAMMER, RELIC }
+enum Kind { BLOCK, ORE, MATERIAL, PICKAXE, AXE, SWORD, PLACEABLE, CONSUMABLE, KEY, SHIELD, HAMMER, RELIC, ROD }
 
 enum Station { HAND, WORKBENCH, ANVIL, CAMPFIRE }
 
@@ -155,6 +155,16 @@ var defs := {
 	"vault_key": {"name": "Vault Key", "icon": "props/key_yellow", "kind": Kind.KEY, "stack": 1,
 		"desc": "Opens the sealed vault at the bottom of the ruins."},
 
+	# --- Fishing ------------------------------------------------------------------
+	"fishing_rod": {"name": "Fishing Rod", "icon": "items/fishingPole", "kind": Kind.ROD, "stack": 1,
+		"desc": "Cast at water, wait for the bobber to dip, and tap to strike."},
+	"glowfin": {"name": "Glowfin", "icon": "items/glowfin", "kind": Kind.MATERIAL, "stack": 99,
+		"desc": "A pale fish from the dark water under the hills. It shines from inside."},
+	"pearl": {"name": "Pearl", "icon": "items/shell", "kind": Kind.MATERIAL, "stack": 99,
+		"desc": "From a clam on a fishing line. Tobin's customers would pay for it."},
+	"glowfin_skewer": {"name": "Glowfin Skewer", "icon": "items/glowfin_skewer", "kind": Kind.CONSUMABLE,
+		"stack": 20, "glow": 45.0, "heal": 15, "desc": "Eat the light: restores your lantern and a little health."},
+
 	# --- Treasure ---------------------------------------------------------------
 	"gold_coin": {"name": "Old Coin", "icon": "props/coin_gold", "kind": Kind.MATERIAL, "stack": 999,
 		"desc": "Struck by people who lived here before the dark. Someone will still trade for them."},
@@ -222,6 +232,8 @@ var recipes := [
 
 	["cooked_meat", 1, Station.CAMPFIRE, {"raw_meat": 1}],
 	["cooked_fish", 1, Station.CAMPFIRE, {"fish": 1}],
+	["glowfin_skewer", 1, Station.CAMPFIRE, {"glowfin": 1}],
+	["fishing_rod", 1, Station.WORKBENCH, {"wood": 8}],
 	["stew", 1, Station.CAMPFIRE, {"raw_meat": 2, "fish": 1, "apple": 1}],
 ]
 

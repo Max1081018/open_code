@@ -20,6 +20,7 @@ extends Node
 ##   ["vault", count]         sealed vaults opened
 ##   ["wear", count]          relics put on
 ##   ["cache", count]         hidden caches found
+##   ["fish", item, count]    this many of an item landed on a fishing line
 
 signal changed
 signal completed(quest_id: String)
@@ -108,7 +109,7 @@ const DEFS := {
 		"done": ["mira_meal_done"],
 		"take": {"cooked_meat": 2},
 		"reward": {"stew": 3},
-		"next": [],
+		"next": ["light_from_the_deep"],
 	},
 	"tools_of_the_trade": {
 		"title": "Tools of the Trade", "giver": "tobin", "main": false,
@@ -145,6 +146,19 @@ const DEFS := {
 		],
 		"done": ["aldous_marks_done"],
 		"reward": {"heart_crystal": 1, "gold_coin": 20},
+		"next": [],
+	},
+	"light_from_the_deep": {
+		"title": "Light from the Deep Water", "giver": "mira", "main": false,
+		"offer": ["mira_fish_offer"],
+		"steps": [
+			{"goal": ["craft", "fishing_rod", 1], "text": "Make a fishing rod at the workbench"},
+			{"goal": ["fish", "fish", 3], "text": "Catch three fish"},
+			{"goal": ["fish", "glowfin", 1], "text": "Catch a glowfin in the dark water underground"},
+			{"goal": ["talk", "mira"], "text": "Bring news to Mira"},
+		],
+		"done": ["mira_fish_done"],
+		"reward": {"glowfin_skewer": 3, "pearl": 2, "gold_coin": 15},
 		"next": [],
 	},
 	"glowcaps": {
@@ -256,7 +270,7 @@ func _needed(goal: Array) -> int:
 	match goal[0]:
 		"fell", "build", "hammer", "vault", "wear", "cache":
 			return int(goal[1])
-		"have", "craft", "break":
+		"have", "craft", "break", "fish":
 			return int(goal[2])
 	return 1
 

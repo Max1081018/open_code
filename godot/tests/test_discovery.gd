@@ -148,3 +148,37 @@ func test_the_dark_tide_raises_the_dead_except_by_the_light() -> void:
 	director.end_tide()
 	check(not director.tide and p.glow == p.max_glow(), "dawn ends it and fills the lantern")
 	level.free()
+
+
+func test_fishing_casts_waits_for_a_bite_and_lands_a_catch() -> void:
+	var level := _make_level()
+	var p := level.player
+	p.inventory.slots[0] = {"id": "fishing_rod", "count": 1}
+	p.hotbar_index = 0
+	p._refresh_held()
+	var cell := World.cell_of(p.global_position) + Vector2i(2, 0)
+	level.data.set_tile(cell.x, cell.y, WorldData.AIR)
+	level.data.liquids[level.data.idx(cell.x, cell.y)] = WorldData.WATER
+	p.fish_at(cell)
+	check(not p._fishing.is_empty(), "the line is in the water")
+	# Striking too soon reels in with nothing.
+	p.fish_at(cell)
+	check(p._fishing.is_empty(), "too soon: reeled in empty")
+	p.fish_at(cell)
+	p._fishing.wait = 0.0
+	p._update_fishing(0.016)
+	check(p._fishing.bite > 0.0, "a bite: the bobber dips")
+	var before := level.drop_layer.get_child_count()
+	p.fish_at(cell)
+	check(p._fishing.is_empty() and level.drop_layer.get_child_count() > before, "struck in time: a catch")
+	# Deep water is where glowfin live.
+	var deep_glowfin := 0.0
+	var shallow_glowfin := 0.0
+	for entry in p._catch_table(true):
+		if entry[0] == "glowfin":
+			deep_glowfin = entry[1]
+	for entry in p._catch_table(false):
+		if entry[0] == "glowfin":
+			shallow_glowfin = entry[1]
+	check(deep_glowfin > shallow_glowfin * 5.0, "glowfin are a deep-water catch")
+	level.free()

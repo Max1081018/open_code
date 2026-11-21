@@ -144,6 +144,7 @@ func _physics_process(delta: float) -> void:
 	_use_cooldown = maxf(_use_cooldown - delta, 0.0)
 	_anim_lock = maxf(_anim_lock - delta, 0.0)
 	_flare_cooldown = maxf(_flare_cooldown - delta, 0.0)
+	_update_fishing(delta)
 	if input.flare_pressed:
 		flare()
 
@@ -401,6 +402,10 @@ func _use_items(delta: float) -> void:
 			if _use_cooldown <= 0.0:
 				wear_relic(hotbar_index)
 				_use_cooldown = 0.5
+		Items.Kind.ROD:
+			if _use_cooldown <= 0.0:
+				_use_cooldown = 0.35
+				fish_at(target)
 		_:
 			# Pickaxes, axes and bare hands all dig.
 			_dig(target, delta)
@@ -1175,6 +1180,115 @@ func nearby_stations() -> Array:
 				"campfire":
 					stations.append(Items.Station.CAMPFIRE)
 	return stations
+
+
+# =============================================================================
+# Fishing
+# =============================================================================
+
+## The line in the water: {"bobber": Node2D, "line": Line2D, "wait": s, "bite": s}.
+var _fishing := {}
+const BITE_WINDOW := 0.9
+
+
+## Tap at water with a rod: cast. Tap while a fish bites: strike.
+func fish_at(cell: Vector2i) -> void:
+	if not _fishing.is_empty():
+		if _fishing.bite > 0.0:
+			_land_catch()
+		else:
+			Game.toast("Too soon. Wait for the bobber to dip")
+			reel_in()
+		return
+	# Find the water's surface in this column, at or below the tap.
+	var y := cell.y
+	while y < cell.y + 4 and world.data.get_liquid(cell.x, y) != WorldData.WATER:
+		y += 1
+	if world.data.get_liquid(cell.x, y) != WorldData.WATER:
+		Game.toast("Cast into water")
+		return
+	while world.data.get_liquid(cell.x, y - 1) == WorldData.WATER:
+		y -= 1
+	var bobber := Node2D.new()
+	var float_sprite := Sprite2D.new()
+	float_sprite.texture = load("res://assets/fx/circle_05.png")
+	float_sprite.scale = Vector2(0.09, 0.09)
+	float_sprite.modulate = Color(1.0, 0.35, 0.3)
+	bobber.add_child(float_sprite)
+	bobber.position = Vector2(cell.x * TILE + TILE * 0.5, y * TILE + 14)
+	bobber.z_index = 30
+	level.fx_layer.add_child(bobber)
+	var line := Line2D.new()
+	line.width = 3.0
+	line.default_color = Color(0.92, 0.92, 0.85, 0.7)
+	line.z_index = 29
+	level.fx_layer.add_child(line)
+	_fishing = {"bobber": bobber, "line": line, "wait": randf_range(2.0, 5.5), "bite": 0.0,
+		"cell": Vector2i(cell.x, y), "deep": y > world.data.surface[clampi(cell.x, 0, world.data.width - 1)] + 25}
+	body.play("throw")
+	body.speed_scale = 1.6
+	_anim_lock = 0.35
+	Effects.burst(level.fx_layer, bobber.position, "splash", Color(0.7, 0.85, 1.0))
+	Sfx.play("swing", -6.0, 0.05, 1.3)
+
+
+func reel_in() -> void:
+	if _fishing.is_empty():
+		return
+	_fishing.bobber.queue_free()
+	_fishing.line.queue_free()
+	_fishing = {}
+
+
+func _update_fishing(delta: float) -> void:
+	if _fishing.is_empty():
+		return
+	var bobber: Node2D = _fishing.bobber
+	if held_id() != "fishing_rod" or bobber.global_position.distance_to(global_position) > 9.0 * TILE:
+		reel_in()
+		return
+	_fishing.line.points = PackedVector2Array([rig.tip_global(), bobber.global_position])
+	if _fishing.bite > 0.0:
+		_fishing.bite -= delta
+		if _fishing.bite <= 0.0:
+			# Missed: it got away. Wait for another.
+			_fishing.wait = randf_range(2.0, 5.0)
+			bobber.position.y -= 18.0
+		return
+	_fishing.wait -= delta
+	bobber.position.y += sin(Time.get_ticks_msec() / 300.0) * 0.3
+	if _fishing.wait <= 0.0:
+		_fishing.bite = BITE_WINDOW
+		bobber.position.y += 18.0
+		Effects.burst(level.fx_layer, bobber.global_position, "splash", Color(0.7, 0.85, 1.0))
+		Sfx.play("pickup", -6.0, 0.02, 0.6)
+
+
+## What the water gives: deep, dark water hides glowfin.
+func _catch_table(deep: bool) -> Array:
+	if deep:
+		return [["glowfin", 0.4], ["fish", 0.38], ["pearl", 0.12], ["gold_coin", 0.1]]
+	return [["fish", 0.82], ["pearl", 0.08], ["gold_coin", 0.06], ["glowfin", 0.04]]
+
+
+func _land_catch() -> void:
+	var roll := randf()
+	var catch_id := "fish"
+	for entry in _catch_table(_fishing.deep):
+		roll -= entry[1]
+		if roll <= 0.0:
+			catch_id = entry[0]
+			break
+	var count := 3 if catch_id == "gold_coin" else 1
+	var from: Vector2 = _fishing.bobber.global_position
+	level.spawn_drop(catch_id, count, from + Vector2(0, -40))
+	Effects.burst(level.fx_layer, from, "splash", Color(0.7, 0.85, 1.0))
+	Sfx.play("pickup", -2.0, 0.02, 1.1)
+	Game.toast("Caught: %s" % Items.item_name(catch_id), Items.icon(catch_id))
+	if level.quests:
+		level.quests.event("fish", catch_id)
+	body.play("interact")
+	reel_in()
 
 
 # =============================================================================

@@ -211,6 +211,14 @@
     "tobin_shop": {
       "speaker": "tobin",
       "text": "Old coins! Haven't seen those since my grandmother's day. I'll take them. Have a look at what I'm carrying."
+    },
+    "mira_fish_offer": {
+      "speaker": "mira",
+      "text": "Have you seen the fish in the water under the hills? Pale as moonlight, and they glow. I'd give a lot to know what they'd do in a stew. Make yourself a rod and try for one."
+    },
+    "mira_fish_done": {
+      "speaker": "mira",
+      "text": "A glowfin! Look at it shine. Here, I've cooked a few of the ones the miners brought me. Eat one when your lantern runs low."
     }
   }
 }
