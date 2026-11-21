@@ -4,9 +4,27 @@ Branch `ccr-60ac94c6-dyqxhw`. Engine: Godot 4.4.1, GL Compatibility renderer, An
 Read **DESIGN.md** first: it sets the game's direction (light as weapon and key, vaults,
 relics, the Dark Tide, regions).
 
-## Where things stand (tests: 108 pass via `tests/run.sh`)
+## Where things stand (tests: 109 pass via `tests/run.sh`)
 
-### Art-direction overhaul (latest)
+### Reference-match pass: downloaded models (latest)
+
+The user supplied reference images (a hooded dark-fantasy hero in a lush painted world) and
+asked for real models close to them. Done through the Sketchfab API (token saved on the
+environment for api.sketchfab.com; CC-BY models, all credited in ASSET_CATALOG.md):
+
+| Change | What it is | How verified |
+|---|---|---|
+| **Cast** | Player = hooded assassin (hood, layered leathers, belts, cloak, bow, boots); Wren/Mira, Bram, Tobin, villager = realistic Fuse people; Aldous = bearded knight in blue plate; dead = dark-fantasy skeleton; guards = knight in plate; Warden = the Cursed Knight. `Settings.player_3d = true` | In-game captures, sword-combo filmstrip, boss capture |
+| Rig pipeline | `tools/retarget_setup.gd` maps Mixamo / Unreal / Character Creator / Biped rigs onto Godot's humanoid profile (import retargeting); `assets/models/heroes/anim/humanoid.res` = UAL clips retargeted, shared by all; `tools/pack_characters.gd` shrinks for phones (player 66 MB -> 1.4 MB scene + VRAM-compressed textures) | `tools/preview_retarget.gd` sheets, tests |
+| **3D items** | Pickaxe, axe, hammer, two swords, torch, fishing rod, two shields from Sketchfab, normalised by `tools/pack_items.gd` (grip at origin, shaft +Y, head +X), tinted by tier; replace the picture cards; enemies of the new cast carry them | `tools/preview_items.gd`, captures, test |
+| **Village and landmarks** | Tavern, houses, lantern posts (glowing) behind the play plane near spawn; castles + waterfall rising from the far forest; abbey ruins and bridge in the tundra backdrop (`tools/render_scenery.gd`) | Captures |
+
+Sources (`assets/models/sf_src`, git-ignored) must be re-downloaded to rebuild: the Sketchfab
+ids are in ASSET_CATALOG.md. Not yet: the Gloam boss (still the Quaternius figure), a second
+woman model for Mira, cave/crystal props from Sketchfab, real-device performance of the
+heavier characters (several have 40-60 texture files; consider atlasing).
+
+### Art-direction overhaul (earlier)
 
 Goal (from the brief): a mature, stylized fantasy look: real proportions, layered clothing,
 PBR materials, warm golden key light over blue shadows, restrained bloom.
