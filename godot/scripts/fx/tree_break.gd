@@ -59,12 +59,12 @@ func _cut(sprite: Sprite2D, tree: Node2D, from_x: float) -> void:
 		Effects.burst(level.fx_layer, at, "leaves", Color(0.5, 0.72, 0.34) if i % 3 else Color(0.78, 0.6, 0.25))
 
 	# The trunk splits into chunks of wood, flung away from the axe.
-	var log_texture: Texture2D = load("res://assets/rendered/resource-wood.png")
+	var log_texture: Texture2D = load("res://assets/rendered/log-chunk.png")
 	var chunks := clampi(_wood_left, 3, 7)
 	for i in chunks:
 		var piece := Sprite2D.new()
 		piece.texture = log_texture
-		var k := randf_range(56.0, 78.0) / float(log_texture.get_width())
+		var k := randf_range(70.0, 104.0) / float(log_texture.get_width())
 		piece.scale = Vector2(k, k)
 		piece.position = foot + Vector2(randf_range(-20, 20), -40.0 - i * (height * 0.35 / chunks))
 		piece.rotation = randf() * TAU
