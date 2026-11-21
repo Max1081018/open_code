@@ -30,6 +30,13 @@ func _ready() -> void:
 			_args[kv[0]] = kv[1] if kv.size() > 1 else ""
 	if _args.has("time"):
 		time_of_day = float(_args.time)
+	# Crisp edges: MSAA on capable settings, FXAA otherwise; full resolution.
+	var vp := get_viewport()
+	vp.scaling_3d_scale = 1.0
+	if Settings.quality >= 2:
+		vp.msaa_3d = Viewport.MSAA_4X
+	else:
+		vp.screen_space_aa = Viewport.SCREEN_SPACE_AA_FXAA
 	_build_environment()
 	world = OpenWorld.new()
 	add_child(world)
@@ -53,6 +60,8 @@ func _ready() -> void:
 	cam.target = player
 	cam.head = player.head_anchor
 	cam.global_position = spawn + Vector3(0, 2, 4)
+	if _args.has("dist"):
+		cam.distance = float(_args.dist)
 	cam.set_view(float(_args.get("yaw", "0")), float(_args.get("pitch", "-0.16")))
 	_build_water()
 	play = Play3D.new()

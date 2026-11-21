@@ -1,0 +1,74 @@
+class_name SecondaryMotion
+extends RefCounted
+## Spring-bone physics for the soft parts of a character: hair, side tails,
+## ribbons, skirt strands, tails, capes and wings swing, lag and settle as the
+## body moves (Godot's SpringBoneSimulator3D, the same idea as VRM spring
+## bones). Chains are found by bone names, so any rig with such bones gets it.
+
+## name fragment -> [stiffness, drag, gravity, radius]
+const KINDS := {
+	"skirt": [2.6, 0.45, 0.6, 0.02],
+	"tail": [0.9, 0.35, 0.5, 0.02],
+	"wing": [3.5, 0.6, 0.15, 0.02],
+	"ribon": [0.8, 0.3, 0.6, 0.01],
+	"ribbon": [0.8, 0.3, 0.6, 0.01],
+	"hair": [1.4, 0.4, 0.35, 0.02],
+	"cape": [1.0, 0.4, 0.8, 0.03],
+	"cloak": [1.0, 0.4, 0.8, 0.03],
+	"coat": [2.0, 0.5, 0.6, 0.03],
+	"bust": [6.0, 0.6, 0.0, 0.0],
+}
+
+
+static func kind_of(bone: String) -> String:
+	var b := bone.to_lower()
+	for k in KINDS:
+		if b.contains(k):
+			return k
+	return ""
+
+
+## Add a simulator for every soft chain under `skeleton`. Returns chain count.
+static func setup(skeleton: Skeleton3D) -> int:
+	var chains := []
+	for i in skeleton.get_bone_count():
+		var kind := kind_of(skeleton.get_bone_name(i))
+		if kind == "":
+			continue
+		var parent := skeleton.get_bone_parent(i)
+		if parent >= 0 and kind_of(skeleton.get_bone_name(parent)) != "":
+			continue  # not the start of a chain
+		# Follow the chain down through soft children to its end.
+		var end := i
+		var length := 1
+		while true:
+			var next := -1
+			for c in skeleton.get_bone_children(end):
+				if kind_of(skeleton.get_bone_name(c)) != "":
+					next = c
+					break
+			if next < 0:
+				break
+			end = next
+			length += 1
+		if length < 2 and kind != "hair":
+			continue
+		chains.append([i, end, kind])
+	if chains.is_empty():
+		return 0
+	var sim := SpringBoneSimulator3D.new()
+	sim.name = "SoftBones"
+	skeleton.add_child(sim)
+	sim.setting_count = chains.size()
+	for n in chains.size():
+		var c: Array = chains[n]
+		var p: Array = KINDS[c[2]]
+		sim.set_root_bone(n, c[0])
+		sim.set_end_bone(n, c[1])
+		sim.set_extend_end_bone(n, true)
+		sim.set_end_bone_length(n, 0.05)
+		sim.set_stiffness(n, p[0])
+		sim.set_drag(n, p[1])
+		sim.set_gravity(n, p[2])
+		sim.set_radius(n, p[3])
+	return chains.size()

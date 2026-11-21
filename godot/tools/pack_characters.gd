@@ -63,6 +63,9 @@ func _pack(role: String, id: String) -> void:
 						image.decompress()
 					before += image.get_width() * image.get_height()
 					var limit: int = slot[1]
+					# The heroine is close to the camera all game: full detail.
+					if role == "player":
+						limit *= 4
 					var big := maxi(image.get_width(), image.get_height())
 					if big > limit:
 						var k := float(limit) / big

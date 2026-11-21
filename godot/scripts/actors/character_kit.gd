@@ -212,7 +212,56 @@ static func _build_hero(name: String) -> Node3D:
 		_hero_library = load(HERO_ANIMS)
 	player.add_animation_library("", _hero_library)
 	root.set_meta("style", HERO_STYLE.get(name, {}))
+	for mesh in model.find_children("*", "MeshInstance3D", true, false):
+		_toon(mesh as MeshInstance3D)
+	SecondaryMotion.setup(skeleton)
 	return root
+
+
+static var _toon_shader: Shader
+static var _line_shader: Shader
+
+
+## Anime shading on every surface: two-tone light, cool shade, rim light,
+## and an ink outline pass (not on eyes, brows, lashes or mouths).
+static func _toon(mesh: MeshInstance3D) -> void:
+	if _toon_shader == null:
+		_toon_shader = load("res://scripts/shaders/toon_character.gdshader")
+		_line_shader = load("res://scripts/shaders/toon_outline.gdshader")
+	for i in mesh.mesh.get_surface_count():
+		var base := mesh.get_active_material(i) as BaseMaterial3D
+		if base == null:
+			continue
+		var name := (String(base.resource_name) + " " + String(mesh.name)).to_lower()
+		var m := ShaderMaterial.new()
+		m.shader = _toon_shader
+		m.set_shader_parameter("albedo_tex", base.albedo_texture)
+		m.set_shader_parameter("albedo", base.albedo_color)
+		var cut := 0.0
+		if base.transparency != BaseMaterial3D.TRANSPARENCY_DISABLED:
+			cut = 0.5
+		m.set_shader_parameter("alpha_cut", cut)
+		if base.emission_enabled:
+			m.set_shader_parameter("emission_boost", 0.6)
+		var soft_face := false
+		for word in ["eye", "brow", "lash", "mouth", "teeth", "tongue", "highlight", "face", "skin", "body"]:
+			if name.contains(word):
+				soft_face = true
+		if soft_face:
+			# Skin and faces: lighter, warmer shade, less rim.
+			m.set_shader_parameter("shade_color", Color(0.93, 0.8, 0.82))
+			m.set_shader_parameter("rim_strength", 0.15)
+		var skip_line := false
+		for word in ["eye", "brow", "lash", "mouth", "teeth", "tongue", "highlight"]:
+			if name.contains(word):
+				skip_line = true
+		if not skip_line:
+			var line := ShaderMaterial.new()
+			line.shader = _line_shader
+			line.set_shader_parameter("albedo_tex", base.albedo_texture)
+			line.set_shader_parameter("alpha_cut", cut)
+			m.next_pass = line
+		mesh.set_surface_override_material(i, m)
 
 
 static func _transform_to(node: Node3D, ancestor: Node3D) -> Transform3D:

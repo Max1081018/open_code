@@ -44,6 +44,10 @@ var _landing := 0.0
 var _clip := ""
 var invulnerable := false
 var _head_meshes: Array = []
+var _idle_time := 0.0
+var _idle_break := 0.0
+## Little things she does when left standing.
+const IDLE_BREAKS := [["Idle_FoldArms", 3.2, 1.0], ["Yes", 1.8, 1.0], ["Idle_No", 1.8, 1.0], ["Idle_Talking", 3.0, 0.9]]
 
 
 func _ready() -> void:
@@ -63,7 +67,7 @@ func _ready() -> void:
 	add_child(model)
 	anim = model.find_child("AnimationPlayer", true, false)
 	skeleton = model.find_children("*", "Skeleton3D", true, false)[0]
-	for clip in ["Idle", "Walk", "Walk_Formal", "Jog_Fwd", "Sprint", "Swim_Fwd", "Swim_Idle", "Jump", "Sword_Block", "Sword_Idle"]:
+	for clip in ["Idle_FoldArms", "Idle_Talking", "Idle", "Walk", "Walk_Formal", "Jog_Fwd", "Sprint", "Swim_Fwd", "Swim_Idle", "Jump", "Sword_Block", "Sword_Idle"]:
 		if anim.has_animation(clip):
 			anim.get_animation(clip).loop_mode = Animation.LOOP_LINEAR
 	for m in model.find_children("*", "MeshInstance3D", true, false):
@@ -232,8 +236,26 @@ func _spend(amount: float) -> bool:
 
 
 func _animate(speed: float) -> void:
+	var dt := get_physics_process_delta_time()
 	if _action > 0.0 or _dodge > 0.0 or _landing > 0.0:
+		_idle_time = 0.0
+		_idle_break = 0.0
 		return
+	if speed < 0.3 and is_on_floor() and not swimming and not input.block:
+		_idle_time += dt
+		if _idle_break > 0.0:
+			_idle_break -= dt
+			if _idle_break > 0.0:
+				return
+		elif _idle_time > 6.0 and randf() < dt * 0.35:
+			var b: Array = IDLE_BREAKS.pick_random()
+			_idle_break = b[1]
+			_idle_time = 0.0
+			_play(b[0], b[2], true)
+			return
+	else:
+		_idle_time = 0.0
+		_idle_break = 0.0
 	var clip := "Idle"
 	if swimming:
 		clip = "Swim_Fwd" if speed > 0.5 else "Swim_Idle"

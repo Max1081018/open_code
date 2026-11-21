@@ -6,7 +6,7 @@ extends SceneTree
 ## The library GLBs themselves need not ship.
 ## Copy UAL1_Standard.glb and UAL2_Standard.glb into assets/models/quaternius/anim/ to rebuild.
 const SOURCES := ["res://assets/models/quaternius/anim/UAL1_Standard.glb", "res://assets/models/quaternius/anim/UAL2_Standard.glb"]
-const KEEP := ["Idle", "Idle_Talking", "Idle_Torch", "Idle_Lantern", "Idle_FoldArms", "Walk", "Walk_Formal", "Jog_Fwd",
+const KEEP := ["Idle_No", "Sword_Dash", "Sword_Regular_Combo", "NinjaJump_Start", "NinjaJump_Idle", "NinjaJump_Land", "Slide", "Dance", "Spell_Simple_Idle", "Idle", "Idle_Talking", "Idle_Torch", "Idle_Lantern", "Idle_FoldArms", "Walk", "Walk_Formal", "Jog_Fwd",
 	"Sprint", "Jump", "Jump_Start", "Jump_Land", "Roll", "Hit_Chest", "Hit_Head", "Hit_Knockback", "Death01",
 	"Interact", "PickUp_Table", "Chest_Open", "Consume", "Fixing_Kneeling", "Spell_Simple_Shoot", "OverhandThrow",
 	"Swim_Fwd", "Swim_Idle", "Sword_Idle", "Sword_Attack", "Sword_Regular_A", "Sword_Regular_B", "Sword_Regular_C",
