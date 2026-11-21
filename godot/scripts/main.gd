@@ -477,9 +477,19 @@ func _tutorial_bot() -> void:
 				var stack = player.inventory.get_slot(i)
 				if stack != null and Items.kind(stack.id) == Items.Kind.BLOCK:
 					input.hotbar_select = i
-			var cell := World.cell_of(player.global_position) + Vector2i(-2, -int((_frames / 20) % 4))
-			input.use_held = _frames % 8 < 4
-			input.aim = World.centre_of(cell)
+			# Wherever the placement check (the ghost) says a block can go.
+			var block_id := ""
+			var stack = player.inventory.get_slot(player.hotbar_index)
+			if stack != null:
+				block_id = stack.id
+			var here := World.cell_of(player.global_position)
+			for dy in range(-3, 2):
+				for dx in [-2, -3, 2, 3, -1, 1]:
+					var cell := here + Vector2i(dx, dy)
+					if block_id != "" and player.placement_problem(block_id, cell) == "":
+						input.use_held = _frames % 8 < 4
+						input.aim = World.centre_of(cell)
+						return
 		"talk":
 			_bot_walk_to_npc(goal[1])
 
