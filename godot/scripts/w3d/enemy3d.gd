@@ -249,6 +249,7 @@ func _die() -> void:
 
 
 func _play(clip: String, speed := 1.0, restart := false) -> void:
+	speed *= float(model.get_meta("style", {}).get("speed", 1.0))
 	if not anim.has_animation(clip):
 		return
 	if clip == _clip and not restart:

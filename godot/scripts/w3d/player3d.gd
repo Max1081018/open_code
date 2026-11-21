@@ -54,16 +54,16 @@ func _ready() -> void:
 	floor_snap_length = 0.5
 	var shape := CollisionShape3D.new()
 	var capsule := CapsuleShape3D.new()
-	capsule.radius = 0.32
-	capsule.height = 1.75
+	capsule.radius = 0.28
+	capsule.height = 1.56
 	shape.shape = capsule
-	shape.position = Vector3(0, 0.875, 0)
+	shape.position = Vector3(0, 0.78, 0)
 	add_child(shape)
 	model = CharacterKit.build("player")
 	add_child(model)
 	anim = model.find_child("AnimationPlayer", true, false)
 	skeleton = model.find_children("*", "Skeleton3D", true, false)[0]
-	for clip in ["Idle", "Walk", "Jog_Fwd", "Sprint", "Swim_Fwd", "Swim_Idle", "Jump", "Sword_Block", "Sword_Idle"]:
+	for clip in ["Idle", "Walk", "Walk_Formal", "Jog_Fwd", "Sprint", "Swim_Fwd", "Swim_Idle", "Jump", "Sword_Block", "Sword_Idle"]:
 		if anim.has_animation(clip):
 			anim.get_animation(clip).loop_mode = Animation.LOOP_LINEAR
 	for m in model.find_children("*", "MeshInstance3D", true, false):
@@ -256,6 +256,9 @@ func _animate(speed: float) -> void:
 
 
 func _play(clip: String, speed := 1.0, restart := false) -> void:
+	var style: Dictionary = model.get_meta("style", {})
+	clip = style.get("clips", {}).get(clip, clip)
+	speed *= float(style.get("speed", 1.0))
 	if not anim.has_animation(clip):
 		return
 	if clip == _clip and not restart:

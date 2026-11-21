@@ -73,8 +73,8 @@ func _build_environment() -> void:
 	environment = Environment.new()
 	var sky := Sky.new()
 	var sky_mat := ProceduralSkyMaterial.new()
-	sky_mat.sky_top_color = Color(0.22, 0.42, 0.72)
-	sky_mat.sky_horizon_color = Color(0.78, 0.74, 0.66)
+	sky_mat.sky_top_color = Color(0.16, 0.38, 0.86)
+	sky_mat.sky_horizon_color = Color(0.72, 0.84, 0.98)
 	sky_mat.ground_horizon_color = Color(0.5, 0.52, 0.5)
 	sky_mat.ground_bottom_color = Color(0.2, 0.22, 0.2)
 	sky_mat.sun_angle_max = 18.0
@@ -97,7 +97,7 @@ func _build_environment() -> void:
 	environment.fog_aerial_perspective = 0.55
 	environment.fog_sky_affect = 0.15
 	environment.adjustment_enabled = true
-	environment.adjustment_saturation = 1.08
+	environment.adjustment_saturation = 1.18
 	environment.adjustment_contrast = 1.06
 	var we := WorldEnvironment.new()
 	we.environment = environment
@@ -177,8 +177,8 @@ func _update_sun(_delta: float) -> void:
 	environment.ambient_light_energy = lerpf(0.2, 0.55, day)
 	environment.fog_light_color = Color(0.7, 0.74, 0.78).lerp(Color(0.95, 0.66, 0.46), low).lerp(Color(0.08, 0.1, 0.18), 1.0 - day)
 	var sky_mat := environment.sky.sky_material as ProceduralSkyMaterial
-	sky_mat.sky_top_color = Color(0.22, 0.42, 0.72).lerp(Color(0.32, 0.3, 0.55), low).lerp(Color(0.02, 0.03, 0.08), 1.0 - day)
-	sky_mat.sky_horizon_color = Color(0.78, 0.76, 0.7).lerp(Color(1.0, 0.6, 0.38), low).lerp(Color(0.06, 0.08, 0.14), 1.0 - day)
+	sky_mat.sky_top_color = Color(0.16, 0.38, 0.86).lerp(Color(0.32, 0.3, 0.55), low).lerp(Color(0.02, 0.03, 0.08), 1.0 - day)
+	sky_mat.sky_horizon_color = Color(0.72, 0.84, 0.98).lerp(Color(1.0, 0.6, 0.38), low).lerp(Color(0.06, 0.08, 0.14), 1.0 - day)
 
 
 ## The capture harness's scripted inputs.

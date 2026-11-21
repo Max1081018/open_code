@@ -70,6 +70,20 @@ const HEROES := {
 	"robot": ["knight", Color(0.8, 0.62, 0.5)],  # rust-eaten plate
 	"warden": ["warden", null],          # the cursed knight
 }
+## Per-character presence: height in metres and their own way of moving
+## (clip overrides on the shared library, playback speed). Anime heroines
+## are small and light on their feet; knights heavy; the dead shamble.
+const HERO_STYLE := {
+	"player": {"height": 1.56, "clips": {"Walk": "Walk_Formal"}, "speed": 1.12},
+	"wren": {"height": 1.6, "clips": {"Idle": "Idle_Talking"}, "speed": 1.05},
+	"mira": {"height": 1.58, "clips": {"Walk": "Walk_Formal"}, "speed": 1.0},
+	"tobin": {"height": 1.72, "clips": {"Idle": "Idle_FoldArms"}, "speed": 0.95},
+	"aldous": {"height": 1.64, "clips": {"Idle": "Sword_Idle"}, "speed": 1.0},
+	"warden": {"height": 2.0, "speed": 0.85},
+	"robot": {"height": 1.85, "speed": 0.9},
+	"zombie": {"height": 1.8, "speed": 0.9},
+	"shade": {"height": 1.75, "speed": 1.15},
+}
 const HERO_DIR := "res://assets/models/heroes/"
 const HERO_ANIMS := HERO_DIR + "anim/humanoid.res"
 static var _hero_library: AnimationLibrary
@@ -184,7 +198,7 @@ static func _build_hero(name: String) -> Node3D:
 	var floor_y := minf(foot_l.y, foot_r.y)
 	var span := maxf(head.y - floor_y, 0.0001)
 	# Head bone to crown is about an eighth of a person; ankle to sole ~4 %.
-	var k := 1.8 / (span * 1.17)
+	var k: float = float(HERO_STYLE.get(name, {}).get("height", 1.8)) / (span * 1.17)
 	model.scale = Vector3.ONE * k
 	model.position = Vector3(0, -(floor_y - span * 0.05) * k, 0)
 	if spec[1] != null:
@@ -197,6 +211,7 @@ static func _build_hero(name: String) -> Node3D:
 	if _hero_library == null:
 		_hero_library = load(HERO_ANIMS)
 	player.add_animation_library("", _hero_library)
+	root.set_meta("style", HERO_STYLE.get(name, {}))
 	return root
 
 

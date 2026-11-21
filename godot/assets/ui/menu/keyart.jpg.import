@@ -2,16 +2,16 @@
 
 importer="texture"
 type="CompressedTexture2D"
-uid="uid://b4w8i7pal25e"
-path="res://.godot/imported/albedo_11.png-e4fca51f36e5d4017e14808176f77a19.ctex"
+uid="uid://bynv2hqqb06h5"
+path="res://.godot/imported/keyart.jpg-0678b4284361a6968b2c0c8d490ebe85.ctex"
 metadata={
 "vram_texture": false
 }
 
 [deps]
 
-source_file="res://assets/models/heroes/player/albedo_11.png"
-dest_files=["res://.godot/imported/albedo_11.png-e4fca51f36e5d4017e14808176f77a19.ctex"]
+source_file="res://assets/ui/menu/keyart.jpg"
+dest_files=["res://.godot/imported/keyart.jpg-0678b4284361a6968b2c0c8d490ebe85.ctex"]
 
 [params]
 

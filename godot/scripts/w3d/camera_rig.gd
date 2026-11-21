@@ -60,7 +60,7 @@ func _physics_process(delta: float) -> void:
 	pitch = lerpf(pitch, pitch_target, glide)
 	# Third-person pivot: centred on the hero at upper-chest height, so they
 	# stand in the middle of the frame (as in Genshin), the world around them.
-	var pivot_tp := target.global_position + Vector3(0, 1.45, 0)
+	var pivot_tp := target.global_position + Vector3(0, 1.3, 0)
 	var pivot_fp: Vector3 = head.global_position + Vector3(0, 0.1, 0) if head else target.global_position + Vector3(0, 1.65, 0)
 	# Just ahead of the eyes, along the view, so the face (part of the body
 	# mesh) stays behind the camera while arms and weapon come into view.
