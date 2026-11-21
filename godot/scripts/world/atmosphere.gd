@@ -18,7 +18,11 @@ const TILE := 128.0
 ## Per biome: layer textures and the fog colour by day.
 const BIOMES := {
 	WorldData.Biome.MEADOW: {
-		"far": "fade_trees", "near": "color_hills",
+		"far": "fade_trees",
+		# The nearest layer is forest too (an Array is a tree line): the
+		# cartoon hill there read as a toy among the rendered trees.
+		"near": ["nature/CommonTree_2", "nature/Bush_Common", "nature/Pine_3", "nature/CommonTree_4",
+			"nature/Bush_Common_Flowers", "nature/TwistedTree_3", "nature/Pine_2"],
 		"trees": ["nature/CommonTree_1", "nature/Pine_2", "nature/CommonTree_3", "nature/Pine_4",
 			"nature/CommonTree_5", "nature/TwistedTree_2", "nature/Pine_1"],
 		"fog": Color(0.40, 0.56, 0.54), "sky_top": Color(0.30, 0.50, 0.70),
@@ -140,7 +144,12 @@ func _build_layers() -> void:
 			layer.material = fog_material
 			layer.set_meta("fog", fog_material)
 			_layer_root.add_child(layer)
-			match layer_spec[4]:
+			var kind: String = layer_spec[4]
+			if spec[kind] is Array and kind == "near":
+				_fill_tree_line(layer, spec.near, 1.15, i)
+				layer.set_meta("repeat", _strip_width)
+				kind = ""
+			match kind:
 				"far", "near":
 					var tex: Texture2D = load("res://assets/scenery/parallax/%s.png" % spec[layer_spec[4]])
 					var scale := 1.6 if layer_spec[4] == "far" else 2.2

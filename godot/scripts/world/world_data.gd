@@ -541,6 +541,7 @@ func _build_sealed_vaults() -> void:
 				or not Rect2i(2, 2, width - 4, height - 4).encloses(site):
 			continue
 		_carve_room(room_x, y, rw, rh, BRICK)
+		buildings.append({"kind": "ruin", "rect": [room_x, y, rw, rh]})
 		# The antechamber: a brick-floored hall, open at its far end to the rock.
 		for hx in range(hall):
 			var cx := hall_x + hx * side
