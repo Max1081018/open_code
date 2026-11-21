@@ -74,7 +74,7 @@ func _try_spawn() -> void:
 			continue
 		var cell := Vector2i(x, y)
 		var mode: int = Enemy.KINDS[kind].mode
-		if mode == Enemy.Mode.WALK or mode == Enemy.Mode.HOP:
+		if mode == Enemy.Mode.WALK or mode == Enemy.Mode.HOP or mode == Enemy.Mode.ROOTED:
 			cell = _ground_below(x, y)
 			if cell.x < 0:
 				continue
@@ -112,7 +112,7 @@ func _choose(x: int, y: int, desperate: bool) -> String:
 			WorldData.Biome.TUNDRA:
 				return ["frog", "frog", "slime"].pick_random()
 			_:
-				return ["slime", "slime", "snail", "bee"].pick_random()
+				return ["slime", "slime", "snail", "bee", "ladybug"].pick_random()
 	# Robots come only from the ruins' own spawners: any brick wall was
 	# tried first, and the cottage by spawn is brick.
 	match data.biome_at(x, y):
@@ -120,7 +120,7 @@ func _choose(x: int, y: int, desperate: bool) -> String:
 			return (["fly", "spike_slime", "shade"] if dark else ["fly", "spike_slime"]).pick_random()
 		WorldData.Biome.DEPTHS:
 			return (["fire_slime", "shade", "shade"] if dark else ["fire_slime", "robot"]).pick_random()
-	return (["mouse", "spike_slime", "zombie", "shade"] if dark else ["mouse", "spike_slime"]).pick_random()
+	return (["mouse", "spike_slime", "zombie", "shade", "spitter"] if dark else ["mouse", "spike_slime", "spitter"]).pick_random()
 
 
 ## Ruin spawners wake as the player approaches, each guarding its hall.

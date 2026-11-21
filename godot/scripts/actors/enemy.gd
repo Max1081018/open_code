@@ -8,7 +8,7 @@ signal died_at(position: Vector2)
 const TILE := 128.0
 const GRAVITY := 2600.0
 
-enum Mode { WALK, HOP, FLY, PHASE }
+enum Mode { WALK, HOP, FLY, PHASE, ROOTED }
 
 ## kind -> definition
 const KINDS := {
@@ -30,6 +30,12 @@ const KINDS := {
 		"scale": 0.8, "loot": [["apple", 0.25, 1]]},
 	"fly": {"frames": "fly", "mode": Mode.FLY, "health": 34, "damage": 14, "speed": 300,
 		"scale": 0.85, "loot": [["glowshard", 0.35, 2]]},
+	"ladybug": {"frames": "ladybug", "mode": Mode.WALK, "health": 30, "damage": 9, "speed": 190,
+		"scale": 0.85, "loot": [["apple", 0.3, 1]]},
+	# Rooted to the cave floor; lobs acid at anything in its line of sight.
+	"spitter": {"frames": "barnacle_attack", "mode": Mode.ROOTED, "health": 50, "damage": 12,
+		"speed": 0, "scale": 0.95, "loot": [["glowshard", 0.3, 1], ["coal", 0.4, 2]],
+		"light": Color(0.5, 1.0, 0.35), "range": 9.0},
 	"zombie": {"toon": "zombie", "mode": Mode.WALK, "health": 70, "damage": 14, "speed": 210,
 		"scale": 0.95, "loot": [["raw_meat", 0.55, 1], ["torch", 0.2, 2]]},
 	"robot": {"toon": "robot", "mode": Mode.WALK, "health": 130, "damage": 24, "speed": 250,
@@ -65,6 +71,8 @@ var _sprite  ## AnimatedSprite2D for creatures, CutoutBody for people
 var _toon := false
 var _hop_timer := 0.0
 var _attack_timer := 0.0
+var _spit_timer := 1.5   ## spitters: until the next glob
+var _spit_tell := 0.0    ## spitters: the gape before it fires
 var _hurt_timer := 0.0
 var _phase := 0.0
 var _dead := false
@@ -237,6 +245,8 @@ func _physics_process(delta: float) -> void:
 			_hop(delta, to_player, near)
 		Mode.FLY, Mode.PHASE:
 			_fly(delta, to_player, near)
+		Mode.ROOTED:
+			_rooted(delta, to_player)
 
 	_sprite.flip_h = facing > 0 if not _toon else facing < 0
 	if _toon:
@@ -298,6 +308,48 @@ func _fly(delta: float, to_player: Vector2, near: bool) -> void:
 	else:
 		move_and_slide()
 	_play("walk" if _toon else "move")
+
+
+## A spitter stays put. It gapes (a tell, with a gurgle), then lobs a
+## glob of acid on an arc to where the player stands, if it can see them.
+func _rooted(delta: float, to_player: Vector2) -> void:
+	velocity.x = 0.0
+	velocity.y = minf(velocity.y + GRAVITY * delta, 1800.0)
+	move_and_slide()
+	var mouth := global_position + Vector2(0, -70 * float(spec.scale))
+	if _spit_tell > 0.0:
+		_spit_tell -= delta
+		if _spit_tell <= 0.0:
+			_play("rest")
+			_squash(Vector2(0.8, 1.25))
+			Sfx.play("swing", -6.0, 0.1, 0.7)
+			var target := player.global_position + Vector2(0, -90)
+			var flight := clampf(mouth.distance_to(target) / 950.0, 0.45, 1.1)
+			Spit.lob(level, mouth, target, spec.damage, flight)
+		return
+	_spit_timer -= delta
+	if _spit_timer > 0.0 or player.is_dead() or _hurt_timer > 0.0:
+		_play("rest")
+		return
+	if to_player.length() < float(spec.get("range", 9.0)) * TILE and can_see(player.global_position + Vector2(0, -90)):
+		_spit_timer = randf_range(1.8, 2.6)
+		_spit_tell = 0.45
+		_play("move")  # the jaws work
+		_squash(Vector2(1.2, 0.85))
+		Sfx.play("growl", -12.0, 0.1, 1.5)
+	else:
+		_spit_timer = 0.4
+
+
+## Nothing solid between this creature's mouth and `point`.
+func can_see(point: Vector2) -> bool:
+	var from := global_position + Vector2(0, -70 * float(spec.scale))
+	var steps := int(from.distance_to(point) / 40.0)
+	for i in range(1, steps):
+		var cell := World.cell_of(from.lerp(point, float(i) / steps))
+		if level.data.is_solid(cell.x, cell.y):
+			return false
+	return true
 
 
 func _play(clip: String) -> void:

@@ -103,3 +103,48 @@ func test_placement_rules_match_what_the_ghost_shows() -> void:
 	check_eq(player.placement_problem("planks", ground), "Occupied", "and then the cell is taken")
 	check_eq(player.inventory.count("planks"), 4, "one plank used")
 	level.free()
+
+
+func test_a_spitters_glob_lands_on_the_player_and_a_shield_turns_it() -> void:
+	var level := Level.new()
+	Engine.get_main_loop().root.add_child(level)
+	level.start(5150, {})
+	var p := level.player
+	var data := level.data
+	# Clear a pocket of air round the player so the glob's arc is unobstructed.
+	var feet := World.cell_of(p.global_position + Vector2(0, -4))
+	for dy in range(-8, 0):
+		for dx in range(-8, 9):
+			data.set_tile(feet.x + dx, feet.y + 1 + dy, WorldData.AIR)
+	var target := p.global_position + Vector2(0, -90)
+	var from := target + Vector2(-5 * 128, -100)
+	var before := p.health
+	var spit := Spit.lob(level, from, target, 12.0, 0.7)
+	for i in 120:
+		if not is_instance_valid(spit) or spit.is_queued_for_deletion():
+			break
+		spit._physics_process(1.0 / 60.0)
+	check(p.health < before, "the glob burns (%.0f -> %.0f)" % [before, p.health])
+
+	# Facing it with a shield up takes most of the sting out.
+	p.health = p.max_health
+	p._invulnerable = 0.0
+	p.inventory.add("wood_shield", 1)
+	p.facing = -1
+	p.rig.blocking = true
+	var guarded := p.health
+	spit = Spit.lob(level, from, target, 12.0, 0.7)
+	for i in 120:
+		if not is_instance_valid(spit) or spit.is_queued_for_deletion():
+			break
+		spit._physics_process(1.0 / 60.0)
+	check(guarded - p.health < 12.0 * 0.5, "blocked, it does little (%.1f)" % (guarded - p.health))
+
+	# The spitter only fires when it can see you.
+	var spitter := level.spawn_enemy("spitter", World.foot_of(feet + Vector2i(-6, 0)))
+	check(spitter.can_see(target), "in the open it sees you")
+	data.set_tile(feet.x - 3, feet.y - 1, WorldData.ROCK)
+	data.set_tile(feet.x - 3, feet.y - 2, WorldData.ROCK)
+	data.set_tile(feet.x - 3, feet.y, WorldData.ROCK)
+	check(not spitter.can_see(target), "behind rock it does not")
+	level.free()
