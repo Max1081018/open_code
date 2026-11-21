@@ -23,6 +23,12 @@
       "title": "Travelling smith",
       "voice": "en_GB-northern_english_male-medium",
       "length_scale": 1.0
+    },
+    "aldous": {
+      "name": "Sir Aldous",
+      "title": "Last of the Lightwardens",
+      "voice": "en_US-ryan-medium",
+      "length_scale": 1.05
     }
   },
   "lines": {
@@ -169,6 +175,42 @@
     "tobin_idle": {
       "speaker": "tobin",
       "text": "A good hammer and a fire, and a body can make anything. Even a home. Even here, at the edge of the dark."
+    },
+    "aldous_greet": {
+      "speaker": "aldous",
+      "text": "Hold, wanderer. That lantern. You carry it like a Lightwarden, and there have been no Lightwardens since I buried the last of them."
+    },
+    "aldous_vaults_offer": {
+      "speaker": "aldous",
+      "text": "When the Cores began to fail, my order sealed its treasures in vaults beneath the hills, behind doors no pick can break. Only fire opens them. Learn to flare your lantern, and every brazier you wake brings a door closer to opening."
+    },
+    "aldous_task_vault": {
+      "speaker": "aldous",
+      "text": "Find a sealed vault. Its braziers stand cold in the hall outside. Light every one, by torch or by flare, and the rune-door will remember what it was made for."
+    },
+    "aldous_task_wear": {
+      "speaker": "aldous",
+      "text": "A relic. Put it on. My brothers wore three apiece, and walked into the dark like it was morning."
+    },
+    "aldous_vaults_done": {
+      "speaker": "aldous",
+      "text": "You wear it well. There are more vaults, and more relics. The order is gone, but its gifts are not. Take these, and keep looking."
+    },
+    "aldous_marks_offer": {
+      "speaker": "aldous",
+      "text": "One more thing the order did. Where we hid something small, we cut a mark into the rock that only answers to strong light. Flare in the quiet caves, and dig where the stone glows back."
+    },
+    "aldous_marks_done": {
+      "speaker": "aldous",
+      "text": "Two caches found. You see the world the way we used to. Here, for your heart. You will need a strong one where you are going."
+    },
+    "aldous_idle": {
+      "speaker": "aldous",
+      "text": "Some nights the dark comes up like a tide, and the dead rise out of the ground wherever there is no light. Keep a fire burning at home. Stand in it when the tide comes."
+    },
+    "tobin_shop": {
+      "speaker": "tobin",
+      "text": "Old coins! Haven't seen those since my grandmother's day. I'll take them. Have a look at what I'm carrying."
     }
   }
 }

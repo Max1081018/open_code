@@ -326,6 +326,14 @@ func _process(delta: float) -> void:
 	fog = fog.lerp(Color(0.46, 0.50, 0.55) * daylight, overcast)
 	sky_top = sky_top.lerp(Color(0.32, 0.36, 0.42) * maxf(daylight, 0.2), overcast)
 	sky_low = sky_low.lerp(Color(0.55, 0.58, 0.62) * maxf(daylight, 0.2), overcast)
+	# The Dark Tide stains the night a bruised violet-red.
+	var tide := 0.0
+	if Game.level and Game.level.director and Game.level.director.tide:
+		tide = 1.0
+	_tide_amount = move_toward(_tide_amount, tide, get_process_delta_time() * 0.4)
+	sky_top = sky_top.lerp(Color(0.16, 0.03, 0.14), _tide_amount * 0.8)
+	sky_low = sky_low.lerp(Color(0.42, 0.08, 0.16), _tide_amount * 0.7)
+	fog = fog.lerp(Color(0.30, 0.08, 0.20), _tide_amount * 0.5)
 	var cave := Color(0.035, 0.03, 0.06)
 	_sky_material.set_shader_parameter("top", sky_top.lerp(cave, depth))
 	_sky_material.set_shader_parameter("bottom", sky_low.lerp(cave, depth))
@@ -383,6 +391,9 @@ func _process(delta: float) -> void:
 
 	if _grade:
 		_grade.set_shader_parameter("tint", Color.WHITE.lerp(fog, 0.10).lerp(Color(0.75, 0.80, 1.0), depth * 0.25))
+
+
+var _tide_amount := 0.0
 
 
 func grade_material() -> ShaderMaterial:

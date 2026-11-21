@@ -507,6 +507,59 @@ func open_chest(cell: Vector2i, object: Dictionary) -> void:
 	_open(panel)
 
 
+## Tobin's wares, bought with Old Coins found in vaults, caches and ruins.
+func open_shop() -> void:
+	var panel := _make_panel(Vector2(1100, 0), "Tobin's Wares")
+	var content: Control = panel.get_meta("content")
+	var player := level.player
+	var purse := UITheme.text("", 32, UITheme.GOLD)
+	content.add_child(purse)
+	var rows := VBoxContainer.new()
+	rows.add_theme_constant_override("separation", 10)
+	content.add_child(rows)
+	var refresh := func(): pass
+	refresh = func():
+		purse.text = "Old Coins: %d" % player.inventory.count("gold_coin")
+		for child in rows.get_children():
+			child.queue_free()
+		for trade in Items.TRADES:
+			var row := HBoxContainer.new()
+			row.add_theme_constant_override("separation", 18)
+			rows.add_child(row)
+			var icon := TextureRect.new()
+			icon.texture = Items.icon(trade[0])
+			icon.custom_minimum_size = Vector2(72, 72)
+			icon.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+			icon.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+			row.add_child(icon)
+			var label := UITheme.text("%s ×%d" % [Items.item_name(trade[0]), trade[1]], 32, UITheme.INK)
+			label.custom_minimum_size = Vector2(520, 0)
+			row.add_child(label)
+			var buy := Button.new()
+			buy.text = "%d coins" % trade[2]
+			buy.custom_minimum_size = Vector2(240, 72)
+			buy.disabled = player.inventory.count("gold_coin") < int(trade[2]) or not player.inventory.can_fit(trade[0], trade[1])
+			var deal: Array = trade
+			buy.pressed.connect(func():
+				if buy_trade(deal):
+					refresh.call())
+			row.add_child(buy)
+	refresh.call()
+	_open(panel)
+
+
+## Pay for a trade. False if it cannot be afforded or carried.
+func buy_trade(trade: Array) -> bool:
+	var inventory := level.player.inventory
+	if inventory.count("gold_coin") < int(trade[2]) or not inventory.can_fit(trade[0], trade[1]):
+		return false
+	inventory.remove("gold_coin", int(trade[2]))
+	inventory.add(trade[0], int(trade[1]))
+	Sfx.play("pickup", -2.0, 0.02, 1.2)
+	Game.toast("Bought %s" % Items.item_name(trade[0]), Items.icon(trade[0]))
+	return true
+
+
 func open_pause() -> void:
 	var panel := PauseMenu.build(self)
 	_open(panel)

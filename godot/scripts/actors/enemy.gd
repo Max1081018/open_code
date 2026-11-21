@@ -120,7 +120,9 @@ func _ready() -> void:
 		# People (zombies, robots, shades, the bosses) are jointed rigs.
 		if Settings.characters_3d and Body3D.CAST.has(kind):
 			_sprite = Body3D.new(kind)
-			_sprite.supersample = Body3D.SUPERSAMPLE * clampf(s, 1.0, 2.2)
+			# Crowds render cheaply; a boss, drawn large, renders sharp.
+			_sprite.supersample = Body3D.SUPERSAMPLE * clampf(s, 1.0, 2.2) if is_boss else 1.0
+			_sprite.smooth = is_boss
 			_sprite.ready.connect(_arm_skeleton)
 		else:
 			_sprite = CutoutBody.new(spec.toon)
@@ -555,6 +557,8 @@ func _die() -> void:
 	var s: float = spec.scale
 	Effects.burst(level.fx_layer, global_position + Vector2(0, -60 * s), "smoke",
 		spec.get("tint", Color(0.9, 0.9, 0.9)))
+	if get_meta("tide", false):
+		level.spawn_drop("glowshard", randi_range(1, 2), global_position + Vector2(0, -80))
 	for drop in spec.loot:
 		var chance: float = drop[1] * (2.0 if player and player.has_relic("relic_luckstone") else 1.0)
 		if randf() < chance:

@@ -177,6 +177,7 @@ func _place_npcs() -> void:
 	_spawn_npc("wren", spawn.x + 4)
 	_spawn_npc("mira", spawn.x - 16)
 	_spawn_npc("tobin", spawn.x - 34)
+	_spawn_npc("aldous", spawn.x + 52)
 	var shaft := spawn.x + 26
 	for dx in range(14, 70):
 		for side in [1, -1]:
@@ -219,6 +220,11 @@ func talk_to(npc: Npc) -> void:
 		return
 	npc.greet()
 	var lines: Array = quests.talk(npc.id)
+	# Tobin trades when he has nothing else to say.
+	if npc.id == "tobin" and lines == ["tobin_idle"] and hud.has_method("open_shop"):
+		hud.dialogue.say(["tobin_shop"])
+		hud.open_shop()
+		return
 	hud.dialogue.say(lines)
 
 
@@ -322,6 +328,7 @@ func on_placed(cell: Vector2i, id: String) -> void:
 func interact_with(cell: Vector2i, object: Dictionary) -> void:
 	match object.type:
 		"chest":
+			_found_cache(cell)
 			opened_panel.emit("chest")
 			if hud and hud.has_method("open_chest"):
 				hud.open_chest(cell, object)
@@ -356,6 +363,17 @@ func interact_with(cell: Vector2i, object: Dictionary) -> void:
 # =============================================================================
 # Sealed vaults, relic chests and the flare
 # =============================================================================
+
+## A hidden cache's chest opened for the first time.
+func _found_cache(cell: Vector2i) -> void:
+	for cache in data.caches:
+		if cache.chest == cell and not cache.get("found", false):
+			cache["found"] = true
+			Game.toast("A hidden cache!")
+			Sfx.play("pickup", -2.0, 0.02, 0.7)
+			if quests:
+				quests.event("cache")
+
 
 ## How close a flare must be to catch a brazier, in tiles.
 const FLARE_LIGHTS := 3.5
@@ -395,6 +413,8 @@ func _check_vault(index: int) -> void:
 		Effects.burst(fx_layer, World.centre_of(cell), "break", Color(0.55, 0.5, 0.62))
 		Effects.burst(fx_layer, World.centre_of(cell), "glow", Color(1.0, 0.85, 0.5))
 	shake(10.0)
+	if quests:
+		quests.event("vault")
 	Sfx.play("tree_fall", -2.0, 0.05, 0.6)
 	Sfx.play("break", 0.0, 0.05, 0.7)
 	Game.toast("The rune-door grinds open")

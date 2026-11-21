@@ -22,6 +22,8 @@ const SUPERSAMPLE := 1.5
 ## Render scale for this body: raise it for big bodies (bosses) drawn
 ## scaled up, so they stay sharp.
 var supersample := SUPERSAMPLE
+## Anti-aliasing for this body's render (off for crowds of enemies).
+var smooth := true
 ## The picture in world pixels: tall enough for raised arms and a swung
 ## tool, wide enough for a long reach either side.
 const FRAME := Vector2(300, 300)
@@ -124,7 +126,7 @@ func _build() -> void:
 	viewport.size = Vector2i(FRAME * supersample)
 	viewport.transparent_bg = true
 	viewport.own_world_3d = true
-	viewport.msaa_3d = Viewport.MSAA_2X
+	viewport.msaa_3d = Viewport.MSAA_2X if smooth and Settings.lighting >= 1 else Viewport.MSAA_DISABLED
 	viewport.render_target_update_mode = SubViewport.UPDATE_WHEN_PARENT_VISIBLE
 	add_child(viewport)
 
@@ -191,6 +193,13 @@ func _build() -> void:
 	picture.position = -feet
 	add_child(picture)
 
+	# Off screen, nothing is drawn or animated: a far-off NPC costs nothing.
+	var notifier := VisibleOnScreenNotifier2D.new()
+	notifier.rect = Rect2(picture.position, FRAME)
+	notifier.screen_entered.connect(_on_screen.bind(true))
+	notifier.screen_exited.connect(_on_screen.bind(false))
+	add_child(notifier)
+
 
 ## Swap the texture on every surface of the model (a palette variant).
 static func _repaint(node: Node, texture: Texture2D) -> void:
@@ -203,6 +212,13 @@ static func _repaint(node: Node, texture: Texture2D) -> void:
 				node.set_surface_override_material(i, copy)
 	for child in node.get_children():
 		_repaint(child, texture)
+
+
+func _on_screen(shown: bool) -> void:
+	viewport.render_target_update_mode = SubViewport.UPDATE_WHEN_PARENT_VISIBLE if shown \
+		else SubViewport.UPDATE_DISABLED
+	if anim:
+		anim.process_mode = Node.PROCESS_MODE_INHERIT if shown else Node.PROCESS_MODE_DISABLED
 
 
 func _attachment(bone: String) -> BoneAttachment3D:

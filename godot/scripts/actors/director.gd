@@ -14,6 +14,16 @@ const DESPAWN := 28.0  ## tiles
 
 var level: Level
 var _timer := 2.0
+
+## --- The Dark Tide ---------------------------------------------------------
+## Some nights the dark surges and the dead claw up out of the ground all
+## around, except where a light is burning. A lit home is a sanctuary.
+signal tide_changed(rising: bool)
+const TIDE_CHANCE := 0.34
+var tide := false
+var _was_night := false
+var _nights := 0
+var _tide_timer := 0.0
 var _spawner_cooldown := {}  ## cell index -> seconds
 
 
@@ -26,6 +36,7 @@ func _process(delta: float) -> void:
 	var player := level.player
 	if player == null or player.is_dead():
 		return
+	_watch_the_tide(delta)
 	_cull()
 	_timer -= delta
 	if _timer > 0.0:
@@ -35,6 +46,65 @@ func _process(delta: float) -> void:
 	if level.actors.get_tree().get_nodes_in_group("enemies").size() >= cap():
 		return
 	_try_spawn()
+
+
+func _watch_the_tide(delta: float) -> void:
+	var night := level.world.is_night()
+	if night and not _was_night:
+		_nights += 1
+		# Never while Wren is still teaching; the second night always, then by chance.
+		var taught: bool = level.quests == null or level.quests.state.get("first_light", {}).get("state", "") == "done"
+		if taught and (_nights == 2 or randf() < TIDE_CHANCE):
+			start_tide()
+	elif not night and _was_night and tide:
+		end_tide()
+	_was_night = night
+	if tide:
+		_tide_timer -= delta
+		if _tide_timer <= 0.0:
+			_tide_timer = 2.2
+			_raise_the_dead()
+
+
+func start_tide() -> void:
+	tide = true
+	_tide_timer = 1.0
+	tide_changed.emit(true)
+	Game.toast("The Dark Tide rises. Stay near the light.")
+	Sfx.play("thunder_far", -2.0, 0.05, 0.6)
+	Sfx.play("roar", -8.0, 0.05, 0.7)
+
+
+func end_tide() -> void:
+	tide = false
+	tide_changed.emit(false)
+	Game.toast("Dawn. The tide ebbs, and your lantern drinks the morning.")
+	level.player.add_glow(level.player.max_glow())
+
+
+## Where the dead rise: on open ground a few strides from the player, never
+## within reach of a burning light.
+func _raise_the_dead() -> void:
+	var risen := 0
+	for enemy in get_tree().get_nodes_in_group("enemies"):
+		if enemy.get_meta("tide", false):
+			risen += 1
+	if risen >= 5:
+		return
+	var at := World.cell_of(level.player.global_position - Vector2(0, 60))
+	for attempt in 10:
+		var x := at.x + (1 if randf() < 0.5 else -1) * randi_range(5, 12)
+		var cell := _ground_below(x, at.y - 4)
+		if cell.x < 0 or level.world.near_placed_light(cell, 8.0):
+			continue
+		var underground := cell.y > level.data.surface[clampi(cell.x, 0, level.data.width - 1)] + 6
+		var kind := "zombie"
+		if underground:
+			kind = ["zombie", "robot", "shade"][randi() % 3] if cell.y > WorldData.SURFACE_Y + 60 else "zombie"
+		var enemy := level.spawn_enemy(kind, World.foot_of(cell))
+		enemy.set_meta("tide", true)
+		Effects.burst(level.fx_layer, World.foot_of(cell), "smoke", Color(0.35, 0.25, 0.45))
+		return
 
 
 func _cull() -> void:

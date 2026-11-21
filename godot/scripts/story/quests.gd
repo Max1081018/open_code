@@ -17,6 +17,9 @@ extends Node
 ##   ["depth", metres]        reach this depth below the surface
 ##   ["kill", kind]           defeat a creature or boss
 ##   ["hammer", count]        built things taken down with a hammer
+##   ["vault", count]         sealed vaults opened
+##   ["wear", count]          relics put on
+##   ["cache", count]         hidden caches found
 
 signal changed
 signal completed(quest_id: String)
@@ -39,7 +42,7 @@ const DEFS := {
 		],
 		"done": ["wren_done_first"],
 		"reward": {"glow_flask": 2, "wood_shield": 1},
-		"next": ["below_the_roots", "a_hearty_meal", "tools_of_the_trade"],
+		"next": ["below_the_roots", "a_hearty_meal", "tools_of_the_trade", "the_lightwardens_vaults"],
 	},
 	"below_the_roots": {
 		"title": "Below the Roots", "giver": "bram", "main": true,
@@ -118,6 +121,30 @@ const DEFS := {
 		],
 		"done": ["tobin_tools_done"],
 		"reward": {"iron_hammer": 1, "torch": 5},
+		"next": [],
+	},
+	"the_lightwardens_vaults": {
+		"title": "The Lightwardens' Vaults", "giver": "aldous", "main": false,
+		"offer": ["aldous_greet", "aldous_vaults_offer"],
+		"steps": [
+			{"goal": ["vault", 1], "text": "Open a sealed vault: light all three braziers (flare: star button)",
+				"line": "aldous_task_vault"},
+			{"goal": ["wear", 1], "text": "Wear a relic (open your pack)", "line": "aldous_task_wear"},
+			{"goal": ["talk", "aldous"], "text": "Return to Sir Aldous"},
+		],
+		"done": ["aldous_vaults_done"],
+		"reward": {"glow_flask": 3, "gold_coin": 25},
+		"next": ["the_hidden_marks"],
+	},
+	"the_hidden_marks": {
+		"title": "The Hidden Marks", "giver": "aldous", "main": false,
+		"offer": ["aldous_marks_offer"],
+		"steps": [
+			{"goal": ["cache", 2], "text": "Find two hidden caches: flare in caves, dig where the rock glows"},
+			{"goal": ["talk", "aldous"], "text": "Return to Sir Aldous"},
+		],
+		"done": ["aldous_marks_done"],
+		"reward": {"heart_crystal": 1, "gold_coin": 20},
 		"next": [],
 	},
 	"glowcaps": {
@@ -227,7 +254,7 @@ func missing_for(item: String) -> String:
 
 func _needed(goal: Array) -> int:
 	match goal[0]:
-		"fell", "build", "hammer":
+		"fell", "build", "hammer", "vault", "wear", "cache":
 			return int(goal[1])
 		"have", "craft", "break":
 			return int(goal[2])
@@ -274,7 +301,7 @@ func event(kind: String, what := "", amount := 1) -> void:
 		if goal.is_empty() or goal[0] != kind:
 			continue
 		match kind:
-			"fell", "build", "hammer":
+			"fell", "build", "hammer", "vault", "wear", "cache":
 				_add(id, amount, int(goal[1]))
 			"craft", "break":
 				if goal[1] == what:

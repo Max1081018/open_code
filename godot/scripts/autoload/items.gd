@@ -178,6 +178,12 @@ var defs := {
 		"stack": 1, "desc": "Chests hold one more find, and rare things fall twice as often."},
 }
 
+## What Tobin will sell for Old Coins: [item, count, price].
+const TRADES := [
+	["torch", 6, 3], ["cooked_meat", 3, 4], ["glow_flask", 1, 9], ["iron_ore", 8, 12],
+	["wardstone", 1, 45], ["iron_pickaxe", 1, 35], ["iron_sword", 1, 40], ["heart_crystal", 1, 70],
+]
+
 ## Every relic, in the order the world hands them out.
 const RELICS := ["relic_featherbone", "relic_ember_heart", "relic_deepsong", "relic_moth_lantern",
 	"relic_bulwark", "relic_swiftroot", "relic_seers_eye", "relic_luckstone"]

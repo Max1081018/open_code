@@ -192,6 +192,8 @@ func _apply_scenario() -> void:
 			offset += 260.0
 	if _args.has("boss"):
 		level.boss = level.spawn_enemy(_args.boss, player.global_position + Vector2(700, -80))
+	if _args.has("tide"):
+		level.director.start_tide()
 	if _args.has("wear"):
 		for id in _args.wear.split(","):
 			player.relics.append(id)

@@ -122,7 +122,7 @@ func test_npcs_stand_on_the_ground_near_the_start() -> void:
 		check(level.data.is_solid(cell.x, cell.y + 1), "%s stands on ground" % npc.id)
 		check(absf(npc.global_position.x - level.player.global_position.x) < 80 * 128, "%s is near the start" % npc.id)
 	ids.sort()
-	check_eq(ids, ["bram", "mira", "tobin", "wren"], "all four are in the world")
+	check_eq(ids, ["aldous", "bram", "mira", "tobin", "wren"], "all five are in the world")
 	level.free()
 
 
@@ -215,4 +215,49 @@ func test_the_guide_finds_rock_from_far_along_the_meadow() -> void:
 		if level.guide._find_target() == Vector2.INF:
 			lost.append(dx)
 	check(lost.is_empty(), "no arrow at these columns from spawn: %s" % [lost])
+	level.free()
+
+
+func test_sir_aldous_leads_you_into_the_vaults() -> void:
+	var level := _make_level()
+	var q := level.quests
+	var p := level.player
+	q.state["the_lightwardens_vaults"] = {"step": 0, "count": 0, "state": "offered"}
+	check(q.talk("aldous").has("aldous_vaults_offer"), "he tells of the vaults")
+	# Really open a vault.
+	var vault: Dictionary = level.data.vaults[0]
+	for cell in vault.braziers:
+		level.light_brazier(cell)
+	check_eq(q.state.the_lightwardens_vaults.step, 1, "opening a vault completes the first step")
+	p.inventory.add("relic_bulwark", 1)
+	for i in p.inventory.slots.size():
+		var stack = p.inventory.get_slot(i)
+		if stack != null and stack.id == "relic_bulwark":
+			p.wear_relic(i)
+	check_eq(q.state.the_lightwardens_vaults.step, 2, "wearing a relic the next")
+	check(q.talk("aldous").has("aldous_vaults_done"), "he is glad")
+	check_eq(q.quest_for("aldous"), "the_hidden_marks", "and has more to tell")
+	q.talk("aldous")
+	for cache in level.data.caches.slice(0, 2):
+		level._found_cache(cache.chest)
+	level._found_cache(level.data.caches[0].chest)  # the same cache twice counts once
+	check_eq(q.state.the_hidden_marks.step, 1, "two caches found")
+	level.free()
+
+
+func test_tobin_trades_for_old_coins() -> void:
+	var level := _make_level()
+	var p := level.player
+	var hud = level.hud
+	if hud == null:
+		hud = load("res://scripts/ui/hud.gd").new()
+		hud.level = level
+		level.add_child(hud)
+	var trade: Array = Items.TRADES[2]  # a glow flask
+	var before := p.inventory.count(trade[0])
+	check(not hud.buy_trade(trade), "no coins, no deal")
+	p.inventory.add("gold_coin", 20)
+	check(hud.buy_trade(trade), "with coins, a deal")
+	check_eq(p.inventory.count(trade[0]), before + int(trade[1]), "the goods are in the pack")
+	check_eq(p.inventory.count("gold_coin"), 20 - int(trade[2]), "the coins are gone")
 	level.free()

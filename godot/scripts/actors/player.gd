@@ -1197,6 +1197,8 @@ func wear_relic(index: int) -> bool:
 		return false
 	relics.append(stack.id)
 	inventory.remove_at(index, 1)
+	if level.quests:
+		level.quests.event("wear")
 	Sfx.play("craft", -4.0, 0.05, 1.3)
 	Effects.burst(level.fx_layer, global_position + Vector2(0, -120), "glow", Items.RARITY_COLORS[3])
 	Game.toast("%s — worn" % Items.item_name(stack.id), Items.icon(stack.id))

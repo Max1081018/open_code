@@ -117,3 +117,34 @@ func test_relics_are_worn_and_change_how_you_play() -> void:
 	p.from_dict(saved)
 	check_eq(p.relics, ["relic_swiftroot", "relic_featherbone"] as Array[String], "relics are saved")
 	level.free()
+
+
+func test_the_dark_tide_raises_the_dead_except_by_the_light() -> void:
+	var level := _make_level()
+	var p := level.player
+	var director := level.director
+	for enemy in Engine.get_main_loop().get_nodes_in_group("enemies"):
+		enemy.free()
+	director.start_tide()
+	check(director.tide, "the tide is up")
+	for i in 10:
+		director._raise_the_dead()
+	var risen := 0
+	for enemy in Engine.get_main_loop().get_nodes_in_group("enemies"):
+		if enemy.get_meta("tide", false):
+			risen += 1
+			check(enemy.is_undead(), "only the dead rise")
+	check(risen >= 1 and risen <= 5, "the dead rise around you, a handful at a time (%d)" % risen)
+	for enemy in Engine.get_main_loop().get_nodes_in_group("enemies"):
+		enemy.free()
+	# A ring of lit torches: sanctuary.
+	var here := World.cell_of(p.global_position)
+	for dx in [-10, -5, 0, 5, 10]:
+		level.world.add_object(here + Vector2i(dx, -1), {"type": "torch", "lit": true})
+	for i in 10:
+		director._raise_the_dead()
+	check_eq(Engine.get_main_loop().get_nodes_in_group("enemies").size(), 0, "nothing rises by the light")
+	p.glow = 5.0
+	director.end_tide()
+	check(not director.tide and p.glow == p.max_glow(), "dawn ends it and fills the lantern")
+	level.free()
