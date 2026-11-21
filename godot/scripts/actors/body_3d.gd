@@ -62,6 +62,27 @@ const CLIPS := {
 	"taunt": ["Taunt", false],
 }
 
+## The same game clips on the Quaternius characters (Universal Animation
+## Library 1 and 2): [clip, loops].
+const KIT_CLIPS := {
+	"idle": ["Idle", true], "walk": ["Walk", true], "run": ["Jog_Fwd", true], "jump": ["Jump", true],
+	"fall": ["Jump", true], "land": ["Jump_Land", false], "swing_mine": ["Sword_Regular_C", false],
+	"swing_chop": ["TreeChopping", false], "slash": ["Sword_Regular_A", false], "stab": ["Sword_Regular_B", false],
+	"use": ["Interact", false], "interact": ["Interact", false], "pickup": ["PickUp_Table", false],
+	"talk": ["Idle_Talking", true], "dodge": ["Roll", false], "hurt": ["Hit_Chest", false],
+	"death": ["Death01", false], "block": ["Sword_Block", true], "cheer": ["Yes", false],
+	"cast": ["Spell_Simple_Shoot", false], "attack": ["Sword_Attack", false], "spin": ["Sword_Heavy_Combo", false],
+	"throw": ["OverhandThrow", false], "rise": ["LayToIdle", false], "taunt": ["Sword_Idle", false],
+	"craft": ["Fixing_Kneeling", false], "swim": ["Swim_Fwd", true], "chest": ["Chest_Open", false],
+	"eat": ["Consume", false],
+}
+## The shambling dead walk, idle and claw differently.
+const UNDEAD_CLIPS := {
+	"idle": ["Zombie_Idle", true], "walk": ["Zombie_Walk_Fwd", true], "run": ["Zombie_Walk_Fwd", true],
+	"attack": ["Zombie_Scratch", false],
+}
+const SHAMBLERS := ["zombie", "shade"]
+
 ## Who plays whom: game character -> [KayKit model, palette swap or ""].
 const CAST := {
 	"player": ["Rogue_Hooded", ""],
@@ -79,6 +100,10 @@ const CAST := {
 
 var character := "Knight"
 var palette := ""
+var role := ""
+## True for the Quaternius cast (CharacterKit), false for the KayKit one.
+var kit := false
+var clips: Dictionary = CLIPS
 var animation := "idle"
 var speed_scale := 1.0
 var motion := Vector2.ZERO
@@ -100,8 +125,8 @@ var camera: Camera3D
 var model: Node3D
 var skeleton: Skeleton3D
 var anim: AnimationPlayer
-var right_hand: BoneAttachment3D
-var left_hand: BoneAttachment3D
+var right_hand: Node3D  ## the grip in the right hand (handslot.r on KayKit)
+var left_hand: Node3D
 var _step_phase := 0.0
 var _last_step_sign := 1.0
 var _held: Node3D
@@ -111,9 +136,15 @@ var _clock := 0.0
 
 
 func _init(who := "Knight") -> void:
-	var role: Array = CAST.get(who, [who, ""])
-	character = role[0]
-	palette = role[1]
+	role = who
+	kit = CharacterKit.has(who)
+	var cast: Array = CAST.get(who, [who, ""])
+	character = cast[0]
+	palette = cast[1]
+	if kit:
+		clips = KIT_CLIPS.duplicate()
+		if who in SHAMBLERS:
+			clips.merge(UNDEAD_CLIPS, true)
 
 
 func _ready() -> void:
@@ -138,18 +169,22 @@ func _build() -> void:
 	var environment := WorldEnvironment.new()
 	environment.environment = Environment.new()
 	environment.environment.ambient_light_source = Environment.AMBIENT_SOURCE_COLOR
-	environment.environment.ambient_light_color = Color(0.62, 0.62, 0.7)
-	environment.environment.ambient_light_energy = 0.9
+	# Art direction: warm golden key, cool blue shadow and rim.
+	environment.environment.ambient_light_color = Color(0.48, 0.54, 0.7) if kit else Color(0.62, 0.62, 0.7)
+	environment.environment.ambient_light_energy = 0.75 if kit else 0.9
 	world.add_child(environment)
 	# Key light from the upper front, a cool rim from behind.
 	var key := DirectionalLight3D.new()
 	key.rotation_degrees = Vector3(-38, -28, 0)
 	key.light_energy = 1.15
+	if kit:
+		key.light_color = Color(1.0, 0.86, 0.66)
+		key.light_energy = 1.35
 	world.add_child(key)
 	var rim := DirectionalLight3D.new()
 	rim.rotation_degrees = Vector3(-15, 160, 0)
-	rim.light_energy = 0.5
-	rim.light_color = Color(0.75, 0.85, 1.0)
+	rim.light_energy = 0.9 if kit else 0.5
+	rim.light_color = Color(0.62, 0.76, 1.0) if kit else Color(0.75, 0.85, 1.0)
 	world.add_child(rim)
 
 	camera = Camera3D.new()
@@ -164,14 +199,17 @@ func _build() -> void:
 	camera.rotation_degrees = Vector3(-6.8, 0, 0)
 	world.add_child(camera)
 
-	var scene: PackedScene = load("res://assets/models/kaykit/characters/%s.glb" % character)
-	model = scene.instantiate()
+	if kit:
+		model = CharacterKit.build(role)
+	else:
+		var scene: PackedScene = load("res://assets/models/kaykit/characters/%s.glb" % character)
+		model = scene.instantiate()
 	world.add_child(model)
-	if palette != "":
+	if palette != "" and not kit:
 		_repaint(model, load("res://assets/models/kaykit/textures/%s.png" % palette))
 	skeleton = _find(model, func(n): return n is Skeleton3D)
 	anim = _find(model, func(n): return n is AnimationPlayer)
-	for clip in CLIPS.values():
+	for clip in clips.values():
 		var a := anim.get_animation(clip[0]) if anim and anim.has_animation(clip[0]) else null
 		if a:
 			a.loop_mode = Animation.LOOP_LINEAR if clip[1] else Animation.LOOP_NONE
@@ -183,8 +221,12 @@ func _build() -> void:
 				for item in child.get_children():
 					if item is MeshInstance3D:
 						item.visible = false
-		right_hand = _attachment("handslot.r")
-		left_hand = _attachment("handslot.l")
+		if kit:
+			right_hand = _grip("hand_r", "index_01_r", "pinky_01_r", "middle_01_r")
+			left_hand = _grip("hand_l", "index_01_l", "pinky_01_l", "middle_01_l")
+		else:
+			right_hand = _attachment("handslot.r")
+			left_hand = _attachment("handslot.l")
 
 	picture = Sprite2D.new()
 	picture.texture = viewport.get_texture()
@@ -224,6 +266,30 @@ func _on_screen(shown: bool) -> void:
 		anim.process_mode = Node.PROCESS_MODE_INHERIT if shown else Node.PROCESS_MODE_DISABLED
 
 
+## A grip in a human hand, worked out from the hand's own bones: the
+## handle runs along the knuckles (little finger to index, so the business
+## end rises from the thumb side), set into the palm where the fingers close.
+## Items hang from it with +Y along the handle, origin at the grip.
+func _grip(hand: String, index: String, pinky: String, middle: String) -> Node3D:
+	var attachment := _attachment(hand)
+	var h := skeleton.find_bone(hand)
+	var to_local := skeleton.get_bone_global_rest(h).affine_inverse()
+	var i := to_local * skeleton.get_bone_global_rest(skeleton.find_bone(index)).origin
+	var p := to_local * skeleton.get_bone_global_rest(skeleton.find_bone(pinky)).origin
+	var m := to_local * skeleton.get_bone_global_rest(skeleton.find_bone(middle)).origin
+	var along := (i - p).normalized()
+	var fingers := m.normalized()
+	var palm := along.cross(fingers).normalized()
+	if hand.ends_with("_l"):
+		palm = -palm
+	fingers = palm.cross(along).normalized()
+	var grip := Node3D.new()
+	grip.name = "Grip"
+	grip.transform = Transform3D(Basis(fingers, along, palm), (i + p) * 0.5 * 0.9 + palm * 0.035)
+	attachment.add_child(grip)
+	return grip
+
+
 func _attachment(bone: String) -> BoneAttachment3D:
 	for child in skeleton.get_children():
 		if child is BoneAttachment3D and child.bone_name == bone:
@@ -249,7 +315,7 @@ static func _find(node: Node, test: Callable) -> Node:
 func play(clip: String = "", _custom_speed := 1.0, _from_end := false) -> void:
 	if clip == "" or anim == null:
 		return
-	var spec: Array = CLIPS.get(clip, CLIPS.idle)
+	var spec: Array = clips.get(clip, clips.idle)
 	var name: String = spec[0]
 	if not anim.has_animation(name):
 		return
@@ -269,7 +335,7 @@ func is_playing() -> bool:
 
 ## Seconds the clip lasts at speed 1.
 func clip_length(clip: String) -> float:
-	var spec: Array = CLIPS.get(clip, CLIPS.idle)
+	var spec: Array = clips.get(clip, clips.idle)
 	if anim and anim.has_animation(spec[0]):
 		return anim.get_animation(spec[0]).length
 	return 0.5
@@ -338,6 +404,11 @@ func hold_off_hand_model(name: String) -> void:
 
 func _weapon(name: String) -> Node3D:
 	var scene: PackedScene = load("res://assets/models/kaykit/weapons/%s.gltf" % name)
+	if kit:
+		# KayKit's arms are sized for its big-handed figures; a person's are smaller.
+		var held: Node3D = scene.instantiate()
+		held.scale = Vector3.ONE * 0.62
+		return held
 	return scene.instantiate()
 
 

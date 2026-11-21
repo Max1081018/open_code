@@ -19,9 +19,12 @@ func _process(_delta: float) -> bool:
 		for pair in bodies:
 			var b: Body3D = pair[1]
 			b.set_process(false)
-			b.model.rotation_degrees.y = 28.0
-			b.camera.size = 1.4
-			b.camera.position = Vector3(0, 1.55, 10)
+			if b.kit:
+				b.anim.play("Idle")
+				b.anim.seek(0.5, true)
+			b.model.rotation_degrees.y = 24.0
+			b.camera.size = 0.58 if b.kit else 1.4
+			b.camera.position = Vector3(0, 1.98, 10) if b.kit else Vector3(0, 1.55, 10)
 			b.camera.rotation_degrees = Vector3(-2, 0, 0)
 	if frames == 8:
 		for pair in bodies:
