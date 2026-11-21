@@ -56,7 +56,7 @@ func _cut(sprite: Sprite2D, tree: Node2D, from_x: float) -> void:
 	tween.chain().tween_callback(crown.queue_free)
 	for i in 7:
 		var at := foot + Vector2(randf_range(-110, 110), -height * randf_range(0.45, 0.95))
-		Effects.burst(self, at, "leaves", Color(0.5, 0.72, 0.34) if i % 3 else Color(0.78, 0.6, 0.25))
+		Effects.burst(level.fx_layer, at, "leaves", Color(0.5, 0.72, 0.34) if i % 3 else Color(0.78, 0.6, 0.25))
 
 	# The trunk splits into chunks of wood, flung away from the axe.
 	var log_texture: Texture2D = load("res://assets/rendered/resource-wood.png")
@@ -74,9 +74,9 @@ func _cut(sprite: Sprite2D, tree: Node2D, from_x: float) -> void:
 		_pieces.append({"node": piece, "velocity": velocity, "spin": randf_range(-10.0, 10.0),
 			"trunk": true, "rest": 0.0, "life": randf_range(1.8, 2.6)})
 	# Splinters and dust where the trunk broke.
-	Effects.burst(self, foot + Vector2(0, -50), "break", Color(0.66, 0.46, 0.28))
-	Effects.burst(self, foot + Vector2(0, -50), "splinters", Color(0.86, 0.70, 0.48))
-	Effects.burst(self, foot + Vector2(0, -10), "smoke", Color(0.8, 0.72, 0.6))
+	Effects.burst(level.fx_layer, foot + Vector2(0, -50), "break", Color(0.66, 0.46, 0.28))
+	Effects.burst(level.fx_layer, foot + Vector2(0, -50), "splinters", Color(0.86, 0.70, 0.48))
+	Effects.burst(level.fx_layer, foot + Vector2(0, -10), "smoke", Color(0.8, 0.72, 0.6))
 
 
 func _physics_process(delta: float) -> void:

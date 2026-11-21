@@ -304,6 +304,8 @@ func _grow_cover(chunk: Vector2i) -> void:
 	for y in range(y0, min(y0 + CHUNK, data.height)):
 		for x in range(x0, min(x0 + CHUNK, data.width)):
 			var below := data.get_tile(x, y + 1)
+			if y > data.surface[x] + 4 and not data.is_solid(x, y) and data.get_liquid(x, y) == WorldData.DRY:
+				_cave_decor(x, y, below, cells)
 			if not COVER.has(below) or data.is_solid(x, y) or data.get_liquid(x, y) != WorldData.DRY:
 				continue
 			var key := data.idx(x, y)
@@ -346,6 +348,63 @@ func _grow_cover(chunk: Vector2i) -> void:
 			_decor[key] = sprite
 			cells.append(key)
 	_decor_by_chunk[chunk] = cells
+
+
+## Cave stone, for stalactites hanging from it.
+const CAVE_STONE := {WorldData.ROCK: Color(0.42, 0.39, 0.37), WorldData.BASALT: Color(0.27, 0.22, 0.25),
+	WorldData.SOIL: Color(0.45, 0.32, 0.23)}
+
+
+## Underground the rock is dressed too: stalactites drip from ceilings,
+## pebbles and the odd mushroom lie on the floor. Derived from the tiles
+## like ground cover, so never saved; a hanging piece goes with its ceiling.
+func _cave_decor(x: int, y: int, below: int, cells: Array) -> void:
+	var above := data.get_tile(x, y - 1)
+	var bits := (x * 73856093) ^ (y * 19349663)
+	var roll := float(bits & 1023) / 1023.0
+	if CAVE_STONE.has(above) and not data.is_solid(x, y + 1) and roll < 0.5:
+		var node := Node2D.new()
+		node.position = Vector2(x * TILE, y * TILE)
+		var stone: Color = CAVE_STONE[above]
+		var count := 1 + (bits >> 10) % 3
+		for i in count:
+			var length := TILE * (0.4 + float((bits >> (12 + i * 3)) & 7) / 7.0 * 0.75) * (1.0 if i == 0 else 0.55)
+			var half := TILE * (0.11 + float((bits >> (20 + i)) & 3) * 0.035) * (1.0 if i == 0 else 0.7)
+			var cx := TILE * (0.3 + 0.4 * float((bits >> (14 + i * 2)) & 7) / 7.0) + (i - 1) * TILE * 0.18
+			var spike := Polygon2D.new()
+			spike.polygon = PackedVector2Array([Vector2(cx - half, -4), Vector2(cx + half, -4),
+				Vector2(cx + half * 0.35, length * 0.62), Vector2(cx, length)])
+			spike.color = stone
+			node.add_child(spike)
+			# The lit face: a sliver down one side, lighter.
+			var face := Polygon2D.new()
+			face.polygon = PackedVector2Array([Vector2(cx - half, -4), Vector2(cx - half * 0.2, -4),
+				Vector2(cx, length * 0.9), Vector2(cx - half * 0.3, length * 0.55)])
+			face.color = stone.lightened(0.22)
+			node.add_child(face)
+		object_root.add_child(node)
+		var hang_key := -(data.idx(x, y) + 1)
+		_decor[hang_key] = node
+		cells.append(hang_key)
+	var key := data.idx(x, y)
+	if CAVE_STONE.has(below) and not data.objects.has(key) and not _decor.has(key):
+		var floor_roll := float((bits >> 8) & 1023) / 1023.0
+		if floor_roll < 0.28:
+			var art := "rock" if floor_roll < 0.2 else ("mushroom_brown" if floor_roll < 0.25 else "mushroom_red")
+			var sprite := Sprite2D.new()
+			sprite.texture = _cover_texture(art)
+			if sprite.texture == null:
+				return
+			sprite.centered = false
+			var k := (0.42 if art == "rock" else 0.5) * TILE / float(sprite.texture.get_height())
+			sprite.scale = Vector2(k, k)
+			sprite.flip_h = bits % 2 == 0
+			sprite.position = Vector2(x * TILE + TILE * (0.2 + 0.5 * roll), (y + 1) * TILE - sprite.texture.get_height() * k + 6)
+			if art == "rock":
+				sprite.modulate = CAVE_STONE[below].lightened(0.35)
+			object_root.add_child(sprite)
+			_decor[key] = sprite
+			cells.append(key)
 
 
 func _cover_texture(art: String) -> Texture2D:
@@ -421,8 +480,12 @@ func _draw_cell(cell: Vector2i) -> void:
 func refresh(cell: Vector2i) -> void:
 	# Cover on this cell, or standing on it, goes when the ground changes.
 	_clear_cover(data.idx(cell.x, cell.y))
+	_clear_cover(-(data.idx(cell.x, cell.y) + 1))
 	if data.in_bounds(cell.x, cell.y - 1):
 		_clear_cover(data.idx(cell.x, cell.y - 1))
+	# And anything hanging from it.
+	if data.in_bounds(cell.x, cell.y + 1):
+		_clear_cover(-(data.idx(cell.x, cell.y + 1) + 1))
 	for offset in [Vector2i.ZERO, Vector2i.UP, Vector2i.DOWN, Vector2i.LEFT, Vector2i.RIGHT]:
 		var c: Vector2i = cell + offset
 		if data.in_bounds(c.x, c.y) and is_loaded(c):

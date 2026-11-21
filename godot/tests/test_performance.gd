@@ -42,3 +42,18 @@ func test_streaming_a_chunk_is_cheap() -> void:
 	print("  chunk load: %.2f ms each" % ms)
 	check(ms < 2.5, "one chunk took %.2f ms" % ms)
 	level.free()
+
+
+func test_a_burst_still_fires_after_its_pooled_emitter_was_freed() -> void:
+	var root: Window = (Engine.get_main_loop() as SceneTree).root
+	var doomed := Node2D.new()
+	root.add_child(doomed)
+	Effects.burst(doomed, Vector2.ZERO, "splinters")
+	var emitter: CPUParticles2D = doomed.get_child(0)
+	Effects._retire(emitter, "splinters")  # finished: back in the pool, still parented
+	doomed.free()                           # and then its parent goes away
+	var other := Node2D.new()
+	root.add_child(other)
+	Effects.burst(other, Vector2.ZERO, "splinters")
+	check_eq(other.get_child_count(), 1, "a fresh emitter fires in the new place")
+	other.free()

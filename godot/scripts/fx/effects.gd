@@ -120,9 +120,12 @@ static func pooled(kind: String) -> int:
 static func burst(parent: Node, position: Vector2, kind: String, color := Color.WHITE) -> void:
 	var idle: Array = _pool.get(kind, [])
 	while not idle.is_empty():
-		var reused: CPUParticles2D = idle.pop_back()
-		if not is_instance_valid(reused):
+		# A pooled emitter can have been freed with a parent that went away;
+		# check before typing it, or the assignment itself is an error.
+		var entry: Variant = idle.pop_back()
+		if not is_instance_valid(entry):
 			continue
+		var reused := entry as CPUParticles2D
 		if reused.get_parent() != parent:
 			reused.get_parent().remove_child(reused)
 			parent.add_child(reused)
