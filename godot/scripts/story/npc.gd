@@ -10,7 +10,7 @@ const TALK_RANGE := 2.6 * TILE
 
 var id := "wren"
 var level: Level
-var body: CutoutBody
+var body: Node2D  ## Body3D, or the cut-out rig when 3D characters are off
 var _marker: Label
 var _name: Label
 var _facing := 1
@@ -22,7 +22,7 @@ func setup(the_level: Level, npc_id: String) -> void:
 	id = npc_id
 	add_to_group("npcs")
 	z_index = 9
-	body = CutoutBody.new(id)
+	body = Body3D.new(id) if Settings.characters_3d and Body3D.CAST.has(id) else CutoutBody.new(id)
 	add_child(body)
 	if Settings.shadows:
 		add_child(SoftShadow.under(self, level.world, 0.8))

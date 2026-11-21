@@ -55,8 +55,16 @@ var _trail_points: Array[Vector2] = []
 var blocking := false
 
 
+## True when the player is a real 3D character: items then sit on its
+## hand bones and this rig only times the swings, draws trails and keeps
+## the torch flame and belt lantern.
+var three_d := false
+var _shield_id := ""
+
+
 func setup(the_player: Player) -> void:
 	player = the_player
+	three_d = player.body is Body3D
 	_turn = Node2D.new()
 	add_child(_turn)
 	main = Sprite2D.new()
@@ -148,6 +156,12 @@ func hold(id: String) -> void:
 		_set_main(Items.icon(id), "", "block")
 	else:
 		main.visible = false
+	if three_d:
+		var key := "equipment/torch_held" if id == "torch" else _icon_key(id)
+		player.body.hold_item(id if main.visible else "", _held_kind, main.texture, key)
+		main.self_modulate.a = 0.0  # the 3D body shows it; the sprite only keeps the grip maths
+		if _flame:
+			_flame.reparent(self, false)
 
 
 func _icon_key(id: String) -> String:
@@ -175,12 +189,16 @@ func _tip_local(fraction: float) -> Vector2:
 
 ## Show the best shield carried, or none.
 func carry_shield(id: String) -> void:
+	if three_d and id != _shield_id:
+		_shield_id = id
+		player.body.hold_off_hand(id)
 	if id == "":
 		shield.texture = null
 		shield.visible = false
 		return
 	shield.texture = Items.icon(id)
 	shield.visible = true
+	shield.self_modulate.a = 0.0 if three_d else 1.0
 	shield.scale = Vector2.ONE * (LENGTH.shield / float(shield.texture.get_width()))
 
 
@@ -208,14 +226,12 @@ func _process(delta: float) -> void:
 	if player == null:
 		return
 	var facing := float(player.facing)
-	_squeeze = maxf(absf(player.body._flip.scale.x), 0.3)
-	_turn.scale.x = _squeeze
-	var hands := _hands()
-	var front: Vector2 = hands[0]
-	var back: Vector2 = hands[1]
+	if not three_d:
+		_squeeze = maxf(absf(player.body._flip.scale.x), 0.3)
+		_turn.scale.x = _squeeze
 
 	# --- The front hand's item ---------------------------------------------
-	var body := player.body
+	var body: CutoutBody = player.body as CutoutBody  # the 2D path; null in 3D mode, which returns first
 	var angle := _rest_angle()
 	var swinging_now := not _swing.is_empty()
 	var swing_kind: String = _swing.get("kind", "")
@@ -231,6 +247,9 @@ func _process(delta: float) -> void:
 			_swing = {}
 	if blocking:
 		angle = -70.0
+	if three_d:
+		_process_3d(delta, facing)
+		return
 	# The item is placed first, then the hands are put on it.
 	#
 	# Where the grip is: at the end of the front arm, pointing along the
@@ -284,7 +303,10 @@ func _process(delta: float) -> void:
 		shield.flip_h = facing < 0
 
 	# --- The lantern on the belt: a pendulum pushed by the player's motion ---
-	var hip := body.hip() - player.global_position + Vector2(-36 * facing, 12)
+	_swing_lantern(delta, body.hip() - player.global_position + Vector2(-36 * facing, 12))
+
+
+func _swing_lantern(delta: float, hip: Vector2) -> void:
 	var push := -player.velocity.x * 0.0022 - (player.velocity.y * 0.0008 if not player.is_on_floor() else 0.0)
 	_lantern_speed += (-_lantern_angle * 38.0 + push * 60.0) * delta
 	_lantern_speed *= exp(-3.2 * delta)
@@ -292,6 +314,21 @@ func _process(delta: float) -> void:
 	lantern.position = hip
 	lantern.rotation = _lantern_angle
 	lantern.visible = _held_kind != "torch"
+
+
+## The 3D body holds and animates everything itself; here the flame
+## follows the torch's tip, the trail follows a swing, the lantern swings
+## on the belt, and a raised guard is held.
+func _process_3d(delta: float, facing: float) -> void:
+	var body: Body3D = player.body
+	if blocking and body.animation != "block":
+		body.play("block")
+	elif not blocking and body.animation == "block":
+		body.play("idle")
+	if _flame:
+		_flame.global_position = body.item_tip()
+	_update_trail(delta)
+	_swing_lantern(delta, body.hip() - player.global_position + Vector2(-26 * facing, 22))
 
 
 ## A point in the rig's space (facing right) to the player's space.
@@ -352,6 +389,8 @@ func _place_main(hand: Vector2, angle_deg: float, facing: float) -> void:
 
 ## The far end of the held item, in world space.
 func tip_global() -> Vector2:
+	if three_d:
+		return player.body.item_tip()
 	if _grip.is_empty() or not main.visible:
 		return player.global_position + Vector2(90 * player.facing, -120)
 	var tip := _tip_local(1.0)

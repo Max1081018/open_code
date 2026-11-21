@@ -60,7 +60,10 @@ var _mining_progress := 0.0
 var _breath := 0.0
 var _step_timer := 0.0
 
-var body: CutoutBody
+## The character: a rigged 3D model (Body3D), or the older cut-out rig
+## (CutoutBody) when 3D characters are switched off. Both speak the same
+## small interface.
+var body: Node2D
 var rig: EquipmentRig
 var _was_in_water := false
 var _swing_override := ""  ## a weapon drawn just for this swing
@@ -83,7 +86,7 @@ func _ready() -> void:
 	shape.position = Vector2(0, -98)
 	add_child(shape)
 
-	body = CutoutBody.new("player")
+	body = Body3D.new("player") if Settings.characters_3d else CutoutBody.new("player")
 	body.run_speed = RUN_SPEED
 	body.z_index = 10
 	add_child(body)

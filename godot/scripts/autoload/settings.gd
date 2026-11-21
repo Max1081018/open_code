@@ -35,6 +35,8 @@ var background := 2
 var shadows := true
 var bloom := true
 var weather := true
+## Rigged 3D characters (on) or the flat cut-out rig (off, for weak phones).
+var characters_3d := true
 
 var music_volume := 0.7
 var sfx_volume := 0.9

@@ -2,10 +2,13 @@ extends TestCase
 ## Equipment drawn in the hands: anchors, grips, swings, blocking.
 
 
-func _make_level() -> Level:
+func _make_level(three_d := true) -> Level:
+	var was := Settings.characters_3d
+	Settings.characters_3d = three_d
 	var level := Level.new()
 	Engine.get_main_loop().root.add_child(level)
 	level.start(777)
+	Settings.characters_3d = was
 	return level
 
 
@@ -127,8 +130,8 @@ func test_a_dodge_rolls_through_blows_and_then_cools_down() -> void:
 
 
 func test_arm_ik_puts_the_hand_on_the_target() -> void:
-	var level := _make_level()
-	var body := level.player.body
+	var level := _make_level(false)
+	var body: CutoutBody = level.player.body
 	var shoulder := body.shoulder_rig(true)
 	var length := body.arm_length()
 	for angle in [-150.0, -90.0, -30.0, 0.0, 45.0, 90.0]:
@@ -145,7 +148,7 @@ func test_arm_ik_puts_the_hand_on_the_target() -> void:
 
 
 func test_the_held_item_sits_in_the_fist() -> void:
-	var level := _make_level()
+	var level := _make_level(false)
 	var player := level.player
 	player.inventory.slots[0] = {"id": "iron_pickaxe", "count": 1}
 	player.hotbar_index = 0
@@ -162,22 +165,48 @@ func test_the_held_item_sits_in_the_fist() -> void:
 
 
 func test_footsteps_come_with_the_stride() -> void:
-	var level := _make_level()
-	var body := level.player.body
-	var steps := [0, 0]
-	body.footstep.connect(func(running): steps[1 if running else 0] += 1)
-	body.grounded = true
-	body.motion = Vector2(200, 0)  # a walk
-	for i in 120:
+	for three_d in [true, false]:
+		var level := _make_level(three_d)
+		var body: Node2D = level.player.body
+		var steps := [0, 0]
+		body.footstep.connect(func(running): steps[1 if running else 0] += 1)
+		var tick := func():
+			if body is Body3D:
+				body.anim.advance(1.0 / 60.0)
+			body._process(1.0 / 60.0)
+		body.grounded = true
+		body.motion = Vector2(200, 0)  # a walk
+		for i in 120:
+			tick.call()
+		check(steps[0] >= 2, "%s: walking two seconds takes steps (%d)" % [body.get_class(), steps[0]])
+		body.motion = Vector2(600, 0)  # a run
+		for i in 120:
+			tick.call()
+		check(steps[1] > steps[0], "%s: running takes more, quicker steps (%d vs %d)" % [body, steps[1], steps[0]])
+		var before: int = steps[0] + steps[1]
+		body.motion = Vector2.ZERO
+		for i in 120:
+			tick.call()
+		check_eq(steps[0] + steps[1], before, "standing still takes none")
+		level.free()
+
+
+func test_the_3d_character_holds_items_on_its_hand_bone() -> void:
+	var level := _make_level(true)
+	var player := level.player
+	var body: Body3D = player.body
+	check(body.right_hand != null and body.right_hand.bone_name == "handslot.r", "a right-hand bone slot")
+	for id in ["iron_pickaxe", "iron_axe", "wood_hammer", "iron_sword", "torch", "planks"]:
+		player.inventory.slots[0] = {"id": id, "count": 1}
+		player.hotbar_index = 0
+		player._refresh_held()
+		check(body._held != null and body._held.get_parent() == body.right_hand, "%s is parented to the hand bone" % id)
+	# And it turns round when it changes direction, through facing the camera.
+	body.flip_h = true
+	for i in 5:
 		body._process(1.0 / 60.0)
-	check(steps[0] >= 2, "walking two seconds takes steps (%d)" % steps[0])
-	body.motion = Vector2(600, 0)  # a run
-	for i in 120:
+	check(body.facing_yaw < Body3D.SIDE_YAW and body.facing_yaw > -Body3D.SIDE_YAW, "mid-turn (%.0f degrees)" % body.facing_yaw)
+	for i in 30:
 		body._process(1.0 / 60.0)
-	check(steps[1] > steps[0], "running takes more, quicker steps (%d vs %d)" % [steps[1], steps[0]])
-	var before: int = steps[0] + steps[1]
-	body.motion = Vector2.ZERO
-	for i in 120:
-		body._process(1.0 / 60.0)
-	check_eq(steps[0] + steps[1], before, "standing still takes none")
+	check_eq(body.facing_yaw, -Body3D.SIDE_YAW, "turned to face left")
 	level.free()
