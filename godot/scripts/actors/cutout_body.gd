@@ -26,9 +26,7 @@ var frame := 0
 var speed_scale := 1.0
 var flip_h := false:
 	set(value):
-		flip_h = value
-		if _flip:
-			_flip.scale.x = -1.0 if value else 1.0
+		flip_h = value  # the body turns toward it over a moment (see _turn)
 var offset := Vector2.ZERO  ## kept for compatibility; the rig places itself
 
 ## Set by the owner each frame.
@@ -72,6 +70,20 @@ var _phase := 0.0         ## walk cycle
 var _look := 0.0
 var _look_timer := 3.0
 var _death := 0.0
+var _seed := randf() * TAU
+var _fidget := ""
+var _fidget_t := 0.0
+var _fidget_timer := randf_range(5.0, 10.0)
+
+
+## Turning round: the body turns like a card (narrowing to its edge and
+## opening the other way) over a fraction of a second, rather than
+## snapping to face the other way.
+func _turn(delta: float) -> void:
+	var target := -1.0 if flip_h else 1.0
+	_flip.scale.x = move_toward(_flip.scale.x, target, delta * 14.0)
+	if absf(_flip.scale.x) < 0.08:
+		_flip.scale.x = 0.08 * target
 
 
 func _init(who := "player") -> void:
@@ -118,6 +130,7 @@ func _build() -> void:
 	var leg_b: Rect2 = layout.leg_back
 
 	_flip = Node2D.new()
+	_flip.scale.x = -1.0 if flip_h else 1.0
 	add_child(_flip)
 
 	# Joints, in pose pixels.
@@ -281,18 +294,24 @@ func _process(delta: float) -> void:
 	var s := sin(_phase)
 	var c := cos(_phase)
 
-	# Defaults: standing, breathing.
+	_turn(delta)
+
+	# Defaults: standing at ease. Weight drifts from foot to foot, the hips
+	# sway with it and the shoulders and head counter it; the chest
+	# breathes; the arms hang loose with a little bend.
 	var breath := sin(_clock * 2.2)
-	var pelvis_y := breath * 1.2
-	var pelvis_x := sin(_clock * 0.7) * 1.2
-	var lean := 0.0
-	var leg_f := 0.0
-	var leg_b := 0.0
+	var weight := sin(_clock * 0.55 + _seed)
+	var pelvis_y := breath * 1.2 + absf(weight) * 1.5
+	var pelvis_x := weight * 3.5
+	var lean := weight * 1.6
+	var leg_f := -weight * 3.0
+	var leg_b := -weight * 3.0
 	var bend_f := false
 	var bend_b := false
-	var arm_f := _rest_front + sin(_clock * 1.3) * 2.0
-	var arm_b := _rest_back - sin(_clock * 1.3 + 0.6) * 2.0
-	var head_tilt := sin(_clock * 0.9) * 1.5
+	var arm_f := _rest_front + sin(_clock * 1.3) * 2.5 - weight * 2.0
+	var arm_b := _rest_back - sin(_clock * 1.3 + 0.6) * 2.5 - weight * 2.0
+	var head_tilt := sin(_clock * 0.9) * 1.5 - weight * 2.2
+	elbow_bend = 14.0
 	# Facing where they are going (the three-quarter head); a glance at the
 	# camera now and then while standing about.
 	var face := "headSide"
@@ -307,6 +326,31 @@ func _process(delta: float) -> void:
 	if _look > 2.5 and animation == "idle" and grounded and absf(motion.x) < 40.0:
 		face = "head"
 
+	# Now and then, standing about: a look around, or a stretch.
+	if animation == "idle" and grounded and speed < 40.0:
+		_fidget_timer -= delta
+		if _fidget_timer <= 0.0 and _fidget == "":
+			_fidget = ["look", "stretch", "look"][randi() % 3]
+			_fidget_t = 0.0
+			_fidget_timer = randf_range(7.0, 14.0)
+	else:
+		_fidget = ""
+	if _fidget != "":
+		_fidget_t += delta
+		var k := sin(clampf(_fidget_t / 1.6, 0.0, 1.0) * PI)
+		match _fidget:
+			"look":
+				face = "head" if _fidget_t < 0.8 else "headSide"
+				head_tilt += 6.0 * k * (1.0 if _fidget_t < 0.8 else -1.0)
+			"stretch":
+				arm_f = lerpf(arm_f, -95.0, k)
+				arm_b = lerpf(arm_b, 265.0, k)
+				elbow_bend = lerpf(elbow_bend, 40.0, k)
+				lean -= 4.0 * k
+				torso_squash += 0.03 * k
+		if _fidget_t >= 1.6:
+			_fidget = ""
+
 	var clip := animation
 	if not grounded and not ONE_SHOT.has(clip):
 		clip = "jump" if motion.y < 0.0 else "fall"
@@ -316,20 +360,25 @@ func _process(delta: float) -> void:
 	match clip:
 		"walk", "run":
 			# Legs stride in step with the ground covered, so feet do not
-			# slide; arms swing against them; the body rises as each leg
-			# passes under it and leans into the pace.
-			var reach := 26.0 + 10.0 * stride
+			# slide. Walking: upright, an easy stride, arms swinging loose.
+			# Running: leaning in, a long stride, knees high, elbows bent
+			# and the arms pumping; the head stays steady over it all.
+			var running := stride > 0.68
+			var run_k := smoothstep(0.55, 0.85, stride)
+			var reach := lerpf(22.0 + 10.0 * stride, 40.0, run_k)
 			leg_f = -s * reach
 			leg_b = s * reach
-			bend_f = c > 0.35
-			bend_b = c < -0.35
-			pelvis_y = -absf(c) * (4.0 + 4.0 * stride) + 3.0
+			bend_f = c > lerpf(0.35, 0.05, run_k)
+			bend_b = c < -lerpf(0.35, 0.05, run_k)
+			pelvis_y = -absf(c) * lerpf(4.0, 9.0, run_k) + 3.0
 			pelvis_x = 0.0
-			lean = 3.0 + 4.0 * stride
-			arm_f = _rest_front + s * (20.0 + 14.0 * stride)
-			arm_b = _rest_back - s * (20.0 + 14.0 * stride)
-			head_tilt = sin(_phase * 2.0) * 1.8 + 1.5
-			torso_squash = 1.0 + absf(c) * 0.02
+			lean = lerpf(3.0, 12.0, run_k)
+			var swing := lerpf(18.0, 42.0, run_k)
+			arm_f = _rest_front - 22.0 * run_k + s * swing
+			arm_b = _rest_back + 22.0 * run_k - s * swing
+			elbow_bend = lerpf(18.0, 82.0, run_k)
+			head_tilt = sin(_phase * 2.0) * lerpf(1.8, 0.8, run_k) + lerpf(1.5, -3.0, run_k)
+			torso_squash = 1.0 + absf(c) * (0.02 if not running else 0.035)
 		"jump":
 			leg_f = -32.0
 			bend_f = true

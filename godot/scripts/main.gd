@@ -300,6 +300,8 @@ func _run_scenario() -> void:
 				input.aim = _nearest_tree()
 		"turn":
 			input.move = -0.3 if _frames > 20 else 0.0
+		"walkslow":
+			input.move = 0.45 if _frames > 20 else 0.0
 		"walkleft":
 			input.move = -1.0 if _frames > 20 else 0.0
 		"jump":
