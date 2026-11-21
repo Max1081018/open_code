@@ -10,7 +10,7 @@ extends RefCounted
 ## Pure functions of the seed: safe to call from worker threads.
 
 const WATER := 0.0
-const HALF := 1024.0          ## the island's half-extent in metres
+const HALF := 1536.0          ## the island's half-extent in metres (a 3 km island)
 const VILLAGE := Vector2(0, 0)
 const VILLAGE_RADIUS := 70.0
 const VILLAGE_HEIGHT := 9.0
@@ -27,6 +27,7 @@ var _river := FastNoiseLite.new()
 var _temperature := FastNoiseLite.new()
 var _moisture := FastNoiseLite.new()
 var _detail := FastNoiseLite.new()
+var _forest := FastNoiseLite.new()
 
 
 func _init(the_seed := 1337) -> void:
@@ -40,6 +41,7 @@ func _init(the_seed := 1337) -> void:
 	_setup(_temperature, 6, 0.0009, 2)
 	_setup(_moisture, 7, 0.0011, 2)
 	_setup(_detail, 8, 0.05, 2)
+	_setup(_forest, 9, 0.0045, 3)
 
 
 func _setup(noise: FastNoiseLite, offset: int, frequency: float, octaves: int) -> void:
@@ -81,6 +83,11 @@ func normal(x: float, z: float, step := 1.5) -> Vector3:
 	var hx := height(x + step, z) - height(x - step, z)
 	var hz := height(x, z + step) - height(x, z - step)
 	return Vector3(-hx, step * 2.0, -hz).normalized()
+
+
+## How wooded the land is here, 0..1: groves and open meadows alternate.
+func forest(x: float, z: float) -> float:
+	return smoothstep(-0.15, 0.35, _forest.get_noise_2d(x, z))
 
 
 func biome(x: float, z: float) -> int:

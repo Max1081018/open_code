@@ -38,6 +38,56 @@ func setup(the_seed: int) -> void:
 			rings = [1, 2, 3]
 		1:
 			rings = [1, 2, 4]
+	_build_horizon()
+
+
+## The whole island as one coarse mesh (24 m cells), drawn only beyond the
+## streamed rings: distant mountains and coasts are always on the horizon.
+func _build_horizon() -> void:
+	var cell := 24.0
+	var half := TerrainGen.HALF + 200.0
+	var n := int(half * 2.0 / cell) + 1
+	var st := SurfaceTool.new()
+	st.begin(Mesh.PRIMITIVE_TRIANGLES)
+	var heights := PackedFloat32Array()
+	heights.resize(n * n)
+	for j in n:
+		for i in n:
+			heights[j * n + i] = gen.height(-half + i * cell, -half + j * cell)
+	for j in n:
+		for i in n:
+			var x := -half + i * cell
+			var z := -half + j * cell
+			var h := heights[j * n + i]
+			var nor := gen.normal(x, z, cell)
+			var b := gen.biome(x, z)
+			st.set_normal(nor)
+			st.set_color(gen.splat(x, z, h, nor, b))
+			var t := gen.tint(b)
+			st.set_uv(Vector2(x, z))
+			st.set_uv2(Vector2((t.r + t.g + t.b) / 3.0, t.a))
+			st.add_vertex(Vector3(x, h - 0.6, z))
+	for j in n - 1:
+		for i in n - 1:
+			var a := j * n + i
+			st.add_index(a)
+			st.add_index(a + 1)
+			st.add_index(a + n)
+			st.add_index(a + 1)
+			st.add_index(a + n + 1)
+			st.add_index(a + n)
+	var mi := MeshInstance3D.new()
+	mi.mesh = st.commit()
+	var mat := _material.duplicate() as ShaderMaterial
+	mat.set_shader_parameter("cull_radius", SIZE * (rings[rings.size() - 1] - 0.5))
+	mi.material_override = mat
+	mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	mi.extra_cull_margin = 4000.0
+	add_child(mi)
+	_horizon = mi
+
+
+var _horizon: MeshInstance3D
 
 
 func height_at(x: float, z: float) -> float:

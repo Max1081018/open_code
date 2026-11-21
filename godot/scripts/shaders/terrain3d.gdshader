@@ -9,6 +9,8 @@ uniform sampler2D rock_tex : source_color, filter_linear_mipmap, repeat_enable;
 uniform sampler2D snow_tex : source_color, filter_linear_mipmap, repeat_enable;
 uniform sampler2D sand_tex : source_color, filter_linear_mipmap, repeat_enable;
 uniform float scale = 0.22;
+// Horizon mesh: drawn only beyond this distance (near chunks cover the rest).
+uniform float cull_radius = 0.0;
 
 varying vec3 world_pos;
 varying vec3 world_normal;
@@ -23,6 +25,9 @@ vec3 two_scale(sampler2D t, vec2 p) {
 }
 
 void fragment() {
+	if (cull_radius > 0.0 && distance(world_pos.xz, CAMERA_POSITION_WORLD.xz) < cull_radius) {
+		discard;
+	}
 	vec2 p = world_pos.xz;
 	vec3 grass = two_scale(grass_tex, p) * vec3(0.68, 0.78, 0.55);
 	vec3 soil = two_scale(soil_tex, p);

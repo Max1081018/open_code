@@ -141,7 +141,13 @@ static func _flora(gen: TerrainGen, coord: Vector2i, origin: Vector2) -> Array:
 				for e in table:
 					pick -= e[1]
 					if pick < 0:
-						placed.append({"kind": e[0], "pos": Vector3(x, h - 0.05, z), "yaw": rng.randf() * TAU,
+						var kind: String = e[0]
+						# Trees gather in groves; open meadows get flowers instead.
+						if FoliageLib.category(kind) == "tree" and rng.randf() > gen.forest(x, z) * 0.75:
+							if b != TerrainGen.Biome.FOREST or rng.randf() < 0.5:
+								break
+							kind = ["Flower_3_Group", "Flower_4_Group", "Bush_Common_Flowers"][rng.randi() % 3]
+						placed.append({"kind": kind, "pos": Vector3(x, h - 0.05, z), "yaw": rng.randf() * TAU,
 							"scale": rng.randf_range(0.8, 1.25)})
 						break
 	return placed
