@@ -114,6 +114,7 @@ func _process(delta: float) -> void:
 	_timer -= delta
 	if _timer <= 0.0:
 		_timer = 0.25
+		_reap_tasks()
 		_update(false)
 	# Swap in finished chunks, two per frame at most.
 	for i in 2:
@@ -148,16 +149,41 @@ func _update(_now: bool) -> void:
 			var have = _chunks.get(c)
 			if (have == null or have.lod != lod) and _pending.get(c, -1) != lod:
 				_pending[c] = lod
-				var g := gen
-				WorkerThreadPool.add_task(func():
-					var r := ChunkBuilder.build(g, c, lod, lod == 0)
-					_mutex.lock()
-					_results.append(r)
-					_mutex.unlock())
+				_tasks.append(WorkerThreadPool.add_task(_build_task.bind(c, lod)))
 	for c in _chunks.keys():
 		if not wanted.has(c):
 			_chunks[c].node.queue_free()
 			_chunks.erase(c)
+
+
+## Builds still running on worker threads: waited for on exit so none
+## writes into a freed world (that corrupted the heap at quit).
+var _tasks: Array[int] = []
+
+
+## Runs on a worker thread: build one chunk and queue it for the main thread.
+func _build_task(c: Vector2i, lod: int) -> void:
+	var r := ChunkBuilder.build(gen, c, lod, lod == 0)
+	_mutex.lock()
+	_results.append(r)
+	_mutex.unlock()
+
+
+func _exit_tree() -> void:
+	for t in _tasks:
+		WorkerThreadPool.wait_for_task_completion(t)
+	_tasks.clear()
+	FoliageLib.release()
+
+
+func _reap_tasks() -> void:
+	var keep: Array[int] = []
+	for t in _tasks:
+		if WorkerThreadPool.is_task_completed(t):
+			WorkerThreadPool.wait_for_task_completion(t)
+		else:
+			keep.append(t)
+	_tasks = keep
 
 
 func _apply(r: Dictionary) -> void:

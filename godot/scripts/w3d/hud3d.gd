@@ -309,7 +309,8 @@ func _build_skills() -> void:
 
 ## Buttons' centres relative to the bottom-right corner.
 const SKILL_POS := {"attack": Vector2(-150, -150), "skill": Vector2(-300, -110), "burst": Vector2(-150, -310),
-	"jump": Vector2(-60, -280), "dash": Vector2(-300, -250), "gadget": Vector2(-420, -80)}
+	"jump": Vector2(-60, -280), "dash": Vector2(-300, -250), "gadget": Vector2(-420, -80),
+	"interact": Vector2(-430, -230)}
 
 
 func _draw_skills(c: Control) -> void:
@@ -343,6 +344,11 @@ func _draw_skills(c: Control) -> void:
 	_star(c, b, 30, Color(0.7, 0.95, 1.0) if ready else Color(0.5, 0.6, 0.75))
 	if not touch:
 		c.draw_string(_num_font, b + Vector2(-8, 84), "Q", HORIZONTAL_ALIGNMENT_LEFT, -1, 22, PALE)
+	# Interact appears only when there is something to use.
+	if _prompt and _prompt.text != "" and touch:
+		var ip: Vector2 = SKILL_POS.interact
+		_ring(c, ip, 40, Color(0.25, 0.2, 0.08, 0.6), GOLD, 2.5)
+		c.draw_circle(ip, 9, GOLD)
 	# Jump and dash: small rings.
 	for k in ["jump", "dash"]:
 		var p: Vector2 = SKILL_POS[k]
@@ -457,6 +463,18 @@ func _build_boss_bar() -> void:
 	_boss_box.add_child(_boss_bar)
 	_boss_box.visible = false
 	root.add_child(_boss_box)
+
+
+var _prompt: Label
+
+
+## An interaction hint beside the hero ("Open chest"); "" hides it.
+func prompt(text: String) -> void:
+	if _prompt == null:
+		_prompt = _label("", 26, PALE, _ui_font)
+		root.add_child(_prompt)
+		_place(_prompt, Vector2(0.5, 0.5), Vector2(140, 40))
+	_prompt.text = ("[F]  " if not touch else "✋  ") + text if text != "" else ""
 
 
 func boss_bar(e: Enemy3D) -> void:

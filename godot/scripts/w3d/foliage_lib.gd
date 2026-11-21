@@ -44,6 +44,14 @@ static func parts(kind: String) -> Array:
 	return out
 
 
+## Drop the cached meshes and materials. Call before the engine shuts down:
+## static variables are cleared after the servers are gone, and freeing
+## render resources then corrupts the heap.
+static func release() -> void:
+	_cache.clear()
+	_wind = null
+
+
 static func spec_for(kind: String) -> Array:
 	for prefix in SIZES:
 		if kind.begins_with(prefix):

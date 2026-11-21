@@ -14,6 +14,7 @@ var hud: Hud3D
 var play: Play3D
 var islands: SkyIslands
 var features: WorldFeatures
+var town: Town
 var sun: DirectionalLight3D
 var environment: Environment
 var _sky_mat: ShaderMaterial
@@ -82,6 +83,9 @@ func _ready() -> void:
 	hud = Hud3D.new()
 	add_child(hud)
 	hud.setup(self)
+	town = Town.new()
+	add_child(town)
+	town.build(self)
 	if _args.has("shot"):
 		input.scripted = true
 		Engine.max_fps = 0
