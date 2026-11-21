@@ -10,7 +10,7 @@ extends SceneTree
 
 const SRC := "res://assets/models/sf_src/items/"
 const OUT := "res://assets/models/items/"
-const TEX_MAX := 512
+const TEX_MAX := 256
 
 ## name -> {file, parts: [[node name filter, offset along the handle]],
 ## kind: tool|sword|torch|rod|shield, length (m), grip (fraction from the end)}

@@ -15,9 +15,9 @@ dest_files=["res://.godot/imported/kick.png-90c03a30cede336567b1d2d6866dc61d.cte
 
 [params]
 
-compress/mode=0
+compress/mode=1
 compress/high_quality=false
-compress/lossy_quality=0.7
+compress/lossy_quality=0.85
 compress/hdr_compression=1
 compress/normal_map=0
 compress/channel_pack=0

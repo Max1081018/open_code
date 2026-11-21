@@ -15,9 +15,9 @@ dest_files=["res://.godot/imported/bridge_logs.png-011a90ac416ecf7e0796fcae4ffe5
 
 [params]
 
-compress/mode=0
+compress/mode=1
 compress/high_quality=false
-compress/lossy_quality=0.7
+compress/lossy_quality=0.85
 compress/hdr_compression=1
 compress/normal_map=0
 compress/channel_pack=0

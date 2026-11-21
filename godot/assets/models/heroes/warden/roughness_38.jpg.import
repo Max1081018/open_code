@@ -2,7 +2,7 @@
 
 importer="texture"
 type="CompressedTexture2D"
-uid="uid://bj0twykuqh5oh"
+uid="uid://ckxxmij3jlpdw"
 path="res://.godot/imported/roughness_38.jpg-b0bd5d89d19cd0ce15b153bae87f715e.ctex"
 metadata={
 "vram_texture": false
@@ -15,9 +15,9 @@ dest_files=["res://.godot/imported/roughness_38.jpg-b0bd5d89d19cd0ce15b153bae87f
 
 [params]
 
-compress/mode=0
+compress/mode=1
 compress/high_quality=false
-compress/lossy_quality=0.7
+compress/lossy_quality=0.85
 compress/hdr_compression=1
 compress/normal_map=0
 compress/channel_pack=0

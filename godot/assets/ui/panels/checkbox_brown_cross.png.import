@@ -15,9 +15,9 @@ dest_files=["res://.godot/imported/checkbox_brown_cross.png-4d26e0b845f820d88a80
 
 [params]
 
-compress/mode=0
+compress/mode=1
 compress/high_quality=false
-compress/lossy_quality=0.7
+compress/lossy_quality=0.85
 compress/hdr_compression=1
 compress/normal_map=0
 compress/channel_pack=0

@@ -15,9 +15,9 @@ dest_files=["res://.godot/imported/lamp.png-08ff83810eb93ba2c592b1a7e4064d55.cte
 
 [params]
 
-compress/mode=0
+compress/mode=1
 compress/high_quality=false
-compress/lossy_quality=0.7
+compress/lossy_quality=0.85
 compress/hdr_compression=1
 compress/normal_map=0
 compress/channel_pack=0

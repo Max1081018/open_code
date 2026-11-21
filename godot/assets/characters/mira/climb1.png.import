@@ -15,9 +15,9 @@ dest_files=["res://.godot/imported/climb1.png-5d4edf60d2e562e2d9fcc0c697e753c3.c
 
 [params]
 
-compress/mode=0
+compress/mode=1
 compress/high_quality=false
-compress/lossy_quality=0.7
+compress/lossy_quality=0.85
 compress/hdr_compression=1
 compress/normal_map=0
 compress/channel_pack=0

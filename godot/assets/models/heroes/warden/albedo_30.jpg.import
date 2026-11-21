@@ -2,7 +2,7 @@
 
 importer="texture"
 type="CompressedTexture2D"
-uid="uid://dx0mmetiwsu0o"
+uid="uid://7xpv7it5pr7i"
 path="res://.godot/imported/albedo_30.jpg-a3adc815bab0d4f9ca1a8f28d9079723.ctex"
 metadata={
 "vram_texture": false
@@ -15,9 +15,9 @@ dest_files=["res://.godot/imported/albedo_30.jpg-a3adc815bab0d4f9ca1a8f28d907972
 
 [params]
 
-compress/mode=0
+compress/mode=1
 compress/high_quality=false
-compress/lossy_quality=0.7
+compress/lossy_quality=0.85
 compress/hdr_compression=1
 compress/normal_map=0
 compress/channel_pack=0

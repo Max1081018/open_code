@@ -15,9 +15,9 @@ dest_files=["res://.godot/imported/light_02.png-8be0cb6b65ad4721ac782a1c3e20b76d
 
 [params]
 
-compress/mode=0
+compress/mode=1
 compress/high_quality=false
-compress/lossy_quality=0.7
+compress/lossy_quality=0.85
 compress/hdr_compression=1
 compress/normal_map=0
 compress/channel_pack=0

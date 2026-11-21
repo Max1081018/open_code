@@ -14,8 +14,8 @@ extends SceneTree
 
 const SRC := "res://assets/models/sf_src/%s.glb"
 const OUT := "res://assets/models/heroes/%s.scn"
-const COLOUR_MAX := 1024
-const DETAIL_MAX := 512
+const COLOUR_MAX := 512
+const DETAIL_MAX := 256
 
 
 var _images_only := false

@@ -15,9 +15,9 @@ dest_files=["res://.godot/imported/hoe_gold.png-499979b1f57a3154e44d2ba58b3af3a7
 
 [params]
 
-compress/mode=0
+compress/mode=1
 compress/high_quality=false
-compress/lossy_quality=0.7
+compress/lossy_quality=0.85
 compress/hdr_compression=1
 compress/normal_map=0
 compress/channel_pack=0

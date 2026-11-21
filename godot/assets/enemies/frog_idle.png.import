@@ -15,9 +15,9 @@ dest_files=["res://.godot/imported/frog_idle.png-7ce6425a6a6cdb484e1cb7c7fc2d4e1
 
 [params]
 
-compress/mode=0
+compress/mode=1
 compress/high_quality=false
-compress/lossy_quality=0.7
+compress/lossy_quality=0.85
 compress/hdr_compression=1
 compress/normal_map=0
 compress/channel_pack=0

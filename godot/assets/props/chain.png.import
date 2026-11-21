@@ -15,9 +15,9 @@ dest_files=["res://.godot/imported/chain.png-4618b61c2d13f39d7c108460b7ad86af.ct
 
 [params]
 
-compress/mode=0
+compress/mode=1
 compress/high_quality=false
-compress/lossy_quality=0.7
+compress/lossy_quality=0.85
 compress/hdr_compression=1
 compress/normal_map=0
 compress/channel_pack=0

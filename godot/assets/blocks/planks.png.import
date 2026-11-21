@@ -15,9 +15,9 @@ dest_files=["res://.godot/imported/planks.png-482ec2df05e0ea95a61dcb4d3ae89802.c
 
 [params]
 
-compress/mode=0
+compress/mode=1
 compress/high_quality=false
-compress/lossy_quality=0.7
+compress/lossy_quality=0.85
 compress/hdr_compression=1
 compress/normal_map=0
 compress/channel_pack=0
