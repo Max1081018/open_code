@@ -18,6 +18,10 @@ signal footstep(running: bool)
 ## Pixels of viewport per world pixel of height: renders crisp, then is
 ## scaled down onto the screen.
 const SUPERSAMPLE := 1.5
+
+## Render scale for this body: raise it for big bodies (bosses) drawn
+## scaled up, so they stay sharp.
+var supersample := SUPERSAMPLE
 ## The picture in world pixels: tall enough for raised arms and a swung
 ## tool, wide enough for a long reach either side.
 const FRAME := Vector2(300, 300)
@@ -52,6 +56,8 @@ const CLIPS := {
 	"attack": ["1H_Melee_Attack_Chop", false],
 	"spin": ["2H_Melee_Attack_Spin", false],
 	"throw": ["Throw", false],
+	"rise": ["Spawn_Ground_Skeletons", false],
+	"taunt": ["Taunt", false],
 }
 
 ## Who plays whom: game character -> [KayKit model, palette swap or ""].
@@ -115,7 +121,7 @@ func _ready() -> void:
 
 func _build() -> void:
 	viewport = SubViewport.new()
-	viewport.size = Vector2i(FRAME * SUPERSAMPLE)
+	viewport.size = Vector2i(FRAME * supersample)
 	viewport.transparent_bg = true
 	viewport.own_world_3d = true
 	viewport.msaa_3d = Viewport.MSAA_2X
@@ -178,10 +184,10 @@ func _build() -> void:
 	picture = Sprite2D.new()
 	picture.texture = viewport.get_texture()
 	picture.centered = false
-	picture.scale = Vector2.ONE / SUPERSAMPLE
+	picture.scale = Vector2.ONE / supersample
 	# Feet (the model's origin) at this node's origin: wherever the tilted
 	# camera sees the origin, in viewport pixels.
-	var feet := camera.unproject_position(Vector3.ZERO) / SUPERSAMPLE
+	var feet := camera.unproject_position(Vector3.ZERO) / supersample
 	picture.position = -feet
 	add_child(picture)
 
@@ -289,6 +295,25 @@ func hold_off_hand(id: String) -> void:
 	if id == "" or left_hand == null:
 		return
 	_off = _weapon(MODELS.get(id, "shield_round"))
+	left_hand.add_child(_off)
+
+
+## Hold a named weapon model (assets/models/kaykit/weapons) in a hand.
+func hold_model(right: String, left := "") -> void:
+	if right != "" and right_hand:
+		if _held:
+			_held.queue_free()
+		_held = _weapon(right)
+		_card_tip = 1.1
+		right_hand.add_child(_held)
+	if left != "" and left_hand:
+		hold_off_hand_model(left)
+
+
+func hold_off_hand_model(name: String) -> void:
+	if _off:
+		_off.queue_free()
+	_off = _weapon(name)
 	left_hand.add_child(_off)
 
 

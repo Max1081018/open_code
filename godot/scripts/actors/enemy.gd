@@ -118,7 +118,12 @@ func _ready() -> void:
 
 	if _toon:
 		# People (zombies, robots, shades, the bosses) are jointed rigs.
-		_sprite = CutoutBody.new(spec.toon)
+		if Settings.characters_3d and Body3D.CAST.has(kind):
+			_sprite = Body3D.new(kind)
+			_sprite.supersample = Body3D.SUPERSAMPLE * clampf(s, 1.0, 2.2)
+			_sprite.ready.connect(_arm_skeleton)
+		else:
+			_sprite = CutoutBody.new(spec.toon)
 		_sprite.run_speed = float(spec.speed)
 	else:
 		_sprite = AnimatedSprite2D.new()
@@ -179,6 +184,28 @@ func body_rect() -> Rect2:
 			shape = child
 	var centre := global_position + (shape.position if shape else Vector2.ZERO)
 	return Rect2(centre - _box.size * 0.5, _box.size)
+
+
+## What flashes when struck: a 3D body's rendered picture (a plain
+## Node2D's self_modulate would not reach it), else the sprite itself.
+func _flash_target() -> CanvasItem:
+	return _sprite.picture if _sprite is Body3D else _sprite
+
+
+## Weapons for the risen dead, and the way they come: out of the ground.
+const SKELETON_ARMS := {
+	"zombie": ["Skeleton_Axe", ""], "robot": ["Skeleton_Blade", "Skeleton_Shield_Small_A"],
+	"shade": ["Skeleton_Blade", ""], "warden": ["Skeleton_Blade", "Skeleton_Shield_Large_A"],
+	"gloam": ["Skeleton_Staff", ""],
+}
+
+
+func _arm_skeleton() -> void:
+	var arms: Array = SKELETON_ARMS.get(kind, ["", ""])
+	_sprite.hold_model(arms[0], arms[1])
+	if not is_boss and spec.mode != Mode.PHASE:
+		_sprite.play("rise")
+		_hurt_timer = 1.1  # still clawing out of the earth: no stride yet
 
 
 func _frames() -> SpriteFrames:
@@ -401,8 +428,8 @@ func _begin_windup() -> void:
 	var tween := create_tween()
 	tween.tween_property(_sprite, "scale", Vector2(s * 1.12, s * 0.86), _windup * 0.8) \
 		.set_trans(Tween.TRANS_SINE)
-	_sprite.self_modulate = Color(1.6, 1.25, 1.25)
-	tween.parallel().tween_property(_sprite, "self_modulate", Color.WHITE, _windup)
+	_flash_target().self_modulate = Color(1.6, 1.25, 1.25)
+	tween.parallel().tween_property(_flash_target(), "self_modulate", Color.WHITE, _windup)
 
 
 ## The strike after the tell: a short lunge toward the player.
@@ -476,8 +503,8 @@ func take_hit(amount: float, from: Vector2, crit := false, quiet := false) -> vo
 			64 if crit else 50)
 		level.shake(5.0 if crit else 3.0)
 		var tween := create_tween()
-		_sprite.self_modulate = Color(3, 3, 3)
-		tween.tween_property(_sprite, "self_modulate", Color.WHITE, 0.15)
+		_flash_target().self_modulate = Color(3, 3, 3)
+		tween.tween_property(_flash_target(), "self_modulate", Color.WHITE, 0.15)
 		# The blow lands on the body: squashed against it, then springing back.
 		_squash(Vector2(1.25, 0.78) if not is_boss else Vector2(1.08, 0.94))
 	if health <= 0.0:
@@ -506,10 +533,10 @@ func _die() -> void:
 	# the blow, then gone.
 	Effects.burst(level.fx_layer, global_position + Vector2(0, -60 * s), "hit")
 	Effects.burst(level.fx_layer, global_position + Vector2(0, -60 * s), "glow", Color(1.0, 0.9, 0.7))
-	_sprite.self_modulate = Color(4, 4, 4)
+	_flash_target().self_modulate = Color(4, 4, 4)
 	level.shake(4.0 if not is_boss else 20.0)
 	var tween := create_tween()
-	tween.tween_property(_sprite, "self_modulate", Color.WHITE, 0.15)
+	tween.tween_property(_flash_target(), "self_modulate", Color.WHITE, 0.15)
 	if not _toon:
 		var away := signf(global_position.x - player.global_position.x)
 		tween.parallel().tween_property(_sprite, "rotation", away * 1.4, 0.5).set_ease(Tween.EASE_OUT)
