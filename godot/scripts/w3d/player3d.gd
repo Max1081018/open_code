@@ -227,6 +227,16 @@ func _start_action(heavy: bool) -> void:
 	swung.emit(kind + ("_heavy" if heavy else ""))
 
 
+## Play a scripted move (skills): locks movement like an attack.
+func perform(clip: String, seconds: float, speed := 1.0) -> void:
+	_action = seconds
+	_play(clip, speed, true)
+
+
+func busy() -> bool:
+	return _action > 0.0 or _dodge > 0.0
+
+
 func _spend(amount: float) -> bool:
 	if stamina < amount * 0.5:
 		return false

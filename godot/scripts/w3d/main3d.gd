@@ -202,6 +202,8 @@ func _script_input() -> void:
 	input.heavy = false
 	input.toggle_view = false
 	input.sprint = false
+	input.skill = false
+	input.burst = false
 	match _args.get("action", "idle"):
 		"walk":
 			input.move = Vector2(0, 0.45) if f > 20 else Vector2.ZERO
@@ -230,6 +232,13 @@ func _script_input() -> void:
 			if f == 2:
 				play.select(1 if _args.action == "chop" else 2)
 			input.attack = f > 20 and f % 40 == 0
+		"skills":
+			if f == 2:
+				for k in 3:
+					play.spawn_enemy("zombie", player.global_position + Vector3(k * 1.5 - 1.5, 0, -3.5))
+				play.energy = Play3D.BURST_COST
+			input.skill = f == 30
+			input.burst = f == 80
 		"fight":
 			if f == 2:
 				play.spawn_enemy(_args.get("enemy", "zombie"), player.global_position + Vector3(0, 0, -5))

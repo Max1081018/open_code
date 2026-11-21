@@ -13,6 +13,8 @@ var heavy := false
 var block := false
 var interact := false
 var toggle_view := false
+var skill := false
+var burst := false
 var scripted := false
 
 ## Set by the touch controls each frame.
@@ -32,7 +34,7 @@ func _ensure_actions() -> void:
 	var keys := {
 		"w_forward": [KEY_W, KEY_UP], "w_back": [KEY_S, KEY_DOWN], "w_left": [KEY_A, KEY_LEFT],
 		"w_right": [KEY_D, KEY_RIGHT], "w_jump": [KEY_SPACE], "w_sprint": [KEY_SHIFT], "w_dodge": [KEY_CTRL, KEY_C],
-		"w_interact": [KEY_E], "w_view": [KEY_V], "w_heavy": [KEY_R],
+		"w_interact": [KEY_F], "w_view": [KEY_V], "w_heavy": [KEY_R], "w_skill": [KEY_E], "w_burst": [KEY_Q],
 	}
 	for action in keys:
 		if not InputMap.has_action(action):
@@ -70,6 +72,10 @@ func _process(_delta: float) -> void:
 	block = (captured and Input.is_mouse_button_pressed(MOUSE_BUTTON_RIGHT)) or touch_buttons.get("block", false)
 	interact = Input.is_action_just_pressed("w_interact") or touch_buttons.get("interact", false)
 	toggle_view = Input.is_action_just_pressed("w_view") or touch_buttons.get("view", false)
+	skill = Input.is_action_just_pressed("w_skill") or touch_buttons.get("skill", false)
+	burst = Input.is_action_just_pressed("w_burst") or touch_buttons.get("burst", false)
+	if touch_buttons.get("dash", false):
+		dodge = true
 	# One-shot touch buttons last one frame; held ones are re-set by the HUD.
-	for b in ["jump", "dodge", "heavy", "interact", "view"]:
+	for b in ["jump", "dodge", "heavy", "interact", "view", "skill", "burst", "dash"]:
 		touch_buttons.erase(b)

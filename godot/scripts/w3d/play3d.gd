@@ -22,6 +22,10 @@ var _debris_mesh: BoxMesh
 ## Seconds from the swing starting to the blow landing.
 const IMPACT := {"attack": 0.32, "attack_heavy": 0.55, "chop": 0.48, "mine": 0.42}
 const ARC_REACH := 2.6
+const SKILL_COOLDOWN := 6.0
+const BURST_COST := 60.0
+var skill_cooldown := 0.0
+var energy := 0.0
 
 
 func setup(the_game: Node) -> void:
@@ -53,6 +57,14 @@ func _on_swing(kind: String) -> void:
 
 
 func _process(delta: float) -> void:
+	skill_cooldown = maxf(0.0, skill_cooldown - delta)
+	var inp: Input3D = game.input
+	if inp.skill:
+		inp.skill = false
+		use_skill()
+	if inp.burst:
+		inp.burst = false
+		use_burst()
 	for i in range(_impacts.size() - 1, -1, -1):
 		_impacts[i][0] -= delta
 		if _impacts[i][0] <= 0.0:
@@ -131,10 +143,134 @@ func _impact(kind: String, heavy: bool) -> void:
 		damage_number(enemy.global_position + Vector3(0, 2.0 * (1.5 if enemy.is_boss else 1.0), 0), amount, crit)
 		debris(enemy.global_position + Vector3(0, 1.1, 0), Color(0.85, 0.82, 0.75), 6)
 		struck += 1
+		energy = minf(BURST_COST, energy + (6.0 if heavy else 3.5))
 	if struck > 0:
 		Sfx.play("hit")
 		_shake = maxf(_shake, 0.35 if heavy else 0.2)
 		_hitstop(0.06 if heavy else 0.035)
+
+
+## Starfall Slash (E): a dash-strike through everything in a wide arc ahead,
+## leaving a ring of starlight.
+func use_skill() -> void:
+	var p: Player3D = game.player
+	if skill_cooldown > 0.0 or p.busy() or p.swimming:
+		return
+	skill_cooldown = SKILL_COOLDOWN
+	p.perform("Sword_Dash", 0.7, 1.1)
+	var fwd := p.model.global_transform.basis.z
+	p.velocity += fwd * 9.0
+	get_tree().create_timer(0.25).timeout.connect(func():
+		_area_strike(p.global_position + fwd * 2.0, 4.2, 38.0, Color(0.75, 0.62, 1.0))
+		energy = minf(BURST_COST, energy + 8.0))
+
+
+## Starburst (Q): when charged, a great burst of starlight around her.
+func use_burst() -> void:
+	var p: Player3D = game.player
+	if energy < BURST_COST or p.busy() or p.swimming:
+		return
+	energy = 0.0
+	p.perform("Sword_Heavy_Combo", 1.1, 1.0)
+	toast.emit("Starburst!")
+	get_tree().create_timer(0.55).timeout.connect(func():
+		_area_strike(p.global_position, 7.5, 95.0, Color(0.6, 0.9, 1.0))
+		_shake = 1.0)
+
+
+func _area_strike(at: Vector3, radius: float, damage: float, colour: Color) -> void:
+	_star_ring(at, radius, colour)
+	var hits := 0
+	for e in get_tree().get_nodes_in_group("enemies"):
+		var enemy := e as Enemy3D
+		if enemy.dead or enemy.global_position.distance_to(at) > radius + (1.0 if enemy.is_boss else 0.0):
+			continue
+		var amount := damage * randf_range(0.9, 1.1)
+		enemy.take_hit(amount, at, true)
+		damage_number(enemy.global_position + Vector3(0, 2.2, 0), amount, true)
+		hits += 1
+	_shake = maxf(_shake, 0.6)
+	if hits > 0:
+		_hitstop(0.07)
+		Sfx.play("hit")
+
+
+## A flat ring of light expanding on the ground plus rising sparkles.
+func _star_ring(at: Vector3, radius: float, colour: Color) -> void:
+	var ring := MeshInstance3D.new()
+	var torus := TorusMesh.new()
+	torus.inner_radius = 0.9
+	torus.outer_radius = 1.0
+	torus.rings = 48
+	ring.mesh = torus
+	var mat := StandardMaterial3D.new()
+	mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	mat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+	mat.blend_mode = BaseMaterial3D.BLEND_MODE_ADD
+	mat.albedo_color = Color(colour, 0.9)
+	ring.material_override = mat
+	game.add_child(ring)
+	ring.global_position = at + Vector3(0, 0.3, 0)
+	ring.scale = Vector3(0.3, 0.3, 0.3)
+	var t := ring.create_tween().set_parallel()
+	t.tween_property(ring, "scale", Vector3(radius, 1.0, radius), 0.45).set_ease(Tween.EASE_OUT).set_trans(Tween.TRANS_CUBIC)
+	t.tween_property(mat, "albedo_color:a", 0.0, 0.6)
+	t.chain().tween_callback(ring.queue_free)
+	var p := CPUParticles3D.new()
+	var quad := QuadMesh.new()
+	quad.size = Vector2(0.07, 0.07)
+	p.mesh = quad
+	var pm := StandardMaterial3D.new()
+	pm.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	pm.billboard_mode = BaseMaterial3D.BILLBOARD_PARTICLES
+	pm.blend_mode = BaseMaterial3D.BLEND_MODE_ADD
+	pm.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+	pm.albedo_texture = _spark_texture()
+	pm.albedo_color = colour
+	p.material_override = pm
+	p.amount = 60
+	p.one_shot = true
+	p.explosiveness = 0.9
+	p.lifetime = 1.0
+	p.emission_shape = CPUParticles3D.EMISSION_SHAPE_RING
+	p.emission_ring_axis = Vector3.UP
+	p.emission_ring_radius = radius * 0.8
+	p.emission_ring_inner_radius = radius * 0.3
+	p.emission_ring_height = 0.2
+	p.direction = Vector3.UP
+	p.spread = 15
+	p.initial_velocity_min = 1.0
+	p.initial_velocity_max = 3.0
+	p.damping_min = 1.5
+	p.damping_max = 2.5
+	p.gravity = Vector3(0, -1, 0)
+	p.scale_amount_min = 0.5
+	p.scale_amount_max = 1.2
+	game.add_child(p)
+	p.global_position = at + Vector3(0, 0.4, 0)
+	p.emitting = true
+	get_tree().create_timer(1.6).timeout.connect(p.queue_free)
+
+
+static var _spark: Texture2D
+
+
+## A soft round glow with a bright core: the sprite for every spark.
+static func _spark_texture() -> Texture2D:
+	if _spark == null:
+		var g := Gradient.new()
+		g.set_color(0, Color(1, 1, 1, 1))
+		g.set_color(1, Color(1, 1, 1, 0))
+		g.add_point(0.25, Color(1, 1, 1, 0.8))
+		var t := GradientTexture2D.new()
+		t.gradient = g
+		t.fill = GradientTexture2D.FILL_RADIAL
+		t.fill_from = Vector2(0.5, 0.5)
+		t.fill_to = Vector2(0.5, 0.0)
+		t.width = 64
+		t.height = 64
+		_spark = t
+	return _spark
 
 
 func _break_rock(res: Dictionary) -> void:
