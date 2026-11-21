@@ -35,6 +35,11 @@ var stamina := 100.0
 var max_stamina := 100.0
 var _stamina_wait := 0.0
 var swimming := false
+var gliding := false
+## Upward wind from an updraft this frame (set by WorldFeatures).
+var updraft := 0.0
+const GLIDE_SPEED := 9.0
+const GLIDE_SINK := 2.2
 var _dodge := 0.0
 var _dodge_dir := Vector3.ZERO
 var _action := 0.0         ## seconds left of an attack/use animation
@@ -150,6 +155,8 @@ func _physics_process(delta: float) -> void:
 		_stamina_wait = 0.6
 	if swimming:
 		speed = SWIM
+	if gliding:
+		speed = GLIDE_SPEED
 	if _action > 0.0:
 		speed *= 0.25
 
@@ -157,7 +164,9 @@ func _physics_process(delta: float) -> void:
 	var target := wish * speed
 	if _dodge > 0.0:
 		target = _dodge_dir * DODGE_SPEED * clampf(_dodge / DODGE_TIME + 0.3, 0.0, 1.0)
-	var accel := 14.0 if is_on_floor() or swimming else 4.0
+	var accel := 14.0 if is_on_floor() or swimming else (2.5 if gliding else 4.0)
+	if gliding and wish.length() < 0.1:
+		target = model.global_transform.basis.z * GLIDE_SPEED * 0.7  # keep flying forward
 	horizontal = horizontal.lerp(target, 1.0 - exp(-accel * delta))
 	velocity.x = horizontal.x
 	velocity.z = horizontal.z
@@ -166,15 +175,30 @@ func _physics_process(delta: float) -> void:
 		# Float with the chest at the surface; jump swims upward.
 		var float_y := TerrainGen.WATER - 1.2
 		velocity.y = lerpf(velocity.y, (float_y - global_position.y) * 3.0 + (3.0 if input.jump else 0.0), 1.0 - exp(-4.0 * delta))
+	elif gliding:
+		# Wings out: a slow sink, lifted by updrafts; stamina drains.
+		var sink := -GLIDE_SINK + updraft
+		velocity.y = lerpf(velocity.y, sink, 1.0 - exp(-3.0 * delta))
+		stamina -= delta * (5.0 if updraft <= 0.0 else 0.0)
+		_stamina_wait = 0.6
+		if stamina <= 0.0 or input.jump:
+			input.jump = false
+			_set_glide(false)
 	else:
 		velocity.y -= GRAVITY * delta
+		velocity.y += updraft * delta * 3.0
 		var jump_now := input.jump
 		input.jump = false
 		if jump_now and is_on_floor() and _dodge <= 0.0 and _spend(8.0):
 			velocity.y = JUMP
 			_play("Jump_Start", 1.4, true)
+		elif jump_now and not is_on_floor() and _air_time > 0.2 and stamina > 5.0:
+			_set_glide(true)
 	var was_air := not is_on_floor()
 	move_and_slide()
+	if is_on_floor() or swimming:
+		if gliding:
+			_set_glide(false)
 	if is_on_floor():
 		if was_air and _air_time > 0.35:
 			_landing = 0.25
@@ -215,6 +239,22 @@ func _ground_feet(delta: float) -> void:
 	var gap := foot - ankle - global_position.y
 	var want := clampf(inner.position.y - gap, base - 0.35, base + 0.15)
 	inner.position.y = lerpf(inner.position.y, want, 1.0 - exp(-14.0 * delta))
+
+
+## Spread or fold her wings: the wing bones grow while gliding.
+func _set_glide(on: bool) -> void:
+	gliding = on
+	if on:
+		velocity.y = maxf(velocity.y, -1.0)
+		_play("Jump", 0.6, true)
+	var t := create_tween().set_parallel()
+	for side in ["L", "R"]:
+		for i in skeleton.get_bone_count():
+			var bn := skeleton.get_bone_name(i)
+			if bn.begins_with("Wing02_" + side):
+				var from := skeleton.get_bone_pose_scale(i)
+				var to := Vector3.ONE * (3.2 if on else 1.0)
+				t.tween_method(func(v: Vector3): skeleton.set_bone_pose_scale(i, v), from, to, 0.25)
 
 
 func _start_action(heavy: bool) -> void:
@@ -290,6 +330,8 @@ func _animate(speed: float) -> void:
 	var clip := "Idle"
 	if swimming:
 		clip = "Swim_Fwd" if speed > 0.5 else "Swim_Idle"
+	elif gliding:
+		clip = "Jump"
 	elif not is_on_floor() and _air_time > 0.15:
 		clip = "Jump"
 	elif input.block:

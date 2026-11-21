@@ -13,6 +13,7 @@ var input: Input3D
 var hud: Hud3D
 var play: Play3D
 var islands: SkyIslands
+var features: WorldFeatures
 var sun: DirectionalLight3D
 var environment: Environment
 var _sky_mat: ShaderMaterial
@@ -75,6 +76,9 @@ func _ready() -> void:
 	if _args.has("hold"):
 		play.inventory.slots[0] = {"id": _args.hold, "count": 1}
 		play.select(0)
+	features = WorldFeatures.new()
+	add_child(features)
+	features.build(self)
 	hud = Hud3D.new()
 	add_child(hud)
 	hud.setup(self)
@@ -253,6 +257,10 @@ func _script_input() -> void:
 			if f == 2:
 				play.select(1 if _args.action == "chop" else 2)
 			input.attack = f > 20 and f % 40 == 0
+		"glide":
+			# Jump off a slope, then spread the wings and fly forward.
+			input.move = Vector2(0, 1) if f > 10 else Vector2.ZERO
+			input.jump = f == 20 or f == 45
 		"skills":
 			if f == 2:
 				for k in 3:
