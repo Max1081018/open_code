@@ -135,7 +135,9 @@ func _ready() -> void:
 		_sprite.offset = Vector2(0, -64)
 	_sprite.scale = Vector2(s, s)
 	_sprite.z_index = 9
-	if spec.has("tint"):
+	# The tints were for the old flat-coloured figures; the downloaded cast
+	# has its own materials (and Warden's dark plate must stay dark).
+	if spec.has("tint") and not (_sprite is Body3D and CharacterKit.HEROES.has(kind) and kind == "warden"):
 		_sprite.modulate = spec.tint
 	add_child(_sprite)
 	_sprite.play("idle" if _toon else "move")
@@ -204,9 +206,23 @@ const SKELETON_ARMS := {
 }
 
 
+## The same for the downloaded cast: real 3D weapons (item ids).
+const HERO_ARMS := {
+	"zombie": ["", ""], "robot": ["iron_sword", "wood_shield"], "shade": ["silver_sword", ""],
+	"warden": ["gold_sword", "iron_shield"],
+}
+
+
 func _arm_skeleton() -> void:
-	var arms: Array = SKELETON_ARMS.get(kind, ["", ""])
-	_sprite.hold_model(arms[0], arms[1])
+	if CharacterKit.HEROES.has(kind) and HERO_ARMS.has(kind):
+		var hero_arms: Array = HERO_ARMS[kind]
+		if hero_arms[0] != "":
+			_sprite.hold_item(hero_arms[0], "sword")
+		if hero_arms[1] != "":
+			_sprite.hold_off_hand(hero_arms[1])
+	else:
+		var arms: Array = SKELETON_ARMS.get(kind, ["", ""])
+		_sprite.hold_model(arms[0], arms[1])
 	if not is_boss and spec.mode != Mode.PHASE:
 		_sprite.play("rise")
 		_hurt_timer = 1.1  # still clawing out of the earth: no stride yet
