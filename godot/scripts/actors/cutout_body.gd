@@ -20,6 +20,9 @@ const ONE_SHOT := {
 }
 const STRIDE := 150.0  ## ground covered by half a walk cycle, in pixels
 
+## A foot has come down (in step with the stride, so sounds land with it).
+signal footstep(running: bool)
+
 ## The AnimatedSprite2D-like surface the actors already use.
 var animation := "idle"
 var frame := 0
@@ -290,7 +293,10 @@ func _process(delta: float) -> void:
 	var speed := absf(motion.x)
 	var stride := clampf(speed / run_speed, 0.0, 1.2)
 	if grounded:
+		var before := sin(_phase)
 		_phase += speed * delta / STRIDE * PI
+		if speed > 40.0 and signf(sin(_phase)) != signf(before):
+			footstep.emit(stride > 0.68)
 	var s := sin(_phase)
 	var c := cos(_phase)
 

@@ -87,6 +87,7 @@ func _ready() -> void:
 	body.run_speed = RUN_SPEED
 	body.z_index = 10
 	add_child(body)
+	body.footstep.connect(_footstep)
 
 	rig = EquipmentRig.new()
 	rig.z_index = 10
@@ -266,6 +267,26 @@ func _try_step_up() -> void:
 	global_position.y = ahead.y * TILE - 1.0
 	global_position.x += facing * 10.0
 	velocity.y = 0.0
+
+
+## A foot comes down: the sound of whatever is underfoot, louder when
+## running, with a little dust kicked up from dry ground.
+func _footstep(running: bool) -> void:
+	var under := World.cell_of(global_position + Vector2(0, 20))
+	var tile := world.data.get_tile(under.x, under.y)
+	var volume := -12.0 if running else -16.0
+	match tile:
+		WorldData.ROCK, WorldData.BASALT, WorldData.BRICK, WorldData.CRYSTAL:
+			Sfx.play("step_stone" if randf() < 0.5 else "step_stone2", volume, 0.12)
+		WorldData.PLANKS:
+			Sfx.play("step_wood", volume - 2.0, 0.12)
+		WorldData.SNOW, WorldData.SAND:
+			Sfx.play("step_snow", volume - 1.0, 0.15)
+		_:
+			Sfx.play("step_grass", volume, 0.15)
+	if running and tile in [WorldData.SAND, WorldData.SOIL, WorldData.SNOW]:
+		Effects.burst(level.fx_layer, global_position + Vector2(-facing * 20, -6), "smoke",
+			_dust_color(under))
 
 
 func _land() -> void:
@@ -1075,11 +1096,7 @@ func _animate(delta: float) -> void:
 	if _anim_lock > 0.0:
 		return
 	body.speed_scale = 1.0
-	if is_on_floor() and absf(velocity.x) > 60.0:
-		_step_timer -= delta * clampf(absf(velocity.x) / RUN_SPEED, 0.5, 1.2)
-		if _step_timer <= 0.0:
-			_step_timer = 0.31
-			Sfx.play("step", -14.0, 0.15)
+
 
 
 # =============================================================================

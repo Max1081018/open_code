@@ -37,3 +37,8 @@ Music (assets/audio/music, converted to Ogg Vorbis q2 by ffmpeg):
 - ambience/rain.ogg — "Heavy Rain Falling Through Trees" (40 s, crossfaded loop) — https://soundza.com/sound/heavy-rain-falling-through-trees
 - ambience/forest.ogg — "Forest Bird Chorus" (40 s, crossfaded loop) — https://soundza.com/sound/forest-bird-chorus
 - ambience/cave.ogg — "Cave Drip Ambience" — https://soundza.com/sound/cave-drip-ambience
+- step_grass.ogg — "Right Footstep on Grass" — https://soundza.com/sound/right-footstep-on-grass
+- step_stone.ogg — "Stone Footstep 1" — https://soundza.com/sound/stone-footstep-1
+- step_stone2.ogg — "Stone Footstep 2" — https://soundza.com/sound/stone-footstep-2
+- step_wood.ogg — "Wood Footstep 2" — https://soundza.com/sound/wood-footstep-2
+- step_snow.ogg — "Footstep in Snow" — https://soundza.com/sound/footstep-in-snow

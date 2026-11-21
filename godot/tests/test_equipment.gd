@@ -159,3 +159,25 @@ func test_the_held_item_sits_in_the_fist() -> void:
 		check(fist.distance_to(rig.main.position) < 3.0,
 			"frame %d: grip and fist together (off by %.1f px)" % [i, fist.distance_to(rig.main.position)])
 	level.free()
+
+
+func test_footsteps_come_with_the_stride() -> void:
+	var level := _make_level()
+	var body := level.player.body
+	var steps := [0, 0]
+	body.footstep.connect(func(running): steps[1 if running else 0] += 1)
+	body.grounded = true
+	body.motion = Vector2(200, 0)  # a walk
+	for i in 120:
+		body._process(1.0 / 60.0)
+	check(steps[0] >= 2, "walking two seconds takes steps (%d)" % steps[0])
+	body.motion = Vector2(600, 0)  # a run
+	for i in 120:
+		body._process(1.0 / 60.0)
+	check(steps[1] > steps[0], "running takes more, quicker steps (%d vs %d)" % [steps[1], steps[0]])
+	var before: int = steps[0] + steps[1]
+	body.motion = Vector2.ZERO
+	for i in 120:
+		body._process(1.0 / 60.0)
+	check_eq(steps[0] + steps[1], before, "standing still takes none")
+	level.free()
