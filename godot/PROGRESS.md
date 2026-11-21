@@ -4,7 +4,7 @@ Branch `ccr-60ac94c6-dyqxhw`. Engine: Godot 4.4.1, GL Compatibility renderer, An
 Read **DESIGN.md** first: it sets the game's direction (light as weapon and key, vaults,
 relics, the Dark Tide, regions).
 
-## Where things stand (tests: 105 pass; tutorial bot passes)
+## Where things stand (tests: 108 pass; tutorial bot passes)
 
 ### This session's big changes (from `6c194f2`)
 
@@ -21,6 +21,9 @@ relics, the Dark Tide, regions).
 | Sir Aldous's quests | "The Lightwardens' Vaults" (open a vault, wear a relic) then "The Hidden Marks" (find 2 caches); voiced | Quest tests driven by real vault/relic/cache events |
 | Tobin trades | Old Coins (vaults, caches) buy torches, food, flasks, ore, wardstones, iron tools, heart crystals | Test |
 | Cave near layer | Dark stalactite/stalagmite silhouettes at 1.5x parallax framing caves (2.5D depth) | Captures |
+| **Bosses** | Three phases each, every move telegraphed. Warden: rolling shockwave slam (both ways later), shield charge that blocks from the front, blade spin, falling rocks in the last stand. Gloam: swoops, violet bolt volleys, blinks behind you, drains glow out of the light. Each phase calls the dead | Test (phases, shield), captures |
+| **Fishing** | Rod (workbench); cast at water, strike within 0.9 s of the bite; fish/pearls/coins; glowfin in deep water cook into glow-restoring skewers; Mira's "Light from the Deep Water" | Test |
+| **The Drowned Halls** (2/world) | Flooded brick ruin with an air strip and air pockets under bells, glowshard light, biters (swimming enemy), sunken shrine with the Tidecaller's Scale (9th relic: breathe water, swim fast). Breath meter; drowning | Tests (layout, breath, biters), captures (`--scenario=drowned`, `drowned_deep`) |
 | Model size | `tools/slim_glb.py` keeps only used clips: characters 33 MB -> 11 MB | Cast preview, tests |
 
 ### Earlier (still true)
@@ -43,8 +46,8 @@ quests; tutorial bot; save/load; weather and thunderstorms; foliage shader; ligh
 1. Confirm the tutorial bot passes again; fix whatever it finds.
 2. (done: three-phase bosses with telegraphed moves, shockwaves, shield charge, spin, volleys,
    blink, falling rocks, glow drain.) Next: give each boss an arena worth the fight.
-3. A region with its own identity (e.g. Drowned Halls: underground lake ruins), using
-   KayKit dungeon props and a new enemy.
+3. (done: the Drowned Halls.) Next regions from DESIGN.md: Ember Forge (volcanic ruins, fire
+   enemies), Frozen Ruins (Rimefrost underground).
 4. (done: fishing with bite timing, glowfin, Mira's quest.) Cooking buffs (meals that last).
 5. Treasure maps (a chest find that marks an unopened vault on the minimap).
 6. Phone build and real-device performance check of Body3D.
