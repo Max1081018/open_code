@@ -5,16 +5,18 @@ extends RefCounted
 ## Per material (atlas row): [tint, saturation]. A natural, deeper palette
 ## in place of Kenney's toy-bright defaults: warm earth, cool grey rock,
 ## dusty sand, blue-shadowed snow, a red-violet deep.
+## Per-material tint and saturation. Muted and earthy (moss, peat, weathered
+## stone) to sit with the mature cast: candy colours made the world a toy.
 const PALETTE := [
-	[Color(0.90, 0.92, 0.84), 0.74],  # grass soil
-	[Color(0.86, 0.78, 0.72), 0.72],  # soil
-	[Color(0.94, 0.86, 0.74), 0.66],  # sand
-	[Color(0.88, 0.92, 0.99), 0.80],  # snow
-	[Color(0.78, 0.80, 0.86), 0.55],  # rock
-	[Color(0.76, 0.74, 0.78), 0.55],  # brick
-	[Color(0.86, 0.80, 1.00), 1.00],  # crystal
-	[Color(0.90, 0.76, 0.80), 0.82],  # basalt
-	[Color(0.84, 0.74, 0.64), 0.76],  # planks
+	[Color(0.80, 0.86, 0.72), 0.52],  # grass soil: moss, not lawn
+	[Color(0.80, 0.72, 0.66), 0.50],  # soil: peat
+	[Color(0.92, 0.85, 0.74), 0.50],  # sand
+	[Color(0.88, 0.92, 0.99), 0.70],  # snow
+	[Color(0.80, 0.82, 0.86), 0.40],  # rock: weathered grey
+	[Color(0.78, 0.76, 0.80), 0.40],  # brick: old stone
+	[Color(0.86, 0.80, 1.00), 0.95],  # crystal
+	[Color(0.90, 0.76, 0.80), 0.70],  # basalt
+	[Color(0.84, 0.76, 0.66), 0.58],  # planks
 ]
 
 static var _noise: Texture2D

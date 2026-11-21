@@ -207,24 +207,82 @@ static func _prop(type: String, foot: Vector2) -> Node2D:
 	return root
 
 
+## The world's trees and undergrowth, drawn from Quaternius' Stylized
+## Nature MegaKit (CC0) rendered to sprites (tools/render_props.gd). The
+## saved art names stay as they were; each maps to a few real models, one
+## picked per spot, so a forest is never a row of copies.
+## art -> [[rendered names], height range in tiles, tint]
+const NATURE := {
+	"tree": [["CommonTree_1", "CommonTree_2", "CommonTree_5"], Vector2(4.4, 6.0), Color.WHITE],
+	"treeLong": [["Pine_1", "Pine_2", "Pine_3", "Pine_4"], Vector2(5.0, 6.6), Color.WHITE],
+	"treeSmall_green1": [["CommonTree_3", "CommonTree_4"], Vector2(3.2, 4.0), Color.WHITE],
+	"treeSmall_green2": [["CommonTree_3", "CommonTree_4"], Vector2(3.2, 4.0), Color.WHITE],
+	"treeOrange": [["TwistedTree_1", "TwistedTree_2", "TwistedTree_3"], Vector2(4.0, 5.2), Color.WHITE],
+	"treePineSnow": [["Pine_1", "Pine_3", "Pine_4"], Vector2(4.6, 6.0), Color(0.82, 0.9, 1.0)],
+	"treeSnow": [["Pine_2", "Pine_4"], Vector2(4.4, 5.6), Color(0.85, 0.92, 1.0)],
+	"treeFrozen": [["DeadTree_1", "DeadTree_2", "DeadTree_3"], Vector2(3.8, 5.0), Color(0.86, 0.92, 1.0)],
+	"treePineFrozen": [["DeadTree_3", "Pine_2"], Vector2(4.2, 5.4), Color(0.8, 0.88, 1.0)],
+	"bush1": [["Bush_Common_Flowers", "Fern_1"], Vector2(0.9, 1.2), Color.WHITE],
+	"bush2": [["Fern_1", "Plant_1"], Vector2(0.8, 1.1), Color.WHITE],
+	"bushAlt1": [["Grass_Wispy_Tall", "Flower_3_Group"], Vector2(0.7, 0.95), Color.WHITE],
+	"bushAlt3": [["Flower_4_Group", "Fern_1"], Vector2(0.7, 1.0), Color.WHITE],
+	"bushAlt2": [["Fern_1"], Vector2(0.7, 0.9), Color(0.85, 0.9, 1.0)],
+	"mushroom_red": [["Mushroom_Laetiporus"], Vector2(0.5, 0.7), Color.WHITE],
+	"mushroom_brown": [["Mushroom_Common"], Vector2(0.55, 0.75), Color.WHITE],
+	"rock": [["Rock_Medium_1", "Rock_Medium_2", "Rock_Medium_3"], Vector2(0.6, 0.85), Color.WHITE],
+}
+
+
+static func _nature(art: String, hash_value: int) -> Array:
+	if not NATURE.has(art):
+		return []
+	var spec: Array = NATURE[art]
+	var names: Array = spec[0]
+	var tex := texture("res://assets/rendered/nature/%s.png" % names[hash_value % names.size()])
+	if tex == null:
+		return []
+	var range: Vector2 = spec[1]
+	return [tex, lerpf(range.x, range.y, float(hash_value % 97) / 96.0), spec[2]]
+
+
 static func _tree(object: Dictionary, foot: Vector2, hash_value: int) -> Node2D:
-	var tex := texture("res://assets/scenery/%s.png" % object.get("art", "tree"))
+	var art := String(object.get("art", "tree"))
+	var nature := _nature(art, hash_value)
+	var tex: Texture2D = nature[0] if not nature.is_empty() else texture("res://assets/scenery/%s.png" % art)
 	if tex == null:
 		return null
 	var root := Node2D.new()
 	var height := 3.4 + (hash_value % 100) / 100.0 * 1.8
-	if String(object.art).begins_with("cactus"):
+	if not nature.is_empty():
+		height = nature[1]
+	elif art.begins_with("cactus"):
 		height = 1.6 + (hash_value % 50) / 100.0
-	elif String(object.art).begins_with("treeSmall"):
+	elif art.begins_with("treeSmall"):
 		height = 2.4
 	var sprite := _sprite_standing(tex, foot + Vector2(0, 6), height)
-	sprite.material = Visuals.foliage(Visuals.species_of(String(object.get("art", "tree"))))
+	if not nature.is_empty():
+		# The renders are lit for a neutral backdrop; in the world's own
+		# light and grading they need lifting to read as living green.
+		sprite.modulate = nature[2] * Color(1.45, 1.45, 1.4)
+		sprite.flip_h = hash_value % 2 == 0
+	# Rendered trees bring their own light and shade; they only need wind.
+	sprite.material = Visuals.sway() if not nature.is_empty() else \
+		Visuals.foliage(Visuals.species_of(String(object.get("art", "tree"))))
 	root.add_child(sprite)
 	return root
 
 
 static func _shrub(object: Dictionary, foot: Vector2, hash_value: int) -> Node2D:
 	var art: String = object.get("art", "bush1")
+	var nature := _nature(art, hash_value)
+	if not nature.is_empty() and not GLOW_DECOR.has(art):
+		var plant := Node2D.new()
+		var sprite := _sprite_standing(nature[0], foot + Vector2(0, 6), nature[1])
+		sprite.modulate = nature[2] * Color(1.3, 1.3, 1.25)
+		sprite.flip_h = hash_value % 2 == 0
+		sprite.material = Visuals.sway() if not art.begins_with("rock") else null
+		plant.add_child(sprite)
+		return plant
 	var path := "res://assets/scenery/%s.png" % art
 	if not ResourceLoader.exists(path):
 		path = "res://assets/props/%s.png" % art

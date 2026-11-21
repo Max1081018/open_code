@@ -9,10 +9,12 @@ extends SceneTree
 ## here, with one camera angle and one light rig for every prop, keeps
 ## the set consistent with each other and with the items.
 
-const SOURCES := ["res://assets/models/survival", "res://assets/models/graveyard", "res://assets/models/dungeon"]
+const SOURCES := ["res://assets/models/survival", "res://assets/models/graveyard", "res://assets/models/dungeon",
+	"res://assets/models/nature_src"]
+## (nature_src: copy the Stylized Nature MegaKit glTFs and textures there to re-render; they do not ship.)
 ## Pass folder names after "--" to render only those (e.g. -- dungeon).
 const OUTPUT := "res://assets/rendered/"
-const SIZE := 512
+const SIZE := 1024
 const MAX_OUTPUT := 160
 
 
@@ -52,14 +54,21 @@ func _initialize() -> void:
 	viewport.add_child(camera)
 
 	var rendered := 0
-	var only := OS.get_cmdline_user_args()
+	# Folder names to render; a number sets the largest output side in pixels.
+	var only: Array = []
+	var max_output := MAX_OUTPUT
+	for arg in OS.get_cmdline_user_args():
+		if String(arg).is_valid_int():
+			max_output = int(arg)
+		else:
+			only.append(arg)
 	for source in SOURCES:
 		if not only.is_empty() and not (source.get_file() in only):
 			continue
 		var dir := DirAccess.open(source)
 		for file in dir.get_files():
 			# Each model is listed twice, as itself and as its .import.
-			if not file.ends_with(".glb"):
+			if not (file.ends_with(".glb") or file.ends_with(".gltf")):
 				continue
 			var name := file
 			var scene: PackedScene = load(source + "/" + name)
@@ -88,11 +97,13 @@ func _initialize() -> void:
 			var image := viewport.get_texture().get_image()
 			image = _trimmed(image)
 			var longest: int = max(image.get_width(), image.get_height())
-			if longest > MAX_OUTPUT:
-				var scale := float(MAX_OUTPUT) / longest
+			if longest > max_output:
+				var scale := float(max_output) / longest
 				image.resize(int(image.get_width() * scale), int(image.get_height() * scale),
 					Image.INTERPOLATE_LANCZOS)
-			image.save_png(ProjectSettings.globalize_path(OUTPUT + name.get_basename() + ".png"))
+			var folder := OUTPUT + ("nature/" if source.ends_with("nature_src") else "")
+			DirAccess.make_dir_recursive_absolute(ProjectSettings.globalize_path(folder))
+			image.save_png(ProjectSettings.globalize_path(folder + name.get_basename() + ".png"))
 			rendered += 1
 			model.queue_free()
 			await process_frame
