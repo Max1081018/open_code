@@ -46,10 +46,10 @@ const BIOMES := {
 
 ## [scroll factor, fog amount, tree scale, vertical follow, texture kind]
 const LAYERS := [
-	[0.04, 0.78, 0.0, 0.10, "far"],
-	[0.10, 0.62, 0.55, 0.22, "trees"],
-	[0.22, 0.42, 0.85, 0.38, "trees"],
-	[0.38, 0.38, 0.0, 0.55, "near"],
+	[0.04, 0.78, 0.0, 0.30, "far"],
+	[0.10, 0.62, 0.55, 0.45, "trees"],
+	[0.22, 0.42, 0.85, 0.65, "trees"],
+	[0.38, 0.38, 0.0, 0.80, "near"],
 ]
 
 var world: World
@@ -72,8 +72,16 @@ var _grade: ShaderMaterial
 var _strip_width := 4096.0
 
 
+## The ground line the backgrounds stand on: the surface smoothed over ~100
+## tiles, so they follow the land's long rise and fall (a mountain range, a
+## valley) but never bob over each little hill, the way Terraria pins its
+## backgrounds to the world's surface level.
+var _anchor: PackedFloat32Array
+
+
 func setup(the_world: World, the_camera: Camera2D) -> void:
 	world = the_world
+	_anchor = ground_line(the_world.data, 8, 14)
 	camera = the_camera
 	_build_sky()
 	_build_layers()
@@ -124,6 +132,50 @@ func _build_sky() -> void:
 	_moon.texture = load("res://assets/scenery/moonFull.png")
 	_moon.scale = Vector2(0.6, 0.6)
 	layer.add_child(_moon)
+
+
+## The deepest ground within `reach` columns, then smoothed over `smooth`:
+## a line at or under the land everywhere, so whatever stands on it (the
+## backdrop forests, the earth behind holes) has its foot hidden behind the
+## real terrain instead of showing as a floating edge above a dip.
+static func ground_line(data: WorldData, reach: int, smooth: int) -> PackedFloat32Array:
+	var deepest := PackedFloat32Array()
+	deepest.resize(data.width)
+	for c in data.width:
+		var d := 0
+		for dx in range(-reach, reach + 1):
+			d = maxi(d, data.surface[clampi(c + dx, 0, data.width - 1)])
+		deepest[c] = d
+	var line := PackedFloat32Array()
+	line.resize(data.width)
+	for c in data.width:
+		var sum := 0.0
+		for dx in range(-smooth, smooth + 1):
+			sum += deepest[clampi(c + dx, 0, data.width - 1)]
+		line[c] = sum / float(smooth * 2 + 1)
+	return line
+
+
+## Surface row per column, averaged over `half` columns either side.
+static func smoothed_surface(data: WorldData, half: int) -> PackedFloat32Array:
+	var line := PackedFloat32Array()
+	line.resize(data.width)
+	var sum := 0.0
+	var count := 0
+	for x in range(0, mini(half, data.width)):
+		sum += data.surface[x]
+		count += 1
+	for x in data.width:
+		var add := x + half
+		if add < data.width:
+			sum += data.surface[add]
+			count += 1
+		var drop := x - half - 1
+		if drop >= 0:
+			sum -= data.surface[drop]
+			count -= 1
+		line[x] = sum / count
+	return line
 
 
 func _build_layers() -> void:
@@ -195,7 +247,9 @@ func _build_layers() -> void:
 				mist.scale = Vector2(14.0, 1.4)
 				mist.modulate = Color(1, 1, 1, 0.0)
 				layer.add_child(mist)
-				mist.position = Vector2(_strip_width * 0.5, -60)
+				# Among the trunks, not over the forest floor (stacked there,
+				# three of them washed the ground into a pale flat stripe).
+				mist.position = Vector2(_strip_width * 0.5, -260)
 				mist.set_meta("speed", 8.0 + i * 6.0)
 				_mists.append(mist)
 		_sets[biome] = set
@@ -225,7 +279,9 @@ func _fill_tree_line(layer: Node2D, kinds: Array, scale: float, seed_value: int)
 	var ground := ColorRect.new()
 	ground.size = Vector2(_strip_width + 400, 1400)
 	ground.position = Vector2(-200, -4)
-	ground.color = Color(0.16, 0.30, 0.22)
+	# Forest floor in shadow: fogged, it reads as mist among dark trunks
+	# rather than a pale flat stripe.
+	ground.color = Color(0.05, 0.09, 0.07)
 	ground.use_parent_material = true
 	layer.add_child(ground)
 
@@ -397,13 +453,15 @@ func _process(delta: float) -> void:
 			layer.modulate = Color(1, 1, 1, weight)
 			var repeat: float = layer.get_meta("repeat", _strip_width)
 			layer.position.x = -fposmod(centre.x * spec[0], repeat)
-			# Distant layers settle toward a fixed band above the ground the
-			# player walks on; nearer ones follow the real terrain more.
-			layer.position.y = lerpf(screen.y * 0.50, horizon, spec[3]) + 30.0
+			# Every layer stands on the smoothed ground line, moving up and
+			# down with the camera by its own (smaller, farther) parallax, so
+			# tree bases always meet the land behind the player.
+			var anchor_world := _anchor[column] * TILE
+			layer.position.y = screen.y * 0.5 + (anchor_world - centre.y) * camera.zoom.y * spec[3] + 40.0
 
 	for mist in _mists:
 		mist.position.x = fposmod(mist.position.x + mist.get_meta("speed") * delta, _strip_width)
-		mist.modulate = Color(fog.lightened(0.25), 0.22 * (1.0 - depth))
+		mist.modulate = Color(fog.lightened(0.25), 0.1 * (1.0 - depth))
 
 	var outdoors := 1.0 - depth
 	for ray in _rays:

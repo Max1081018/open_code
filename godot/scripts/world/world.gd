@@ -102,6 +102,8 @@ func _build_layers() -> void:
 	walls.material = Visuals.terrain(true)
 	add_child(walls)
 
+	_build_earth_backdrop()
+
 	object_root = Node2D.new()
 	object_root.z_index = -2
 	add_child(object_root)
@@ -155,6 +157,49 @@ func _build_layers() -> void:
 	add_child(glow_root)
 	# Houses and scenery (their z-index places them; lamps need glow_root).
 	_build_houses()
+
+
+## Earth behind the ground. Below the land's (smoothed) surface line the
+## backdrop is soil, as in Terraria, so a pit, a dug shaft or a hollow under
+## a ledge shows dark earth rather than sky and distant forest. It sits
+## behind the wall tiles; open sky stays open above the line.
+func _build_earth_backdrop() -> void:
+	# Under the deepest ground within a few columns (lightly smoothed), so it
+	# fills holes in the land but never shows in an open dip of the surface.
+	var line := Atmosphere.ground_line(data, 5, 3)
+	var atlas := (load("res://assets/tiles/terrain.png") as Texture2D).get_image()
+	var soil := atlas.get_region(Rect2i(0, 128, 128, 128))  # soil, fully enclosed
+	var earth := Polygon2D.new()
+	earth.texture = ImageTexture.create_from_image(soil)
+	earth.texture_repeat = CanvasItem.TEXTURE_REPEAT_ENABLED
+	earth.color = Color(0.34, 0.3, 0.3)
+	earth.z_index = -6
+	# Three rows of points along the line: solid from 2.5 to 16 tiles under
+	# it, then fading out by 26, where the cave backdrops take over.
+	var points := PackedVector2Array()
+	var colours := PackedColorArray()
+	var polygons := []
+	var columns := []
+	var x := 0
+	while x < data.width:
+		columns.append(x)
+		x += 6
+	columns.append(data.width - 1)
+	for i in columns.size():
+		var c: int = columns[i]
+		for row in [[1.0, 1.0], [15.0, 1.0], [25.0, 0.0]]:
+			points.append(Vector2(c * float(TILE), (line[c] + row[0]) * float(TILE)))
+			colours.append(Color(1, 1, 1, row[1]))
+		if i > 0:
+			var a0 := (i - 1) * 3
+			var b0 := i * 3
+			polygons.append(PackedInt32Array([a0, b0, b0 + 1, a0 + 1]))
+			polygons.append(PackedInt32Array([a0 + 1, b0 + 1, b0 + 2, a0 + 2]))
+	earth.polygon = points
+	earth.uv = points
+	earth.vertex_colors = colours
+	earth.polygons = polygons
+	add_child(earth)
 
 
 ## Houses are cutaways: rendered art of the back wall behind the rooms and

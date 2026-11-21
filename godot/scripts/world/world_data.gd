@@ -750,9 +750,30 @@ func _build_village() -> void:
 		# Seated on the ground at its middle; slopes either side hide or
 		# show a little of the base, as a real building on a hillside.
 		var ground := surface[x]
+		_level(x - w / 2 - 1, x + w / 2 + 1, ground)
 		var h_tiles := int(ceil(float(spec[2]) / 128.0))
 		buildings.append({"kind": "scenery", "art": spec[0], "x": x, "height": spec[2],
 			"rect": [x - w / 2, ground - h_tiles, w, h_tiles], "ground": ground})
+
+
+## Level the ground between two columns to `ground` (the surface row): dips
+## filled with soil under a fresh grass top, bumps cut away. Buildings stand
+## on flat land, as they do in Terraria, never over a hollow.
+func _level(from_x: int, to_x: int, ground: int) -> void:
+	for cx in range(maxi(from_x, 1), mini(to_x, width - 2) + 1):
+		var top := surface[cx]
+		for y in range(mini(top, ground), maxi(top, ground) + 1):
+			var i := idx(cx, y)
+			if y < ground:
+				tiles[i] = AIR
+				walls[i] = AIR
+			else:
+				tiles[i] = GRASS if y == ground else SOIL
+				walls[i] = SOIL
+				ores[i] = ORE_NONE
+			liquids[i] = DRY
+			objects.erase(i)
+		surface[cx] = ground
 
 
 func _build_cabin() -> void:
