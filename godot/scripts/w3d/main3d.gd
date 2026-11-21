@@ -12,8 +12,10 @@ var cam: CameraRig
 var input: Input3D
 var hud: Hud3D
 var play: Play3D
+var islands: SkyIslands
 var sun: DirectionalLight3D
 var environment: Environment
+var _sky_mat: ShaderMaterial
 var water: MeshInstance3D
 var time_of_day := 0.32     ## 0 midnight, 0.25 sunrise, 0.5 noon, 0.75 sunset
 var day_length := 900.0     ## seconds for a full day
@@ -47,6 +49,9 @@ func _ready() -> void:
 		spawn = Vector3(float(p[0]), 0, float(p[1]))
 	spawn.y = world.height_at(spawn.x, spawn.z) + 0.2
 	world.warm(spawn)
+	islands = SkyIslands.new()
+	add_child(islands)
+	islands.build(world.gen)
 	input = Input3D.new()
 	add_child(input)
 	cam = CameraRig.new()
@@ -81,42 +86,55 @@ func _ready() -> void:
 func _build_environment() -> void:
 	environment = Environment.new()
 	var sky := Sky.new()
-	var sky_mat := ProceduralSkyMaterial.new()
-	sky_mat.sky_top_color = Color(0.16, 0.38, 0.86)
-	sky_mat.sky_horizon_color = Color(0.72, 0.84, 0.98)
-	sky_mat.ground_horizon_color = Color(0.5, 0.52, 0.5)
-	sky_mat.ground_bottom_color = Color(0.2, 0.22, 0.2)
-	sky_mat.sun_angle_max = 18.0
-	sky_mat.sky_curve = 0.12
-	sky.sky_material = sky_mat
+	_sky_mat = ShaderMaterial.new()
+	_sky_mat.shader = load("res://scripts/shaders/anime_sky.gdshader")
+	sky.sky_material = _sky_mat
+	sky.radiance_size = Sky.RADIANCE_SIZE_64
 	environment.background_mode = Environment.BG_SKY
 	environment.sky = sky
 	environment.ambient_light_source = Environment.AMBIENT_SOURCE_SKY
 	environment.ambient_light_energy = 0.55
 	environment.ambient_light_sky_contribution = 0.85
 	environment.tonemap_mode = Environment.TONE_MAPPER_ACES
-	environment.tonemap_exposure = 0.95
+	environment.tonemap_exposure = 0.9
 	environment.tonemap_white = 6.0
 	environment.glow_enabled = Settings.bloom
 	environment.glow_intensity = 0.35
 	environment.glow_bloom = 0.08
 	environment.fog_enabled = true
-	environment.fog_light_color = Color(0.7, 0.74, 0.78)
-	environment.fog_density = 0.0011
-	environment.fog_aerial_perspective = 0.55
-	environment.fog_sky_affect = 0.15
+	environment.fog_light_color = Color(0.72, 0.82, 0.95)
+	environment.fog_density = 0.0006
+	environment.fog_aerial_perspective = 0.35
+	environment.fog_sky_affect = 0.0
+	environment.fog_height = 30.0
+	environment.fog_height_density = 0.004
 	environment.adjustment_enabled = true
-	environment.adjustment_saturation = 1.18
-	environment.adjustment_contrast = 1.06
+	environment.adjustment_saturation = 1.06
+	environment.adjustment_contrast = 1.02
 	var we := WorldEnvironment.new()
 	we.environment = environment
 	add_child(we)
 	sun = DirectionalLight3D.new()
 	sun.shadow_enabled = Settings.shadows
 	sun.directional_shadow_mode = DirectionalLight3D.SHADOW_PARALLEL_2_SPLITS
-	sun.directional_shadow_max_distance = 70.0
-	sun.shadow_blur = 1.5
+	sun.directional_shadow_max_distance = 90.0
+	sun.directional_shadow_split_1 = 0.18
+	sun.shadow_blur = 1.2
+	sun.shadow_bias = 0.04
+	sun.shadow_normal_bias = 1.2
 	add_child(sun)
+	# The final grade over the 3D frame (bloom, sharpen, split toning).
+	var post_layer := CanvasLayer.new()
+	post_layer.layer = 1
+	add_child(post_layer)
+	var post := ColorRect.new()
+	post.set_anchors_preset(Control.PRESET_FULL_RECT)
+	post.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	var pm := ShaderMaterial.new()
+	pm.shader = load("res://scripts/shaders/post3d.gdshader")
+	pm.set_shader_parameter("bloom", 0.22 if Settings.bloom else 0.0)
+	post.material = pm
+	post_layer.add_child(post)
 	_update_sun(0.0)
 
 
@@ -186,9 +204,12 @@ func _update_sun(_delta: float) -> void:
 	sun.light_energy = lerpf(0.18, 1.35, day)
 	environment.ambient_light_energy = lerpf(0.2, 0.55, day)
 	environment.fog_light_color = Color(0.7, 0.74, 0.78).lerp(Color(0.95, 0.66, 0.46), low).lerp(Color(0.08, 0.1, 0.18), 1.0 - day)
-	var sky_mat := environment.sky.sky_material as ProceduralSkyMaterial
-	sky_mat.sky_top_color = Color(0.16, 0.38, 0.86).lerp(Color(0.32, 0.3, 0.55), low).lerp(Color(0.02, 0.03, 0.08), 1.0 - day)
-	sky_mat.sky_horizon_color = Color(0.72, 0.84, 0.98).lerp(Color(1.0, 0.6, 0.38), low).lerp(Color(0.06, 0.08, 0.14), 1.0 - day)
+	var night := clampf(1.0 - day, 0.0, 1.0)
+	_sky_mat.set_shader_parameter("night", night)
+	_sky_mat.set_shader_parameter("dusk", low)
+	_sky_mat.set_shader_parameter("top_color", Color(0.15, 0.36, 0.85).lerp(Color(0.35, 0.32, 0.6), low))
+	_sky_mat.set_shader_parameter("horizon_color", Color(0.74, 0.86, 0.99).lerp(Color(1.0, 0.66, 0.45), low))
+	_sky_mat.set_shader_parameter("cloud_shade", Color(0.7, 0.74, 0.92).lerp(Color(0.75, 0.55, 0.7), low))
 
 
 ## The capture harness's scripted inputs.

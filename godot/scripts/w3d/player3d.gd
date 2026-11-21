@@ -194,6 +194,27 @@ func _physics_process(delta: float) -> void:
 		var want := atan2(face.x, face.z)
 		model.rotation.y = lerp_angle(model.rotation.y, want, 1.0 - exp(-12.0 * delta))
 	_animate(horizontal.length())
+	_ground_feet(delta)
+
+
+## Keep the lowest foot on the ground whatever the animation does to the
+## hips (clips from other rigs carry their own hip height).
+func _ground_feet(delta: float) -> void:
+	var inner: Node3D = model.get_child(0)
+	var base: float = model.get_meta("model_y", inner.position.y)
+	if not is_on_floor() or swimming:
+		inner.position.y = lerpf(inner.position.y, base, 1.0 - exp(-10.0 * delta))
+		return
+	var l := skeleton.find_bone("LeftFoot")
+	var r := skeleton.find_bone("RightFoot")
+	if l < 0 or r < 0:
+		return
+	var foot := minf((skeleton.global_transform * skeleton.get_bone_global_pose(l)).origin.y,
+		(skeleton.global_transform * skeleton.get_bone_global_pose(r)).origin.y)
+	var ankle: float = model.get_meta("ankle", 0.08)
+	var gap := foot - ankle - global_position.y
+	var want := clampf(inner.position.y - gap, base - 0.35, base + 0.15)
+	inner.position.y = lerpf(inner.position.y, want, 1.0 - exp(-14.0 * delta))
 
 
 func _start_action(heavy: bool) -> void:

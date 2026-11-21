@@ -201,6 +201,17 @@ static func _build_hero(name: String) -> Node3D:
 	var k: float = float(HERO_STYLE.get(name, {}).get("height", 1.8)) / (span * 1.17)
 	model.scale = Vector3.ONE * k
 	model.position = Vector3(0, -(floor_y - span * 0.05) * k, 0)
+	# Seat by the soles: the lowest point of the meshes in rest pose.
+	var sole := INF
+	for mesh in model.find_children("*", "MeshInstance3D", true, false):
+		var box: AABB = _transform_to(mesh, root) * (mesh as MeshInstance3D).get_aabb()
+		sole = minf(sole, box.position.y)
+	if sole < INF:
+		model.position.y -= sole
+	# Ankle height above the sole, for runtime foot grounding.
+	var foot_y := (_transform_to(skeleton, root) * skeleton.get_bone_global_rest(skeleton.find_bone("LeftFoot"))).origin.y
+	root.set_meta("ankle", foot_y)
+	root.set_meta("model_y", model.position.y)
 	if spec[1] != null:
 		for mesh in model.find_children("*", "MeshInstance3D", true, false):
 			_tint_all(mesh, spec[1])
