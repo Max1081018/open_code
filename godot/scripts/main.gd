@@ -511,6 +511,9 @@ func _tutorial_bot() -> void:
 						break
 				if rock.x >= 0:
 					break
+			if _frames % 300 == 0:
+				print("BOT frame %d: at %s rock %s progress %s held %s" % [_frames, at, rock,
+					quests.state.first_light.get("count", "?"), player.held_id() if player.has_method("held_id") else "?"])
 			if rock.x >= 0:
 				var dx := World.centre_of(rock).x - player.global_position.x
 				if absf(dx) > 300:
