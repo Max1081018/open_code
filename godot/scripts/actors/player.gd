@@ -450,17 +450,14 @@ func _chop(target: Vector2i, object: Dictionary, tool: Dictionary) -> void:
 
 func _chop_hit(target: Vector2i, object: Dictionary, tool: Dictionary) -> void:
 	var axe_bonus := 2 if tool.get("kind", -1) == Items.Kind.AXE else 1
+	if not object.has("max_health"):
+		object["max_health"] = int(object.get("health", 5))
 	object.health = int(object.get("health", 5)) - tool.get("power", 1) * axe_bonus
+	_tree_damage(target, object)
 	Sfx.play("chop", 0.0, 0.12)
 	var node := world.object_node_at(target)
 	if node:
-		# The tree takes the blow: a shove away from the axe and a damped
-		# shudder back.
-		var tween := node.create_tween()
-		tween.tween_property(node, "rotation", 0.05 * facing, 0.05).set_trans(Tween.TRANS_QUAD)
-		tween.tween_property(node, "rotation", -0.025 * facing, 0.10).set_trans(Tween.TRANS_SINE)
-		tween.tween_property(node, "rotation", 0.01 * facing, 0.10).set_trans(Tween.TRANS_SINE)
-		tween.tween_property(node, "rotation", 0.0, 0.12).set_trans(Tween.TRANS_SINE)
+		pass
 	level.shake(2.5)
 	Effects.burst(level.fx_layer, World.centre_of(target) + Vector2(0, -60), "dig", Color(0.5, 0.75, 0.35))
 	if object.health <= 0:
@@ -470,38 +467,14 @@ func _chop_hit(target: Vector2i, object: Dictionary, tool: Dictionary) -> void:
 			level.quests.event("fell")
 		var apple := String(object.get("art", "")).begins_with("tree") and randf() < 0.35
 		if falling:
-			_topple(falling, target, 4 + randi() % 4, apple)
+			# The tree comes apart: crown into leaves, trunk into chunks of
+			# wood that tumble and settle where you can pick them up.
+			TreeBreak.shatter(level, falling, global_position.x, 4 + randi() % 4, apple)
 		else:
 			level.spawn_drop("wood", 4 + randi() % 4, World.centre_of(target) + Vector2(0, -80))
-		Sfx.play("tree_fall", -2.0, 0.05)
-
-
-## A felled tree topples away from the axe: slowly at first, then fast, as
-## a falling trunk does; it hits the ground with a bounce, a thump and a
-## burst of leaves, and the wood scatters along where it landed.
-func _topple(node: Node2D, cell: Vector2i, wood: int, apple: bool) -> void:
-	var away := 1.0 if node.global_position.x >= global_position.x else -1.0
-	var parent := node.get_parent()
-	var foot := node.global_position
-	var tween := node.create_tween()
-	tween.tween_property(node, "rotation", away * 0.12, 0.35).set_trans(Tween.TRANS_SINE)
-	tween.tween_property(node, "rotation", away * 1.48, 0.55).set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_IN)
-	tween.tween_callback(func():
-		level.shake(9.0)
-		Sfx.play("land", -2.0, 0.1)
-		for i in 5:
-			var along := foot + Vector2(away * (90 + i * 95), -30)
-			Effects.burst(level.fx_layer, along, "smoke", Color(0.75, 0.68, 0.55))
-			Effects.burst(level.fx_layer, along + Vector2(0, -20), "dig", Color(0.45, 0.65, 0.32))
-		for i in wood:
-			level.spawn_drop("wood", 1, foot + Vector2(away * randf_range(80, 480), -60))
-		if apple:
-			level.spawn_drop("apple", 1, foot + Vector2(away * 420, -80)))
-	tween.tween_property(node, "rotation", away * 1.36, 0.12).set_trans(Tween.TRANS_SINE)
-	tween.tween_property(node, "rotation", away * 1.5, 0.18).set_trans(Tween.TRANS_BOUNCE)
-	tween.tween_interval(0.5)
-	tween.tween_property(node, "modulate:a", 0.0, 0.5)
-	tween.tween_callback(node.queue_free)
+		Sfx.play("break", 0.0, 0.05)
+		Sfx.play("tree_fall", -4.0, 0.05)
+		level.shake(7.0)
 
 
 ## Each material answers the pick in its own voice: dirt thuds, stone
@@ -520,6 +493,53 @@ func _mine_sound(material: int) -> void:
 			Sfx.play("dig", -6.0, 0.25)
 		_:
 			Sfx.play("dig", -3.0, 0.12)
+
+
+## Each blow shows on the tree: a notch cut deeper into the trunk where the
+## axe bites, bark chips and splinters flying from it, leaves shaken loose,
+## and a lean that grows as the tree weakens.
+func _tree_damage(cell: Vector2i, object: Dictionary) -> void:
+	var node := world.object_node_at(cell)
+	var foot := World.centre_of(cell) + Vector2(0, TILE * 0.5)
+	var side := -1.0 if foot.x > global_position.x else 1.0
+	var bite := foot + Vector2(side * 22.0, -54.0)
+	var damage := 1.0 - clampf(float(object.health) / float(object.max_health), 0.0, 1.0)
+	Effects.burst(level.fx_layer, bite, "dig", Color(0.55, 0.36, 0.22))
+	Effects.burst(level.fx_layer, bite + Vector2(side * 8, 0), "hit")
+	Effects.burst(level.fx_layer, foot + Vector2(randf_range(-80, 80), -randf_range(260, 420)), "dig",
+		Color(0.45, 0.68, 0.33))
+	if node == null:
+		return
+	var notch: Polygon2D = node.get_node_or_null("Notch")
+	if notch == null:
+		notch = Polygon2D.new()
+		notch.name = "Notch"
+		notch.color = Color(0.22, 0.13, 0.07)
+		notch.z_index = 1
+		node.add_child(notch)
+	# A wedge cut in from the axe's side, deeper with every blow.
+	var depth := 6.0 + 22.0 * damage
+	var half := 7.0 + 6.0 * damage
+	notch.polygon = PackedVector2Array([Vector2(side * 16, -54 - half), Vector2(side * (16 - depth), -54),
+		Vector2(side * 16, -54 + half)])
+	var pale: Polygon2D = node.get_node_or_null("NotchFace")
+	if pale == null:
+		pale = Polygon2D.new()
+		pale.name = "NotchFace"
+		pale.color = Color(0.86, 0.72, 0.5)
+		pale.z_index = 1
+		node.add_child(pale)
+	pale.polygon = PackedVector2Array([Vector2(side * 16, -54 - half * 0.5), Vector2(side * (17 - depth * 0.6), -54),
+		Vector2(side * 16, -54 + half * 0.2)])
+	# Lean away from the axe as it weakens; the shudder plays around that.
+	var lean := -side * 0.06 * damage
+	var tween := node.create_tween()
+	tween.tween_property(node, "rotation", lean - side * 0.05, 0.05).set_trans(Tween.TRANS_QUAD)
+	tween.tween_property(node, "rotation", lean + side * 0.025, 0.10).set_trans(Tween.TRANS_SINE)
+	tween.tween_property(node, "rotation", lean - side * 0.01, 0.10).set_trans(Tween.TRANS_SINE)
+	tween.tween_property(node, "rotation", lean, 0.12).set_trans(Tween.TRANS_SINE)
+	if damage > 0.5:
+		Sfx.play("chop", -10.0, 0.3)  # a creak in the wood
 
 
 func _dust_color(cell: Vector2i) -> Color:

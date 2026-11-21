@@ -127,8 +127,8 @@ static func burst(parent: Node, position: Vector2, kind: String, color := Color.
 			reused.get_parent().remove_child(reused)
 			parent.add_child(reused)
 		reused.position = position
-		if kind in ["dig", "break", "smoke", "heal", "glow"]:
-			reused.color = color if kind in ["dig", "break"] else reused.color
+		if kind in ["dig", "break", "smoke", "heal", "glow", "leaves", "splinters"]:
+			reused.color = color if kind in ["dig", "break", "leaves", "splinters"] else reused.color
 			if kind in ["smoke", "heal", "glow"]:
 				reused.color_ramp = _fade(Color(color, 0.7 if kind == "smoke" else 1.0), Color(color, 0.0))
 		reused.visible = true
@@ -234,6 +234,41 @@ static func _make_burst(parent: Node, position: Vector2, kind: String, color: Co
 			p.scale_amount_min = 0.012
 			p.scale_amount_max = 0.022
 			p.color = Color(0.75, 0.88, 1.0, 0.9)
+		"leaves":
+			# Leaves shaken loose: they spin and drift rather than drop.
+			p.texture = tex("leaf")
+			p.amount = _budget(10)
+			p.lifetime = 1.4
+			p.explosiveness = 0.85
+			p.spread = 180.0
+			p.initial_velocity_min = 120.0
+			p.initial_velocity_max = 360.0
+			p.gravity = Vector2(30, 420)
+			p.damping_min = 60.0
+			p.damping_max = 140.0
+			p.angular_velocity_min = -540.0
+			p.angular_velocity_max = 540.0
+			p.angle_max = 360.0
+			p.scale_amount_min = 0.35
+			p.scale_amount_max = 0.7
+			p.color = color
+			p.color_ramp = _fade(Color.WHITE, Color(1, 1, 1, 0))
+		"splinters":
+			# Thin shards of pale wood from a break.
+			p.texture = tex("dirt_03")
+			p.amount = _budget(14)
+			p.lifetime = 0.7
+			p.spread = 160.0
+			p.direction = Vector2.UP
+			p.initial_velocity_min = 260.0
+			p.initial_velocity_max = 620.0
+			p.gravity = Vector2(0, 1500)
+			p.angular_velocity_min = -720.0
+			p.angular_velocity_max = 720.0
+			p.scale_amount_min = 0.05
+			p.scale_amount_max = 0.1
+			p.color = color
+			p.color_ramp = _fade(Color.WHITE, Color(1, 1, 1, 0))
 		"slash":
 			p.texture = tex("slash_03")
 			p.material = additive()
