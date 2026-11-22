@@ -147,9 +147,13 @@ func _shard(at: Vector3) -> void:
 	var top := MeshInstance3D.new()
 	top.mesh = _shard_mesh
 	top.material_override = _shard_mat
+	top.visibility_range_end = 260.0
+	top.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 	var bottom := MeshInstance3D.new()
 	bottom.mesh = _shard_mesh
 	bottom.material_override = _shard_mat
+	bottom.visibility_range_end = 260.0
+	bottom.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 	bottom.rotation.x = PI
 	bottom.position.y = -0.7
 	top.add_child(bottom)

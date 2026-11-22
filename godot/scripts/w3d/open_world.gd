@@ -283,10 +283,10 @@ func _build_flora(c: Vector2i, entry: Dictionary) -> void:
 	else:
 		solid.free()
 	for kind in by_kind:
-		_multimesh(node, kind, by_kind[kind], true)
+		_multimesh(node, kind, by_kind[kind], true, entry.lod)
 
 
-func _multimesh(node: Node3D, kind: String, transforms: Array, flora: bool) -> void:
+func _multimesh(node: Node3D, kind: String, transforms: Array, flora: bool, lod := 0) -> void:
 	for part in FoliageLib.parts(kind):
 		var mm := MultiMesh.new()
 		mm.transform_format = MultiMesh.TRANSFORM_3D
@@ -302,6 +302,9 @@ func _multimesh(node: Node3D, kind: String, transforms: Array, flora: bool) -> v
 		# Grass and small plants fade out with distance on weak settings.
 		if not flora or FoliageLib.category(kind) == "small":
 			mmi.visibility_range_end = 70.0
+			mmi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+		elif lod >= 1:
+			# Beyond the near ring the sun's shadow map barely reaches.
 			mmi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 		node.add_child(mmi)
 

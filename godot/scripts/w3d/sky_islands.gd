@@ -119,6 +119,7 @@ func _island(centre: Vector3, radius: float, seed_i: int, spire: bool) -> void:
 	var rng := RandomNumberGenerator.new()
 	rng.seed = 77 + seed_i
 	var kinds := ["CommonTree_1", "CommonTree_3", "Pine_2", "Bush_Common_Flowers", "Flower_3_Group", "Flower_4_Group", "Fern_1"]
+	var batches := {}   ## mesh -> [Transform3D]: one MultiMesh per mesh on this isle
 	for k in int(radius * 0.6):
 		var a := rng.randf() * TAU
 		var rr := sqrt(rng.randf()) * radius * 0.75
@@ -128,15 +129,26 @@ func _island(centre: Vector3, radius: float, seed_i: int, spire: bool) -> void:
 		if FoliageLib.category(kind) == "tree" and rng.randf() < 0.5:
 			kind = "Flower_4_Group"
 		var at := Vector3(cos(a) * rr, (1.0 - rr / radius) * radius * 0.08, sin(a) * rr)
+		var t := Transform3D(Basis(Vector3.UP, rng.randf() * TAU).scaled(Vector3.ONE * rng.randf_range(0.7, 1.1)), at)
 		for part in FoliageLib.parts(kind):
-			var f := MeshInstance3D.new()
-			f.mesh = part[0]
-			f.transform = Transform3D(Basis(Vector3.UP, rng.randf() * TAU).scaled(Vector3.ONE * rng.randf_range(0.7, 1.1)), at) * part[1]
-			mi.add_child(f)
+			_batch(batches, part[0], t * part[1])
 	# Crystal clusters on the rim.
 	for k in 3 + seed_i % 3:
 		var a := rng.randf() * TAU
-		_crystals(mi, Vector3(cos(a) * radius * 0.7, 0.5, sin(a) * radius * 0.7), rng, 1.0)
+		_crystals(batches, Vector3(cos(a) * radius * 0.7, 0.5, sin(a) * radius * 0.7), rng, 1.0)
+	for part_mesh in batches:
+		var mm := MultiMesh.new()
+		mm.transform_format = MultiMesh.TRANSFORM_3D
+		mm.mesh = part_mesh
+		var list: Array = batches[part_mesh]
+		mm.instance_count = list.size()
+		for i in list.size():
+			mm.set_instance_transform(i, list[i])
+		var mmi := MultiMeshInstance3D.new()
+		mmi.multimesh = mm
+		if part_mesh == _prism:
+			mmi.material_override = _crystal_mat
+		mi.add_child(mmi)
 	# Waterfalls off one or two edges.
 	for k in 1 + seed_i % 2:
 		var a := rng.randf() * TAU
@@ -145,16 +157,25 @@ func _island(centre: Vector3, radius: float, seed_i: int, spire: bool) -> void:
 		_starspire(mi, rng)
 
 
-func _crystals(parent: Node3D, at: Vector3, rng: RandomNumberGenerator, scale: float) -> void:
+var _prism: PrismMesh
+
+
+func _batch(batches: Dictionary, mesh: Mesh, t: Transform3D) -> void:
+	if not batches.has(mesh):
+		batches[mesh] = []
+	batches[mesh].append(t)
+
+
+## A cluster of crystal prisms, batched with the isle's other plants.
+func _crystals(batches: Dictionary, at: Vector3, rng: RandomNumberGenerator, scale: float) -> void:
+	if _prism == null:
+		_prism = PrismMesh.new()
+		_prism.size = Vector3(0.6, 2.4, 0.6)
 	for k in 5:
-		var prism := PrismMesh.new()
-		prism.size = Vector3(0.6, 2.4, 0.6) * scale * rng.randf_range(0.6, 1.4)
-		var c := MeshInstance3D.new()
-		c.mesh = prism
-		c.material_override = _crystal_mat
-		c.position = at + Vector3(rng.randf_range(-1, 1), prism.size.y * 0.4, rng.randf_range(-1, 1)) * Vector3(1, 1, 1)
-		c.rotation = Vector3(rng.randf_range(-0.4, 0.4), rng.randf() * TAU, rng.randf_range(-0.4, 0.4))
-		parent.add_child(c)
+		var s := scale * rng.randf_range(0.6, 1.4)
+		var pos := at + Vector3(rng.randf_range(-1, 1), 2.4 * s * 0.4, rng.randf_range(-1, 1))
+		var basis := Basis.from_euler(Vector3(rng.randf_range(-0.4, 0.4), rng.randf() * TAU, rng.randf_range(-0.4, 0.4)))
+		_batch(batches, _prism, Transform3D(basis.scaled(Vector3.ONE * s), pos))
 
 
 func _waterfall(parent: Node3D, at: Vector3, angle: float, width: float, height: float) -> void:

@@ -210,6 +210,15 @@ func _process(delta: float) -> void:
 			if count > 1:
 				img.resize(img.get_width() / 2, img.get_height() / 2)
 			_strip.append(img)
+			if _frames == last and _args.has("stats"):
+				print("STATS draw_calls=%d objects=%d primitives=%d nodes=%d lights=%d" % [
+					Performance.get_monitor(Performance.RENDER_TOTAL_DRAW_CALLS_IN_FRAME),
+					Performance.get_monitor(Performance.RENDER_TOTAL_OBJECTS_IN_FRAME),
+					Performance.get_monitor(Performance.RENDER_TOTAL_PRIMITIVES_IN_FRAME),
+					Performance.get_monitor(Performance.OBJECT_NODE_COUNT),
+					get_tree().root.find_children("*", "Light3D", true, false).size()])
+			if _frames == last and _args.has("stats"):
+				_breakdown()
 			if _frames == last:
 				var w := img.get_width()
 				var out := Image.create(w * _strip.size(), img.get_height(), false, img.get_format())
@@ -221,6 +230,37 @@ func _process(delta: float) -> void:
 	_update_sun(delta)
 	world.focus = player.global_position
 	water.global_position = Vector3(snappedf(player.global_position.x, 50.0), TerrainGen.WATER, snappedf(player.global_position.z, 50.0))
+
+
+## Draw items by system, for the --stats capture: [nodes, surfaces, shadow casters].
+func _breakdown() -> void:
+	var groups := {}
+	var cam_pos: Vector3 = get_viewport().get_camera_3d().global_position
+	for g in find_children("*", "GeometryInstance3D", true, false):
+		var gi := g as GeometryInstance3D
+		if not gi.is_visible_in_tree():
+			continue
+		if gi.visibility_range_end > 0.0 and gi.global_position.distance_to(cam_pos) > gi.visibility_range_end + 64.0:
+			continue
+		var key := "other"
+		var n: Node = gi
+		while n != null and n != self:
+			if n is OpenWorld or n is SkyIslands or n is Town or n is WorldFeatures or n is Npc3D or n is Player3D or n is Enemy3D:
+				key = n.get_class() + ":" + String(n.get_script().get_global_name())
+				break
+			n = n.get_parent()
+		var surf := 1
+		if gi is MeshInstance3D and (gi as MeshInstance3D).mesh:
+			surf = (gi as MeshInstance3D).mesh.get_surface_count()
+		elif gi is MultiMeshInstance3D and (gi as MultiMeshInstance3D).multimesh and (gi as MultiMeshInstance3D).multimesh.mesh:
+			surf = (gi as MultiMeshInstance3D).multimesh.mesh.get_surface_count()
+		var e: Array = groups.get(key, [0, 0, 0])
+		e[0] += 1
+		e[1] += surf
+		e[2] += surf if gi.cast_shadow != GeometryInstance3D.SHADOW_CASTING_SETTING_OFF else 0
+		groups[key] = e
+	for k in groups:
+		print("BREAKDOWN %s nodes=%d surfaces=%d shadow_surfaces=%d" % [k, groups[k][0], groups[k][1], groups[k][2]])
 
 
 func _update_sun(_delta: float) -> void:

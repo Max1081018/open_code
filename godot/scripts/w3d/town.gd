@@ -11,6 +11,11 @@ extends Node3D
 ## open with F (or the hand button).
 
 const DIR := "res://assets/models/world/"
+## Draw distance (m) and whether it casts shadows, per model; small props go
+## early and cast none. Others: 900 m with shadows.
+const DRAW := {"chest": [110.0, false], "chest_magic": [140.0, false], "flower_pot": [70.0, false],
+	"crates": [90.0, false], "bench": [90.0, false], "lantern": [180.0, true], "market_stall": [240.0, true],
+	"fountain": [240.0, true], "fountain_small": [320.0, true], "statue": [320.0, true], "shrine_stone": [420.0, true]}
 ## Which way each model's front (door, seat) faces in its own frame: the
 ## yaw added after turning +Z toward the plaza.
 const FRONT_OFFSET := {"bench": -PI * 0.5}
@@ -117,10 +122,25 @@ func place(model: String, at: Vector3, height: float, yaw: float, collide := "")
 		var b: AABB = (m as MeshInstance3D).global_transform * (m as MeshInstance3D).get_aabb()
 		box = b if first else box.merge(b)
 		first = false
-		(m as MeshInstance3D).visibility_range_end = 900.0
 	var k := height / maxf(box.size.y, 0.001)
 	inst.scale = Vector3.ONE * k
 	inst.position = Vector3(-box.get_center().x * k, -box.position.y * k, -box.get_center().z * k)
+	# One mesh per model, a surface per material (see MeshMerge).
+	var merged := MeshMerge.merged(model, inst)
+	if merged:
+		var one := MeshInstance3D.new()
+		one.mesh = merged
+		one.transform = inst.transform
+		holder.remove_child(inst)
+		inst.free()
+		holder.add_child(one)
+		meshes = [one]
+	var draw: Array = DRAW.get(model, [900.0, true])
+	for m in meshes:
+		var mi := m as MeshInstance3D
+		mi.visibility_range_end = draw[0]
+		mi.visibility_range_end_margin = 12.0
+		mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_ON if draw[1] else GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 	holder.global_position = at
 	holder.rotation.y = yaw
 	if collide == "box":
@@ -194,6 +214,7 @@ func _tree(kind: String, at: Vector3) -> void:
 		var mi := MeshInstance3D.new()
 		mi.mesh = part[0]
 		mi.transform = part[1]
+		mi.visibility_range_end = 500.0
 		holder.add_child(mi)
 	var body := StaticBody3D.new()
 	var cs := CollisionShape3D.new()
