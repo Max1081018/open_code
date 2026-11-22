@@ -19,6 +19,8 @@ var _clip := ""
 var _marker: Label3D
 var _plates: Array = []
 var _height := 1.6
+var _look: LookAtModifier3D
+var _look_target: Node3D
 ## Waypoints (x, z) walked in a loop, pausing at each for the idle routine.
 var route: Array = []
 var _leg := 0
@@ -94,6 +96,22 @@ func setup(the_game: Node, npc_id: String, at: Vector3, yaw: float, idle_routine
 	_marker.visibility_range_end = 90.0
 	add_child(_marker)
 	_play(routine[0][0] if not routine.is_empty() else "Idle")
+	# The head follows the heroine (within a natural range).
+	var skel: Skeleton3D = model.find_children("*", "Skeleton3D", true, false)[0]
+	_look_target = Node3D.new()
+	add_child(_look_target)
+	var look := LookAtModifier3D.new()
+	look.bone_name = "Head"
+	look.forward_axis = SkeletonModifier3D.BONE_AXIS_PLUS_Z
+	look.primary_rotation_axis = Vector3.AXIS_Y
+	look.use_angle_limitation = true
+	look.primary_limit_angle = deg_to_rad(130.0)
+	look.secondary_limit_angle = deg_to_rad(60.0)
+	look.duration = 0.5
+	look.transition_type = Tween.TRANS_SINE
+	skel.add_child(look)
+	look.target_node = look.get_path_to(_look_target)
+	_look = look
 
 
 func _play(clip: String) -> void:
@@ -123,6 +141,9 @@ func _process(delta: float) -> void:
 	var to: Vector3 = game.player.global_position - global_position
 	to.y = 0.0
 	var near := to.length() < 6.0
+	if _look:
+		_look_target.global_position = game.player.global_position + Vector3(0, 1.35, 0)
+		_look.influence = move_toward(_look.influence, 1.0 if (near or talking) else 0.0, delta * 2.0)
 	# Strolling: walk the route unless talking or the heroine is close.
 	if not route.is_empty() and not talking and to.length() > 3.5:
 		if _pause > 0.0:

@@ -77,6 +77,7 @@ func _ready() -> void:
 			anim.get_animation(clip).loop_mode = Animation.LOOP_LINEAR
 	for m in model.find_children("*", "MeshInstance3D", true, false):
 		(m as MeshInstance3D).extra_cull_margin = 2.0
+	_build_look()
 	right_hand = HumanoidGrip.grip(skeleton, model, "RightHand", "RightIndexProximal", "RightLittleProximal", "RightMiddleProximal")
 	left_hand = HumanoidGrip.grip(skeleton, model, "LeftHand", "LeftIndexProximal", "LeftLittleProximal", "LeftMiddleProximal")
 	var head := BoneAttachment3D.new()
@@ -108,6 +109,44 @@ func set_first_person(on: bool) -> void:
 ## torches and the like stay in hand.
 const SUMMON_TIME := 3.5
 var _summoned := 0.0
+
+
+## Her head turns to look at someone nearby (set by the townsfolk logic).
+var _look: LookAtModifier3D
+var _look_target: Node3D
+var look_at_point = null   ## Vector3 or null
+
+
+func _build_look() -> void:
+	_look_target = Node3D.new()
+	add_child(_look_target)
+	_look = LookAtModifier3D.new()
+	_look.bone_name = "Head"
+	_look.forward_axis = SkeletonModifier3D.BONE_AXIS_PLUS_Z
+	_look.primary_rotation_axis = Vector3.AXIS_Y
+	_look.use_angle_limitation = true
+	_look.primary_limit_angle = deg_to_rad(120.0)
+	_look.secondary_limit_angle = deg_to_rad(50.0)
+	_look.duration = 0.45
+	_look.transition_type = Tween.TRANS_SINE
+	_look.influence = 0.0
+	skeleton.add_child(_look)
+	_look.target_node = _look.get_path_to(_look_target)
+
+
+func _update_look(delta: float) -> void:
+	if _look == null:
+		return
+	var want := 0.0
+	if look_at_point != null and not busy() and not gliding:
+		_look_target.global_position = look_at_point
+		var to: Vector3 = (look_at_point as Vector3) - global_position
+		to.y = 0.0
+		var fwd := model.global_transform.basis.z
+		fwd.y = 0.0
+		if to.length() > 0.1 and fwd.normalized().dot(to.normalized()) > -0.1:
+			want = 0.85
+	_look.influence = move_toward(_look.influence, want, delta * 2.5)
 
 
 func hold(id: String) -> void:
@@ -386,6 +425,7 @@ func _physics_process(delta: float) -> void:
 		_air_time += delta
 	_landing -= delta
 	_footfall(delta, Vector2(velocity.x, velocity.z).length())
+	_update_look(delta)
 
 	# Face where we move (or where the camera looks while acting / in first person).
 	var face := Vector3.ZERO

@@ -218,6 +218,17 @@ func _process(_delta: float) -> void:
 	if game == null or game.player == null:
 		return
 	var p: Vector3 = game.player.global_position
+	# The heroine glances at whoever is close by.
+	var glance = null
+	var gd := 5.0
+	for n in npcs.values():
+		var d: float = (n as Node3D).global_position.distance_to(p)
+		if d < gd:
+			gd = d
+			glance = (n as Node3D).global_position + Vector3(0, 1.45, 0)
+	if speaking:
+		glance = speaking.global_position + Vector3(0, 1.45, 0)
+	game.player.look_at_point = glance
 	if speaking == null:
 		var best: Npc3D = null
 		for n in npcs.values():
