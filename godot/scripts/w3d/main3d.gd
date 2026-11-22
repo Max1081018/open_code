@@ -333,6 +333,8 @@ func _update_sun(_delta: float) -> void:
 	_sky_mat.set_shader_parameter("night", night)
 	if town:
 		town.set_night(night)
+	if water:
+		(water.material_override as ShaderMaterial).set_shader_parameter("night", night)
 	if islands:
 		islands.set_night(night)
 	_sky_mat.set_shader_parameter("dusk", low)
