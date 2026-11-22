@@ -21,6 +21,10 @@ var _tasks: Array[int] = []
 var _mutex := Mutex.new()
 var _material: ShaderMaterial
 var _clump: ArrayMesh
+var _flower: ArrayMesh
+var _flower_mat: ShaderMaterial
+## Wildflower colours: white, buttercup, rose, sky blue, lilac.
+const PETALS := [Color(0.92, 0.92, 0.88), Color(1.0, 0.72, 0.08), Color(0.95, 0.32, 0.55), Color(0.3, 0.52, 1.0), Color(0.62, 0.38, 0.95)]
 var _timer := 0.0
 
 
@@ -33,6 +37,10 @@ func setup(the_gen: TerrainGen, quality: int) -> void:
 	_material.set_shader_parameter("field_radius", TILE * (radius_tiles + 0.5))
 	_clump = _make_clump()
 	_clump.surface_set_material(0, _material)
+	_flower_mat = _material.duplicate() as ShaderMaterial
+	_flower_mat.set_shader_parameter("flower_mode", true)
+	_flower = _make_flower()
+	_flower.surface_set_material(0, _flower_mat)
 
 
 ## Five tapered, slightly curved blades round a point; UV.y is 0 at the
@@ -70,8 +78,43 @@ static func _make_clump() -> ArrayMesh:
 	return st.commit()
 
 
+## A wildflower: a thin curved stem and a six-petal head facing up-ish.
+static func _make_flower() -> ArrayMesh:
+	var st := SurfaceTool.new()
+	st.begin(Mesh.PRIMITIVE_TRIANGLES)
+	var h := 0.62
+	var w := Vector3(0.014, 0, 0)
+	var bend := Vector3(0, 0, 0.05)
+	for tri in [[-w, 0.0, w, 0.0, bend + Vector3(0, h, 0), 0.92]]:
+		st.set_uv(Vector2(0, tri[1]))
+		st.add_vertex(tri[0])
+		st.set_uv(Vector2(0, tri[3]))
+		st.add_vertex(tri[2])
+		st.set_uv(Vector2(0, tri[5]))
+		st.add_vertex(tri[4])
+	var c := bend + Vector3(0, h, 0)
+	var r := 0.1
+	# A five-petal star: tips at r, notches at 0.45 r; the centre vertex
+	# is marked (UV.y 1) so the shader can paint a golden eye.
+	var ring: Array = []
+	for k in 10:
+		var a := TAU * k / 10.0
+		var rr := r if k % 2 == 0 else r * 0.45
+		ring.append(c + Vector3(cos(a) * rr, 0.012, sin(a) * rr * 0.9))
+	for k in 10:
+		st.set_uv(Vector2(1, 1.0))
+		st.add_vertex(c + Vector3(0, 0.02, 0))
+		st.set_uv(Vector2(1, 0.9))
+		st.add_vertex(ring[k])
+		st.set_uv(Vector2(1, 0.9))
+		st.add_vertex(ring[(k + 1) % 10])
+	st.generate_normals()
+	return st.commit()
+
+
 func _process(delta: float) -> void:
 	_material.set_shader_parameter("field_centre", focus)
+	_flower_mat.set_shader_parameter("field_centre", focus)
 	_timer -= delta
 	if _timer <= 0.0:
 		_timer = 0.2
@@ -90,6 +133,7 @@ func set_player(p: Vector3) -> void:
 	focus = p
 	if _material:
 		_material.set_shader_parameter("player_pos", p)
+		_flower_mat.set_shader_parameter("player_pos", p)
 
 
 func _coord(p: Vector3) -> Vector2i:
@@ -137,6 +181,10 @@ static func build_tile(g: TerrainGen, t: Vector2i, per_m2: float) -> Dictionary:
 	var root := _root_colour(biome)
 	var xforms: Array = []
 	var colours: Array = []
+	var flowers: Array = []
+	var petals: Array = []
+	# Open meadows bloom more than the woods.
+	var bloom := 0.2 - g.forest(origin.x + TILE * 0.5, origin.y + TILE * 0.5) * 0.14
 	if root.a > 0.0:
 		var rng := RandomNumberGenerator.new()
 		rng.seed = hash([t.x, t.y, "blades"])
@@ -169,7 +217,14 @@ static func build_tile(g: TerrainGen, t: Vector2i, per_m2: float) -> Dictionary:
 				Vector3(x, h - 0.03, z)))
 			var v := rng.randf_range(-0.06, 0.06)
 			colours.append(Color(root.r + v, root.g + v, root.b + v * 0.5))
-	return {"tile": t, "xforms": xforms, "colours": colours}
+			if biome == TerrainGen.Biome.FOREST and rng.randf() < bloom:
+				# Wildflowers come in little patches of one colour.
+				var pick: int = absi(hash([floori(x / 3.0), floori(z / 3.0)])) % PETALS.size()
+				var fs := rng.randf_range(0.8, 1.25)
+				flowers.append(Transform3D(Basis(Vector3.UP, rng.randf() * TAU).scaled(Vector3(fs, fs, fs)),
+					Vector3(x + 0.1, h - 0.03, z)))
+				petals.append(PETALS[pick])
+	return {"tile": t, "xforms": xforms, "colours": colours, "flowers": flowers, "petals": petals}
 
 
 ## Root colour by biome; alpha 0 where no meadow grass grows.
@@ -204,6 +259,20 @@ func _apply(r: Dictionary) -> void:
 	mmi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 	mmi.set_meta("level", r.get("level", 0))
 	add_child(mmi)
+	var fl: Array = r.get("flowers", [])
+	if not fl.is_empty():
+		var fm := MultiMesh.new()
+		fm.transform_format = MultiMesh.TRANSFORM_3D
+		fm.use_colors = true
+		fm.mesh = _flower
+		fm.instance_count = fl.size()
+		for i in fl.size():
+			fm.set_instance_transform(i, fl[i])
+			fm.set_instance_color(i, r.petals[i])
+		var fmi := MultiMeshInstance3D.new()
+		fmi.multimesh = fm
+		fmi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+		mmi.add_child(fmi)
 	if _tiles.has(t):
 		(_tiles[t] as Node).queue_free()
 	_tiles[t] = mmi

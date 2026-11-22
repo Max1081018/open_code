@@ -74,6 +74,16 @@ void fragment() {
 	float soil_w = max(0.0, 1.0 - w.r - w.g - w.b - w.a);
 	vec3 c = (grass * w.r + rock * w.g + snow * w.b + sand * w.a + soil * soil_w)
 		/ max(w.r + w.g + w.b + w.a + soil_w, 0.001);
+	// Mountains: snow keeps to the gentler slopes (broken up by noise), the
+	// steep faces show dark cool rock streaked downhill, and snow is a soft
+	// blue-white so its shading reads instead of clipping to white.
+	float up = world_normal.y;
+	float high = smoothstep(18.0, 45.0, world_pos.y);
+	float streak = vnoise(vec2((world_pos.x + world_pos.z) * 0.09, world_pos.y * 0.5));
+	float steep = (1.0 - smoothstep(0.62 + streak * 0.12, 0.86, up)) * high;
+	vec3 cliff = rock * vec3(0.56, 0.58, 0.68) * (0.78 + streak * 0.35);
+	c = mix(c, cliff, clamp(steep * 1.2, 0.0, 1.0));
+	c = mix(c, c * vec3(0.86, 0.9, 0.98), w.b * 0.6);
 	// Biome tint (UV2.x: overall brightness of the tint) and ash (UV2.y).
 	c *= mix(1.0, UV2.x, 0.8);
 	c = mix(c, c * vec3(0.32, 0.3, 0.3), UV2.y * 0.8);

@@ -13,6 +13,9 @@ uniform float field_radius = 40.0;
 uniform float wind_strength = 0.16;
 uniform vec4 tip_color : source_color = vec4(0.86, 0.95, 0.52, 1.0);
 uniform float tip_mix = 0.55;
+// Wildflowers: the same sway, a green stem (UV.x 0) and a petal head
+// (UV.x 1) in the instance's colour.
+uniform bool flower_mode = false;
 
 varying float tip;
 varying vec3 root_col;
@@ -58,6 +61,10 @@ void vertex() {
 
 void fragment() {
 	vec3 col = mix(root_col * 0.62, mix(root_col, tip_color.rgb, tip_mix), smoothstep(0.0, 1.0, tip));
+	if (flower_mode) {
+		vec3 petal = mix(root_col * 0.72, vec3(1.0, 0.78, 0.2), smoothstep(0.955, 0.99, tip));
+		col = UV.x > 0.5 ? petal : mix(vec3(0.2, 0.36, 0.14), vec3(0.4, 0.6, 0.26), tip);
+	}
 	ALBEDO = col;
 	ROUGHNESS = 0.9;
 	// A little light through the blades.

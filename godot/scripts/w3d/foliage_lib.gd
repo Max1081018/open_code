@@ -89,7 +89,12 @@ static func _windy(mesh: Mesh, cat: String, kind_hint := "") -> Mesh:
 			_wind = load("res://scripts/shaders/foliage3d.gdshader")
 		var sm := ShaderMaterial.new()
 		sm.shader = _wind
-		sm.set_shader_parameter("albedo_tex", material.albedo_texture)
+		var tex := material.albedo_texture
+		# The kit's plain bush borrows the twisted tree's purple leaves; give
+		# it ordinary green ones (the twisted look is for the dark woods).
+		if kind_hint.begins_with("Bush_Common") and String(material.resource_name).contains("Twisted"):
+			tex = load(DIR + "Leaves_NormalTree_C.png")
+		sm.set_shader_parameter("albedo_tex", tex)
 		# The kit's greens are candy-bright; grass is muted toward meadow.
 		var colour := material.albedo_color
 		var saturation := 0.85
@@ -99,7 +104,7 @@ static func _windy(mesh: Mesh, cat: String, kind_hint := "") -> Mesh:
 		elif cat == "small":
 			colour = colour * Color(0.85, 0.88, 0.8)
 			saturation = 0.75
-		if mesh.resource_name.contains("Twisted") or String(material.resource_name).contains("Twisted") or kind_hint.begins_with("TwistedTree"):
+		if kind_hint.begins_with("TwistedTree"):
 			colour = colour * Color(0.78, 0.58, 0.52)
 			saturation = 0.5
 		sm.set_shader_parameter("albedo", colour)
