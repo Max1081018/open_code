@@ -74,6 +74,9 @@ func setup(the_game: Node) -> void:
 	_place(_crosshair, Vector2(0.5, 0.5), Vector2.ZERO)
 	if touch:
 		_build_touch()
+	dialogue = DialogueBox3D.new()
+	add_child(dialogue)
+	process_priority = 100  # after everything that asks for prompts this frame
 	game.play.toast.connect(_toast)
 	game.play.inventory_changed.connect(_show_gadgets)
 	_show_gadgets()
@@ -192,6 +195,23 @@ func _draw_minimap(c: Control) -> void:
 		mark = mark.normalized() * (r - 10)
 	c.draw_circle(centre + mark, 7, Color(0.85, 0.25, 0.3))
 	c.draw_arc(centre + mark, 7, 0, TAU, 16, Color(1, 0.9, 0.8), 2.0)
+	# Townsfolk (gold dots) and the tracked quest's goal (a gold diamond).
+	if game.get("quests"):
+		for n in game.quests.npcs.values():
+			var to_n: Vector3 = (n as Node3D).global_position - p.global_position
+			var nm := Vector2(to_n.x, to_n.z).rotated(yaw) / scale
+			if nm.length() < r - 6:
+				c.draw_circle(centre + nm, 5, GOLD)
+				c.draw_arc(centre + nm, 5, 0, TAU, 12, Color(0.2, 0.12, 0.02), 1.5)
+		var target = game.quests.tracker().target
+		if target != null:
+			var to_t: Vector3 = target - p.global_position
+			var tm := Vector2(to_t.x, to_t.z).rotated(yaw) / scale
+			if tm.length() > r - 12:
+				tm = tm.normalized() * (r - 12)
+			var q := centre + tm
+			c.draw_colored_polygon(PackedVector2Array([q + Vector2(0, -11), q + Vector2(9, 0), q + Vector2(0, 11), q + Vector2(-9, 0)]), GOLD)
+			c.draw_polyline(PackedVector2Array([q + Vector2(0, -11), q + Vector2(9, 0), q + Vector2(0, 11), q + Vector2(-9, 0), q + Vector2(0, -11)]), Color(0.25, 0.14, 0.02), 2.0, true)
 	# North marker.
 	var north := Vector2(0, -1).rotated(yaw) * (r + 6)
 	c.draw_circle(centre + north, 11, Color(0.08, 0.09, 0.2))
@@ -468,13 +488,56 @@ func _build_boss_bar() -> void:
 var _prompt: Label
 
 
-## An interaction hint beside the hero ("Open chest"); "" hides it.
+var _prompt_req := ""
+
+
+## Ask for an interaction hint beside the hero this frame ("Open chest").
+## Several things may ask; the last one wins. It clears itself next frame.
 func prompt(text: String) -> void:
+	if text != "":
+		_prompt_req = text
+
+
+func _show_prompt() -> void:
 	if _prompt == null:
 		_prompt = _label("", 26, PALE, _ui_font)
 		root.add_child(_prompt)
 		_place(_prompt, Vector2(0.5, 0.5), Vector2(140, 40))
-	_prompt.text = ("[F]  " if not touch else "✋  ") + text if text != "" else ""
+	_prompt.text = ("[F]  " if not touch else "✋  ") + _prompt_req if _prompt_req != "" else ""
+	_prompt_req = ""
+
+
+var dialogue: DialogueBox3D
+var _banner: Label
+var _banner_sub: Label
+var _banner_tween: Tween
+
+
+## A big title across the screen: "New Quest" / "Quest Complete" and its name.
+func banner(title: String, sub: String) -> void:
+	if _banner == null:
+		_banner = _label("", 30, GOLD, _ui_font)
+		_banner_sub = _label("", 52, Color(1.0, 0.97, 0.9), _title_font)
+		for l in [_banner, _banner_sub]:
+			l.set_anchors_and_offsets_preset(Control.PRESET_CENTER_TOP)
+			l.offset_left = -700
+			l.offset_right = 700
+			l.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+			add_child(l)
+		_banner.offset_top = 236
+		_banner_sub.offset_top = 272
+	_banner.text = "✦  " + title.to_upper() + "  ✦"
+	_banner_sub.text = sub
+	if _banner_tween:
+		_banner_tween.kill()
+	_banner.modulate.a = 0.0
+	_banner_sub.modulate.a = 0.0
+	_banner_tween = create_tween().set_parallel()
+	_banner_tween.tween_property(_banner, "modulate:a", 1.0, 0.4)
+	_banner_tween.tween_property(_banner_sub, "modulate:a", 1.0, 0.5)
+	_banner_tween.chain().tween_interval(2.6)
+	_banner_tween.chain().tween_property(_banner, "modulate:a", 0.0, 0.7)
+	_banner_tween.parallel().tween_property(_banner_sub, "modulate:a", 0.0, 0.7)
 
 
 func boss_bar(e: Enemy3D) -> void:
@@ -494,8 +557,17 @@ func _process(delta: float) -> void:
 	_skills.queue_redraw()
 	_minimap.queue_redraw()
 	_crosshair.visible = game.cam.first_person
-	var d: float = p.global_position.distance_to(game.play.boss_site)
-	_quest_dist.text = "%d m" % int(d)
+	root.visible = not dialogue.showing
+	_show_prompt()
+	if game.get("quests"):
+		var tr: Dictionary = game.quests.tracker()
+		_quest.text = tr.title
+		var target = tr.target
+		var detail: String = tr.detail
+		if target != null:
+			var dist := "%d m" % int(p.global_position.distance_to(target))
+			detail = dist if detail == "" else detail + "  ·  " + dist
+		_quest_dist.text = detail
 	if _boss:
 		_boss_bar.value = maxf(_boss.health, 0.0) / _boss.max_health * 100.0
 	_gadget_time -= delta

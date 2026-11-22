@@ -6,6 +6,7 @@ extends Node
 ## and feedback (hit-stop, shake, debris, damage numbers, toasts).
 
 signal toast(text: String)
+signal enemy_killed(e: Node)
 signal inventory_changed
 
 var game: Node
@@ -420,6 +421,7 @@ func spawn_enemy(kind: String, at: Vector3) -> Enemy3D:
 
 
 func _on_enemy_died(e: Enemy3D) -> void:
+	enemy_killed.emit(e)
 	for drop in e.spec.get("loot", []):
 		if randf() < drop[1]:
 			spawn_pickup(drop[0], randi_range(1, drop[2]), e.global_position + Vector3(0, 1, 0),

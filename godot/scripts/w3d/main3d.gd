@@ -15,6 +15,7 @@ var play: Play3D
 var islands: SkyIslands
 var features: WorldFeatures
 var town: Town
+var quests: Quests3D
 var sun: DirectionalLight3D
 var environment: Environment
 var _sky_mat: ShaderMaterial
@@ -77,6 +78,9 @@ func _ready() -> void:
 	if _args.has("hold"):
 		play.inventory.slots[0] = {"id": _args.hold, "count": 1}
 		play.select(0)
+	quests = Quests3D.new()
+	add_child(quests)
+	quests.setup(self)
 	features = WorldFeatures.new()
 	add_child(features)
 	features.build(self)
@@ -86,9 +90,27 @@ func _ready() -> void:
 	town = Town.new()
 	add_child(town)
 	town.build(self)
+	_place_townsfolk()
 	if _args.has("shot"):
 		input.scripted = true
 		Engine.max_fps = 0
+
+
+## Wren by the fountain, Mira at her herb corner by the wall fountain, Tobin
+## at the east stall, Sir Aldous on guard by the statue below the tower.
+func _place_townsfolk() -> void:
+	var folk := [
+		["wren", Vector2(3.6, 7.0), 0.4, [["Idle", 6.0], ["Idle_Talking", 4.0], ["Yes", 2.0]]],
+		["mira", Vector2(-12.6, -1.8), 1.4, [["Idle", 5.0], ["Interact", 3.0], ["PickUp_Table", 3.5]]],
+		["tobin", Vector2(6.4, -8.6), 0.0, [["Fixing_Kneeling", 7.0], ["Idle_FoldArms", 5.0]]],
+		["aldous", Vector2(-4.4, -34.5), 0.3, [["Sword_Idle", 8.0], ["Idle", 4.0]]],
+	]
+	for f in folk:
+		var at := Vector3(f[1].x, world.height_at(f[1].x, f[1].y), f[1].y)
+		var npc := Npc3D.new()
+		add_child(npc)
+		npc.setup(self, f[0], at, f[2], f[3])
+		quests.npcs[f[0]] = npc
 
 
 func _build_environment() -> void:
@@ -276,6 +298,15 @@ func _script_input() -> void:
 			if f == 2:
 				play.spawn_enemy(_args.get("enemy", "zombie"), player.global_position + Vector3(0, 0, -5))
 			input.attack = f > 30 and f % 36 == 0
+		"talk":
+			# Walk up to Wren and speak; the dialogue is captured mid-line.
+			if f == 2:
+				var w: Npc3D = quests.npcs["wren"]
+				player.global_position = w.global_position + Vector3(0.4, 0.2, 2.0)
+			if f == 20:
+				quests.start_talk(quests.npcs[_args.get("npc", "wren")])
+			if f > 20 and f % int(_args.get("every_line", "30")) == 0:
+				hud.dialogue.advance()
 		"tour":
 			input.move = Vector2(0.15, 1)
 			input.sprint = true

@@ -16,6 +16,8 @@ var toggle_view := false
 var skill := false
 var burst := false
 var scripted := false
+## While a conversation is open the heroine does not move or fight.
+var blocked := false
 
 ## Set by the touch controls each frame.
 var touch_move := Vector2.ZERO
@@ -79,3 +81,21 @@ func _process(_delta: float) -> void:
 	# One-shot touch buttons last one frame; held ones are re-set by the HUD.
 	for b in ["jump", "dodge", "heavy", "interact", "view", "skill", "burst", "dash"]:
 		touch_buttons.erase(b)
+	if blocked:
+		clear()
+
+
+## Drop every input for this frame.
+func clear() -> void:
+	move = Vector2.ZERO
+	look = Vector2.ZERO
+	jump = false
+	sprint = false
+	dodge = false
+	attack = false
+	heavy = false
+	block = false
+	interact = false
+	toggle_view = false
+	skill = false
+	burst = false

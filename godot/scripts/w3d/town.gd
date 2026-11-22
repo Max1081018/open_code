@@ -16,7 +16,7 @@ const DIR := "res://assets/models/world/"
 const FRONT_OFFSET := {"bench": -PI * 0.5}
 ## [model, x, z, height m, solid] — fronts turned to the plaza.
 const TOWN := [
-	["fountain_small", 0.0, 0.0, 4.6, true],
+	["fountain_small", 0.0, 0.0, 3.6, true],
 	["magic_tower", 0.0, -52.0, 22.0, true],
 	["statue", -7.5, -38.0, 3.8, true],
 	["house_blue", -24.0, -16.0, 11.0, true],
@@ -30,7 +30,6 @@ const TOWN := [
 	["market_stall", -5.8, -11.5, 3.6, true],
 	["crates", 9.0, -14.5, 1.1, false],
 	["crates", -9.5, -14.0, 1.1, false],
-	["crates", 6.5, 10.5, 1.1, false],
 	["bench", 8.0, 2.9, 1.0, false],
 	["bench", -1.2, 8.4, 1.0, false],
 	["bench", -8.3, 1.5, 1.0, false],
