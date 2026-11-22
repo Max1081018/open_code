@@ -132,10 +132,12 @@ func _ready() -> void:
 ## at the east stall, Sir Aldous on guard by the statue below the tower.
 func _place_townsfolk() -> void:
 	var folk := [
-		["wren", Vector2(3.6, 7.0), 0.4, [["Idle", 6.0], ["Idle_Talking", 4.0], ["Yes", 2.0]]],
+		["wren", Vector2(3.6, 7.0), 0.4, [["Idle", 6.0], ["Idle_Talking", 4.0], ["Yes", 2.0]],
+			[Vector2(3.65, 6.32), Vector2(-5.16, 5.16), Vector2(-5.98, -4.19), Vector2(2.5, -6.86)]],
 		["mira", Vector2(-12.6, -1.8), 1.4, [["Idle", 5.0], ["Interact", 3.0], ["PickUp_Table", 3.5]]],
 		["tobin", Vector2(6.4, -8.6), 0.0, [["Fixing_Kneeling", 7.0], ["Idle_FoldArms", 5.0]]],
-		["aldous", Vector2(5.2, -39.0), -0.5, [["Sword_Idle", 8.0], ["Idle", 4.0]]],
+		["aldous", Vector2(6.0, -39.0), -0.5, [["Sword_Idle", 8.0], ["Idle", 4.0]],
+			[Vector2(6.0, -39.0), Vector2(6.0, -24.0)]],
 	]
 	for f in folk:
 		var at := Vector3(f[1].x, world.height_at(f[1].x, f[1].y), f[1].y)
@@ -143,6 +145,8 @@ func _place_townsfolk() -> void:
 		add_child(npc)
 		npc.setup(self, f[0], at, f[2], f[3])
 		quests.npcs[f[0]] = npc
+		if f.size() > 4:
+			npc.route = f[4]
 
 
 var _autosave_timer := 45.0

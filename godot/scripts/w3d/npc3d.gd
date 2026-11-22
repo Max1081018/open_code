@@ -19,6 +19,11 @@ var _clip := ""
 var _marker: Label3D
 var _plates: Array = []
 var _height := 1.6
+## Waypoints (x, z) walked in a loop, pausing at each for the idle routine.
+var route: Array = []
+var _leg := 0
+var _pause := 3.0
+const WALK_SPEED := 1.15
 
 
 func setup(the_game: Node, npc_id: String, at: Vector3, yaw: float, idle_routine: Array) -> void:
@@ -118,6 +123,24 @@ func _process(delta: float) -> void:
 	var to: Vector3 = game.player.global_position - global_position
 	to.y = 0.0
 	var near := to.length() < 6.0
+	# Strolling: walk the route unless talking or the heroine is close.
+	if not route.is_empty() and not talking and to.length() > 3.5:
+		if _pause > 0.0:
+			_pause -= delta
+		else:
+			var goal: Vector2 = route[_leg]
+			var here := Vector2(global_position.x, global_position.z)
+			var step := goal - here
+			if step.length() < 0.25:
+				_leg = (_leg + 1) % route.size()
+				_pause = randf_range(4.0, 8.0)
+			else:
+				here += step.normalized() * minf(step.length(), WALK_SPEED * delta)
+				global_position = Vector3(here.x, game.world.height_at(here.x, here.y), here.y)
+				home_yaw = atan2(step.x, step.y)
+				model.rotation.y = lerp_angle(model.rotation.y, home_yaw, minf(1.0, delta * 6.0))
+				_play("Walk")
+				return
 	if talking:
 		_play("Idle_Talking")
 	elif not routine.is_empty():
