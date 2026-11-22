@@ -55,6 +55,67 @@ func held_id() -> String:
 
 func _on_swing(kind: String) -> void:
 	_impacts.append([IMPACT.get(kind, 0.4), kind.trim_suffix("_heavy"), kind.ends_with("_heavy")])
+	if kind.begins_with("attack") and Items.kind(held_id()) == Items.Kind.SWORD:
+		get_tree().create_timer(0.08).timeout.connect(_slash.bind(kind.ends_with("_heavy")))
+
+
+static var _arc: ArrayMesh
+var _slash_flip := false
+
+
+## A crescent of light swept round the heroine with each sword stroke;
+## strokes alternate side to side, heavy ones are larger and golden.
+func _slash(heavy: bool) -> void:
+	if _arc == null:
+		_arc = _make_arc()
+	var p: Player3D = game.player
+	var mi := MeshInstance3D.new()
+	mi.mesh = _arc
+	var mat := ShaderMaterial.new()
+	mat.shader = load("res://scripts/shaders/slash.gdshader")
+	mat.set_shader_parameter("core", Color(1.0, 0.8, 0.4) if heavy else Color(0.55, 0.85, 1.0))
+	mi.material_override = mat
+	mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	game.add_child(mi)
+	var face := p.model.global_transform.basis.z
+	face.y = 0.0
+	mi.global_position = p.global_position + Vector3(0, 1.0 if not heavy else 0.9, 0) + face.normalized() * 0.2
+	mi.global_basis = Basis.looking_at(-face.normalized(), Vector3.UP)
+	_slash_flip = not _slash_flip
+	# Diagonal strokes, alternating, so the crescent reads from behind too.
+	mi.rotate_object_local(Vector3.FORWARD, (1.0 if _slash_flip else -1.0) * randf_range(0.6, 1.05))
+	var k := 1.35 if heavy else 1.0
+	mi.scale = Vector3(-k if _slash_flip else k, k, k)
+	var t := mi.create_tween()
+	t.tween_method(_set_progress.bind(mat), 0.0, 1.0, 0.24 if not heavy else 0.32)
+	t.tween_callback(mi.queue_free)
+
+
+func _set_progress(v: float, mat: ShaderMaterial) -> void:
+	mat.set_shader_parameter("progress", v)
+
+
+## A flat half-ring in front (+Z) from right to left: UV.x along the arc,
+## UV.y from the inner to the outer radius.
+static func _make_arc() -> ArrayMesh:
+	var st := SurfaceTool.new()
+	st.begin(Mesh.PRIMITIVE_TRIANGLES)
+	var segs := 24
+	var inner := 0.55
+	var outer := 1.85
+	for i in segs:
+		var u0 := float(i) / segs
+		var u1 := float(i + 1) / segs
+		var a0 := lerpf(-1.9, 1.9, u0)
+		var a1 := lerpf(-1.9, 1.9, u1)
+		var p00 := Vector3(sin(a0) * inner, 0, cos(a0) * inner)
+		var p01 := Vector3(sin(a0) * outer, 0, cos(a0) * outer)
+		var p10 := Vector3(sin(a1) * inner, 0, cos(a1) * inner)
+		var p11 := Vector3(sin(a1) * outer, 0, cos(a1) * outer)
+		for q in [[p00, u0, 0.0], [p01, u0, 1.0], [p11, u1, 1.0], [p00, u0, 0.0], [p11, u1, 1.0], [p10, u1, 0.0]]:
+			st.set_uv(Vector2(q[1], q[2]))
+			st.add_vertex(q[0])
+	return st.commit()
 
 
 func _process(delta: float) -> void:
