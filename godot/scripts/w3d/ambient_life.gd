@@ -11,6 +11,8 @@ var _butterflies: CPUParticles3D
 var _fireflies: CPUParticles3D
 var _bmat: ShaderMaterial
 var _fmat: ShaderMaterial
+var _leaves: CPUParticles3D
+var _lmat: ShaderMaterial
 var _birds: MultiMeshInstance3D
 var _bird_centre := Vector3.ZERO
 var _bird_seed: Array = []
@@ -32,6 +34,20 @@ func setup(the_game: Node) -> void:
 	colours.colors = PackedColorArray([Color(0.95, 0.35, 0.6), Color(1.0, 0.72, 0.12), Color(0.3, 0.55, 1.0), Color(0.75, 0.45, 1.0)])
 	_butterflies.color_initial_ramp = colours
 	_fireflies = _swarm(_fmat, 110, Vector3(14, 1.0, 14), 0.42, 7.0)
+	# Leaves drifting down through the woods.
+	_lmat = ShaderMaterial.new()
+	_lmat.shader = shader
+	_lmat.set_shader_parameter("kind", 2)
+	_leaves = _swarm(_lmat, 30, Vector3(14, 2.0, 14), 0.2, 7.0)
+	_leaves.direction = Vector3(0.3, -1, 0.1)
+	_leaves.spread = 30.0
+	_leaves.gravity = Vector3(0, -0.35, 0)
+	_leaves.initial_velocity_min = 0.3
+	_leaves.initial_velocity_max = 0.6
+	var leaf_cols := Gradient.new()
+	leaf_cols.offsets = PackedFloat32Array([0.0, 0.5, 0.8, 1.0])
+	leaf_cols.colors = PackedColorArray([Color(0.45, 0.68, 0.25), Color(0.62, 0.78, 0.3), Color(0.92, 0.72, 0.25), Color(0.86, 0.45, 0.22)])
+	_leaves.color_initial_ramp = leaf_cols
 	_build_birds()
 
 
@@ -109,6 +125,9 @@ func _process(_delta: float) -> void:
 	_butterflies.global_position = p + Vector3(0, 1.2, 0)
 	_fireflies.global_position = p + Vector3(0, 0.9, 0)
 	_butterflies.emitting = green and night < 0.5
+	_leaves.global_position = p + Vector3(0, 6.0, 0)
+	_leaves.emitting = green and game.world.gen.forest(p.x, p.z) > 0.5
+	_lmat.set_shader_parameter("fade", 1.0 - night * 0.6)
 	_fireflies.emitting = green and night > 0.3
 	_bmat.set_shader_parameter("fade", clampf(1.0 - night * 2.0, 0.0, 1.0))
 	_fmat.set_shader_parameter("fade", clampf(night * 1.6 - 0.2, 0.0, 1.0))
