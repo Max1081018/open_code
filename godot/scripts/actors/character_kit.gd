@@ -82,7 +82,7 @@ const HERO_STYLE := {
 	# deeper rose hair so she reads at a distance (tints by texture file).
 	"mira": {"height": 1.58, "clips": {"Walk": "Walk_Formal"}, "speed": 1.0,
 		"tex_tints": {"albedo_3": Color(0.58, 0.74, 0.58), "albedo_2": Color(0.9, 0.6, 0.74)}},
-	"tobin": {"height": 1.72, "clips": {"Idle": "Idle_FoldArms"}, "speed": 0.95},
+	"tobin": {"height": 1.72, "clips": {"Idle": "Idle_FoldArms"}, "speed": 0.95, "turn": PI},
 	"aldous": {"height": 1.64, "clips": {"Idle": "Sword_Idle"}, "speed": 1.0},
 	"warden": {"height": 2.0, "speed": 0.85},
 	"robot": {"height": 1.85, "speed": 0.9},
@@ -206,6 +206,17 @@ static func _build_hero(name: String) -> Node3D:
 	var k: float = float(HERO_STYLE.get(name, {}).get("height", 1.8)) / (span * 1.17)
 	model.scale = Vector3.ONE * k
 	model.position = Vector3(0, -(floor_y - span * 0.05) * k, 0)
+	# Face +Z like everyone else: some rigs come facing backwards (the
+	# toes point the way a body faces).
+	var toes := skeleton.find_bone("LeftToes")
+	var foot := skeleton.find_bone("LeftFoot")
+	if toes >= 0 and foot >= 0:
+		var t2r := _transform_to(skeleton, root)
+		var ahead := (t2r * skeleton.get_bone_global_rest(toes)).origin - (t2r * skeleton.get_bone_global_rest(foot)).origin
+		if ahead.z < -0.01:
+			model.rotation.y = PI
+	# A rig whose bones were re-aimed on import can still need a half turn.
+	model.rotation.y += float(HERO_STYLE.get(name, {}).get("turn", 0.0))
 	# Seat by the soles: the lowest point of the skinned meshes in rest
 	# pose. (A mesh's own box is in its bind space, which for some rigs is
 	# centimetres lying on its back; it says nothing about where feet are.)
