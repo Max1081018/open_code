@@ -160,6 +160,11 @@ func _island(centre: Vector3, radius: float, seed_i: int, spire: bool) -> void:
 var _prism: PrismMesh
 
 
+func set_night(night: float) -> void:
+	if _fall_mat:
+		_fall_mat.set_shader_parameter("night", night)
+
+
 func _batch(batches: Dictionary, mesh: Mesh, t: Transform3D) -> void:
 	if not batches.has(mesh):
 		batches[mesh] = []

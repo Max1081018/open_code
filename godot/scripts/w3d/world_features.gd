@@ -158,14 +158,6 @@ func _shard(at: Vector3) -> void:
 	bottom.position.y = -0.7
 	top.add_child(bottom)
 	holder.add_child(top)
-	var light := OmniLight3D.new()
-	light.light_color = Color(0.5, 0.85, 1.0)
-	light.light_energy = 0.8
-	light.omni_range = 4.0
-	light.distance_fade_enabled = true
-	light.distance_fade_begin = 45.0
-	light.distance_fade_length = 15.0
-	holder.add_child(light)
 	add_child(holder)
 	holder.global_position = at
 	shards.append(holder)

@@ -50,7 +50,8 @@ const ISLES := [["ruin_arch", 1, 10.0, Vector2(0, 0)], ["ruin_arch", 6, 14.0, Ve
 const FLOATERS := [["sky_house", -150.0, 130.0, 70.0, 30.0], ["shrine_sky", 190.0, 60.0, 55.0, 20.0]]
 
 var game: Node
-var chests: Array = []   ## [Node3D, opened: bool, loot, magic: bool]
+var chests: Array = []
+var lamps: Array = []    ## [OmniLight3D, glow sprite] per street lantern   ## [Node3D, opened: bool, loot, magic: bool]
 
 
 func build(the_game: Node) -> void:
@@ -192,17 +193,60 @@ func _road_lanterns(gen: TerrainGen) -> void:
 			var at := Vector3(p.x, gen.height(p.x, p.y), p.y)
 			place("lantern", at, 3.6, atan2(-side.x * s, -side.y * s))
 			var l := OmniLight3D.new()
-			l.light_color = Color(1.0, 0.78, 0.48)
-			l.light_energy = 1.3
-			l.omni_range = 9.0
+			l.light_color = Color(1.0, 0.74, 0.42)
+			l.light_energy = 0.0
+			l.omni_range = 12.0
 			l.shadow_enabled = false
 			l.distance_fade_enabled = true
-			l.distance_fade_begin = 70.0
-			l.distance_fade_length = 20.0
+			l.distance_fade_begin = 48.0
+			l.distance_fade_length = 14.0
 			l.position = at + Vector3(0, 3.1, 0)
+			l.visible = false
 			add_child(l)
+			var halo := _glow(at + Vector3(0, 2.95, 0), Color(1.0, 0.72, 0.38), 1.6)
+			halo.visible = false
+			lamps.append([l, halo])
 			d += 14.0
 			n += 1
+
+
+static var _glow_mats := {}
+
+
+## A soft additive halo sprite (lamp flames, chest shimmer): bloom does the rest.
+func _glow(at: Vector3, colour: Color, size: float) -> MeshInstance3D:
+	var key := colour.to_html()
+	if not _glow_mats.has(key):
+		var m := StandardMaterial3D.new()
+		m.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+		m.billboard_mode = BaseMaterial3D.BILLBOARD_ENABLED
+		m.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+		m.blend_mode = BaseMaterial3D.BLEND_MODE_ADD
+		m.albedo_texture = Play3D._spark_texture()
+		m.albedo_color = Color(colour.r * 1.6, colour.g * 1.6, colour.b * 1.6, 0.9)
+		m.disable_fog = false
+		_glow_mats[key] = m
+	var q := QuadMesh.new()
+	q.size = Vector2(size, size)
+	var mi := MeshInstance3D.new()
+	mi.mesh = q
+	mi.material_override = _glow_mats[key]
+	mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	mi.visibility_range_end = 160.0
+	add_child(mi)
+	mi.global_position = at
+	return mi
+
+
+## Lanterns come on as the light goes (0 day .. 1 night).
+func set_night(night: float) -> void:
+	var on := night > 0.08
+	for lamp in lamps:
+		var l: OmniLight3D = lamp[0]
+		l.visible = on
+		l.light_energy = 3.2 * night
+		(lamp[1] as Node3D).visible = on
+		((lamp[1] as MeshInstance3D).material_override as StandardMaterial3D).albedo_color.a = 0.9 * night
 
 
 func _tree(kind: String, at: Vector3) -> void:
@@ -229,14 +273,11 @@ func _tree(kind: String, at: Vector3) -> void:
 
 func _chest(at: Vector3, magic: bool) -> void:
 	var c := place("chest_magic" if magic else "chest", at, 1.4 if magic else 0.8, randf() * TAU)
-	var glow := OmniLight3D.new()
-	glow.light_color = Color(0.5, 0.85, 1.0) if magic else Color(1.0, 0.85, 0.5)
-	glow.light_energy = 0.9
-	glow.omni_range = 4.0
-	glow.position = Vector3(0, 1.0, 0)
-	glow.distance_fade_enabled = true
-	glow.distance_fade_begin = 50.0
-	c.add_child(glow)
+	# A soft glow over the lid (a sprite, not a light: lights are scarce).
+	var halo := _glow(Vector3.ZERO, Color(0.55, 0.85, 1.0) if magic else Color(1.0, 0.82, 0.45), 1.3 if magic else 1.0)
+	halo.position = Vector3(0, 1.1 if magic else 0.75, 0)
+	halo.get_parent().remove_child(halo)
+	c.add_child(halo)
 	var loot: Array = [["gold_coin", randi_range(6, 20)]]
 	if magic:
 		loot.append([["heart_crystal", "lumen_core", "glowshard", "ruby", "emerald"].pick_random(), 1])

@@ -281,12 +281,17 @@ func _update_sun(_delta: float) -> void:
 	var day := clampf(elevation * 3.0 + 0.2, 0.0, 1.0)
 	var low := clampf(1.0 - absf(elevation) * 2.2, 0.0, 1.0) * day
 	sun.rotation = Vector3(-maxf(absf(elevation), 0.12) * 1.25 - 0.1, deg_to_rad(-35.0) + cos(angle) * 0.9, 0)
-	sun.light_color = Color(1.0, 0.95, 0.86).lerp(Color(1.0, 0.62, 0.34), low).lerp(Color(0.45, 0.55, 0.85), 1.0 - day)
-	sun.light_energy = lerpf(0.18, 1.35, day)
-	environment.ambient_light_energy = lerpf(0.2, 0.55, day)
+	sun.light_color = Color(1.0, 0.95, 0.86).lerp(Color(1.0, 0.62, 0.34), low).lerp(Color(0.52, 0.62, 1.0), 1.0 - day)
+	# Anime nights stay readable: a strong blue moon and a lifted ambient.
+	sun.light_energy = lerpf(0.42, 1.35, day)
+	environment.ambient_light_energy = lerpf(0.4, 0.55, day)
 	environment.fog_light_color = Color(0.7, 0.74, 0.78).lerp(Color(0.95, 0.66, 0.46), low).lerp(Color(0.08, 0.1, 0.18), 1.0 - day)
 	var night := clampf(1.0 - day, 0.0, 1.0)
 	_sky_mat.set_shader_parameter("night", night)
+	if town:
+		town.set_night(night)
+	if islands:
+		islands.set_night(night)
 	_sky_mat.set_shader_parameter("dusk", low)
 	_sky_mat.set_shader_parameter("top_color", Color(0.15, 0.36, 0.85).lerp(Color(0.35, 0.32, 0.6), low))
 	_sky_mat.set_shader_parameter("horizon_color", Color(0.74, 0.86, 0.99).lerp(Color(1.0, 0.66, 0.45), low))
