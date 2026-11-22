@@ -45,13 +45,24 @@ func build(the_gen: TerrainGen) -> void:
 	_crystal_mat.roughness = 0.1
 	_crystal_mat.rim_enabled = true
 	_crystal_mat.rim = 0.8
+	_cloud_mat = ShaderMaterial.new()
+	_cloud_mat.shader = load("res://scripts/shaders/cloud_puff.gdshader")
 	var i := 0
 	for spec in ISLANDS:
 		var ground := maxf(gen.height(spec[0], spec[1]), TerrainGen.WATER)
 		var centre := Vector3(spec[0], ground + spec[2], spec[1])
 		_island(centre, spec[3], i, spec[4])
 		tops.append([centre, float(spec[3])])
+		_cloud_ring(centre, float(spec[3]), i)
 		i += 1
+	# A drifting layer of cloud banks across the sky.
+	var rng := RandomNumberGenerator.new()
+	rng.seed = 2718
+	for k in 46:
+		var a := rng.randf() * TAU
+		var d := rng.randf_range(150.0, 1500.0)
+		var p := Vector3(cos(a) * d, rng.randf_range(150.0, 230.0), sin(a) * d)
+		_cloud(p, rng.randf_range(60.0, 130.0), rng.randf_range(22.0, 40.0))
 
 
 ## One island: a noisy disc crown and a long jagged cone of rock beneath.
@@ -262,7 +273,38 @@ func _spur(st: SurfaceTool, top: Vector3, radius: float, length: float, noise: F
 			st.add_vertex(pts[r + 1][s2])
 
 
+var _cloud_mat: ShaderMaterial
+var _quad: QuadMesh
+
+
+## A cloud puff billboard, `w` wide and `h` tall.
+func _cloud(at: Vector3, w: float, h: float) -> void:
+	if _quad == null:
+		_quad = QuadMesh.new()
+	var mi := MeshInstance3D.new()
+	mi.mesh = _quad
+	mi.material_override = _cloud_mat
+	mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	mi.extra_cull_margin = maxf(w, h)
+	add_child(mi)
+	mi.global_position = at
+	mi.scale = Vector3(w, h, 1.0)
+
+
+## Clouds hugging an isle: a few puffs round its waist and under its tip.
+func _cloud_ring(centre: Vector3, radius: float, seed_i: int) -> void:
+	var rng := RandomNumberGenerator.new()
+	rng.seed = 900 + seed_i
+	for k in 3 + seed_i % 3:
+		var a := rng.randf() * TAU
+		var r := radius * rng.randf_range(0.7, 1.3)
+		var y := -radius * rng.randf_range(0.3, 1.1)
+		_cloud(centre + Vector3(cos(a) * r, y, sin(a) * r), radius * rng.randf_range(1.0, 1.8), radius * rng.randf_range(0.45, 0.7))
+
+
 func set_night(night: float) -> void:
+	if _cloud_mat:
+		_cloud_mat.set_shader_parameter("night", night)
 	if _fall_mat:
 		_fall_mat.set_shader_parameter("night", night)
 
