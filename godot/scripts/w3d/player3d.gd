@@ -156,6 +156,93 @@ func _put_away(h: Node3D) -> void:
 		h.scale = Vector3.ONE
 
 
+## Footsteps: one footfall per stride, its sound by the ground underfoot,
+## and dust kicked up when running.
+const STEP_SOUND := {"stone": "step_stone", "snow": "step_snow", "sand": "step", "grass": "step_grass"}
+const DUST := {"stone": Color(0.86, 0.84, 0.8, 0.55), "snow": Color(0.97, 0.98, 1.0, 0.7),
+	"sand": Color(0.92, 0.84, 0.66, 0.6), "grass": Color(0.78, 0.82, 0.62, 0.4)}
+var _stride := 0.0
+static var _dust_mat: StandardMaterial3D
+
+
+func _surface() -> String:
+	if world == null:
+		return "grass"
+	var p := global_position
+	var gen: TerrainGen = world.gen
+	if gen.paved(p.x, p.z) > 0.5:
+		return "stone"
+	var h := gen.height(p.x, p.z)
+	if p.y > h + 1.5:
+		return "stone"  # on a bridge, a roof, an isle's rock
+	match gen.biome(p.x, p.z):
+		TerrainGen.Biome.SNOW:
+			return "snow"
+		TerrainGen.Biome.DRY, TerrainGen.Biome.BEACH:
+			return "sand"
+	return "grass"
+
+
+func _footfall(delta: float, hspeed: float) -> void:
+	if not is_on_floor() or swimming or hspeed < 1.2:
+		_stride = 0.0
+		return
+	_stride += delta * hspeed
+	var stride_len := 1.3 if hspeed > 5.0 else 0.95
+	if _stride < stride_len:
+		return
+	_stride -= stride_len
+	var surf := _surface()
+	Sfx.play(STEP_SOUND[surf], -12.0 if hspeed < 5.0 else -8.0, 0.12)
+	if hspeed > 4.0:
+		_puff(global_position, surf, 5 if hspeed > 6.5 else 3, 0.8)
+
+
+## A puff of dust at the feet, tinted to the ground.
+func _puff(at: Vector3, surf: String, amount: int, spread: float) -> void:
+	if _dust_mat == null:
+		_dust_mat = StandardMaterial3D.new()
+		_dust_mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+		_dust_mat.billboard_mode = BaseMaterial3D.BILLBOARD_PARTICLES
+		_dust_mat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+		_dust_mat.albedo_texture = Play3D._spark_texture()
+		_dust_mat.vertex_color_use_as_albedo = true
+	var p := CPUParticles3D.new()
+	var q := QuadMesh.new()
+	q.size = Vector2(0.35, 0.35)
+	p.mesh = q
+	p.material_override = _dust_mat
+	p.one_shot = true
+	p.explosiveness = 0.95
+	p.amount = amount
+	p.lifetime = 0.8
+	p.emission_shape = CPUParticles3D.EMISSION_SHAPE_RING
+	p.emission_ring_axis = Vector3.UP
+	p.emission_ring_radius = 0.2 * spread
+	p.emission_ring_inner_radius = 0.05
+	p.emission_ring_height = 0.05
+	p.direction = Vector3.UP
+	p.spread = 75.0
+	p.gravity = Vector3(0, -0.4, 0)
+	p.initial_velocity_min = 0.4 * spread
+	p.initial_velocity_max = 1.1 * spread
+	p.damping_min = 2.5
+	p.damping_max = 3.5
+	var grow := Curve.new()
+	grow.add_point(Vector2(0, 0.5))
+	grow.add_point(Vector2(1, 1.6))
+	p.scale_amount_curve = grow
+	var c: Color = DUST[surf]
+	var ramp := Gradient.new()
+	ramp.colors = PackedColorArray([c, Color(c.r, c.g, c.b, 0.0)])
+	p.color_ramp = ramp
+	p.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	get_tree().current_scene.add_child(p)
+	p.global_position = at + Vector3(0, 0.05, 0)
+	p.emitting = true
+	get_tree().create_timer(1.2).timeout.connect(p.queue_free)
+
+
 static var _sparkle_mat: StandardMaterial3D
 
 
@@ -279,6 +366,7 @@ func _physics_process(delta: float) -> void:
 		if jump_now and is_on_floor() and _dodge <= 0.0 and _spend(8.0):
 			velocity.y = JUMP
 			_play("Jump_Start", 1.4, true)
+			Sfx.play("jump", -8.0)
 		elif jump_now and not is_on_floor() and _air_time > 0.2 and stamina > 5.0:
 			_set_glide(true)
 	var was_air := not is_on_floor()
@@ -290,10 +378,14 @@ func _physics_process(delta: float) -> void:
 		if was_air and _air_time > 0.35:
 			_landing = 0.25
 			_play("Jump_Land", 1.6, true)
+			var surf := _surface()
+			_puff(global_position, surf, 16, 1.6)
+			Sfx.play("land", -4.0)
 		_air_time = 0.0
 	else:
 		_air_time += delta
 	_landing -= delta
+	_footfall(delta, Vector2(velocity.x, velocity.z).length())
 
 	# Face where we move (or where the camera looks while acting / in first person).
 	var face := Vector3.ZERO
