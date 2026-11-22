@@ -19,6 +19,7 @@ uniform bool flower_mode = false;
 
 varying float tip;
 varying vec3 root_col;
+varying vec2 ground_xz;
 
 float hash(vec2 p) {
 	return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453);
@@ -31,9 +32,14 @@ float noise(vec2 p) {
 	return mix(mix(hash(i), hash(i + vec2(1, 0)), f.x), mix(hash(i + vec2(0, 1)), hash(i + vec2(1, 1)), f.x), f.y);
 }
 
+float vnoise(vec2 p) {
+	return noise(p);
+}
+
 void vertex() {
 	tip = UV.y;
 	root_col = COLOR.rgb;
+	ground_xz = MODEL_MATRIX[3].xz;
 	// world_vertex_coords: VERTEX is already in world space.
 	vec3 base = MODEL_MATRIX[3].xyz;
 	vec3 world = VERTEX;
@@ -65,6 +71,10 @@ void fragment() {
 		vec3 petal = mix(root_col * 0.72, vec3(1.0, 0.78, 0.2), smoothstep(0.955, 0.99, tip));
 		col = UV.x > 0.5 ? petal : mix(vec3(0.2, 0.36, 0.14), vec3(0.4, 0.6, 0.26), tip);
 	}
+	// The same drifting cloud shadows as the ground beneath.
+	float cs = vnoise(ground_xz * 0.004 + vec2(TIME * 0.006, TIME * 0.0035));
+	cs = smoothstep(0.48, 0.62, cs * 0.75 + vnoise(ground_xz * 0.011 + vec2(TIME * 0.009, 0.0)) * 0.25);
+	col *= 1.0 - cs * 0.32;
 	ALBEDO = col;
 	ROUGHNESS = 0.9;
 	// A little light through the blades.

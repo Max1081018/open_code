@@ -16,6 +16,7 @@ uniform vec4 roads[16];
 uniform float road_hw[16];
 uniform int road_count = 0;
 uniform float plaza_radius = 0.0;
+uniform float cloud_shade = 0.32;
 // Horizon mesh: drawn only beyond this distance (near chunks cover the rest).
 uniform float cull_radius = 0.0;
 
@@ -104,6 +105,10 @@ void fragment() {
 			NORMAL = normalize(mix(NORMAL, (VIEW_MATRIX * vec4(wn, 0.0)).xyz, pave));
 		}
 	}
+	// Shadows of clouds drifting over the land.
+	float cs = vnoise(world_pos.xz * 0.004 + vec2(TIME * 0.006, TIME * 0.0035));
+	cs = smoothstep(0.48, 0.62, cs * 0.75 + vnoise(world_pos.xz * 0.011 + vec2(TIME * 0.009, 0.0)) * 0.25);
+	c *= 1.0 - cs * cloud_shade;
 	ALBEDO = c;
 	ROUGHNESS = mix(mix(0.92, 0.55, w.b), 0.78, pave);
 	SPECULAR = 0.25;
