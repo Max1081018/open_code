@@ -12,6 +12,8 @@ signal resource_broken(kind: String, at: Vector3)
 const SIZE := ChunkBuilder.SIZE
 ## Chunk rings for each level of detail (Chebyshev distance in chunks).
 var rings := [1, 3, 5]
+## The old grass clumps on near chunks; off when the GrassField draws grass.
+var clump_grass := true
 var gen: TerrainGen
 var focus := Vector3.ZERO
 ## "cx,cz,i" -> true for flora removed by the player (saved).
@@ -117,7 +119,7 @@ func warm(at: Vector3) -> void:
 		for dx in range(-rings[1], rings[1] + 1):
 			var c := centre + Vector2i(dx, dz)
 			var lod := _lod_for(c, centre)
-			_apply(ChunkBuilder.build(gen, c, lod, lod == 0))
+			_apply(ChunkBuilder.build(gen, c, lod, lod == 0 and clump_grass))
 	_update(true)
 
 
@@ -174,7 +176,7 @@ var _tasks: Array[int] = []
 
 ## Runs on a worker thread: build one chunk and queue it for the main thread.
 func _build_task(c: Vector2i, lod: int) -> void:
-	var r := ChunkBuilder.build(gen, c, lod, lod == 0)
+	var r := ChunkBuilder.build(gen, c, lod, lod == 0 and clump_grass)
 	_mutex.lock()
 	_results.append(r)
 	_mutex.unlock()

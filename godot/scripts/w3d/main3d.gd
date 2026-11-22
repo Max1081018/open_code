@@ -16,6 +16,7 @@ var islands: SkyIslands
 var features: WorldFeatures
 var town: Town
 var quests: Quests3D
+var grass: GrassField
 var sun: DirectionalLight3D
 var environment: Environment
 var _sky_mat: ShaderMaterial
@@ -46,12 +47,19 @@ func _ready() -> void:
 	world = OpenWorld.new()
 	add_child(world)
 	world.setup(int(_args.get("seed", "1337")))
+	var dense_grass: bool = Settings.quality >= 1 and _args.get("grass", "dense") != "clumps"
+	world.clump_grass = not dense_grass
 	var spawn := Vector3(10, 0, 14)
 	if _args.has("at"):
 		var p: PackedStringArray = _args.at.split(",")
 		spawn = Vector3(float(p[0]), 0, float(p[1]))
 	spawn.y = world.height_at(spawn.x, spawn.z) + 0.2
 	world.warm(spawn)
+	if dense_grass:
+		grass = GrassField.new()
+		add_child(grass)
+		grass.setup(world.gen, Settings.quality)
+		grass.warm(spawn)
 	islands = SkyIslands.new()
 	add_child(islands)
 	islands.build(world.gen)
@@ -229,6 +237,8 @@ func _process(delta: float) -> void:
 	time_of_day = fposmod(time_of_day + delta / day_length, 1.0)
 	_update_sun(delta)
 	world.focus = player.global_position
+	if grass:
+		grass.set_player(player.global_position)
 	water.global_position = Vector3(snappedf(player.global_position.x, 50.0), TerrainGen.WATER, snappedf(player.global_position.z, 50.0))
 
 
