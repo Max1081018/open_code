@@ -74,7 +74,9 @@ const HEROES := {
 ## (clip overrides on the shared library, playback speed). Anime heroines
 ## are small and light on their feet; knights heavy; the dead shamble.
 const HERO_STYLE := {
-	"player": {"height": 1.56, "library": "anim/heroine.res", "speed": 1.0},
+	# Her own clips, but the even stride of the shared jog for running; her
+	# own bounding run, arms flying, becomes the sprint.
+	"player": {"height": 1.56, "library": "anim/heroine.res", "speed": 1.0, "clips": {"Jog_Fwd": "ual/Jog_Fwd"}},
 	"wren": {"height": 1.6, "clips": {"Idle": "Idle_Talking"}, "speed": 1.05},
 	# Mira's model is all pastel white; dye it a herbalist's sage coat and
 	# deeper rose hair so she reads at a distance (tints by texture file).
@@ -228,6 +230,8 @@ static func _build_hero(name: String) -> Node3D:
 	var own: String = HERO_STYLE.get(name, {}).get("library", "")
 	if own != "" and ResourceLoader.exists(HERO_DIR + own):
 		player.add_animation_library("", load(HERO_DIR + own))
+		# The shared library too, as "ual/...", for clips a style borrows.
+		player.add_animation_library("ual", _hero_library)
 	else:
 		player.add_animation_library("", _hero_library)
 	root.set_meta("style", HERO_STYLE.get(name, {}))
@@ -338,6 +342,18 @@ static func _toon(mesh: MeshInstance3D, tints := {}) -> void:
 			m.set_shader_parameter("spec_strength", 0.0)
 			m.set_shader_parameter("light_scale", 0.62)
 			m.set_shader_parameter("fill", 0.2)
+		if name.contains("hair") and not name.contains("shadow"):
+			# Anime hair: a cool lilac shade side, a little more of it, and
+			# the glossy ring of light across the crown.
+			m.set_shader_parameter("shade_color", Color(0.62, 0.54, 0.86))
+			m.set_shader_parameter("shade_threshold", 0.56)
+			m.set_shader_parameter("rim_strength", 0.22)
+			m.set_shader_parameter("hair_ring", 0.22)
+			# Pale hair must not clip to white in full sun: a touch darker,
+			# a touch cooler, so its strands and lilac still read.
+			m.set_shader_parameter("albedo", colour * Color(0.86, 0.84, 0.94))
+			m.set_shader_parameter("light_scale", 0.52)
+			m.set_shader_parameter("fill", 0.14)
 		if name.contains("shadow"):
 			# A VRoid-style shade layer (under the fringe): multiplied over.
 			var mul := StandardMaterial3D.new()

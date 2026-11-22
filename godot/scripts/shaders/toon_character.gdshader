@@ -21,6 +21,10 @@ uniform float light_scale = 0.62;
 // skin past white): a fixed share of the albedo, slightly cool.
 uniform vec4 fill_color : source_color = vec4(0.96, 0.9, 0.92, 1.0);
 uniform float fill = 0.22;
+// Hair: the glossy "angel ring" band of anime hair, broken into strands
+// along the cards, catching the light from above the head.
+uniform float hair_ring = 0.0;
+uniform vec4 ring_color : source_color = vec4(1.0, 0.96, 1.0, 1.0);
 
 void fragment() {
 	vec4 t = texture(albedo_tex, UV) * albedo;
@@ -34,6 +38,14 @@ void fragment() {
 	// Rim: brighter where the surface turns away from the camera.
 	float rim = smoothstep(rim_width, 1.0, 1.0 - clamp(dot(NORMAL, VIEW), 0.0, 1.0));
 	EMISSION += t.rgb * rim * rim_strength * 0.6;
+	if (hair_ring > 0.0) {
+		// The band sits where the hair's surface faces up-and-toward the
+		// camera; strands break it along the texture's long axis.
+		vec3 wn = (INV_VIEW_MATRIX * vec4(NORMAL, 0.0)).xyz;
+		float band = smoothstep(0.16, 0.0, abs(wn.y - 0.55)) * smoothstep(0.1, 0.5, dot(NORMAL, VIEW));
+		float strands = 0.55 + 0.45 * sin(UV.x * 420.0 + sin(UV.y * 40.0) * 2.0);
+		EMISSION += ring_color.rgb * band * strands * hair_ring;
+	}
 }
 
 void light() {

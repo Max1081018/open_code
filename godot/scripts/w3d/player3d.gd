@@ -72,7 +72,7 @@ func _ready() -> void:
 	add_child(model)
 	anim = model.find_child("AnimationPlayer", true, false)
 	skeleton = model.find_children("*", "Skeleton3D", true, false)[0]
-	for clip in ["Idle_FoldArms", "Idle_Talking", "Idle", "Walk", "Walk_Formal", "Jog_Fwd", "Sprint", "Swim_Fwd", "Swim_Idle", "Jump", "Sword_Block", "Sword_Idle"]:
+	for clip in ["Idle_FoldArms", "Idle_Talking", "Idle", "Walk", "Walk_Formal", "Jog_Fwd", "Sprint", "Swim_Fwd", "Swim_Idle", "Jump", "Sword_Block", "Sword_Idle", "ual/Jog_Fwd", "ual/Sprint"]:
 		if anim.has_animation(clip):
 			anim.get_animation(clip).loop_mode = Animation.LOOP_LINEAR
 	for m in model.find_children("*", "MeshInstance3D", true, false):
@@ -103,6 +103,13 @@ func set_first_person(on: bool) -> void:
 	cam.camera.cull_mask = 0xFFFFF & ~2 if on else 0xFFFFF
 
 
+## Weapons and tools are summoned to the hand when used (a burst of
+## starlight) and dismissed a few seconds after, as in anime action RPGs;
+## torches and the like stay in hand.
+const SUMMON_TIME := 3.5
+var _summoned := 0.0
+
+
 func hold(id: String) -> void:
 	if _held:
 		_held.queue_free()
@@ -113,11 +120,91 @@ func hold(id: String) -> void:
 	_held = Body3D.item_model(id)
 	if _held:
 		right_hand.add_child(_held)
+		if _summonable(id) and _summoned <= 0.0:
+			_held.visible = false
+
+
+static func _summonable(id: String) -> bool:
+	return Items.kind(id) in [Items.Kind.SWORD, Items.Kind.AXE, Items.Kind.PICKAXE, Items.Kind.HAMMER, Items.Kind.SHIELD]
+
+
+## Bring the held weapon or tool into the hand (if it is away).
+func summon() -> void:
+	if _held == null or not _summonable(held_id):
+		return
+	var was := _summoned
+	_summoned = SUMMON_TIME
+	if was <= 0.0 or not _held.visible:
+		_held.visible = true
+		_held.scale = Vector3.ONE * 0.2
+		_held.create_tween().tween_property(_held, "scale", Vector3.ONE, 0.14).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
+		_sparkle(right_hand.global_position)
+
+
+func _dismiss() -> void:
+	if _held == null or not _held.visible:
+		return
+	_sparkle(right_hand.global_position)
+	var t := _held.create_tween()
+	t.tween_property(_held, "scale", Vector3.ONE * 0.05, 0.18).set_ease(Tween.EASE_IN)
+	t.tween_callback(_put_away.bind(_held))
+
+
+func _put_away(h: Node3D) -> void:
+	if is_instance_valid(h) and _summoned <= 0.0:
+		h.visible = false
+		h.scale = Vector3.ONE
+
+
+static var _sparkle_mat: StandardMaterial3D
+
+
+## A small burst of starlight at the hand.
+func _sparkle(at: Vector3) -> void:
+	if _sparkle_mat == null:
+		_sparkle_mat = StandardMaterial3D.new()
+		_sparkle_mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+		_sparkle_mat.billboard_mode = BaseMaterial3D.BILLBOARD_PARTICLES
+		_sparkle_mat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+		_sparkle_mat.blend_mode = BaseMaterial3D.BLEND_MODE_ADD
+		_sparkle_mat.albedo_texture = Play3D._spark_texture()
+		_sparkle_mat.vertex_color_use_as_albedo = true
+	var p := CPUParticles3D.new()
+	var q := QuadMesh.new()
+	q.size = Vector2(0.12, 0.12)
+	p.mesh = q
+	p.material_override = _sparkle_mat
+	p.one_shot = true
+	p.explosiveness = 0.9
+	p.amount = 18
+	p.lifetime = 0.5
+	p.emission_shape = CPUParticles3D.EMISSION_SHAPE_SPHERE
+	p.emission_sphere_radius = 0.15
+	p.direction = Vector3.UP
+	p.spread = 180.0
+	p.gravity = Vector3(0, 0.6, 0)
+	p.initial_velocity_min = 0.6
+	p.initial_velocity_max = 1.6
+	p.damping_min = 2.0
+	p.damping_max = 3.0
+	p.scale_amount_min = 0.5
+	p.scale_amount_max = 1.2
+	var ramp := Gradient.new()
+	ramp.colors = PackedColorArray([Color(0.75, 0.9, 1.0, 1.0), Color(1.0, 0.86, 0.5, 0.0)])
+	p.color_ramp = ramp
+	get_tree().current_scene.add_child(p)
+	p.global_position = at
+	p.emitting = true
+	get_tree().create_timer(1.0).timeout.connect(p.queue_free)
 
 
 func _physics_process(delta: float) -> void:
 	if input == null or cam == null:
 		return
+	if _summoned > 0.0 and not busy():
+		_summoned -= delta
+		if _summoned <= 0.0:
+			_dismiss()
 	cam.apply_look(input.look)
 	input.look = Vector2.ZERO
 	if input.toggle_view:
@@ -284,6 +371,7 @@ func _start_action(heavy: bool) -> void:
 				clip = ["Sword_Regular_A", "Sword_Regular_B", "Sword_Regular_C"][int(Time.get_ticks_msec() / 600) % 3]
 	_action = time
 	_action_name = kind
+	summon()
 	_play(clip, 1.2, true)
 	swung.emit(kind + ("_heavy" if heavy else ""))
 
@@ -291,6 +379,7 @@ func _start_action(heavy: bool) -> void:
 ## Play a scripted move (skills): locks movement like an attack.
 func perform(clip: String, seconds: float, speed := 1.0) -> void:
 	_action = seconds
+	summon()
 	_play(clip, speed, true)
 
 
