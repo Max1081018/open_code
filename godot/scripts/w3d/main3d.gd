@@ -105,6 +105,9 @@ func _ready() -> void:
 	add_child(town)
 	town.build(self)
 	_place_townsfolk()
+	var life := AmbientLife.new()
+	add_child(life)
+	life.setup(self)
 	if not saved.is_empty():
 		Save3D.restore(self, saved)
 		play.toast.emit("Welcome back to the Starfall")
