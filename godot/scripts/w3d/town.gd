@@ -64,6 +64,7 @@ func build(the_game: Node) -> void:
 		yaw += FRONT_OFFSET.get(spec[0], 0.0)
 		place(spec[0], at, spec[3], yaw, "box" if spec[4] else "")
 	_garden_flowers(gen)
+	_banners(gen)
 	# A ring of flowers round the fountain.
 	for i in 8:
 		var a := TAU * (i + 0.5) / 8.0
@@ -208,6 +209,55 @@ func _road_lanterns(gen: TerrainGen) -> void:
 			lamps.append([l, halo])
 			d += 14.0
 			n += 1
+
+
+## Banners on tall poles round the plaza, between the roads.
+func _banners(gen: TerrainGen) -> void:
+	var mat := ShaderMaterial.new()
+	mat.shader = load("res://scripts/shaders/banner.gdshader")
+	var pole_mat := StandardMaterial3D.new()
+	pole_mat.albedo_color = Color(0.32, 0.24, 0.18)
+	pole_mat.roughness = 0.7
+	var cloth := PlaneMesh.new()
+	cloth.size = Vector2(2.6, 0.9)
+	cloth.subdivide_width = 16
+	cloth.subdivide_depth = 2
+	cloth.orientation = PlaneMesh.FACE_Z
+	var pole := CylinderMesh.new()
+	pole.top_radius = 0.07
+	pole.bottom_radius = 0.09
+	pole.height = 7.0
+	var cap := SphereMesh.new()
+	cap.radius = 0.16
+	cap.height = 0.32
+	var cap_mat := StandardMaterial3D.new()
+	cap_mat.albedo_color = Color(0.96, 0.8, 0.4)
+	cap_mat.metallic = 0.6
+	cap_mat.roughness = 0.3
+	for a_deg in [52.0, 124.0, 196.0, 232.0, 300.0, 340.0]:
+		var a := deg_to_rad(a_deg)
+		var p := Vector2(cos(a), sin(a)) * 15.6
+		var base := Vector3(p.x, gen.height(p.x, p.y), p.y)
+		var holder := Node3D.new()
+		add_child(holder)
+		holder.global_position = base
+		holder.rotation.y = randf() * TAU
+		var pm := MeshInstance3D.new()
+		pm.mesh = pole
+		pm.material_override = pole_mat
+		pm.position.y = 3.5
+		holder.add_child(pm)
+		var cm := MeshInstance3D.new()
+		cm.mesh = cap
+		cm.material_override = cap_mat
+		cm.position.y = 7.05
+		holder.add_child(cm)
+		var flag := MeshInstance3D.new()
+		flag.mesh = cloth
+		flag.material_override = mat
+		flag.position = Vector3(1.3, 6.35, 0)
+		flag.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_ON
+		holder.add_child(flag)
 
 
 static var _glow_mats := {}
