@@ -94,6 +94,7 @@ func _ready() -> void:
 	if _args.has("shot"):
 		input.scripted = true
 		Engine.max_fps = 0
+		process_mode = Node.PROCESS_MODE_ALWAYS  # keep capturing while a menu pauses
 
 
 ## Wren by the fountain, Mira at her herb corner by the wall fountain, Tobin
@@ -255,6 +256,8 @@ func _script_input() -> void:
 	input.sprint = false
 	input.skill = false
 	input.burst = false
+	if _args.has("menu") and f == 30:
+		hud.menu.open(_args.menu)
 	match _args.get("action", "idle"):
 		"walk":
 			input.move = Vector2(0, 0.45) if f > 20 else Vector2.ZERO

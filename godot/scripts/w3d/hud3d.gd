@@ -76,6 +76,9 @@ func setup(the_game: Node) -> void:
 		_build_touch()
 	dialogue = DialogueBox3D.new()
 	add_child(dialogue)
+	menu = GameMenu3D.new()
+	add_child(menu)
+	menu.setup(game, self)
 	process_priority = 100  # after everything that asks for prompts this frame
 	game.play.toast.connect(_toast)
 	game.play.inventory_changed.connect(_show_gadgets)
@@ -236,9 +239,13 @@ func _build_menu_icons() -> void:
 
 
 func _draw_icon(c: Control, kind: String) -> void:
+	_ring(c, c.size * 0.5, 28, Color(0.07, 0.08, 0.2, 0.45), Color(1, 1, 1, 0.55), 2.0)
+	draw_glyph(c, kind, Color(0.98, 0.97, 1.0))
+
+
+## The line glyph of a menu icon, centred in `c`.
+func draw_glyph(c: Control, kind: String, w: Color) -> void:
 	var m := c.size * 0.5
-	_ring(c, m, 28, Color(0.07, 0.08, 0.2, 0.45), Color(1, 1, 1, 0.55), 2.0)
-	var w := Color(0.98, 0.97, 1.0)
 	match kind:
 		"bag":
 			c.draw_rect(Rect2(m + Vector2(-12, -6), Vector2(24, 20)), w, false, 2.5)
@@ -262,6 +269,11 @@ func _draw_icon(c: Control, kind: String) -> void:
 				c.draw_line(m + Vector2.from_angle(a) * 9, m + Vector2.from_angle(a) * 15, w, 4.0)
 			c.draw_arc(m, 10, 0, TAU, 24, w, 3.0)
 			c.draw_circle(m, 4, w)
+
+
+## A four-pointed star (for rarity and the Starspire).
+func draw_star(c: Control, at: Vector2, r: float, col: Color) -> void:
+	_star(c, at, r, col)
 
 
 # -------------------------------------------------------------- vitals ---
@@ -508,6 +520,8 @@ func _show_prompt() -> void:
 
 
 var dialogue: DialogueBox3D
+var menu: GameMenu3D
+const MENU_ICONS := ["bag", "map", "book", "person", "gear"]
 var _banner: Label
 var _banner_sub: Label
 var _banner_tween: Tween
@@ -557,7 +571,7 @@ func _process(delta: float) -> void:
 	_skills.queue_redraw()
 	_minimap.queue_redraw()
 	_crosshair.visible = game.cam.first_person
-	root.visible = not dialogue.showing
+	root.visible = not dialogue.showing and not menu.is_open
 	_show_prompt()
 	if game.get("quests"):
 		var tr: Dictionary = game.quests.tracker()
@@ -602,6 +616,14 @@ func _input(event: InputEvent) -> void:
 		var pos: Vector2 = event.position
 		var pressed: bool = event.pressed
 		var index: int = event.index if event is InputEventScreenTouch else 0
+		# The round menu icons (top-right).
+		if pressed and not dialogue.showing:
+			for i in MENU_ICONS.size():
+				var centre := Vector2(screen.x - 100 - (MENU_ICONS.size() - 1 - i) * 78 + 32, 62)
+				if pos.distance_to(centre) < 36:
+					menu.open(MENU_ICONS[i])
+					get_viewport().set_input_as_handled()
+					return
 		# Skill buttons (bottom-right).
 		if pressed:
 			for k in SKILL_POS:

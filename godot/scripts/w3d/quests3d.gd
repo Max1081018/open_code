@@ -14,17 +14,17 @@ extends Node
 signal changed
 
 const QUESTS := [
-	{"id": "wings", "giver": "wren", "title": "Wings of the Wind", "goal": "reach", "isle": 9,
+	{"id": "wings", "task": "Step into the updraft beside the little isle north of town, jump twice to spread your wings, and land on top.",  "giver": "wren", "title": "Wings of the Wind", "goal": "reach", "isle": 9,
 		"reward": [["heart_crystal", 1], ["gold_coin", 20]]},
-	{"id": "shards", "giver": "mira", "title": "Starshards", "goal": "shards", "count": 3,
+	{"id": "shards", "task": "Find three Starshards: floating blue crystals on hilltops, isles and lonely corners.",  "giver": "mira", "title": "Starshards", "goal": "shards", "count": 3,
 		"reward": [["stew", 2], ["glow_flask", 1]]},
-	{"id": "ore", "giver": "tobin", "title": "Iron for the Forge", "goal": "item", "item": "iron_ore", "count": 5,
+	{"id": "ore", "task": "Strike the grey boulders in the hills for iron ore and bring Tobin five pieces.",  "giver": "tobin", "title": "Iron for the Forge", "goal": "item", "item": "iron_ore", "count": 5,
 		"reward": [["iron_sword", 1]]},
-	{"id": "hunt", "giver": "aldous", "title": "The Night Hunt", "goal": "kill", "count": 6,
+	{"id": "hunt", "task": "Defeat six of the risen dead. They walk the roads and woods, and grow bold at night.",  "giver": "aldous", "title": "The Night Hunt", "goal": "kill", "count": 6,
 		"reward": [["gold_coin", 40]]},
-	{"id": "starspire", "giver": "wren", "after": "wings", "title": "The Starspire", "goal": "reach", "isle": 0,
+	{"id": "starspire", "task": "Reach the Starspire, the great isle crowned with a pillar of light, and stand upon it.",  "giver": "wren", "after": "wings", "title": "The Starspire", "goal": "reach", "isle": 0,
 		"reward": [["lumen_core", 1], ["gold_coin", 50]]},
-	{"id": "warden", "giver": "aldous", "after": "hunt", "title": "The Rusted Warden", "goal": "boss",
+	{"id": "warden", "task": "Find the ruins beyond the hills and free the Rusted Warden from the dark.",  "giver": "aldous", "after": "hunt", "title": "The Rusted Warden", "goal": "boss",
 		"reward": [["silver_sword", 1], ["relic_bulwark", 1]]},
 ]
 
