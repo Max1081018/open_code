@@ -76,7 +76,10 @@ const HEROES := {
 const HERO_STYLE := {
 	"player": {"height": 1.56, "library": "anim/heroine.res", "speed": 1.0},
 	"wren": {"height": 1.6, "clips": {"Idle": "Idle_Talking"}, "speed": 1.05},
-	"mira": {"height": 1.58, "clips": {"Walk": "Walk_Formal"}, "speed": 1.0},
+	# Mira's model is all pastel white; dye it a herbalist's sage coat and
+	# deeper rose hair so she reads at a distance (tints by texture file).
+	"mira": {"height": 1.58, "clips": {"Walk": "Walk_Formal"}, "speed": 1.0,
+		"tex_tints": {"albedo_3": Color(0.58, 0.74, 0.58), "albedo_2": Color(0.9, 0.6, 0.74)}},
 	"tobin": {"height": 1.72, "clips": {"Idle": "Idle_FoldArms"}, "speed": 0.95},
 	"aldous": {"height": 1.64, "clips": {"Idle": "Sword_Idle"}, "speed": 1.0},
 	"warden": {"height": 2.0, "speed": 0.85},
@@ -201,11 +204,12 @@ static func _build_hero(name: String) -> Node3D:
 	var k: float = float(HERO_STYLE.get(name, {}).get("height", 1.8)) / (span * 1.17)
 	model.scale = Vector3.ONE * k
 	model.position = Vector3(0, -(floor_y - span * 0.05) * k, 0)
-	# Seat by the soles: the lowest point of the meshes in rest pose.
+	# Seat by the soles: the lowest point of the skinned meshes in rest
+	# pose. (A mesh's own box is in its bind space, which for some rigs is
+	# centimetres lying on its back; it says nothing about where feet are.)
 	var sole := INF
 	for mesh in model.find_children("*", "MeshInstance3D", true, false):
-		var box: AABB = _transform_to(mesh, root) * (mesh as MeshInstance3D).get_aabb()
-		sole = minf(sole, box.position.y)
+		sole = minf(sole, _rest_floor(mesh as MeshInstance3D, root))
 	if sole < INF:
 		model.position.y -= sole
 	# Ankle height above the sole, for runtime foot grounding.
@@ -227,10 +231,39 @@ static func _build_hero(name: String) -> Node3D:
 	else:
 		player.add_animation_library("", _hero_library)
 	root.set_meta("style", HERO_STYLE.get(name, {}))
+	var tints: Dictionary = HERO_STYLE.get(name, {}).get("tex_tints", {})
 	for mesh in model.find_children("*", "MeshInstance3D", true, false):
-		_toon(mesh as MeshInstance3D)
+		_toon(mesh as MeshInstance3D, tints)
 	SecondaryMotion.setup(skeleton)
 	return root
+
+
+## The lowest point of a mesh in rest pose, in `root`'s space: skinned
+## vertices are carried through their bind pose and the bone's rest (first
+## weight only, sampled), so it is right whatever space the mesh data is in.
+static func _rest_floor(mesh: MeshInstance3D, root: Node3D) -> float:
+	var skel: Skeleton3D = mesh.get_node_or_null(mesh.skeleton) as Skeleton3D
+	if mesh.mesh == null or mesh.skin == null or skel == null:
+		return (_transform_to(mesh, root) * mesh.get_aabb()).position.y
+	var to_root := _transform_to(skel, root)
+	var lowest := INF
+	for sfc in mesh.mesh.get_surface_count():
+		var arrays := mesh.mesh.surface_get_arrays(sfc)
+		var verts: PackedVector3Array = arrays[Mesh.ARRAY_VERTEX]
+		var bones: PackedInt32Array = arrays[Mesh.ARRAY_BONES]
+		if verts.is_empty() or bones.is_empty():
+			continue
+		var per := bones.size() / verts.size()
+		for i in range(0, verts.size(), maxi(1, verts.size() / 600)):
+			var bind := bones[i * per]
+			var bone := mesh.skin.get_bind_bone(bind)
+			if bone < 0:
+				bone = skel.find_bone(mesh.skin.get_bind_name(bind))
+			if bone < 0:
+				continue
+			var p := to_root * skel.get_bone_global_rest(bone) * mesh.skin.get_bind_pose(bind) * verts[i]
+			lowest = minf(lowest, p.y)
+	return lowest if lowest < INF else (_transform_to(mesh, root) * mesh.get_aabb()).position.y
 
 
 ## Pale pinkish-peach on average: a skin and face atlas.
@@ -265,7 +298,7 @@ static var _line_shader: Shader
 
 ## Anime shading on every surface: two-tone light, cool shade, rim light,
 ## and an ink outline pass (not on eyes, brows, lashes or mouths).
-static func _toon(mesh: MeshInstance3D) -> void:
+static func _toon(mesh: MeshInstance3D, tints := {}) -> void:
 	if _toon_shader == null:
 		_toon_shader = load("res://scripts/shaders/toon_character.gdshader")
 		_line_shader = load("res://scripts/shaders/toon_outline.gdshader")
@@ -277,7 +310,12 @@ static func _toon(mesh: MeshInstance3D) -> void:
 		var m := ShaderMaterial.new()
 		m.shader = _toon_shader
 		m.set_shader_parameter("albedo_tex", base.albedo_texture)
-		m.set_shader_parameter("albedo", base.albedo_color)
+		var colour := base.albedo_color
+		if base.albedo_texture and not tints.is_empty():
+			var file := base.albedo_texture.resource_path.get_file().get_basename()
+			if tints.has(file):
+				colour *= tints[file]
+		m.set_shader_parameter("albedo", colour)
 		var cut := 0.0
 		if base.transparency != BaseMaterial3D.TRANSPARENCY_DISABLED:
 			cut = 0.5

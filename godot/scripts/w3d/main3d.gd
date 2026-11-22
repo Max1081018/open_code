@@ -103,7 +103,7 @@ func _place_townsfolk() -> void:
 		["wren", Vector2(3.6, 7.0), 0.4, [["Idle", 6.0], ["Idle_Talking", 4.0], ["Yes", 2.0]]],
 		["mira", Vector2(-12.6, -1.8), 1.4, [["Idle", 5.0], ["Interact", 3.0], ["PickUp_Table", 3.5]]],
 		["tobin", Vector2(6.4, -8.6), 0.0, [["Fixing_Kneeling", 7.0], ["Idle_FoldArms", 5.0]]],
-		["aldous", Vector2(-4.4, -34.5), 0.3, [["Sword_Idle", 8.0], ["Idle", 4.0]]],
+		["aldous", Vector2(5.2, -39.0), -0.5, [["Sword_Idle", 8.0], ["Idle", 4.0]]],
 	]
 	for f in folk:
 		var at := Vector3(f[1].x, world.height_at(f[1].x, f[1].y), f[1].y)
