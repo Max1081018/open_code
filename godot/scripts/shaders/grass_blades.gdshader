@@ -66,7 +66,11 @@ void vertex() {
 }
 
 void fragment() {
-	vec3 col = mix(root_col * 0.62, mix(root_col, tip_color.rgb, tip_mix), smoothstep(0.0, 1.0, tip));
+	// Tips lighten toward sunlit yellow-green on green grass, and toward a
+	// paler shade of their own colour elsewhere (violet blight, gloom).
+	float greenness = clamp((root_col.g - max(root_col.r, root_col.b)) * 5.0, 0.0, 1.0);
+	vec3 tip_target = mix(root_col * 1.7 + 0.04, tip_color.rgb, greenness * (root_col.g > 0.33 ? 1.0 : 0.45));
+	vec3 col = mix(root_col * 0.62, mix(root_col, tip_target, tip_mix), smoothstep(0.0, 1.0, tip));
 	if (flower_mode) {
 		vec3 petal = mix(root_col * 0.72, vec3(1.0, 0.78, 0.2), smoothstep(0.955, 0.99, tip));
 		col = UV.x > 0.5 ? petal : mix(vec3(0.2, 0.36, 0.14), vec3(0.4, 0.6, 0.26), tip);

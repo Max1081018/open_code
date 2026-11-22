@@ -88,6 +88,17 @@ void fragment() {
 	// Biome tint (UV2.x: overall brightness of the tint) and ash (UV2.y).
 	c *= mix(1.0, UV2.x, 0.8);
 	c = mix(c, c * vec3(0.32, 0.3, 0.3), UV2.y * 0.8);
+	// The Ashlands: cracks of glowing lava through the dark ground, pulsing.
+	float lava = 0.0;
+	if (UV2.y > 0.5) {
+		vec2 q = world_pos.xz * 0.16;
+		float n1 = vnoise(q) + 0.5 * vnoise(q * 2.3 + 7.0);
+		float crack = 1.0 - smoothstep(0.0, 0.045, abs(n1 - 0.75));
+		crack *= smoothstep(0.5, 0.8, UV2.y) * (1.0 - steep);
+		float pulse = 0.75 + 0.25 * sin(TIME * 1.3 + vnoise(q * 0.5) * 6.0);
+		lava = crack * pulse;
+		c = mix(c, vec3(0.08, 0.04, 0.03), crack * 0.6);
+	}
 	// Cobbles of the town, with a band of darker border stones at the edge
 	// and a ragged rim where grass creeps over.
 	float pave = 0.0;
@@ -110,6 +121,7 @@ void fragment() {
 	cs = smoothstep(0.48, 0.62, cs * 0.75 + vnoise(world_pos.xz * 0.011 + vec2(TIME * 0.009, 0.0)) * 0.25);
 	c *= 1.0 - cs * cloud_shade;
 	ALBEDO = c;
+	EMISSION = vec3(1.0, 0.36, 0.06) * lava * 2.2;
 	ROUGHNESS = mix(mix(0.92, 0.55, w.b), 0.78, pave);
 	SPECULAR = 0.25;
 }

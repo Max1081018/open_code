@@ -177,15 +177,18 @@ static func build_tile(g: TerrainGen, t: Vector2i, per_m2: float) -> Dictionary:
 	for j in n:
 		for i in n:
 			hs[j * n + i] = g.height(origin.x + i * step, origin.y + j * step)
-	var biome := g.biome(origin.x + TILE * 0.5, origin.y + TILE * 0.5)
-	var root := _root_colour(biome)
+	# Biome on a coarse 4x4 grid, so blades follow region borders.
+	var bgrid: Array = []
+	for bj in 4:
+		for bi in 4:
+			bgrid.append(g.biome(origin.x + (bi + 0.5) * TILE / 4.0, origin.y + (bj + 0.5) * TILE / 4.0))
 	var xforms: Array = []
 	var colours: Array = []
 	var flowers: Array = []
 	var petals: Array = []
 	# Open meadows bloom more than the woods.
 	var bloom := 0.2 - g.forest(origin.x + TILE * 0.5, origin.y + TILE * 0.5) * 0.14
-	if root.a > 0.0:
+	if true:
 		var rng := RandomNumberGenerator.new()
 		rng.seed = hash([t.x, t.y, "blades"])
 		var count := int(TILE * TILE * per_m2)
@@ -210,6 +213,10 @@ static func build_tile(g: TerrainGen, t: Vector2i, per_m2: float) -> Dictionary:
 				continue
 			var x := origin.x + fx * TILE
 			var z := origin.y + fz * TILE
+			var cb: int = bgrid[mini(int(fz * 4.0), 3) * 4 + mini(int(fx * 4.0), 3)]
+			var root := _root_colour(cb)
+			if root.a <= 0.0:
+				continue
 			if g.paved(x, z) > 0.05:
 				continue
 			var s := rng.randf_range(0.75, 1.35)
@@ -217,7 +224,7 @@ static func build_tile(g: TerrainGen, t: Vector2i, per_m2: float) -> Dictionary:
 				Vector3(x, h - 0.03, z)))
 			var v := rng.randf_range(-0.06, 0.06)
 			colours.append(Color(root.r + v, root.g + v, root.b + v * 0.5))
-			if biome == TerrainGen.Biome.FOREST and rng.randf() < bloom:
+			if cb == TerrainGen.Biome.FOREST and rng.randf() < bloom:
 				# Wildflowers come in little patches of one colour.
 				var pick: int = absi(hash([floori(x / 3.0), floori(z / 3.0)])) % PETALS.size()
 				var fs := rng.randf_range(0.8, 1.25)
@@ -233,9 +240,9 @@ static func _root_colour(b: int) -> Color:
 		TerrainGen.Biome.FOREST:
 			return Color(0.36, 0.56, 0.22, 1)
 		TerrainGen.Biome.DARK_FOREST:
-			return Color(0.22, 0.38, 0.22, 1)
+			return Color(0.14, 0.27, 0.22, 1)
 		TerrainGen.Biome.CORRUPTED:
-			return Color(0.36, 0.32, 0.4, 1)
+			return Color(0.34, 0.22, 0.42, 1)
 	return Color(0, 0, 0, 0)
 
 

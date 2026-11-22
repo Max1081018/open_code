@@ -22,7 +22,9 @@ static var _wind: Shader
 static func parts(kind: String) -> Array:
 	if _cache.has(kind):
 		return _cache[kind]
-	var scene: PackedScene = load(DIR + kind + ".gltf")
+	# "<kind>_Basalt": the same model as dark volcanic stone.
+	var basalt := kind.ends_with("_Basalt")
+	var scene: PackedScene = load(DIR + kind.trim_suffix("_Basalt") + ".gltf")
 	var root: Node3D = scene.instantiate()
 	var found := []
 	var box := AABB()
@@ -39,6 +41,8 @@ static func parts(kind: String) -> Array:
 	var out := []
 	for f in found:
 		var mesh: Mesh = _windy(f[0], spec[1], kind)
+		if basalt:
+			mesh = _tinted(mesh, Color(0.36, 0.3, 0.3))
 		out.append([mesh, Transform3D(Basis.IDENTITY.scaled(Vector3.ONE * k), Vector3.ZERO) * f[1]])
 	_cache[kind] = out
 	return out
@@ -50,6 +54,17 @@ static func parts(kind: String) -> Array:
 static func release() -> void:
 	_cache.clear()
 	_wind = null
+
+
+static func _tinted(mesh: Mesh, colour: Color) -> Mesh:
+	var copy: Mesh = mesh.duplicate()
+	for s in copy.get_surface_count():
+		var m := copy.surface_get_material(s) as BaseMaterial3D
+		if m:
+			m = m.duplicate()
+			m.albedo_color = m.albedo_color * colour
+			copy.surface_set_material(s, m)
+	return copy
 
 
 static func spec_for(kind: String) -> Array:
@@ -76,7 +91,15 @@ static func _to_root(node: Node, root: Node) -> Transform3D:
 ## A copy of the mesh whose leafy (alpha-tested) surfaces sway in the wind.
 static func _windy(mesh: Mesh, cat: String, kind_hint := "") -> Mesh:
 	if cat == "rock":
-		return mesh
+		# The kit's stones are mint-grey; warm them to plain weathered stone.
+		var rock: Mesh = mesh.duplicate()
+		for s in rock.get_surface_count():
+			var m := rock.surface_get_material(s) as BaseMaterial3D
+			if m:
+				m = m.duplicate()
+				m.albedo_color = m.albedo_color * Color(1.0, 0.9, 0.9)
+				rock.surface_set_material(s, m)
+		return rock
 	var copy: Mesh = mesh.duplicate()
 	for s in copy.get_surface_count():
 		var material := copy.surface_get_material(s) as BaseMaterial3D
