@@ -50,10 +50,16 @@ func _ready() -> void:
 	var dense_grass: bool = Settings.quality >= 1 and _args.get("grass", "dense") != "clumps"
 	world.clump_grass = not dense_grass
 	var spawn := Vector3(10, 0, 14)
+	var saved := Save3D.read() if Save3D.load_on_start and not _args.has("shot") else {}
+	if saved.has("pos"):
+		var sp: Vector3 = saved.pos
+		spawn = Vector3(sp.x, 0, sp.z)
 	if _args.has("at"):
 		var p: PackedStringArray = _args.at.split(",")
 		spawn = Vector3(float(p[0]), 0, float(p[1]))
 	spawn.y = world.height_at(spawn.x, spawn.z) + 0.2
+	if saved.has("pos"):
+		spawn.y = maxf(spawn.y, (saved.pos as Vector3).y + 0.2)  # saved on an isle
 	world.warm(spawn)
 	if dense_grass:
 		grass = GrassField.new()
@@ -99,6 +105,9 @@ func _ready() -> void:
 	add_child(town)
 	town.build(self)
 	_place_townsfolk()
+	if not saved.is_empty():
+		Save3D.restore(self, saved)
+		play.toast.emit("Welcome back to the Starfall")
 	if _args.has("cam"):
 		# A free camera for inspecting scenery: --cam=x,y,z --look=x,y,z
 		var c: PackedStringArray = _args.cam.split(",")
@@ -131,6 +140,25 @@ func _place_townsfolk() -> void:
 		add_child(npc)
 		npc.setup(self, f[0], at, f[2], f[3])
 		quests.npcs[f[0]] = npc
+
+
+var _autosave_timer := 45.0
+
+
+## Save the journey (not while the capture harness runs).
+func autosave() -> void:
+	if _args.has("shot") or player == null or OS.get_cmdline_args().has("res://tests/run_tests.gd"):
+		return
+	Save3D.write(Save3D.capture(self))
+
+
+func _notification(what: int) -> void:
+	if what in [NOTIFICATION_WM_CLOSE_REQUEST, NOTIFICATION_APPLICATION_PAUSED, NOTIFICATION_APPLICATION_FOCUS_OUT]:
+		autosave()
+
+
+func _exit_tree() -> void:
+	autosave()
 
 
 func _build_environment() -> void:
@@ -245,6 +273,10 @@ func _process(delta: float) -> void:
 					out.blit_rect(_strip[i], Rect2i(Vector2i.ZERO, img.get_size()), Vector2i(i * w, 0))
 				out.save_png(_args.shot)
 				get_tree().quit()
+	_autosave_timer -= delta
+	if _autosave_timer <= 0.0:
+		_autosave_timer = 45.0
+		autosave()
 	time_of_day = fposmod(time_of_day + delta / day_length, 1.0)
 	_update_sun(delta)
 	world.focus = player.global_position

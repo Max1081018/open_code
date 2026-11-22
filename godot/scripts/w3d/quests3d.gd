@@ -121,6 +121,7 @@ func talk(npc: String) -> void:
 
 func _after_talk(finish: Dictionary, start: Dictionary) -> void:
 	_end_talk()
+	game.call_deferred("autosave")
 	if not finish.is_empty():
 		_complete(finish)
 	if not start.is_empty():

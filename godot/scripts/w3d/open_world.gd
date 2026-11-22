@@ -361,5 +361,13 @@ func hit_resource(res: Dictionary, damage: float) -> bool:
 	return true
 
 
+## Felled trees and broken rocks from a saved journey; chunks already
+## built redraw their plants.
+func restore_removed(keys: Dictionary) -> void:
+	removed = keys.duplicate()
+	for c in _chunks:
+		_build_flora(c, _chunks[c])
+
+
 func biome_at(p: Vector3) -> int:
 	return gen.biome(p.x, p.z)

@@ -13,6 +13,7 @@ var game: Node
 var updrafts: Array = []    ## [Vector3 base, radius, height]
 var shards: Array = []      ## Node3D, removed when collected
 var found := 0
+var found_ids: Array = []   ## creation index of every Starshard collected
 var total := 0
 var _shard_mesh: Mesh
 var _shard_mat: StandardMaterial3D
@@ -160,7 +161,19 @@ func _shard(at: Vector3) -> void:
 	holder.add_child(top)
 	add_child(holder)
 	holder.global_position = at
+	holder.set_meta("id", shards.size() + found_ids.size())
 	shards.append(holder)
+
+
+## Starshards found in a saved journey are gone again.
+func restore_found(ids: Array) -> void:
+	for i in range(shards.size() - 1, -1, -1):
+		var s: Node3D = shards[i]
+		if ids.has(s.get_meta("id", -1)):
+			shards.remove_at(i)
+			s.queue_free()
+	found_ids = ids.duplicate()
+	found = found_ids.size()
 
 
 func _process(delta: float) -> void:
@@ -183,6 +196,7 @@ func _process(delta: float) -> void:
 		if s.global_position.distance_to(p.global_position + Vector3(0, 0.9, 0)) < 1.3:
 			shards.remove_at(i)
 			found += 1
+			found_ids.append(s.get_meta("id", -1))
 			p.max_stamina += SHARD_STAMINA
 			p.stamina = p.max_stamina
 			game.play.toast.emit("Starshard  %d / %d   ·  max stamina +%d" % [found, total, int(SHARD_STAMINA)])

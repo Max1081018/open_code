@@ -78,7 +78,9 @@ func _ready() -> void:
 	spacer.custom_minimum_size = Vector2(0, 70)
 	column.add_child(spacer)
 
-	var entries := [["Continue", _start], ["New Journey", _start], ["Settings", _open_settings], ["Credits", _credits], ["Quit", _quit]]
+	var entries := [["New Journey", _new_journey], ["Settings", _open_settings], ["Credits", _credits], ["Quit", _quit]]
+	if Save3D.exists():
+		entries.push_front(["Continue", _continue])
 	for i in entries.size():
 		var row := _row(entries[i][0], menu_font, entries[i][1], i)
 		column.add_child(row)
@@ -230,6 +232,16 @@ func _unhandled_input(event: InputEvent) -> void:
 		_select((_selected + _rows.size() - 1) % _rows.size())
 	elif event.is_action_pressed("ui_accept"):
 		(_rows[_selected].get_meta("action") as Callable).call()
+
+
+func _continue() -> void:
+	Save3D.load_on_start = true
+	_start()
+
+
+func _new_journey() -> void:
+	Save3D.load_on_start = false
+	_start()
 
 
 func _start() -> void:

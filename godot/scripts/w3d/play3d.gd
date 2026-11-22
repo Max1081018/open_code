@@ -446,6 +446,11 @@ func _find_boss_site() -> Vector3:
 	return Vector3(300, gen.height(300, 0), 0)
 
 
+## The Warden was freed in a saved journey: never raise him again.
+func skip_boss() -> void:
+	_boss_spawned = true
+
+
 func _spawn_boss() -> void:
 	_boss_spawned = true
 	boss = spawn_enemy("warden", boss_site)

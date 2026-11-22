@@ -285,6 +285,23 @@ func _chest(at: Vector3, magic: bool) -> void:
 	else:
 		loot.append([["apple", "cooked_meat", "glowshard", "copper_ore", "iron_ore"].pick_random(), randi_range(1, 4)])
 	chests.append([c, false, loot, magic])
+	c.set_meta("id", chests.size() - 1)
+
+
+func opened_ids() -> Array:
+	var out: Array = []
+	for i in chests.size():
+		if chests[i][1]:
+			out.append(i)
+	return out
+
+
+## Chests opened in a saved journey stay open (and gone).
+func restore_opened(ids: Array) -> void:
+	for i in ids:
+		if int(i) < chests.size() and not chests[int(i)][1]:
+			chests[int(i)][1] = true
+			(chests[int(i)][0] as Node).queue_free()
 
 
 func _process(_delta: float) -> void:
@@ -312,6 +329,7 @@ func _open(ch: Array) -> void:
 		p.spawn_pickup(l[0], l[1], node.global_position + Vector3(0, 1.2, 0), Vector3(randf_range(-2, 2), 5, randf_range(-2, 2)))
 	p._star_ring(node.global_position, 2.5, Color(1.0, 0.85, 0.45) if not ch[3] else Color(0.6, 0.9, 1.0))
 	p.toast.emit("Treasure!" if not ch[3] else "A starlit chest!")
+	game.autosave()
 	Sfx.play("chest")
 	var t := node.create_tween()
 	t.tween_property(node, "scale", Vector3(1.15, 0.85, 1.15), 0.12)

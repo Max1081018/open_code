@@ -71,3 +71,36 @@ func test_quest_lines() -> void:
 
 	main.queue_free()
 	await tree.process_frame
+
+
+func test_save_round_trip() -> void:
+	var tree := Engine.get_main_loop() as SceneTree
+	var a: Node = load("res://scenes/main3d.tscn").instantiate()
+	tree.root.add_child(a)
+	await tree.process_frame
+	await tree.process_frame
+	a.play.inventory.add("iron_ore", 3)
+	a.quests.start_talk(a.quests.npcs["mira"])
+	_read_all(a)
+	a.player.max_health = 140.0
+	a.player.global_position += Vector3(5, 0, -3)
+	a.town._open(a.town.chests[2])
+	a.world.removed["1,2,3"] = true
+	a.time_of_day = 0.81
+	var state := Save3D.capture(a)
+	a.queue_free()
+	await tree.process_frame
+	var b: Node = load("res://scenes/main3d.tscn").instantiate()
+	tree.root.add_child(b)
+	await tree.process_frame
+	await tree.process_frame
+	Save3D.restore(b, state)
+	check_eq(b.play.inventory.count("iron_ore"), 3, "the bag comes back")
+	check_eq(b.quests.state.get("shards", ""), "active", "Mira's request is still under way")
+	check(b.quests.met.has("mira"), "Mira remembers meeting her")
+	check_eq(b.player.max_health, 140.0, "max health is kept")
+	check(b.town.chests[2][1], "the opened chest stays open")
+	check(b.world.removed.has("1,2,3"), "felled trees stay felled")
+	check_near(b.time_of_day, 0.81, 0.001, "the hour of the day is kept")
+	b.queue_free()
+	await tree.process_frame
