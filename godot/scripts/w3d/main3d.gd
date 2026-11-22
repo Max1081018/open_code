@@ -99,6 +99,17 @@ func _ready() -> void:
 	add_child(town)
 	town.build(self)
 	_place_townsfolk()
+	if _args.has("cam"):
+		# A free camera for inspecting scenery: --cam=x,y,z --look=x,y,z
+		var c: PackedStringArray = _args.cam.split(",")
+		var l: PackedStringArray = _args.get("look", "0,0,0").split(",")
+		var free := Camera3D.new()
+		free.far = 4000.0
+		free.fov = 60.0
+		add_child(free)
+		free.look_at_from_position(Vector3(float(c[0]), float(c[1]), float(c[2])), Vector3(float(l[0]), float(l[1]), float(l[2])))
+		free.make_current()
+		world.focus = free.global_position
 	if _args.has("shot"):
 		input.scripted = true
 		Engine.max_fps = 0

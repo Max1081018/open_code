@@ -59,34 +59,54 @@ func _island(centre: Vector3, radius: float, seed_i: int, spire: bool) -> void:
 	var noise := FastNoiseLite.new()
 	noise.seed = 991 + seed_i * 17
 	noise.frequency = 0.08
-	var rings := 18
-	var segs := 40
-	var depth := radius * 1.6
+	var rng0 := RandomNumberGenerator.new()
+	rng0.seed = 4100 + seed_i
+	var lobes := 2 + seed_i % 3
+	var phase := rng0.randf() * TAU
+	var segs := 48 if radius < 30.0 else 72
+	var depth := radius * 1.25
+	# The rim: lobed and ragged, not a disc.
+	var rim := PackedFloat32Array()
+	for s in segs:
+		var a := TAU * s / segs
+		rim.append(radius * (1.0 + noise.get_noise_1d(a * 9.0) * 0.18 + sin(a * lobes + phase) * 0.14))
 	var st := SurfaceTool.new()
 	st.begin(Mesh.PRIMITIVE_TRIANGLES)
-	var pts := []   # ring -> segment -> Vector3
-	for r in rings + 1:
+	# Profile rings: [kind, t]: crown rings run centre -> rim, then a grassy
+	# lip overhanging the edge, then the cliff body bulging and narrowing.
+	var profile := []
+	for k in 8:
+		profile.append(["crown", float(k) / 7.0])
+	profile.append(["lip", 0.0])
+	for k in 13:
+		profile.append(["body", float(k + 1) / 13.0])
+	var pts := []
+	for ring in profile:
 		var row := []
-		var t := float(r) / rings
 		for s in segs:
 			var a := TAU * s / segs
 			var dir := Vector2(cos(a), sin(a))
+			var r: float = rim[s]
 			var p: Vector3
-			if t <= 0.5:
-				# Crown: from centre out to the rim, gently domed and bumpy.
-				var rr := t * 2.0 * radius * (1.0 + noise.get_noise_2d(dir.x * 30.0, dir.y * 30.0) * 0.25)
-				var y := (1.0 - t * 2.0) * radius * 0.08 + noise.get_noise_2d(dir.x * rr, dir.y * rr) * 1.2
-				p = Vector3(dir.x * rr, y, dir.y * rr)
-			else:
-				# Body: down from the rim, narrowing to a craggy point.
-				var u := (t - 0.5) * 2.0
-				var shrink := pow(1.0 - u, 1.3)
-				var jag := 1.0 + noise.get_noise_3d(dir.x * 20.0, u * 12.0, dir.y * 20.0) * 0.35
-				var rr := radius * (1.0 + noise.get_noise_2d(dir.x * 30.0, dir.y * 30.0) * 0.25) * shrink * jag
-				p = Vector3(dir.x * rr, -u * depth * (0.8 + 0.2 * jag), dir.y * rr)
+			match ring[0]:
+				"crown":
+					var t: float = ring[1]
+					var rr := t * r
+					var y := (1.0 - t * t) * radius * 0.07 + noise.get_noise_2d(dir.x * rr * 1.3, dir.y * rr * 1.3) * 1.1
+					p = Vector3(dir.x * rr, y, dir.y * rr)
+				"lip":
+					p = Vector3(dir.x * r * 1.04, -1.3, dir.y * r * 1.04)
+				_:
+					var u: float = ring[1]
+					var bulge := 1.0 + sin(u * PI) * 0.12
+					# Bigger isles get proportionally more crags, not bigger ones.
+					var f := 12.0 + radius * 0.55
+					var jag := 1.0 + noise.get_noise_3d(dir.x * f, u * (8.0 + radius * 0.2), dir.y * f) * 0.3
+					var rr := r * pow(1.0 - u, 1.15) * bulge * jag + 0.4
+					p = Vector3(dir.x * rr, -1.3 - u * depth * (0.85 + 0.15 * jag), dir.y * rr)
 			row.append(p)
 		pts.append(row)
-	for r in rings:
+	for r in pts.size() - 1:
 		for s in segs:
 			var s2 := (s + 1) % segs
 			var a: Vector3 = pts[r][s]
@@ -99,6 +119,13 @@ func _island(centre: Vector3, radius: float, seed_i: int, spire: bool) -> void:
 			st.add_vertex(b)
 			st.add_vertex(c)
 			st.add_vertex(d)
+	# Hanging spurs: stalactites of rock under the body.
+	var spurs := 2 + seed_i % 3
+	for k in spurs:
+		var a := rng0.randf() * TAU
+		var off := Vector2(cos(a), sin(a)) * radius * rng0.randf_range(0.25, 0.55)
+		var top_y := -1.3 - depth * rng0.randf_range(0.15, 0.35)
+		_spur(st, Vector3(off.x, top_y, off.y), radius * rng0.randf_range(0.18, 0.32), depth * rng0.randf_range(0.45, 0.8), noise, k)
 	st.generate_normals()
 	var mesh := st.commit()
 	var mi := MeshInstance3D.new()
@@ -136,6 +163,24 @@ func _island(centre: Vector3, radius: float, seed_i: int, spire: bool) -> void:
 	for k in 3 + seed_i % 3:
 		var a := rng.randf() * TAU
 		_crystals(batches, Vector3(cos(a) * radius * 0.7, 0.5, sin(a) * radius * 0.7), rng, 1.0)
+	# Vines hanging over the rim, and rocks drifting round the isle.
+	if _vine == null:
+		_vine = _make_vine()
+	for k in int(radius * 1.8):
+		var a := rng.randf() * TAU
+		var r := radius * rng.randf_range(0.94, 1.04)
+		var len := rng.randf_range(3.0, 4.0 + radius * 0.35)
+		_batch(batches, _vine, Transform3D(Basis(Vector3.UP, rng.randf() * TAU).scaled(Vector3(1.0, len, 1.0)),
+			Vector3(cos(a) * r, -0.6, sin(a) * r)))
+	for k in 3 + seed_i % 4:
+		var a := rng.randf() * TAU
+		var r := radius * rng.randf_range(1.15, 1.7)
+		var kind: String = ["Rock_Medium_1", "Rock_Medium_2", "Rock_Medium_3"][rng.randi() % 3]
+		var sc := rng.randf_range(1.2, 2.6) * (radius / 24.0 + 0.5)
+		var rot := Basis.from_euler(Vector3(rng.randf_range(-0.6, 0.6), rng.randf() * TAU, rng.randf_range(-0.6, 0.6)))
+		var t := Transform3D(rot.scaled(Vector3.ONE * sc), Vector3(cos(a) * r, rng.randf_range(-depth * 0.5, 3.0), sin(a) * r))
+		for part in FoliageLib.parts(kind):
+			_batch(batches, part[0], t * part[1])
 	for part_mesh in batches:
 		var mm := MultiMesh.new()
 		mm.transform_format = MultiMesh.TRANSFORM_3D
@@ -148,6 +193,9 @@ func _island(centre: Vector3, radius: float, seed_i: int, spire: bool) -> void:
 		mmi.multimesh = mm
 		if part_mesh == _prism:
 			mmi.material_override = _crystal_mat
+		elif part_mesh == _vine:
+			mmi.material_override = _vine_mat
+			mmi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 		mi.add_child(mmi)
 	# Waterfalls off one or two edges.
 	for k in 1 + seed_i % 2:
@@ -158,6 +206,60 @@ func _island(centre: Vector3, radius: float, seed_i: int, spire: bool) -> void:
 
 
 var _prism: PrismMesh
+var _vine: ArrayMesh
+var _vine_mat: ShaderMaterial
+
+
+## A hanging vine: two crossed tapering strips 1 m long (scaled to length),
+## UV.y 0 at the top.
+func _make_vine() -> ArrayMesh:
+	var st := SurfaceTool.new()
+	st.begin(Mesh.PRIMITIVE_TRIANGLES)
+	for k in 2:
+		var side := Vector3(0.36, 0, 0) if k == 0 else Vector3(0, 0, 0.36)
+		var steps := 6
+		for i in steps:
+			var v0 := float(i) / steps
+			var v1 := float(i + 1) / steps
+			var w0 := 1.0 - v0 * 0.8
+			var w1 := 1.0 - v1 * 0.8
+			var a := -side * w0 + Vector3(0, -v0, 0)
+			var b := side * w0 + Vector3(0, -v0, 0)
+			var c := -side * w1 + Vector3(0, -v1, 0)
+			var d := side * w1 + Vector3(0, -v1, 0)
+			for q in [[a, v0], [b, v0], [c, v1], [b, v0], [d, v1], [c, v1]]:
+				st.set_uv(Vector2(0, q[1]))
+				st.add_vertex(q[0])
+	st.generate_normals()
+	if _vine_mat == null:
+		_vine_mat = ShaderMaterial.new()
+		_vine_mat.shader = load("res://scripts/shaders/vine.gdshader")
+	return st.commit()
+
+
+## A jagged downward cone of rock (a stalactite under an isle).
+func _spur(st: SurfaceTool, top: Vector3, radius: float, length: float, noise: FastNoiseLite, k: int) -> void:
+	var segs := 12
+	var rings := 6
+	var pts := []
+	for r in rings + 1:
+		var u := float(r) / rings
+		var row := []
+		for s in segs:
+			var a := TAU * s / segs
+			var jag := 1.0 + noise.get_noise_3d(cos(a) * 9.0 + k * 13.0, u * 6.0, sin(a) * 9.0) * 0.3
+			var rr := radius * pow(1.0 - u, 1.3) * jag + 0.05
+			row.append(top + Vector3(cos(a) * rr, -u * length, sin(a) * rr))
+		pts.append(row)
+	for r in rings:
+		for s in segs:
+			var s2 := (s + 1) % segs
+			st.add_vertex(pts[r][s])
+			st.add_vertex(pts[r + 1][s])
+			st.add_vertex(pts[r][s2])
+			st.add_vertex(pts[r][s2])
+			st.add_vertex(pts[r + 1][s])
+			st.add_vertex(pts[r + 1][s2])
 
 
 func set_night(night: float) -> void:

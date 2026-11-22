@@ -37,6 +37,8 @@ void vertex() {
 	// Fade the field's edge by shortening blades.
 	float d = distance(base.xz, field_centre.xz);
 	float grow = 1.0 - smoothstep(field_radius * 0.72, field_radius, d);
+	// Keep blades out of the lens when the camera dips low.
+	grow *= smoothstep(0.7, 2.4, distance(base, CAMERA_POSITION_WORLD));
 	float h = UV.y * UV.y;
 	// Gusts: a slow wave rolling across the meadow plus flutter.
 	float gust = noise(base.xz * 0.06 + vec2(TIME * 0.35, TIME * 0.22));
