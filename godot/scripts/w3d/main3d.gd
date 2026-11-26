@@ -323,6 +323,18 @@ func _breakdown() -> void:
 		print("BREAKDOWN %s nodes=%d surfaces=%d shadow_surfaces=%d" % [k, groups[k][0], groups[k][1], groups[k][2]])
 
 
+## Region air: [fog tint (alpha = how strongly), extra fog density].
+const REGION_MOOD := {
+	TerrainGen.Biome.CORRUPTED: [Color(0.66, 0.5, 0.86, 0.7), 0.0035],
+	TerrainGen.Biome.DARK_FOREST: [Color(0.42, 0.62, 0.62, 0.6), 0.0028],
+	TerrainGen.Biome.VOLCANIC: [Color(0.9, 0.56, 0.4, 0.65), 0.003],
+	TerrainGen.Biome.SNOW: [Color(0.86, 0.92, 1.0, 0.5), 0.002],
+}
+var _mood_col := Color(0, 0, 0, 0)
+var _mood_fog := 0.0
+var _mood_ready := false
+
+
 func _update_sun(_delta: float) -> void:
 	# The sun arcs east to west; low and golden at dawn and dusk, the moon's
 	# cool light at night.
@@ -335,7 +347,17 @@ func _update_sun(_delta: float) -> void:
 	# Anime nights stay readable: a strong blue moon and a lifted ambient.
 	sun.light_energy = lerpf(0.42, 1.35, day)
 	environment.ambient_light_energy = lerpf(0.4, 0.55, day)
-	environment.fog_light_color = Color(0.7, 0.74, 0.78).lerp(Color(0.95, 0.66, 0.46), low).lerp(Color(0.08, 0.1, 0.18), 1.0 - day)
+	# Each region has its own air: the fog and light lean toward its colour,
+	# blended smoothly as the heroine crosses a border.
+	var mood: Array = REGION_MOOD.get(world.biome_at(player.global_position) if player else -1, [Color(0, 0, 0, 0), 0.0])
+	var blend := minf(1.0, _delta * 0.8) if _mood_ready else 1.0
+	_mood_ready = player != null
+	_mood_col = _mood_col.lerp(mood[0], blend)
+	_mood_fog = lerpf(_mood_fog, float(mood[1]), blend)
+	var fog_base := Color(0.7, 0.74, 0.78).lerp(Color(0.95, 0.66, 0.46), low).lerp(Color(0.08, 0.1, 0.18), 1.0 - day)
+	environment.fog_light_color = fog_base.lerp(Color(_mood_col.r, _mood_col.g, _mood_col.b) * lerpf(0.25, 1.0, day), _mood_col.a)
+	environment.fog_density = 0.0006 + _mood_fog
+	sun.light_color = sun.light_color.lerp(sun.light_color * Color(_mood_col.r * 1.3, _mood_col.g * 1.3, _mood_col.b * 1.3), _mood_col.a * 0.35)
 	var night := clampf(1.0 - day, 0.0, 1.0)
 	_sky_mat.set_shader_parameter("night", night)
 	if town:

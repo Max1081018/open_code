@@ -12,6 +12,9 @@ var _fireflies: CPUParticles3D
 var _bmat: ShaderMaterial
 var _fmat: ShaderMaterial
 var _leaves: CPUParticles3D
+var _motes: CPUParticles3D
+var _mmat: ShaderMaterial
+var _mote_biome := -1
 var _lmat: ShaderMaterial
 var _birds: MultiMeshInstance3D
 var _bird_centre := Vector3.ZERO
@@ -48,6 +51,16 @@ func setup(the_game: Node) -> void:
 	leaf_cols.offsets = PackedFloat32Array([0.0, 0.5, 0.8, 1.0])
 	leaf_cols.colors = PackedColorArray([Color(0.45, 0.68, 0.25), Color(0.62, 0.78, 0.3), Color(0.92, 0.72, 0.25), Color(0.86, 0.45, 0.22)])
 	_leaves.color_initial_ramp = leaf_cols
+	# Region motes: embers, spores, glimmers, snow.
+	_mmat = ShaderMaterial.new()
+	_mmat.shader = shader
+	_mmat.set_shader_parameter("kind", 3)
+	_mmat.render_priority = 1
+	_motes = _swarm(_mmat, 70, Vector3(16, 4.0, 16), 0.16, 6.0)
+	var alpha := Gradient.new()
+	alpha.colors = PackedColorArray([Color(1, 1, 1, 0), Color(1, 1, 1, 1), Color(1, 1, 1, 0)])
+	alpha.offsets = PackedFloat32Array([0.0, 0.2, 1.0])
+	_motes.color_ramp = alpha
 	_build_birds()
 
 
@@ -73,6 +86,35 @@ func _swarm(mat: ShaderMaterial, amount: int, box: Vector3, size: float, life: f
 	p.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 	add_child(p)
 	return p
+
+
+func _update_motes(b: int, p: Vector3) -> void:
+	_motes.global_position = p + Vector3(0, 2.0, 0)
+	if b == _mote_biome:
+		return
+	_mote_biome = b
+	match b:
+		TerrainGen.Biome.VOLCANIC:
+			_mote(Color(1.0, 0.42, 0.1), 3.0, Vector3(0, 0.9, 0), 0.5, 110, 0.24)
+		TerrainGen.Biome.CORRUPTED:
+			_mote(Color(0.8, 0.45, 1.0), 2.4, Vector3(0, 0.25, 0), 0.25, 80, 0.3)
+		TerrainGen.Biome.DARK_FOREST:
+			_mote(Color(0.4, 1.0, 0.8), 2.2, Vector3(0, 0.1, 0), 0.2, 60, 0.22)
+		TerrainGen.Biome.SNOW:
+			_mote(Color(0.95, 0.97, 1.0), 1.0, Vector3(0, -1.2, 0), 0.4, 140, 0.18)
+		_:
+			_motes.emitting = false
+
+
+func _mote(colour: Color, glow: float, gravity: Vector3, speed: float, amount: int, size: float) -> void:
+	_mmat.set_shader_parameter("mote_color", colour)
+	_mmat.set_shader_parameter("mote_glow", glow)
+	_motes.gravity = gravity
+	_motes.initial_velocity_min = speed * 0.5
+	_motes.initial_velocity_max = speed
+	_motes.amount = amount
+	(_motes.mesh as QuadMesh).size = Vector2(size, size)
+	_motes.emitting = true
 
 
 ## A loose flock of simple winged shapes.
@@ -128,6 +170,7 @@ func _process(_delta: float) -> void:
 	_leaves.global_position = p + Vector3(0, 6.0, 0)
 	_leaves.emitting = green and game.world.gen.forest(p.x, p.z) > 0.5
 	_lmat.set_shader_parameter("fade", 1.0 - night * 0.6)
+	_update_motes(game.world.biome_at(p), p)
 	_fireflies.emitting = green and night > 0.3
 	_bmat.set_shader_parameter("fade", clampf(1.0 - night * 2.0, 0.0, 1.0))
 	_fmat.set_shader_parameter("fade", clampf(night * 1.6 - 0.2, 0.0, 1.0))

@@ -5,7 +5,9 @@ shader_type spatial;
 // blinks. One shader, `kind` 0 or 1. Particle colour tints the wings.
 render_mode unshaded, cull_disabled, depth_draw_opaque;
 
-uniform int kind = 0;           // 0 butterfly, 1 firefly, 2 falling leaf
+uniform int kind = 0;           // 0 butterfly, 1 firefly, 2 falling leaf, 3 mote (ember, spore, snow)
+uniform vec4 mote_color : source_color = vec4(1.0, 0.5, 0.15, 1.0);
+uniform float mote_glow = 2.0;
 uniform float fade = 1.0;       // day/night visibility
 
 varying float seed;
@@ -25,6 +27,9 @@ void vertex() {
 		// Wander: a small loop of its own.
 		float t = TIME * (0.6 + seed * 0.5) + seed * 30.0;
 		bb[3].xyz += vec3(sin(t) * 0.8, sin(t * 1.7) * 0.35, cos(t * 0.8) * 0.8);
+	} else if (kind == 3) {
+		float t = TIME * (0.7 + seed * 0.6) + seed * 30.0;
+		bb[3].xyz += vec3(sin(t) * 0.35, 0.0, cos(t * 0.8) * 0.35);
 	} else if (kind == 1) {
 		float t = TIME * (0.4 + seed * 0.4) + seed * 20.0;
 		bb[3].xyz += vec3(sin(t) * 0.5, sin(t * 1.3) * 0.3, cos(t * 0.9) * 0.5);
@@ -62,6 +67,15 @@ void fragment() {
 		c = mix(c, vec3(1.0), smoothstep(0.3, 0.0, upper) * 0.35);
 		ALBEDO = body > 0.5 ? vec3(0.15, 0.12, 0.1) : c;
 		ALPHA = fade * lens;
+	} else if (kind == 3) {
+		float d = length(uv);
+		float twinkle = 0.7 + 0.3 * sin(TIME * (2.0 + seed * 3.0) + seed * 17.0);
+		float g = (1.0 - smoothstep(0.0, 1.0, d)) * fade * tint.a;
+		if (g < 0.02) {
+			discard;
+		}
+		ALBEDO = mote_color.rgb * mote_glow * twinkle;
+		ALPHA = g * lens;
 	} else if (kind == 2) {
 		// A leaf: pointed ellipse with a midrib.
 		float leaf = length(vec2(uv.x * 1.7 / (1.0 - abs(uv.y) * 0.35), uv.y));
