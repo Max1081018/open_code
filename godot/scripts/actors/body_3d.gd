@@ -356,7 +356,7 @@ const ITEM_MODELS := {
 	"moonblade": ["starlit", 1.08, Color(0.78, 0.62, 1.0)],
 	"wood_sword": ["starlit", 1.0, null], "copper_sword": ["autumn", 1.05, null],
 	"iron_sword": ["crystal", 1.05, null], "silver_sword": ["jade", 1.05, null],
-	"gold_sword": ["autumn", 1.1, Color(1.25, 1.05, 0.6)], "lumen_sword": ["crystal", 1.1, Color(0.6, 1.1, 1.4)],
+	"gold_sword": ["autumn", 1.1, Color(1.25, 1.05, 0.6)], "lumen_sword": ["crystal", 1.1, Color(0.6, 1.1, 1.4)], "astral_edge": ["starlit", 1.15, Color(1.2, 1.15, 1.45)],
 	"torch": ["torch", 0.6, null], "fishing_rod": ["rod", 1.7, null],
 	"wood_shield": ["shield_wood", 0.6, null], "iron_shield": ["shield_iron", 0.62, null],
 }

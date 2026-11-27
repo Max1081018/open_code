@@ -80,6 +80,10 @@ const HEROES := {
 	"ember_caller": ["skeleton", Color(1.0, 0.6, 0.42)],
 	"void_shade": ["skeleton", Color(0.58, 0.42, 0.9)],   # Blight
 	"void_caller": ["skeleton", Color(0.7, 0.45, 1.0)],
+	# The starting islands' guardians.
+	"thornmother": ["knight", Color(0.46, 0.78, 0.4)],   # Great Jungle
+	"stormwing": ["skeleton", Color(0.78, 0.92, 1.2)],   # Skybound Isle
+	"tidewarden": ["knight", Color(0.45, 0.82, 1.05)],   # Crystal Coast
 }
 ## Per-character presence: height in metres and their own way of moving
 ## (clip overrides on the shared library, playback speed). Anime heroines
@@ -110,6 +114,9 @@ const HERO_STYLE := {
 	"dune_raider": {"height": 1.85, "speed": 1.1},
 	"sand_thrower": {"height": 1.7, "speed": 1.0},
 	"cinder_knight": {"height": 2.1, "speed": 0.8},
+	"thornmother": {"height": 2.0, "speed": 0.85},
+	"stormwing": {"height": 1.8, "speed": 1.1},
+	"tidewarden": {"height": 2.05, "speed": 0.8},
 	"ember_caller": {"height": 1.75, "speed": 1.0},
 	"void_shade": {"height": 1.8, "speed": 1.25},
 	"void_caller": {"height": 1.8, "speed": 1.0},

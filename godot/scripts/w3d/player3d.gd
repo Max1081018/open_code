@@ -109,6 +109,9 @@ func _ready() -> void:
 	_gait(0.0)
 	_float_pose = FloatPose.new()
 	CharacterKit.add_pose_modifier(skeleton, _float_pose)
+	_motion = MotionPose.new()
+	CharacterKit.add_pose_modifier(skeleton, _motion)
+	_build_sprint_fx()
 
 
 ## Meshes of the head and hood: hidden from the first-person camera (layer 2).
@@ -594,8 +597,64 @@ func _physics_process(delta: float) -> void:
 	_lean = lerpf(_lean, lean_want, 1.0 - exp(-8.0 * delta))
 	model.rotation.z = _lean
 	_animate(horizontal.length())
+	_update_motion(delta, horizontal.length())
 	_update_float(delta, horizontal.length())
 	_ground_feet(delta)
+
+
+## The sprint lean and the falling tuck (MotionPose), and violet streams
+## off her hands while she sprints.
+var _motion: MotionPose
+var _sprint_fx: Array[CPUParticles3D] = []
+
+
+func _update_motion(delta: float, hspeed: float) -> void:
+	var grounded := is_on_floor() and not swimming
+	var lean_want := 0.0
+	if grounded and _action <= 0.0 and _dodge <= 0.0:
+		lean_want = clampf((hspeed - RUN) / (SPRINT - RUN), 0.0, 1.0)
+	var fall_want := 0.0
+	if not grounded and not gliding and not swimming and _air_time > 0.2 and velocity.y < -1.0:
+		fall_want = clampf(-velocity.y / 6.0, 0.0, 1.0)
+	_motion.lean = lerpf(_motion.lean, lean_want, 1.0 - exp(-6.0 * delta))
+	_motion.fall = lerpf(_motion.fall, fall_want, 1.0 - exp(-5.0 * delta))
+	var trail := _motion.lean > 0.55
+	for p in _sprint_fx:
+		p.emitting = trail
+
+
+func _build_sprint_fx() -> void:
+	if Settings.particles <= 0:
+		return
+	var m := StandardMaterial3D.new()
+	m.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	m.billboard_mode = BaseMaterial3D.BILLBOARD_PARTICLES
+	m.blend_mode = BaseMaterial3D.BLEND_MODE_ADD
+	m.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+	m.albedo_texture = Play3D._spark_texture()
+	m.vertex_color_use_as_albedo = true
+	var ramp := Gradient.new()
+	ramp.colors = PackedColorArray([Color(0.95, 0.85, 1.0, 0.9), Color(0.7, 0.45, 1.0, 0.6), Color(0.45, 0.25, 1.0, 0.0)])
+	for hand in [right_hand, left_hand]:
+		var p := CPUParticles3D.new()
+		var q := QuadMesh.new()
+		q.size = Vector2(0.05, 0.05)
+		p.mesh = q
+		p.material_override = m
+		p.color_ramp = ramp
+		p.amount = 24 if Settings.particles >= 2 else 12
+		p.lifetime = 0.4
+		p.local_coords = false
+		p.emitting = false
+		p.direction = Vector3.ZERO
+		p.spread = 180.0
+		p.initial_velocity_min = 0.0
+		p.initial_velocity_max = 0.2
+		p.gravity = Vector3.ZERO
+		p.scale_amount_min = 0.6
+		p.scale_amount_max = 1.4
+		hand.add_child(p)
+		_sprint_fx.append(p)
 
 
 ## Keep the lowest foot on the ground whatever the animation does to the

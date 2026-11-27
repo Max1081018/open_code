@@ -700,8 +700,10 @@ const ZONE_FOES := {
 func spawn_enemy(kind: String, at: Vector3) -> Enemy3D:
 	var e := Enemy3D.new()
 	e.setup(kind, self)
+	# Placed before it enters the tree: its home post (_ready) is where it
+	# stands, not the world's origin.
+	e.position = at + Vector3(0, 0.3, 0)
 	game.add_child(e)
-	e.global_position = at + Vector3(0, 0.3, 0)
 	e.died.connect(_on_enemy_died)
 	return e
 
@@ -713,9 +715,12 @@ func _on_enemy_died(e: Enemy3D) -> void:
 		if randf() < drop[1]:
 			spawn_pickup(drop[0], randi_range(1, drop[2]), e.global_position + Vector3(0, 1, 0),
 				Vector3(randf_range(-2, 2), 4.5, randf_range(-2, 2)))
-	if e == boss:
-		boss = null
-		toast.emit("The Rusted Warden falls!")
+	if e.is_boss:
+		# A great foe: a great deal of experience, and the bar goes.
+		prog.gain(150)
+		if e == boss:
+			boss = null
+		toast.emit("%s falls!" % String(e.spec.get("boss", "The guardian")))
 		game.hud.boss_bar(null)
 
 
@@ -747,13 +752,19 @@ func _spawn_boss() -> void:
 func boss_started(e: Enemy3D) -> void:
 	boss = e
 	game.hud.boss_bar(e)
-	toast.emit("The Rusted Warden wakes")
+	if e.spec.has("title"):
+		game.hud.banner(String(e.spec.boss), String(e.spec.title))
+		Sfx.play("roar", -2.0)
+	else:
+		toast.emit("%s wakes" % String(e.spec.get("boss", "The guardian")))
 
 
 func boss_phase(e: Enemy3D, phase: int) -> void:
 	_shake = 0.8
-	toast.emit(["", "", "The Warden charges!", "The Warden calls the dead!"][phase])
-	if phase == 3:
+	var lines: Array = e.spec.get("phase_lines", ["", "", "The Warden charges!", "The Warden calls the dead!"])
+	toast.emit(String(lines[clampi(phase, 0, lines.size() - 1)]))
+	Arcana.flash(game, e.global_position + Vector3(0, 2, 0), e.spec.get("element", Color(1, 0.6, 0.4)), 3.0, 10.0, 0.5)
+	if phase == 3 and not e.spec.has("patterns"):
 		for i in 2:
 			var a := randf() * TAU
 			spawn_enemy("zombie", e.global_position + Vector3(cos(a), 0, sin(a)) * 6.0)

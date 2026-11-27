@@ -24,6 +24,8 @@ var weather: Weather3D
 var realms: RealmFeatures
 var footprints: Footprints
 var adventure: Adventure
+var secrets: Secrets
+var bosses: IslandBosses
 var _post: ShaderMaterial
 var _heat := 0.0
 ## The chosen hero and starting land (from the profile, or --start= in captures).
@@ -155,6 +157,15 @@ func _ready() -> void:
 	weather.setup(self)
 	if _args.has("weather"):
 		weather.force(Weather3D.NAMES.map(func(n: String) -> String: return n.to_lower().replace(" ", "")).find(String(_args.weather).to_lower()))
+	# What the world hides (discoveries, chests, rune shrines, veins, the
+	# night colossus) and the islands' guardians.
+	if realms and realms.get("landmarks") != null:
+		secrets = Secrets.new()
+		add_child(secrets)
+		secrets.build(self)
+		bosses = IslandBosses.new()
+		add_child(bosses)
+		bosses.build(self)
 	# The first adventure on the chosen starting island.
 	if Realms.STARTS.has(start_island):
 		adventure = Adventure.new()

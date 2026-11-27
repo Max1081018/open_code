@@ -73,6 +73,38 @@ const ZONE_SPECS := {
 		"loot": [["glowshard", 0.8, 3], ["gold_coin", 0.5, 4]], "sight": 26.0},
 }
 
+## The three starting islands' guardians. Each fights in phases (health
+## 60% and 30%) drawing on its own moves (see _boss_move):
+##   lines  — roots erupt along three telegraphed lines toward her
+##   ring   — a shockwave all round it (jump it!)
+##   rain   — crystal shards fall on glowing circles around her
+##   volley — a fan of bolts; dive — it swoops onto a marked spot
+##   summon — calls its island's creatures; charge — a lunge
+##   melee  — its weapon at close range
+const BOSS_SPECS := {
+	"thornmother": {"model": "thornmother", "health": 1400.0, "speed": 3.0, "damage": 22.0, "reach": 3.2, "windup": 0.7,
+		"scale": 1.7, "boss": "The Thornmother", "title": "Guardian of the First Root", "element": Color(0.5, 0.95, 0.4),
+		"defense": 30.0, "resist": {"arcane": -0.1}, "idle": "Sword_Idle", "walk": "Walk", "run": "Jog_Fwd",
+		"attack": ["Sword_Regular_A", "Sword_Regular_B"], "heavy": "Sword_Heavy_Combo", "weapon": "iron_hammer",
+		"patterns": [["melee", "lines"], ["melee", "lines", "ring"], ["lines", "ring", "summon", "charge"]], "adds": "thornling",
+		"phase_lines": ["", "", "The roots wake beneath you!", "The First Root calls her children!"],
+		"loot": [["heart_crystal", 1.0, 1], ["lumen_core", 1.0, 1], ["gold_coin", 1.0, 40]], "sight": 34.0},
+	"stormwing": {"model": "stormwing", "health": 1100.0, "speed": 4.0, "damage": 16.0, "reach": 16.0, "windup": 0.8,
+		"scale": 1.6, "boss": "The Stormwing", "title": "Last Sentinel of the Aerie", "element": Color(0.6, 0.9, 1.0),
+		"defense": 15.0, "resist": {"arcane": 0.1}, "style": "ranged", "fly": 2.8,
+		"idle": "Spell_Simple_Idle", "walk": "Walk", "run": "Jog_Fwd", "attack": ["Spell_Simple_Shoot"],
+		"patterns": [["volley"], ["volley", "dive"], ["volley", "dive", "ring", "summon"]], "adds": "wisp_caller",
+		"phase_lines": ["", "", "The Stormwing dives!", "The winds answer the Sentinel!"],
+		"loot": [["heart_crystal", 1.0, 1], ["relic_featherbone", 1.0, 1], ["gold_coin", 1.0, 40]], "sight": 36.0},
+	"tidewarden": {"model": "tidewarden", "health": 1600.0, "speed": 2.8, "damage": 24.0, "reach": 3.4, "windup": 0.75,
+		"scale": 1.75, "boss": "The Tidewarden", "title": "Keeper of the Crystal Deep", "element": Color(0.45, 0.95, 1.0),
+		"defense": 40.0, "resist": {"arcane": 0.2}, "idle": "Sword_Idle", "walk": "Walk", "run": "Jog_Fwd",
+		"attack": ["Sword_Regular_A", "Sword_Regular_C"], "heavy": "Sword_Heavy_Combo", "weapon": "gold_sword", "shield": "iron_shield",
+		"patterns": [["melee", "rain"], ["melee", "rain", "ring"], ["rain", "ring", "charge", "summon"]], "adds": "rime_shade",
+		"phase_lines": ["", "", "Crystal rains from the deep!", "The tide brings its guard!"],
+		"loot": [["heart_crystal", 1.0, 1], ["relic_tidecaller", 1.0, 1], ["gold_coin", 1.0, 40]], "sight": 34.0},
+}
+
 var kind := "zombie"
 var spec: Dictionary
 var game: Node
@@ -101,6 +133,19 @@ var _style := "melee"
 var _bar: Node3D
 var _bar_fill: MeshInstance3D
 var _bar_time := 0.0
+## What it is doing (for the HUD, tests and debugging): patrol, chase,
+## windup, charge, retreat, search, return, stagger, move (a boss move), dead.
+var state := "patrol"
+var _sense := 0.0
+var _sees := false
+var _last_seen := Vector3.ZERO
+var _lost := 0.0
+var _search := 0.0
+var _returning := false
+var _retreat := 0.0
+var _retreated := false
+var _move_left := 0.0       ## a boss move's own wind-up: it holds still
+var _adds: Array = []
 ## Seconds left of an Arcane Mark (Phase Step): takes 20% more harm.
 var mark := 0.0
 const MARK_VULN := 0.2
@@ -111,7 +156,7 @@ const STYLE_DEFENSE := {"melee": 8.0, "charge": 10.0, "ranged": 0.0, "slam": 35.
 func setup(the_kind: String, the_game: Node) -> void:
 	kind = the_kind
 	game = the_game
-	spec = SPECS[kind] if SPECS.has(kind) else ZONE_SPECS[kind]
+	spec = SPECS[kind] if SPECS.has(kind) else (ZONE_SPECS[kind] if ZONE_SPECS.has(kind) else BOSS_SPECS[kind])
 	_style = spec.get("style", "melee")
 	max_health = spec.health
 	health = max_health
@@ -218,25 +263,60 @@ func _physics_process(delta: float) -> void:
 	to_player.y = 0
 	var dist := to_player.length()
 	var sight: float = spec.sight
-	if not _aggro and dist < sight and player.health > 0.0:
-		_aggro = true
-		if is_boss:
-			game.boss_started(self)
-	if _aggro and dist > sight * 2.2:
-		_aggro = false
+	# Senses: sight needs a clear line (four times a second); she is heard
+	# when close, and a boss always knows its arena.
+	_sense -= delta
+	if _sense <= 0.0:
+		_sense = 0.25
+		_sees = dist < sight and (is_boss or _line_of_sight(player))
+	elif dist >= sight:
+		_sees = false   # out of range is known at once; only the ray waits
+	var heard := dist < 3.5
+	if (_sees or heard) and player.health > 0.0:
+		_last_seen = player.global_position
+		_lost = 0.0
+		if not _aggro:
+			_aggro = true
+			_search = 0.0
+			_returning = false
+			if is_boss:
+				game.boss_started(self)
+	elif _aggro:
+		_lost += delta
+		if _lost > 3.0 or dist > sight * 2.2 or player.health <= 0.0:
+			# Lost her: go to where she was last seen and look around.
+			_aggro = false
+			_search = 6.0
 	_cooldown -= delta
 	_stagger -= delta
+	_move_left -= delta
+	_retreat -= delta
 	var wish := Vector3.ZERO
 	var speed: float = spec.speed
+	if not is_boss and not _retreated and health < max_health * 0.3 and _style in ["ranged", "charge"]:
+		# Badly hurt: break away for a moment, then fight on.
+		_retreated = true
+		_retreat = 2.2
+	state = "chase" if _aggro else ("search" if _search > 0.0 else ("return" if _returning else "patrol"))
 
 	if _stagger > 0.0:
-		pass
+		state = "stagger"
+	elif _move_left > 0.0:
+		state = "move"
+		_face(to_player, delta, 4.0)
+	elif _retreat > 0.0 and _aggro:
+		state = "retreat"
+		wish = -to_player.normalized()
+		speed *= 1.25
+	elif _aggro and spec.has("patterns") and _cooldown <= 0.0 and _attack_timer <= 0.0 and _charge <= 0.0 and _boss_move(player, dist):
+		state = "move"
 	elif _attack_timer > 0.0:
 		# Winding up: face the player, then the blow lands.
 		_attack_timer -= delta
 		_face(to_player, delta, 6.0)
 		if _tele:
 			(_tele.material_override as ShaderMaterial).set_shader_parameter("fill", 1.0 - _attack_timer / float(spec.windup))
+		state = "windup"
 		if _attack_timer <= 0.0:
 			_land_blow(player)
 			_end_telegraph(true)
@@ -244,6 +324,7 @@ func _physics_process(delta: float) -> void:
 		# Lunging along the way it faces (the model looks down +Z), turning
 		# a little toward her; the blow lands when it reaches her.
 		_charge -= delta
+		state = "charge"
 		_face(to_player, delta, 2.5)
 		wish = model.global_transform.basis.z
 		wish.y = 0.0
@@ -292,6 +373,27 @@ func _physics_process(delta: float) -> void:
 				speed *= 0.5
 				if randf() < 0.01:
 					_strafe = -_strafe
+	elif _search > 0.0:
+		# Searching: walk to where she was last seen, then cast about.
+		_search -= delta
+		var to_seen := _last_seen - global_position
+		to_seen.y = 0.0
+		if to_seen.length() > 1.5:
+			wish = _toward(_last_seen, to_seen)
+			speed *= 0.7
+		elif randf() < 0.02:
+			_last_seen += Vector3(randf_range(-4, 4), 0, randf_range(-4, 4))
+		if _search <= 0.0:
+			_returning = true
+	elif _returning:
+		var to_home := _home - global_position
+		to_home.y = 0.0
+		if to_home.length() > 2.0:
+			wish = _toward(_home, to_home)
+			speed *= 0.6
+		else:
+			_returning = false
+			health = minf(max_health, health + max_health * 0.25)   # it rests at its post
 	else:
 		_wander_timer -= delta
 		if _wander_timer <= 0.0:
@@ -308,7 +410,12 @@ func _physics_process(delta: float) -> void:
 	var horizontal := Vector3(velocity.x, 0, velocity.z).lerp(wish * speed, 1.0 - exp(-8.0 * delta))
 	velocity.x = horizontal.x
 	velocity.z = horizontal.z
-	velocity.y -= 22.0 * delta
+	if spec.has("fly") and _dive <= 0.0:
+		# Aloft: it holds a height over the ground, bobbing.
+		var want_y: float = _home.y + float(spec.fly) + sin(Time.get_ticks_msec() * 0.002) * 0.3
+		velocity.y = (want_y - global_position.y) * 3.0
+	elif _dive <= 0.0:
+		velocity.y -= 22.0 * delta
 	move_and_slide()
 	if wish.length() > 0.1 and _attack_timer <= 0.0:
 		_face(wish, delta, 8.0)
@@ -362,10 +469,10 @@ func _land_blow(player: Player3D) -> void:
 
 
 ## A bolt of its element, aimed where she will be; she can dodge it.
-func _cast_bolt(player: Player3D, colour: Color) -> void:
+func _cast_bolt(player: Player3D, colour: Color, yaw_offset := 0.0) -> void:
 	var from := global_position + Vector3(0, 1.35 * float(spec.get("scale", 1.0)), 0) + model.global_transform.basis.z * 0.6
 	var lead := player.velocity * 0.35
-	var aim := (player.global_position + Vector3(0, 1.0, 0) + lead - from).normalized()
+	var aim := (player.global_position + Vector3(0, 1.0, 0) + lead - from).normalized().rotated(Vector3.UP, yaw_offset)
 	var bolt := Arcana.Orb.new()
 	bolt.tint = colour
 	bolt.speed = 15.0
@@ -520,3 +627,199 @@ func _separation() -> Vector3:
 		if l > 0.01 and l < 1.8:
 			push += d / l * (1.8 - l) * 0.8
 	return push
+
+
+# ------------------------------------------------------------- senses ---
+
+## Can it see her? A ray from its eyes to her chest, blocked by the world.
+func _line_of_sight(player: Player3D) -> bool:
+	if not is_inside_tree():
+		return false
+	var eye := global_position + Vector3(0, 1.5 * float(spec.get("scale", 1.0)), 0)
+	var q := PhysicsRayQueryParameters3D.create(eye, player.global_position + Vector3(0, 1.1, 0), 1)
+	q.exclude = [get_rid()]
+	return get_world_3d().direct_space_state.intersect_ray(q).is_empty()
+
+
+# --------------------------------------------------------- boss moves ---
+
+var _dive := 0.0
+
+
+## The arena floor under a point: a flier's arena may be a sky isle, far
+## above the land the terrain reports.
+func _ground_at(x: float, z: float) -> float:
+	if spec.has("fly"):
+		return _home.y
+	return game.world.height_at(x, z)
+
+
+## Pick and start one of this phase's moves. False if none fits right now.
+func _boss_move(player: Player3D, dist: float) -> bool:
+	var options: Array = spec.patterns[clampi(phase - 1, 0, (spec.patterns as Array).size() - 1)]
+	var pick: String = options[randi() % options.size()]
+	var colour: Color = spec.get("element", Color(1, 0.8, 0.6))
+	match pick:
+		"melee":
+			if dist > float(spec.reach) * 0.95:
+				return false
+			_begin_attack()
+			return true
+		"charge":
+			if dist < 6.0 or dist > 18.0:
+				return false
+			_charge = 1.1
+			_play(spec.run, 1.6, true)
+			_show_telegraph(true)
+		"lines":
+			_move_lines(player, colour)
+		"ring":
+			_move_ring(colour)
+		"rain":
+			_move_rain(player, colour)
+		"volley":
+			_move_left = float(spec.windup)
+			_play(spec.attack[0], 1.0, true)
+			Arcana.circle(game, global_position, 1.6, colour, float(spec.windup), 1.5)
+			get_tree().create_timer(float(spec.windup)).timeout.connect(func():
+				if dead or not is_instance_valid(player):
+					return
+				for k in 5:
+					_cast_bolt(player, colour, (k - 2) * 0.22))
+		"dive":
+			_move_dive(player, colour)
+		"summon":
+			_adds = _adds.filter(func(a): return is_instance_valid(a) and not a.dead)
+			if _adds.size() >= 3 or not spec.has("adds"):
+				return false
+			_move_left = 1.0
+			_play("Spell_Simple_Shoot", 0.8, true)
+			Arcana.pillar(game, global_position, 1.2, 10.0, colour, 1.0)
+			for k in 2:
+				var a := randf() * TAU
+				var at := global_position + Vector3(cos(a), 0, sin(a)) * 5.0
+				at.y = _ground_at(at.x, at.z)
+				Arcana.circle(game, at, 1.4, colour, 0.9, 2.0)
+				_adds.append(game.spawn_enemy(spec.adds, at))
+	_cooldown = randf_range(1.5, 2.5) / (1.0 + (phase - 1) * 0.25)
+	return true
+
+
+## Three lines of roots (or light) racing out toward her; she has the
+## wind-up to step out of them.
+func _move_lines(player: Player3D, colour: Color) -> void:
+	var windup := 0.95 - (phase - 1) * 0.1
+	_move_left = windup + 0.2
+	_play(spec.get("heavy", spec.attack[0]), 0.9, true)
+	var to := player.global_position - global_position
+	to.y = 0.0
+	var base := to.normalized() if to.length() > 0.1 else model.global_transform.basis.z
+	var origin := global_position
+	var marks: Array = []
+	for k in 3:
+		var dir := base.rotated(Vector3.UP, (k - 1) * 0.38)
+		marks.append([dir, _line_mark(origin, dir, 15.0, colour, windup)])
+	get_tree().create_timer(windup).timeout.connect(func():
+		if dead:
+			return
+		for m in marks:
+			var dir: Vector3 = m[0]
+			for i in 6:
+				var at: Vector3 = origin + dir * (2.0 + i * 2.5)
+				at.y = _ground_at(at.x, at.z)
+				Arcana.sparks(game, at + Vector3(0, 0.3, 0), colour, 8, 5.0, 0.1)
+			var rel: Vector3 = game.player.global_position - origin
+			rel.y = 0.0
+			var along := clampf(rel.dot(dir), 0.0, 15.0)
+			if (rel - dir * along).length() < 1.1 and along > 0.5 and not game.player.dead:
+				game.player.hurt(float(spec.damage) * 0.9, origin)
+				game.on_player_hit(float(spec.damage) * 0.9))
+
+
+func _line_mark(origin: Vector3, dir: Vector3, length: float, colour: Color, life: float) -> MeshInstance3D:
+	var mi := MeshInstance3D.new()
+	var pm := PlaneMesh.new()
+	pm.size = Vector2(2.0, length)
+	mi.mesh = pm
+	var m := StandardMaterial3D.new()
+	m.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	m.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+	m.albedo_color = Color(colour.r, colour.g, colour.b, 0.18)
+	m.no_depth_test = false
+	mi.material_override = m
+	mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	game.game.add_child(mi)
+	var mid := origin + dir * (length * 0.5 + 0.5)
+	mid.y = _ground_at(mid.x, mid.z) + 0.08
+	mi.global_position = mid
+	mi.global_basis = Basis(Vector3.UP, atan2(dir.x, dir.z))
+	var t := mi.create_tween()
+	t.tween_property(m, "albedo_color:a", 0.55, life)
+	t.tween_property(m, "albedo_color:a", 0.0, 0.25)
+	t.tween_callback(mi.queue_free)
+	return mi
+
+
+## A shockwave all round it. Airborne, she is safe.
+func _move_ring(colour: Color) -> void:
+	var windup := 0.9
+	var radius := 6.5
+	_move_left = windup + 0.2
+	_play(spec.get("heavy", spec.attack[0]), 0.9, true)
+	Arcana.circle(game, global_position, radius, colour, windup, 0.6)
+	get_tree().create_timer(windup).timeout.connect(func():
+		if dead:
+			return
+		game.ring_burst(global_position, radius, colour)
+		var p: Player3D = game.player
+		var ground: float = _ground_at(p.global_position.x, p.global_position.z)
+		if p.global_position.distance_to(global_position) < radius and p.global_position.y - ground < 0.6 and not p.dead:
+			p.hurt(float(spec.damage), global_position)
+			game.on_player_hit(float(spec.damage)))
+
+
+## Crystal shards on glowing circles: one on her, four around.
+func _move_rain(player: Player3D, colour: Color) -> void:
+	var windup := 1.1 - (phase - 1) * 0.1
+	_move_left = 0.6
+	_play("Spell_Simple_Shoot", 0.8, true)
+	var spots: Array = [player.global_position]
+	for k in 4 + phase:
+		var a := randf() * TAU
+		spots.append(player.global_position + Vector3(cos(a), 0, sin(a)) * randf_range(2.5, 6.0))
+	for at in spots:
+		var g: Vector3 = at
+		g.y = _ground_at(g.x, g.z)
+		Arcana.circle(game, g, 1.7, colour, windup, 1.8)
+		get_tree().create_timer(windup).timeout.connect(func():
+			if dead:
+				return
+			Arcana.pillar(game, g, 0.6, 7.0, colour, 0.5)
+			Arcana.sparks(game, g + Vector3(0, 0.4, 0), colour, 16, 6.0, 0.1)
+			var p: Player3D = game.player
+			if Vector2(p.global_position.x - g.x, p.global_position.z - g.z).length() < 1.7 and not p.dead:
+				p.hurt(float(spec.damage) * 0.8, g)
+				game.on_player_hit(float(spec.damage) * 0.8))
+
+
+## It marks where she stands, then swoops onto it.
+func _move_dive(player: Player3D, colour: Color) -> void:
+	var windup := 0.9
+	var target := player.global_position
+	target.y = _ground_at(target.x, target.z)
+	_move_left = windup + 0.6
+	Arcana.circle(game, target, 2.6, colour, windup, 2.5)
+	get_tree().create_timer(windup).timeout.connect(func():
+		if dead:
+			return
+		_dive = 0.6
+		var t := create_tween()
+		t.tween_property(self, "global_position", target + Vector3(0, 0.2, 0), 0.32).set_ease(Tween.EASE_IN)
+		t.tween_callback(func():
+			game.ring_burst(target, 2.6, colour)
+			var p: Player3D = game.player
+			if p.global_position.distance_to(target) < 2.6 and not p.dead:
+				p.hurt(float(spec.damage) * 1.2, target)
+				game.on_player_hit(float(spec.damage) * 1.2))
+		t.tween_interval(0.3)
+		t.tween_callback(func(): _dive = 0.0))

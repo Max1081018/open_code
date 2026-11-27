@@ -32,6 +32,7 @@ var _t := 0.0
 var _cast_left := 0.0
 var _last_pos := Vector3.ZERO
 var _placed := false
+var _rel := Vector3.ZERO
 
 var _palm: MeshInstance3D
 var _ring: MeshInstance3D
@@ -101,15 +102,20 @@ func _process(delta: float) -> void:
 	_orbit_left -= delta
 	mode = _mode_now()
 	var target := _target()
+	# Positions are smoothed relative to her body, so the blade keeps pace
+	# when she sprints and only its hover offset drifts.
+	var anchor: Vector3 = player.global_position
 	if not _placed:
 		global_transform = target
+		_rel = target.origin - anchor
 		_placed = true
 	else:
 		var k := 1.0 - exp(-float(RATE[mode]) * delta)
 		var cur := global_transform
 		var q := cur.basis.get_rotation_quaternion().slerp(target.basis.get_rotation_quaternion(), k)
 		var s := target.basis.get_scale()
-		global_transform = Transform3D(Basis(q).scaled(s), cur.origin.lerp(target.origin, k))
+		_rel = _rel.lerp(target.origin - anchor, k)
+		global_transform = Transform3D(Basis(q).scaled(s), anchor + _rel)
 	# Pulses from sudden moves of the weapon.
 	var speed := global_position.distance_to(_last_pos) / maxf(delta, 0.001)
 	_last_pos = global_position
@@ -165,10 +171,13 @@ func _target() -> Transform3D:
 	# At rest: upright beside the hand, tilted out from her body, bobbing.
 	var bob := sin(_t * 2.1) * 0.035
 	var tilt := 0.32 + sin(_t * 0.9) * 0.05
-	var up := (Vector3.UP * cos(tilt) + side * sin(tilt) + fwd * 0.12).normalized()
+	# Moving fast, it streams back like a pennant.
+	var v: Vector3 = player.get("velocity")
+	var spd := clampf(Vector2(v.x, v.z).length() / 8.0, 0.0, 1.0)
+	var up := (Vector3.UP * cos(tilt) + side * sin(tilt) + fwd * (0.12 - 1.1 * spd)).normalized()
 	var x := fwd.rotated(up, sin(_t * 0.7) * 0.35)
 	x = (x - up * x.dot(up)).normalized()
-	var pos := g.origin + side * 0.24 + fwd * 0.02 + Vector3.UP * (0.02 + bob)
+	var pos := g.origin + side * 0.24 + fwd * (0.02 - 0.15 * spd) + Vector3.UP * (0.02 + bob)
 	return Transform3D(Basis(x, up, x.cross(up)).scaled(s), pos)
 
 

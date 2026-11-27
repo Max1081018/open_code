@@ -311,6 +311,11 @@ func tracker() -> Dictionary:
 		var t: Dictionary = adv.tracker()
 		if not t.is_empty():
 			return t
+	# After the chapter, its guardian waits (unless a quest is tracked).
+	if adv and adv.done and tracked == "" and game.get("bosses"):
+		var g: Dictionary = game.bosses.pending(String(adv.island))
+		if not g.is_empty():
+			return g
 	if tracked != "":
 		var q := quest(tracked)
 		var s: String = state.get(tracked, "")

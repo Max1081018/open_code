@@ -59,6 +59,8 @@ var defs := {
 	"glowshard": {"name": "Glowshard", "icon": "items/ore_diamond", "kind": Kind.ORE,
 		"stack": 999, "glow": 25.0,
 		"desc": "Crystallised light. Feeds your lantern. Grows in the Crystal Hollows."},
+	"starsilver": {"name": "Starsilver", "icon": "items/ore_diamond", "kind": Kind.ORE, "stack": 999,
+		"desc": "Metal that fell with the stars, found only in rare glowing veins. Forges the finest arcane gear."},
 	"ruby": {"name": "Ruby", "icon": "items/ore_ruby", "kind": Kind.ORE, "stack": 999,
 		"desc": "A warm red gem. Wardstones are set with them."},
 	"emerald": {"name": "Emerald", "icon": "items/ore_emerald", "kind": Kind.ORE, "stack": 999,
@@ -110,6 +112,9 @@ var defs := {
 	"lumen_sword": {"name": "Starfall Crystal", "icon": "items/sword_diamond", "kind": Kind.SWORD,
 		"stack": 1, "tier": 6, "damage": 58, "speed": 0.24,
 		"desc": "Sheds light as it cuts."},
+	"astral_edge": {"name": "Astral Edge", "icon": "items/sword_diamond", "kind": Kind.SWORD,
+		"stack": 1, "tier": 7, "damage": 66, "power": 6, "speed": 0.26,
+		"desc": "Starsilver folded with captured starlight. It floats lighter than air in her magic and cuts like falling stars."},
 
 	# --- Placeables -----------------------------------------------------------
 	"wood_hammer": {"name": "Builder's Hammer", "icon": "items/toolHammer", "kind": Kind.HAMMER,
@@ -233,6 +238,7 @@ var recipes := [
 	["gold_sword", 1, Station.ANVIL, {"gold_ore": 12, "wood": 2}],
 	["lumen_pickaxe", 1, Station.ANVIL, {"glowshard": 20, "gold_ore": 6, "emerald": 2}],
 	["lumen_sword", 1, Station.ANVIL, {"glowshard": 18, "gold_ore": 6, "ruby": 2}],
+	["astral_edge", 1, Station.ANVIL, {"starsilver": 6, "glowshard": 10, "lumen_core": 1}],
 	["wardstone", 1, Station.ANVIL, {"stone": 15, "glowshard": 6, "ruby": 1}],
 	["glow_flask", 1, Station.ANVIL, {"glowshard": 3}],
 

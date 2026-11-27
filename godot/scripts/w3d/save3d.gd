@@ -75,6 +75,8 @@ static func capture(game: Node) -> Dictionary:
 		"character": String(game.get("character_id")) if game.get("character_id") else "heroine",
 		"start_island": String(game.get("start_island")) if game.get("start_island") else "",
 		"adventure": game.adventure.to_dict() if game.get("adventure") else {},
+		"secrets": game.secrets.to_dict() if game.get("secrets") else {},
+		"guardians": game.bosses.to_dict() if game.get("bosses") else {},
 	}
 
 
@@ -110,3 +112,7 @@ static func restore(game: Node, s: Dictionary) -> void:
 	game.time_of_day = float(s.get("time", game.time_of_day))
 	if game.get("adventure") and s.has("adventure"):
 		game.adventure.from_dict(s.adventure)
+	if game.get("secrets") and s.has("secrets"):
+		game.secrets.from_dict(s.secrets)
+	if game.get("bosses") and s.has("guardians"):
+		game.bosses.from_dict(s.guardians)
