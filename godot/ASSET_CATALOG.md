@@ -140,14 +140,15 @@ re-textured (downsized) and some recoloured.
 | The risen dead; shades (tinted) | [Free Stylized Dark Fantasy Skeleton V1](https://sketchfab.com/3d-models/13b75487badc4c54a6e1644376fe6900) | HotstrikeStudio |
 | Rusted guards (tinted) | [knight](https://sketchfab.com/3d-models/b05342642ee1475985c746a5b64332fc) | sanyaork |
 | The Rusted Warden (boss) | [Cursed Knight - UE5 Character (Game Ready)](https://sketchfab.com/3d-models/f204e0ad3af645bcb0ecffd9e9ae9a15) | Blue-Spirit |
-| Pickaxes | [Survival Pickaxe](https://sketchfab.com/3d-models/d1fe496bfc16495187d5515433fd1eb8) | Tnkii |
-| Axes, hammers | [Survival Game Tool Pack \| FREE \| Agustin Honnun](https://sketchfab.com/3d-models/0c91f8a91314413e8171cb7ecdbee08d) | Agustin_Honnun |
 | Wood/copper/iron swords | [Damascus Longsword (game ready asset)](https://sketchfab.com/3d-models/32bbfe5bbad74d8f9640a60251ec31e9) | apariciosilva3D |
 | Silver/gold/lumen swords | [Chevalier Sword](https://sketchfab.com/3d-models/b2662f2666a844e8a1bd0e7c4a7672d8) | rubenve |
-| Torch | [Torch stick](https://sketchfab.com/3d-models/d8eadee1a5c14483aade99b1fe5bc150) | bumstrum |
-| Iron shield | [Medieval Shield](https://sketchfab.com/3d-models/b98b8f64d935415aab0fe9b70074511f) | CGArtem |
-| Wood shield | [Medieval Shield](https://sketchfab.com/3d-models/471f1dfb2d1d40d6994be92047de3645) | Kirhl |
-| Fishing rod | [Fishing Rod](https://sketchfab.com/3d-models/ab78aaf5ea154edcabdc118196916ddd) | Inuciian |
+| Pickaxes | [Pickaxe Hand-painted Model](https://sketchfab.com/3d-models/f08fc8ed1c6b4ae0af3cbc4b43f24dd5) | sunkeiku |
+| Axes | [Stylized Fantasy Axe](https://sketchfab.com/3d-models/d5226bf3b54c446dbb3ae673b4cab21e) | Enkarra |
+| Hammers | [Stylized Hammer \| Hand-Painted Fantasy Weapon](https://sketchfab.com/3d-models/d5b61f4716a04de886d3422f1ac69ace) | angeldavidvillanueva |
+| Torch | [Low poly stylized Torch](https://sketchfab.com/3d-models/38f972c56e3a45a197b207f20632eecb) | MMandali (rasmon) |
+| Iron shield | [Lowpoly stylized shield](https://sketchfab.com/3d-models/e1e637bf26c04164b4e26dd772fecb2f) | chudasamaravirajsinh124 |
+| Wood shield | [Warrior's Shield Stylized - Gameready](https://sketchfab.com/3d-models/b74b97eed3284988a85a0e76593a1828) | Andrew (nimzuk) |
+| Fishing rod | [Stylized Old Fishing Rod Low Poly](https://sketchfab.com/3d-models/82973c905293422b8c47e0bf82170757) | alexi.smnd |
 
 | Castles on the far hills | [Fantastic castle](https://sketchfab.com/3d-models/08a018e4e7b3486dbec7b0341be3aeb4) | lepkarepka14 |
 | Waterfall on the far hills | [Waterfall display at Hilton, Waikiki Hawaii](https://sketchfab.com/3d-models/bd4fb9aaf01043a29591ac9dc4a0ead8) | jtressle |
