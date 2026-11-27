@@ -14,6 +14,9 @@ var _next := 0
 var _music_a: AudioStreamPlayer
 var _music_b: AudioStreamPlayer
 var _music_current := ""
+var _amb_a: AudioStreamPlayer
+var _amb_b: AudioStreamPlayer
+var _amb_current := ""
 var _last_played := {}  ## name -> msec, to stop machine-gun repeats
 
 
@@ -26,11 +29,15 @@ func _ready() -> void:
 		_pool.append(player)
 	_music_a = _make_music_player()
 	_music_b = _make_music_player()
+	_amb_a = _make_music_player()
+	_amb_b = _make_music_player()
+	_amb_a.bus = "Ambient"
+	_amb_b.bus = "Ambient"
 	_load_dir(SFX_DIR)
 
 
 func _ensure_buses() -> void:
-	for bus_name in ["Music", "SFX", "Voice"]:
+	for bus_name in ["Music", "SFX", "Voice", "Ambient"]:
 		if AudioServer.get_bus_index(bus_name) == -1:
 			AudioServer.add_bus()
 			AudioServer.set_bus_name(AudioServer.bus_count - 1, bus_name)
@@ -105,6 +112,33 @@ func play_music(track: String, fade := 1.6) -> void:
 	tween.tween_property(incoming, "volume_db", 0.0, fade)
 	tween.tween_property(outgoing, "volume_db", -60.0, fade)
 	tween.chain().tween_callback(outgoing.stop)
+
+
+## The place's own sound (forest birds, cave drips): a looping bed on the
+## Ambient bus, crossfaded when she moves between places. "" = silence.
+func play_ambience(track: String, volume_db := -6.0, fade := 2.5) -> void:
+	if track == _amb_current:
+		return
+	_amb_current = track
+	var incoming := _amb_b if _amb_a.playing else _amb_a
+	var outgoing := _amb_a if incoming == _amb_b else _amb_b
+	var tween := create_tween().set_parallel()
+	tween.tween_property(outgoing, "volume_db", -60.0, fade)
+	tween.chain().tween_callback(outgoing.stop)
+	var path := "res://assets/audio/ambience/%s.ogg" % track
+	if track == "" or not ResourceLoader.exists(path):
+		return
+	var stream: AudioStream = load(path)
+	if "loop" in stream:
+		stream.loop = true
+	incoming.stream = stream
+	incoming.volume_db = -50.0
+	incoming.play()
+	create_tween().tween_property(incoming, "volume_db", volume_db, fade)
+
+
+func current_music() -> String:
+	return _music_current
 
 
 func stop_music(fade := 1.0) -> void:

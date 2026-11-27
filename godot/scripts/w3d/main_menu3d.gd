@@ -243,7 +243,9 @@ func _open_settings() -> void:
 		Settings.apply_preset(i))
 	_choice(box, "Shadows", ["Off", "On"], 1 if Settings.shadows else 0, func(i): Settings.shadows = i == 1)
 	_choice(box, "Bloom", ["Off", "On"], 1 if Settings.bloom else 0, func(i): Settings.bloom = i == 1)
+	_slider(box, "Master", Settings.master_volume, func(v): Settings.master_volume = v)
 	_slider(box, "Music", Settings.music_volume, func(v): Settings.music_volume = v)
+	_slider(box, "Ambience", Settings.ambient_volume, func(v): Settings.ambient_volume = v)
 	_slider(box, "Effects", Settings.sfx_volume, func(v): Settings.sfx_volume = v)
 	_slider(box, "Voices", Settings.voice_volume, func(v): Settings.voice_volume = v)
 	var close := UiKit.button("Done", func():

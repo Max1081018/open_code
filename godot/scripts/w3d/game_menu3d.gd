@@ -657,6 +657,24 @@ func _fill_detail() -> void:
 		var b := _button("Use", Vector2(x, 794), Vector2(260, 62), _detail)
 		b.pressed.connect(_use)
 		x += 276.0
+	elif Items.kind(s.id) == Items.Kind.RELIC:
+		# Relics are worn (three slots) for their effect.
+		var worn: bool = game.play.wearing(s.id)
+		var full: bool = game.play.relics.size() >= Play3D.RELIC_SLOTS
+		var b := _button("Remove" if worn else ("Slots full" if full else "Wear"), Vector2(x, 794), Vector2(260, 62), _detail, not worn)
+		b.disabled = not worn and full
+		var rid: String = s.id
+		b.pressed.connect(func():
+			if game.play.wearing(rid):
+				game.play.unequip_relic(rid)
+			else:
+				game.play.equip_relic(rid)
+			Sfx.play("craft", -4.0)
+			show_tab("bag"))
+		x += 276.0
+		var worn_l := _label("Worn relics  %d / %d" % [game.play.relics.size(), Play3D.RELIC_SLOTS], 22, GOLD, _num_font)
+		worn_l.position = Vector2(300, 744)
+		_detail.add_child(worn_l)
 	if not (s.id in KEEP) and Items.kind(s.id) != Items.Kind.KEY:
 		var d := _button("Confirm?" if _discard_armed else "Discard", Vector2(x, 794), Vector2(260, 62), _detail, false)
 		if _discard_armed:
@@ -1700,7 +1718,9 @@ func _build_settings() -> void:
 		["slider", "Camera sensitivity", Settings.look_sensitivity, 0.4, 2.0, _set_sens],
 		["slider", "Button size", Settings.control_scale, 0.7, 1.4, _set_button_size],
 		["slider", "Button opacity", Settings.control_opacity, 0.3, 1.0, _set_button_opacity],
+		["slider", "Master volume", Settings.master_volume, 0.0, 1.0, _set_master],
 		["slider", "Music", Settings.music_volume, 0.0, 1.0, _set_music],
+		["slider", "Ambience", Settings.ambient_volume, 0.0, 1.0, _set_ambient],
 		["slider", "Sound effects", Settings.sfx_volume, 0.0, 1.0, _set_sfx],
 		["slider", "Voices", Settings.voice_volume, 0.0, 1.0, _set_voice],
 	]
@@ -1858,6 +1878,16 @@ func _set_aa(i: int) -> void:
 
 func _set_view(i: int) -> void:
 	Settings.view_distance = i
+
+
+func _set_master(v: float) -> void:
+	Settings.master_volume = v
+	Settings._apply_audio()
+
+
+func _set_ambient(v: float) -> void:
+	Settings.ambient_volume = v
+	Settings._apply_audio()
 
 
 func _set_music(v: float) -> void:

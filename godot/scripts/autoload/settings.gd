@@ -40,7 +40,9 @@ var characters_3d := true
 ## The player is the 3D hooded hero (false: the hand-drawn cut-out hero).
 var player_3d := true
 
+var master_volume := 1.0
 var music_volume := 0.7
+var ambient_volume := 0.8
 var sfx_volume := 0.9
 var voice_volume := 1.0
 var control_scale := 1.0  ## 0.7 .. 1.4, multiplies every on-screen control
@@ -122,6 +124,8 @@ func load_settings() -> void:
 	antialiasing = config.get_value("graphics", "antialiasing", antialiasing)
 	debug_collision = config.get_value("graphics", "debug_collision", debug_collision)
 	music_volume = config.get_value("audio", "music", music_volume)
+	master_volume = config.get_value("audio", "master", master_volume)
+	ambient_volume = config.get_value("audio", "ambient", ambient_volume)
 	sfx_volume = config.get_value("audio", "sfx", sfx_volume)
 	voice_volume = config.get_value("audio", "voice", voice_volume)
 	control_scale = config.get_value("controls", "scale", control_scale)
@@ -160,6 +164,8 @@ func save_settings() -> void:
 	config.set_value("graphics", "antialiasing", antialiasing)
 	config.set_value("graphics", "debug_collision", debug_collision)
 	config.set_value("audio", "music", music_volume)
+	config.set_value("audio", "master", master_volume)
+	config.set_value("audio", "ambient", ambient_volume)
 	config.set_value("audio", "sfx", sfx_volume)
 	config.set_value("audio", "voice", voice_volume)
 	config.set_value("controls", "scale", control_scale)
@@ -183,6 +189,10 @@ func _detect_quality() -> void:
 
 
 func _apply_audio() -> void:
+	AudioServer.set_bus_volume_db(0, linear_to_db(maxf(master_volume, 0.0001)))
+	var amb := AudioServer.get_bus_index("Ambient")
+	if amb >= 0:
+		AudioServer.set_bus_volume_db(amb, linear_to_db(maxf(ambient_volume, 0.0001)))
 	var music := AudioServer.get_bus_index("Music")
 	var sfx := AudioServer.get_bus_index("SFX")
 	if music >= 0:

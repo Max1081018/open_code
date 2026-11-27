@@ -104,7 +104,10 @@ func _make_chest(id: String, at: Vector3, loot: Array) -> void:
 func _open_chest(c: Array) -> void:
 	opened[c[0]] = true
 	var node: Node3D = c[1]
-	for it in c[2]:
+	var loot: Array = (c[2] as Array).duplicate()
+	if game.play.wearing("relic_luckstone"):
+		loot.append(["glowshard", 4])   # the Luckstone's extra find
+	for it in loot:
 		if int(it[1]) > 0:
 			game.play.spawn_pickup(it[0], it[1], node.global_position + Vector3(0, 1.2, 0), Vector3(randf_range(-2, 2), 5, randf_range(-2, 2)))
 	game.play._star_ring(node.global_position, 2.5, Color(0.6, 0.9, 1.0))
@@ -267,6 +270,19 @@ func _motes(col: Color, amount: int, spread: float) -> CPUParticles3D:
 
 
 # ------------------------------------------------------------ process ---
+
+## Seer's Eye and Deepsong: hidden chests' and veins' motes carry farther.
+func set_sight(seer: bool, deepsong: bool) -> void:
+	for c in _chests:
+		if is_instance_valid(c[1]):
+			for m in (c[1] as Node3D).find_children("*", "CPUParticles3D", true, false):
+				(m as CPUParticles3D).visibility_range_end = 220.0 if seer else 60.0
+	for v in _veins:
+		if is_instance_valid(v[1]):
+			for m in (v[1] as Node3D).find_children("*", "CPUParticles3D", true, false):
+				(m as CPUParticles3D).scale_amount_max = 4.0 if deepsong else 1.0
+				(m as CPUParticles3D).visibility_range_end = 260.0 if deepsong else 60.0
+
 
 func _process(delta: float) -> void:
 	if game == null or game.player == null:

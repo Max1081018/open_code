@@ -452,6 +452,7 @@ func _process(delta: float) -> void:
 					out.blit_rect(_strip[i], Rect2i(Vector2i.ZERO, img.get_size()), Vector2i(i * w, 0))
 				out.save_png(_args.shot)
 				get_tree().quit()
+	_soundscape(delta)
 	_autosave_timer -= delta
 	if _autosave_timer <= 0.0:
 		_autosave_timer = 45.0
@@ -462,6 +463,24 @@ func _process(delta: float) -> void:
 	if grass:
 		grass.set_player(player.global_position)
 	water.global_position = Vector3(snappedf(player.global_position.x, 50.0), TerrainGen.WATER, snappedf(player.global_position.z, 50.0))
+
+
+## Music and ambience follow the moment: a guardian's fight, night or day,
+## forest or cave, checked twice a second.
+var _sound_check := 0.0
+
+
+func _soundscape(delta: float) -> void:
+	_sound_check -= delta
+	if _sound_check > 0.0 or player == null:
+		return
+	_sound_check = 0.5
+	var fighting: bool = play.boss != null and is_instance_valid(play.boss) and not play.boss.dead and play.boss._aggro
+	Sfx.play_music("boss" if fighting else "explore")
+	var b: int = world.biome_at(player.global_position)
+	var under: bool = player.global_position.y < world.height_at(player.global_position.x, player.global_position.z) - 3.0
+	var bed := "cave" if under else ("forest" if b in [TerrainGen.Biome.FOREST, TerrainGen.Biome.JUNGLE, TerrainGen.Biome.DARK_FOREST] else "")
+	Sfx.play_ambience(bed, -8.0 if time_of_day > 0.25 and time_of_day < 0.78 else -12.0)
 
 
 ## Draw items by system, for the --stats capture: [nodes, surfaces, shadow casters].

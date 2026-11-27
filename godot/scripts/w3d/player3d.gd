@@ -39,6 +39,13 @@ var health := 100.0
 ## both from what she wears (set by Play3D from her relics).
 var armor := 0.0
 var damage_reduction := 0.0
+## From relics (Play3D.apply_relics): speed on foot, extra air jumps,
+## stamina recovery and swimming speed.
+var move_mult := 1.0
+var air_jumps := 0
+var _air_jumps_left := 0
+var stamina_regen_mult := 1.0
+var swim_mult := 1.0
 ## The last blow's damage after DamageCalc (what the HUD shows).
 var last_hit := 0
 var max_health := 100.0
@@ -478,7 +485,7 @@ func _physics_process(delta: float) -> void:
 	_charge_glow()
 	_stamina_wait -= delta
 	if _stamina_wait <= 0.0:
-		stamina = minf(max_stamina, stamina + delta * 22.0)
+		stamina = minf(max_stamina, stamina + delta * 22.0 * stamina_regen_mult)
 
 	# Actions (attack/use) lock movement to a slow drift while they play.
 	_action -= delta
@@ -508,8 +515,9 @@ func _physics_process(delta: float) -> void:
 		speed = SPRINT
 		stamina -= delta * 14.0
 		_stamina_wait = 0.6
+	speed *= move_mult
 	if swimming:
-		speed = SWIM
+		speed = SWIM * swim_mult
 	if gliding:
 		speed = GLIDE_SPEED
 	if _action > 0.0:
@@ -549,6 +557,13 @@ func _physics_process(delta: float) -> void:
 			velocity.y = JUMP
 			_play("Jump_Start", 1.4, true)
 			Sfx.play("jump", -8.0)
+		elif jump_now and not is_on_floor() and _air_jumps_left > 0 and _spend(8.0):
+			# Featherbone: a second leap on the air, with a puff of feathers.
+			_air_jumps_left -= 1
+			velocity.y = JUMP * 0.9
+			_play("Jump_Start", 1.6, true)
+			Arcana.sparks(get_parent(), global_position + Vector3(0, 0.3, 0), Color(1, 1, 1), 16, 3.0, 0.08)
+			Sfx.play("jump", -6.0, 0.1, 1.2)
 		elif jump_now and not is_on_floor() and _air_time > 0.2 and stamina > 5.0:
 			_set_glide(true)
 	var was_air := not is_on_floor()
@@ -570,6 +585,7 @@ func _physics_process(delta: float) -> void:
 			Sfx.play("land", -4.0)
 		_air_time = 0.0
 		_glided = false
+		_air_jumps_left = air_jumps
 	else:
 		_air_time += delta
 		if gliding:

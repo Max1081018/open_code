@@ -77,6 +77,7 @@ static func capture(game: Node) -> Dictionary:
 		"adventure": game.adventure.to_dict() if game.get("adventure") else {},
 		"secrets": game.secrets.to_dict() if game.get("secrets") else {},
 		"guardians": game.bosses.to_dict() if game.get("bosses") else {},
+		"relics": game.play.relics.duplicate(),
 	}
 
 
@@ -116,3 +117,7 @@ static func restore(game: Node, s: Dictionary) -> void:
 		game.secrets.from_dict(s.secrets)
 	if game.get("bosses") and s.has("guardians"):
 		game.bosses.from_dict(s.guardians)
+	game.play.relics.clear()
+	for r in s.get("relics", []):
+		game.play.relics.append(String(r))
+	game.play.apply_relics()

@@ -38,7 +38,10 @@ func setup(the_game: Node) -> void:
 	# Her own Moonblade fights and gathers alike: no starting axe or pickaxe.
 	for start in [["moonblade", 1], ["apple", 3], ["torch", 4]]:
 		inventory.add(start[0], start[1])
-	inventory.changed.connect(func(): inventory_changed.emit())
+	inventory.changed.connect(func():
+		inventory_changed.emit()
+		if not relics.is_empty():
+			apply_relics())
 	game.player.swung.connect(_on_swing)
 	game.player.burned.connect(func():
 		_shake = maxf(_shake, 0.6)
@@ -712,7 +715,7 @@ func _on_enemy_died(e: Enemy3D) -> void:
 	enemy_killed.emit(e)
 	prog.gain(int(float(e.spec.get("health", 30.0)) / 3.0))
 	for drop in e.spec.get("loot", []):
-		if randf() < drop[1]:
+		if randf() < minf(1.0, float(drop[1]) * (luck() if float(drop[1]) < 0.5 else 1.0)):
 			spawn_pickup(drop[0], randi_range(1, drop[2]), e.global_position + Vector3(0, 1, 0),
 				Vector3(randf_range(-2, 2), 4.5, randf_range(-2, 2)))
 	if e.is_boss:
@@ -791,7 +794,7 @@ var _buff_time := 0.0
 func attacker_stats() -> Dictionary:
 	var id := held_id()
 	var weapon: float = float(Items.def(id).get("damage", 4)) if id != "" and Items.def(id).has("damage") else 4.0
-	var buff := _buff if _buff_time > 0.0 else 1.0
+	var buff := (_buff if _buff_time > 0.0 else 1.0) * relic_damage_mult()
 	return {"weapon": weapon, "level": prog.level, "buff": buff,
 		"crit_chance": DamageCalc.CRIT_CHANCE, "crit_damage": DamageCalc.CRIT_DAMAGE}
 
@@ -937,3 +940,62 @@ func _update_orbit(delta: float) -> void:
 			hit(enemy, mult, p.global_position, false, "arcane")
 			Arcana.sparks(game, blade, VIOLET, 10, 4.0, 0.07)
 			energy = minf(BURST_COST, energy + 1.5)
+
+
+# -------------------------------------------------------------- relics ---
+
+## Worn relics (up to three). Each does what its card says:
+##   Bulwark Sigil   a quarter less harm (DamageCalc guard)
+##   Swiftroot       12% faster on foot
+##   Featherbone     a second jump in the air
+##   Ember Heart     her blows burn: +15% damage
+##   Luckstone       rare drops twice as likely; chests give one more find
+##   Moth Lantern    stamina returns half again as fast
+##   Tidecaller      swims 60% faster
+##   Seer's Eye      hidden places glimmer from much farther away
+##   Deepsong Shell  starsilver veins hum: their light shows from afar
+const RELIC_SLOTS := 3
+var relics: Array[String] = []
+signal relics_changed
+
+
+func wearing(id: String) -> bool:
+	return id in relics
+
+
+func equip_relic(id: String) -> bool:
+	if Items.kind(id) != Items.Kind.RELIC or wearing(id) or relics.size() >= RELIC_SLOTS or inventory.count(id) <= 0:
+		return false
+	relics.append(id)
+	apply_relics()
+	return true
+
+
+func unequip_relic(id: String) -> void:
+	relics.erase(id)
+	apply_relics()
+
+
+## Push every worn relic's effect onto the systems it changes.
+func apply_relics() -> void:
+	# A relic no longer carried cannot be worn.
+	relics = relics.filter(func(r): return inventory.count(r) > 0)
+	var p: Player3D = game.player
+	p.damage_reduction = 0.25 if wearing("relic_bulwark") else 0.0
+	p.move_mult = 1.12 if wearing("relic_swiftroot") else 1.0
+	p.air_jumps = 1 if wearing("relic_featherbone") else 0
+	p.stamina_regen_mult = 1.5 if wearing("relic_moth_lantern") else 1.0
+	p.swim_mult = 1.6 if wearing("relic_tidecaller") else 1.0
+	if game.get("secrets"):
+		game.secrets.set_sight(wearing("relic_seers_eye"), wearing("relic_deepsong"))
+	relics_changed.emit()
+
+
+## Ember Heart's share of her damage.
+func relic_damage_mult() -> float:
+	return 1.15 if wearing("relic_ember_heart") else 1.0
+
+
+## Luckstone: how much likelier a rare drop is.
+func luck() -> float:
+	return 2.0 if wearing("relic_luckstone") else 1.0
