@@ -131,6 +131,9 @@ var crystal: Node3D
 ## The town's buildings from ArchKit, each one mesh with a box collider
 ## (the gate only on its pylons), and the plaza's star fountain.
 func _build_kit(gen: TerrainGen) -> void:
+	# All the kit's buildings become one mesh with a surface per material
+	# (a handful of draw calls for the whole town instead of hundreds).
+	var tools := {}   ## Material -> SurfaceTool
 	for spec in KIT:
 		var at := Vector3(spec[1], 0, spec[2])
 		var o: Dictionary = spec[3]
@@ -156,10 +159,14 @@ func _build_kit(gen: TerrainGen) -> void:
 		add_child(holder)
 		holder.position = at
 		holder.rotation.y = yaw
-		var mi := MeshInstance3D.new()
-		mi.mesh = mesh
-		mi.visibility_range_end = 1400.0
-		holder.add_child(mi)
+		var place := Transform3D(Basis(Vector3.UP, yaw), at)
+		for si in mesh.get_surface_count():
+			var mat: Material = mesh.surface_get_material(si)
+			if not tools.has(mat):
+				var st := SurfaceTool.new()
+				st.begin(Mesh.PRIMITIVE_TRIANGLES)
+				tools[mat] = st
+			(tools[mat] as SurfaceTool).append_from(mesh, si, place)
 		var body := StaticBody3D.new()
 		holder.add_child(body)
 		var box := mesh.get_aabb()
@@ -168,6 +175,15 @@ func _build_kit(gen: TerrainGen) -> void:
 				_box_shape(body, Vector3(sx * (o.span * 0.5 + 0.8), 3.5, 0), Vector3(2.0, 7.0, 2.0))
 		else:
 			_box_shape(body, box.get_center(), box.size * Vector3(0.96, 1.0, 0.96))
+	var merged := ArrayMesh.new()
+	for mat in tools:
+		(tools[mat] as SurfaceTool).commit(merged)
+		merged.surface_set_material(merged.get_surface_count() - 1, mat)
+	var kit := MeshInstance3D.new()
+	kit.name = "KitBuildings"
+	kit.mesh = merged
+	kit.visibility_range_end = 1400.0
+	add_child(kit)
 	# The plaza's centrepiece: a tiered marble fountain with the star crystal
 	# turning above it.
 	var c := Vector3(0, gen.height(0, 0), 0)

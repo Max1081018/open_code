@@ -312,9 +312,13 @@ func _multimesh(node: Node3D, kind: String, transforms: Array, flora: bool, lod 
 		if not flora or FoliageLib.category(kind) == "small":
 			mmi.visibility_range_end = 70.0
 			mmi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
-		elif lod >= 1:
-			# Beyond the near ring the sun's shadow map barely reaches.
-			mmi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+		else:
+			if FoliageLib.category(kind) == "rock":
+				# Boulders are specks beyond this; trees and landmarks stay.
+				mmi.visibility_range_end = 160.0
+			if lod >= 1:
+				# Beyond the near ring the sun's shadow map barely reaches.
+				mmi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 		node.add_child(mmi)
 
 

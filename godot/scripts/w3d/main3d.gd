@@ -211,7 +211,7 @@ func _build_environment() -> void:
 	we.environment = environment
 	add_child(we)
 	sun = DirectionalLight3D.new()
-	sun.shadow_enabled = Settings.shadows
+	sun.shadow_enabled = Settings.shadows and _args.get("shadows", "1") != "0"
 	sun.directional_shadow_mode = DirectionalLight3D.SHADOW_PARALLEL_2_SPLITS
 	sun.directional_shadow_max_distance = 90.0
 	sun.directional_shadow_split_1 = 0.18
