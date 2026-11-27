@@ -11,7 +11,7 @@ var head: Node3D            ## first-person anchor (a BoneAttachment3D on Head)
 var first_person := false
 var yaw := 0.0
 var pitch := -0.16
-var distance := 4.8
+var distance := 3.5
 ## Where the look input wants the camera; yaw/pitch glide toward these.
 var yaw_target := 0.0
 var pitch_target := -0.16

@@ -277,6 +277,11 @@ const STEP_SOUND := {"stone": "step_stone", "snow": "step_snow", "sand": "step",
 const DUST := {"stone": Color(0.86, 0.84, 0.8, 0.55), "snow": Color(0.97, 0.98, 1.0, 0.7),
 	"sand": Color(0.92, 0.84, 0.66, 0.6), "grass": Color(0.78, 0.82, 0.62, 0.4)}
 var _stride := 0.0
+var _left_foot := false
+## Deep sand: how far the feet sink (visual) and the last surface check.
+var _sink := 0.0
+var _sand_deep := false
+var _sand_check := 0.0
 static var _dust_mat: StandardMaterial3D
 
 
@@ -309,7 +314,21 @@ func _footfall(delta: float, hspeed: float) -> void:
 	_stride -= stride_len
 	var surf := _surface()
 	Sfx.play(STEP_SOUND[surf], -12.0 if hspeed < 5.0 else -8.0, 0.12)
-	if hspeed > 4.0:
+	_left_foot = not _left_foot
+	# Prints in sand and snow, one per footfall, left and right of the line.
+	if surf == "sand" or surf == "snow":
+		var game := get_parent()
+		var fp = game.get("footprints") if game else null
+		if fp:
+			var yaw := model.rotation.y
+			var side := Vector3(cos(yaw), 0, -sin(yaw)) * (0.11 if _left_foot else -0.11)
+			var at := global_position + side
+			at.y = world.height_at(at.x, at.z)
+			(fp as Footprints).press(at, yaw, world.gen.normal(at.x, at.z), surf == "snow")
+	if surf == "sand":
+		# Every step kicks a little sand; running throws more.
+		_puff(global_position, surf, 6 if hspeed > 6.5 else (4 if hspeed > 4.0 else 2), 0.9)
+	elif hspeed > 4.0:
 		_puff(global_position, surf, 5 if hspeed > 6.5 else 3, 0.8)
 
 
@@ -471,6 +490,7 @@ func _physics_process(delta: float) -> void:
 	if _action > 0.0:
 		speed *= 0.25
 
+	speed *= _sand_drag(wish, delta)
 	var horizontal := Vector3(velocity.x, 0, velocity.z)
 	var target := wish * speed
 	if _dodge > 0.0:
@@ -675,7 +695,7 @@ func _update_float(delta: float, speed: float) -> void:
 	_float = move_toward(_float, want, delta * (0.9 if want > _float else 3.5))
 	_float_t += delta
 	var k := _float * _float * (3.0 - 2.0 * _float)
-	model.position.y = k * (0.5 + sin(_float_t * 1.3) * 0.06)
+	model.position.y = k * (0.5 + sin(_float_t * 1.3) * 0.06) - _sink
 	model.rotation.x = -0.6 * k
 	if _float_pose:
 		_float_pose.amount = k
@@ -1015,3 +1035,27 @@ func hurt(amount: float, from: Vector3) -> void:
 		_hits += 1
 		_play("Hit_Head" if _hits % 2 == 0 else "Hit_Chest", 1.3, true)
 		_action = 0.35
+
+
+## Walking in the Sunscar's deep sand: feet sink a little, every step is
+## slower, slower still climbing a dune, and on a steep slip face the sand
+## gives way and carries her down. Returns the speed factor for this frame.
+func _sand_drag(wish: Vector3, delta: float) -> float:
+	_sand_check -= delta
+	if _sand_check <= 0.0 and world:
+		_sand_check = 0.25
+		var p := global_position
+		_sand_deep = is_on_floor() and world.gen.biome(p.x, p.z) == TerrainGen.Biome.DRY and p.y < world.height_at(p.x, p.z) + 0.6
+	_sink = move_toward(_sink, 0.05 if _sand_deep and _float < 0.01 else 0.0, delta * 0.3)
+	if not _sand_deep or swimming or gliding:
+		return 1.0
+	var n := world.gen.normal(global_position.x, global_position.z)
+	var down := Vector3(n.x, 0, n.z)
+	var factor := 0.84
+	if wish.length() > 0.1 and down.length() > 0.001:
+		var uphill := -wish.normalized().dot(down.normalized()) * (1.0 - n.y) * 4.0
+		factor *= 1.0 - clampf(uphill, 0.0, 0.35)
+	if n.y < 0.84:
+		# The slip face gives way: sand pours downhill and takes her along.
+		velocity += down.normalized() * (0.84 - n.y) * 30.0 * delta
+	return factor

@@ -20,12 +20,21 @@ const JUNGLE_R := 640.0
 const MESA_R := 122.0
 const MESA_H := 30.0
 const RAMP_ANGLE := 0.75          ## the root ramp climbs from this side (radians)
-const FALLS := [2.3, 3.6, 5.0]    ## waterfall angles round the mesa
+const FALLS := [2.3, 3.6, 5.0]    ## waterfall angles round the mesa (main thread)
+## The same as plain values for the chunk builders' threads: shared Arrays are
+## not safe to iterate from several threads at once.
+const FALL_0 := 2.3
+const FALL_1 := 3.6
+const FALL_2 := 5.0
 const POOL_R := 150.0
 
 const DESERT := Vector2(-1500.0, -250.0)
 const DESERT_R := 800.0
-const OASES := [[Vector2(-1350.0, -120.0), 34.0], [Vector2(-1820.0, -520.0), 26.0]]
+const OASES := [[Vector2(-1350.0, -120.0), 34.0], [Vector2(-1820.0, -520.0), 26.0]]  ## main thread
+const OASIS_A := Vector2(-1350.0, -120.0)
+const OASIS_A_R := 34.0
+const OASIS_B := Vector2(-1820.0, -520.0)
+const OASIS_B_R := 26.0
 
 const COAST := Vector2(1650.0, 1650.0)
 const COAST_R := 560.0
@@ -118,12 +127,19 @@ static func dunes(gen: TerrainGen, x: float, z: float) -> float:
 	var v := (p.dot(Vector2(-0.31, 0.95)) + warp * 0.4) / 24.0
 	var ripple := pow(1.0 - absf(fposmod(v, 1.0) * 2.0 - 1.0), 2.0) * 1.4
 	var swell := gen._continent.get_noise_2d(x * 0.45, z * 0.45) * 12.0
-	var h := 13.0 + swell + crest * size + ripple
-	for o in OASES:
-		var d := p.distance_to(o[0])
-		var r: float = o[1]
-		if d < r * 2.6:
-			h = lerpf(h, -1.4, 1.0 - smoothstep(r * 0.6, r * 2.6, d))
+	# Wide flats between the dune fields: smooth, nearly level sand where the
+	# dunes die away (about two fifths of the sea).
+	var flat := smoothstep(0.05, 0.3, gen._forest.get_noise_2d(x * 0.22 + 300.0, z * 0.22))
+	var h := 13.0 + swell * lerpf(1.0, 0.35, flat) + crest * size * (1.0 - flat * 0.9) + ripple * (1.0 - flat * 0.7)
+	h = _oasis(h, p, OASIS_A, OASIS_A_R)
+	h = _oasis(h, p, OASIS_B, OASIS_B_R)
+	return h
+
+
+static func _oasis(h: float, p: Vector2, c: Vector2, r: float) -> float:
+	var d := p.distance_to(c)
+	if d < r * 2.6:
+		return lerpf(h, -1.4, 1.0 - smoothstep(r * 0.6, r * 2.6, d))
 	return h
 
 
@@ -138,15 +154,21 @@ static func jungle_height(gen: TerrainGen, x: float, z: float) -> float:
 	var wall := lerpf(14.0, 150.0, ramp)
 	h += (1.0 - smoothstep(MESA_R, MESA_R + wall, d)) * MESA_H
 	# Pools below each waterfall, and the rivers that run from them.
-	for fa in FALLS:
-		var dir := Vector2(cos(fa), sin(fa))
-		var pool := JUNGLE + dir * POOL_R
-		var dp := p.distance_to(pool)
-		h = lerpf(h, -1.6, 1.0 - smoothstep(14.0, 30.0, dp))
-		var t := clampf((p - pool).dot(dir), 0.0, 620.0)
-		var dr := p.distance_to(pool + dir * t) + gen._detail.get_noise_2d(x * 0.2, z * 0.2) * 10.0
-		h = lerpf(h, minf(h, -1.2), 1.0 - smoothstep(5.0, 13.0, dr))
+	var wob := gen._detail.get_noise_2d(x * 0.2, z * 0.2) * 10.0
+	h = _fall_pool(h, p, FALL_0, wob)
+	h = _fall_pool(h, p, FALL_1, wob)
+	h = _fall_pool(h, p, FALL_2, wob)
 	return h
+
+
+static func _fall_pool(h: float, p: Vector2, fa: float, wob: float) -> float:
+	var dir := Vector2(cos(fa), sin(fa))
+	var pool := JUNGLE + dir * POOL_R
+	var dp := p.distance_to(pool)
+	h = lerpf(h, -1.6, 1.0 - smoothstep(14.0, 30.0, dp))
+	var t := clampf((p - pool).dot(dir), 0.0, 620.0)
+	var dr := p.distance_to(pool + dir * t) + wob
+	return lerpf(h, minf(h, -1.2), 1.0 - smoothstep(5.0, 13.0, dr))
 
 
 ## The biome a realm imposes here, or -1.

@@ -89,7 +89,7 @@ const HERO_STYLE := {
 	# own bounding run, arms flying, becomes the sprint.
 	# Her own idle clutches her hands at her chest; the shared relaxed idle
 	# (arms easy at her sides, weight settled) reads far more natural.
-	"player": {"height": 1.56, "library": "anim/heroine.res", "speed": 1.0, "clips": {"Jog_Fwd": "ual/Jog_Fwd", "Idle": "ual/Idle", "Idle_Own": "Idle"},
+	"player": {"height": 1.56, "library": "anim/heroine.res", "speed": 1.0, "clips": {"Jog_Fwd": "ual/Jog_Fwd", "Idle": "ual/Idle", "Idle_Own": "Idle"}, "add_hands": true,
 		# No wings: their root bones collapse to nothing (the rest follows).
 		"hide_bones": ["Wing02_"]},
 	"wren": {"height": 1.6, "clips": {"Idle": "Idle_Talking"}, "speed": 1.05},
@@ -131,7 +131,7 @@ static var _library: AnimationLibrary
 ## pose puts them, not where the animation had them.
 static func add_pose_modifier(skeleton: Skeleton3D, modifier: SkeletonModifier3D) -> void:
 	skeleton.add_child(modifier)
-	for after in ["SkirtFollow", "SoftBones"]:
+	for after in ["SkirtSolver", "SoftBones"]:
 		var n := skeleton.get_node_or_null(after)
 		if n:
 			skeleton.move_child(modifier, n.get_index())
@@ -295,13 +295,17 @@ static func _build_hero(name: String) -> Node3D:
 	for mesh in model.find_children("*", "MeshInstance3D", true, false):
 		_toon(mesh as MeshInstance3D, tints)
 	SecondaryMotion.setup(skeleton)
-	# Skirts ride on the thighs (before the spring bones drape them).
-	var follow := SkirtFollow.new()
-	follow.name = "SkirtFollow"
-	skeleton.add_child(follow)
+	if bool(HERO_STYLE.get(name, {}).get("add_hands", false)):
+		for m in model.find_children("*", "MeshInstance3D", true, false):
+			_open_sleeves(m as MeshInstance3D, skeleton, root)
+		_add_hands(skeleton)
+	# Skirts: solved after the pose, colliding with the legs, every frame.
+	var skirt := SkirtSolver.new()
+	skirt.name = "SkirtSolver"
+	skeleton.add_child(skirt)
 	var soft := skeleton.get_node_or_null("SoftBones")
 	if soft:
-		skeleton.move_child(follow, soft.get_index())
+		skeleton.move_child(skirt, soft.get_index())
 	return root
 
 
@@ -712,3 +716,149 @@ static func _tint_all(mesh: MeshInstance3D, colour: Color) -> void:
 			var copy: BaseMaterial3D = material.duplicate()
 			copy.albedo_color = copy.albedo_color * colour
 			mesh.set_surface_override_material(i, copy)
+
+
+## Hands for a model whose rig has finger bones but whose mesh has none (the
+## heroine's sleeves were modelled closed). A palm rides the Hand bone and a
+## rounded segment rides every finger bone, each sized from the rig, so the
+## fingers move with every animation. Toon-shaded in the model's skin tone.
+static func _add_hands(skeleton: Skeleton3D) -> void:
+	var skin := StandardMaterial3D.new()
+	skin.albedo_color = Color(0.86, 0.66, 0.6)
+	skin.diffuse_mode = BaseMaterial3D.DIFFUSE_TOON
+	skin.specular_mode = BaseMaterial3D.SPECULAR_DISABLED
+	skin.roughness = 1.0
+	for side in ["Left", "Right"]:
+		var hand := skeleton.find_bone(side + "Hand")
+		if hand < 0:
+			continue
+		var tips := []
+		for f in ["Index", "Middle", "Ring", "Little", "Thumb"]:
+			var chain := []
+			for seg in ["Metacarpal", "Proximal", "Intermediate", "Distal"]:
+				var b := skeleton.find_bone(side + f + seg)
+				if b >= 0:
+					chain.append(b)
+			if chain.is_empty():
+				continue
+			if f != "Thumb":
+				tips.append(skeleton.get_bone_rest(chain[0]).origin)
+			var radius := 0.0085 if f != "Thumb" else 0.0095
+			if f == "Little":
+				radius = 0.0072
+			for i in chain.size():
+				var bone: int = chain[i]
+				var to: Vector3
+				if i + 1 < chain.size():
+					to = skeleton.get_bone_rest(chain[i + 1]).origin
+				else:
+					var prev: Vector3 = skeleton.get_bone_rest(bone).origin
+					to = prev.normalized() * prev.length() * 0.8 if prev.length() > 0.001 else Vector3(0, 0.018, 0)
+				_bone_capsule(skeleton, bone, to, radius * (1.0 - i * 0.08), skin)
+		# The palm: from the wrist to the knuckles, as wide as the knuckle row.
+		if tips.size() >= 2:
+			var mid := Vector3.ZERO
+			for t: Vector3 in tips:
+				mid += t
+			mid /= tips.size()
+			var width: float = (tips[0] as Vector3).distance_to(tips[tips.size() - 1]) + 0.018
+			var palm := MeshInstance3D.new()
+			var box := CapsuleMesh.new()
+			box.radius = width * 0.5
+			box.height = maxf(mid.length() + width * 0.3, width)
+			box.radial_segments = 12
+			box.rings = 4
+			palm.mesh = box
+			palm.material_override = skin
+			var att := BoneAttachment3D.new()
+			att.bone_idx = hand
+			skeleton.add_child(att)
+			att.add_child(palm)
+			palm.basis = Basis(Quaternion(Vector3.UP, mid.normalized())) * Basis.from_scale(Vector3(1.0, 1.0, 0.36))
+			palm.position = mid * 0.55
+
+
+static func _bone_capsule(skeleton: Skeleton3D, bone: int, to: Vector3, radius: float, mat: Material) -> void:
+	var length := to.length()
+	if length < 0.002:
+		return
+	var cap := CapsuleMesh.new()
+	cap.radius = radius
+	cap.height = length + radius * 2.0
+	cap.radial_segments = 8
+	cap.rings = 2
+	var mi := MeshInstance3D.new()
+	mi.mesh = cap
+	mi.material_override = mat
+	var att := BoneAttachment3D.new()
+	att.bone_idx = bone
+	skeleton.add_child(att)
+	att.add_child(mi)
+	mi.basis = Basis(Quaternion(Vector3.UP, to.normalized()))
+	mi.position = to * 0.5
+
+
+static var _opened := {}
+
+
+## Shorten sleeves that cover the hands: every vertex past a wrist (along the
+## forearm, in rest pose) is drawn back to just short of the wrist, so the
+## cuff ends there and the hand shows. Done once per mesh in its own data.
+static func _open_sleeves(mi: MeshInstance3D, skeleton: Skeleton3D, root: Node3D) -> void:
+	if mi.mesh == null or mi.skin == null:
+		return
+	if _opened.has(mi.mesh):
+		mi.mesh = _opened[mi.mesh]
+		return
+	var to_root := _transform_to(skeleton, root)
+	var sides := []
+	for side in ["Left", "Right"]:
+		var h := skeleton.find_bone(side + "Hand")
+		var e := skeleton.find_bone(side + "LowerArm")
+		if h < 0 or e < 0:
+			return
+		var w: Vector3 = to_root * skeleton.get_bone_global_rest(h).origin
+		var el: Vector3 = to_root * skeleton.get_bone_global_rest(e).origin
+		sides.append([w, (w - el).normalized(), (w - el).length()])
+	var out := ArrayMesh.new()
+	var changed := false
+	for si in mi.mesh.get_surface_count():
+		var arrays: Array = mi.mesh.surface_get_arrays(si)
+		var verts: PackedVector3Array = arrays[Mesh.ARRAY_VERTEX]
+		var bones = arrays[Mesh.ARRAY_BONES]
+		var rest: PackedVector3Array = _rest_points(mi, si, root)[0]
+		var per: int = (bones as PackedInt32Array).size() / maxi(verts.size(), 1) if bones != null else 0
+		var plain := _transform_to(mi, root)
+		for i in verts.size():
+			var p: Vector3 = rest[i]
+			for sd in sides:
+				var w: Vector3 = sd[0]
+				var d: Vector3 = sd[1]
+				var t := (p - w).dot(d)
+				var radial := (p - w) - d * t
+				# Only the sleeve round this forearm, past the wrist.
+				if t <= 0.0 or t > 0.3 or radial.length() > 0.12:
+					continue
+				# Keep the cuff's shape, a third as long past the wrist.
+				var back := maxf(t, 0.0) * 0.66
+				var q := p - d * back
+				# Undo the vertex's rest transform (its first bone's bind).
+				var tr := plain
+				if per > 0:
+					var bind: int = bones[i * per]
+					var bone := mi.skin.get_bind_bone(bind)
+					if bone < 0:
+						bone = skeleton.find_bone(mi.skin.get_bind_name(bind))
+					if bone >= 0:
+						tr = to_root * skeleton.get_bone_global_rest(bone) * mi.skin.get_bind_pose(bind)
+				verts[i] = tr.affine_inverse() * q
+				changed = true
+				break
+		arrays[Mesh.ARRAY_VERTEX] = verts
+		out.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, arrays)
+		out.surface_set_material(si, mi.mesh.surface_get_material(si))
+	if not changed:
+		_opened[mi.mesh] = mi.mesh
+		return
+	_opened[mi.mesh] = out
+	mi.mesh = out

@@ -12,6 +12,8 @@ uniform float saturation = 1.08;
 uniform float contrast = 1.0;
 uniform float curve = 0.3;   // a filmic S-curve: deeper shade, kept highlights
 uniform float vignette = 0.28;
+// Heat shimmer over hot sand: a gentle wobble, strongest low on the screen.
+uniform float heat = 0.0;
 uniform vec3 warm : source_color = vec3(1.03, 0.99, 0.94);
 uniform vec3 cool : source_color = vec3(0.92, 0.96, 1.06);
 
@@ -28,6 +30,11 @@ vec3 bright(vec2 uv, float lod) {
 void fragment() {
 	vec2 uv = SCREEN_UV;
 	vec2 px = SCREEN_PIXEL_SIZE;
+	if (heat > 0.001) {
+		float band = smoothstep(0.35, 0.75, uv.y);
+		uv.x += sin(uv.y * 140.0 + TIME * 3.1) * 0.0011 * heat * band;
+		uv.y += sin(uv.x * 90.0 + TIME * 2.3) * 0.0008 * heat * band;
+	}
 	vec3 c = tap(uv, 0.0);
 	if (sharpen > 0.0) {
 		vec3 n = tap(uv + vec2(0.0, -px.y), 0.0);

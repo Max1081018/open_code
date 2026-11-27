@@ -22,6 +22,9 @@ var starstones: Starstones
 var nav: NavField
 var weather: Weather3D
 var realms: RealmFeatures
+var footprints: Footprints
+var _post: ShaderMaterial
+var _heat := 0.0
 ## The chosen hero and starting land (from the profile, or --start= in captures).
 var character_id := "heroine"
 var start_island := ""
@@ -133,6 +136,8 @@ func _ready() -> void:
 	realms = RealmFeatures.new()
 	add_child(realms)
 	realms.build(self)
+	footprints = Footprints.new()
+	add_child(footprints)
 	hud = Hud3D.new()
 	add_child(hud)
 	hud.setup(self)
@@ -274,6 +279,7 @@ func _build_environment() -> void:
 	pm.shader = load("res://scripts/shaders/post3d.gdshader")
 	pm.set_shader_parameter("bloom", 0.14 if Settings.bloom else 0.0)
 	post.material = pm
+	_post = pm
 	post_layer.add_child(post)
 	_update_sun(0.0)
 
@@ -462,6 +468,11 @@ func _update_sun(_delta: float) -> void:
 	var night := clampf(1.0 - day, 0.0, 1.0)
 	if world:
 		world.set_sun(sun.global_transform.basis.z, day)
+	# Heat shimmer over the open sand by day.
+	if _post and player:
+		var hot := 1.0 if region == TerrainGen.Biome.DRY else 0.0
+		_heat = lerpf(_heat, hot * day * (1.0 - low), minf(1.0, _delta * 0.5))
+		_post.set_shader_parameter("heat", _heat)
 	_sky_mat.set_shader_parameter("night", night)
 	if town:
 		town.set_night(night)

@@ -7,7 +7,7 @@ extends RefCounted
 
 ## name fragment -> [stiffness, drag, gravity, radius]
 const KINDS := {
-	"skirt": [2.6, 0.45, 0.6, 0.04],
+	# Skirts are solved by SkirtSolver (bone chains colliding with the legs).
 	"tail": [0.9, 0.35, 0.5, 0.02],
 	"wing": [3.5, 0.6, 0.15, 0.02],
 	"ribon": [0.8, 0.3, 0.6, 0.01],

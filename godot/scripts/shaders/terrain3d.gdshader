@@ -183,12 +183,16 @@ void fragment() {
 		vec3 wn = normalize(world_normal + (vec3(nt.x, 0.0, nt.y) * 0.75 + big) * (1.0 - far));
 		NORMAL = normalize(mix(NORMAL, (VIEW_MATRIX * vec4(wn, 0.0)).xyz, des));
 		// Glints: a few grains per cell mirror the sun toward the eye.
-		vec2 cell = floor(p * 22.0);
+		vec2 gp = p * 26.0;
+		vec2 cell = floor(gp);
 		float hsh = fract(sin(dot(cell, vec2(12.9898, 78.233))) * 43758.5453);
+		// A pinpoint grain somewhere in the cell, not the whole cell.
+		vec2 spot = vec2(fract(hsh * 31.7), fract(hsh * 17.3)) * 0.6 + 0.2;
+		float dot_ = 1.0 - smoothstep(0.03, 0.09, distance(fract(gp), spot));
 		vec3 gn = normalize(wn + (vec3(fract(hsh * 13.1), 1.0, fract(hsh * 7.7)) - 0.5) * 0.6);
 		vec3 eye = normalize(CAMERA_POSITION_WORLD - world_pos);
 		float mirror = max(dot(reflect(-eye, gn), normalize(sun_dir)), 0.0);
-		glint = step(0.93, hsh) * pow(mirror, 48.0) * (1.0 - far) * des * sun_up * (0.7 + 0.3 * sin(TIME * 3.0 + hsh * 40.0));
+		glint = step(0.9, hsh) * dot_ * pow(mirror, 32.0) * (1.0 - far) * des * sun_up * (0.7 + 0.3 * sin(TIME * 3.0 + hsh * 40.0));
 	}
 	// Shadows of clouds drifting over the land.
 	float cs = vnoise(world_pos.xz * 0.004 + vec2(TIME * 0.006, TIME * 0.0035));
@@ -196,7 +200,7 @@ void fragment() {
 	c *= 1.0 - cs * cloud_shade;
 	ALBEDO = c;
 	EMISSION = vec3(1.0, 0.3, 0.05) * lava * 2.0 + vec3(0.9, 0.25, 0.05) * heat * 0.25 * smoothstep(0.3, 0.6, UV2.y)
-		+ vec3(1.0, 0.94, 0.82) * glint * 3.0;
+		+ vec3(1.0, 0.95, 0.85) * glint * 2.2;
 	ROUGHNESS = mix(mix(mix(0.92, 0.55, w.b), 0.78, pave), 0.96, des);
 	SPECULAR = 0.25;
 }
