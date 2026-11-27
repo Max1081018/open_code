@@ -4,7 +4,7 @@ Branch `ccr-60ac94c6-dyqxhw`. Godot 4.4.1, GL Compatibility renderer, Android-fi
 Main scene: `scenes/main3d.tscn` (the 3D open world). The art direction is in
 **ART_BIBLE.md**; every third-party asset and its licence is in **ASSET_CATALOG.md**.
 
-Tests: **125 pass** (`godot/tests/run.sh`; it also fails on any SCRIPT ERROR).
+Tests: **131 pass** (`godot/tests/run.sh`; it also fails on any SCRIPT ERROR).
 
 ## Stages (from the overhaul brief)
 
@@ -28,6 +28,24 @@ Tests: **125 pass** (`godot/tests/run.sh`; it also fails on any SCRIPT ERROR).
 | S9 UI | done (in-game screens) | HUD: held-item slot + backpack button, sealed skills. Screens in one style (header, emblem, chips, violet panels, gold selection): Backpack (categories, rarity slots, details, Equip/Use/Discard, Sort), Crafting (new: requirements have/need, stepper, Craft, forge rule), Character (level/XP, attributes, Arts page), Pause tiles, Quests, Map (region names), Settings; centred on wide phones | `test_menus3d.gd`; captures of every screen at 1920x1080 and 2340x1080 |
 | S10-12 Lighting, sourcing, mobile | pending | — | — |
 | S13-14 Tests, QC, report | pending | — | — |
+
+
+## Complete-game pass (DEV_PLAN.md stages)
+
+| Stage | Status | What was done | How it was checked |
+|---|---|---|---|
+| P1 Audit + tools | done | DEV_PLAN.md; skills search (none extra), Higgsfield (credits used for all front-end art and terrain textures), 3D AI Studio (background removal, free credits now used up), 3D Valley needs re-auth | — |
+| P2 Startup | done | Loading screen with real threaded progress → sign-in (guest; local development email accounts with salted iterated hashes, reset code shown on screen; Google/Apple behind a provider interface that refuses when unconfigured) → title → character → island → loading → world. Per-account profile and save | `test_account.gd`, front-end captures |
+| P3 Character + islands | done | Character screen (Lyra live 3D on the painted terrace, drag to turn, Kael locked); three starting islands with painted previews; spawn at the chosen land; choice saved on profile and journey | `test_start_islands.gd` |
+| P4 Sunscar Sea | done | Large designed desert with crescent dunes, crossing ripples, wide flats, oases, colonnade, Sun Gate; sand shader (Higgsfield 1k seamless sand, ripple normals, crest/slip shading, pinpoint glints); footprints, sinking, slower/uphill-slower walking, slip-face sliding, kicked sand, heat shimmer, clear blue sky and hard sun | desert captures |
+| Character fixes | done | SkirtSolver (skirt chains collide with thigh and shin capsules every frame after the pose, gravity drape, no tunnelling); hands on the rig's finger bones, cuffs shortened; camera 3.5 m; floating idle after 1.6 s | live jog/sprint strips, hand close-ups |
+| P5 First adventure | done | Arrival flyover with letterbox and chapter title (skippable), Lumi the star-wisp, ten-step teaching chain per island with tips, tracker, rewards, relic, saved progress | `test_adventure.gd` plays the jungle chain through |
+| P6 Secrets, combat, presentation, audio, optimisation, QC | next | — | — |
+
+### Honest notes
+- 2048 px terrain textures, mipmaps and VRAM compression are set in the import files; memory on a real phone is unmeasured.
+- The jungle is heavy for the software renderer used in captures; on-device frame rate is unmeasured.
+- Google/Apple sign-in need their platform plugins and app credentials; until then those buttons explain that and do nothing.
 
 ## Next exact step
 
