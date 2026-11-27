@@ -76,7 +76,7 @@ func _ready() -> void:
 	shape.shape = capsule
 	shape.position = Vector3(0, 0.78, 0)
 	add_child(shape)
-	model = CharacterKit.build("player")
+	model = CharacterKit.build(Account.character_kit())
 	add_child(model)
 	anim = model.find_child("AnimationPlayer", true, false)
 	skeleton = model.find_children("*", "Skeleton3D", true, false)[0]
@@ -671,8 +671,8 @@ func _update_float(delta: float, speed: float) -> void:
 	var calm := speed < 0.3 and is_on_floor() and not swimming and _action <= 0.0 and _dodge <= 0.0 \
 		and not _on_guard and not input.block and not dead and _landing <= 0.0
 	_still = _still + delta if calm else 0.0
-	var want := 1.0 if calm and _idle_break <= 0.0 and (_still > 4.5 or force_float) else 0.0
-	_float = move_toward(_float, want, delta * (0.55 if want > _float else 3.5))
+	var want := 1.0 if calm and _idle_break <= 0.0 and (_still > 1.6 or force_float) else 0.0
+	_float = move_toward(_float, want, delta * (0.9 if want > _float else 3.5))
 	_float_t += delta
 	var k := _float * _float * (3.0 - 2.0 * _float)
 	model.position.y = k * (0.5 + sin(_float_t * 1.3) * 0.06)
@@ -797,7 +797,7 @@ func _animate(speed: float) -> void:
 				_idle_break = 0.0  # never strike a pose while rising into the float
 			if _idle_break > 0.0:
 				return
-		elif _idle_time > 2.6 and randf() < dt * 0.9 and not _on_guard and _still < 3.5 and _float < 0.01:
+		elif _idle_time > 2.6 and randf() < dt * 0.9 and not _on_guard and _still < 1.4 and _float < 0.01:
 			var total := 0
 			for e in IDLE_BREAKS:
 				total += int(e[3])

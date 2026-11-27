@@ -693,6 +693,8 @@ const ZONE_FOES := {
 	TerrainGen.Biome.VOLCANIC: ["cinder_knight", "ember_caller", "ember_caller"],
 	TerrainGen.Biome.CORRUPTED: ["void_shade", "void_shade", "void_caller"],
 	TerrainGen.Biome.BEACH: ["zombie"],
+	TerrainGen.Biome.JUNGLE: ["thornling", "thornling", "wisp_caller"],
+	TerrainGen.Biome.CRYSTAL: ["rime_shade", "wisp_caller", "thornling"],
 }
 
 

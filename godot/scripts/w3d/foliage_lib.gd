@@ -46,6 +46,11 @@ static func parts(kind: String) -> Array:
 		return _cache[kind]
 	if kind.begins_with("X:"):
 		return _ext_parts(kind)
+	if kind.begins_with("P:"):
+		var pm := ProcFlora.mesh(kind.substr(2))
+		var pk: float = float(spec_for(kind)[0]) / maxf(pm.get_aabb().size.y, 0.01)
+		_cache[kind] = [[pm, Transform3D(Basis.IDENTITY.scaled(Vector3.ONE * pk), Vector3.ZERO)]]
+		return _cache[kind]
 	# "<kind>_Basalt": the same model as dark volcanic stone.
 	var basalt := kind.ends_with("_Basalt")
 	var scene: PackedScene = load(DIR + kind.trim_suffix("_Basalt") + ".gltf")
@@ -146,6 +151,8 @@ static func solid_radius(kind: String) -> float:
 
 
 static func spec_for(kind: String) -> Array:
+	if kind.begins_with("P:"):
+		return ProcFlora.KINDS.get(kind.substr(2), [1.0, "small"])
 	if kind.begins_with("X:"):
 		return EXT.get(kind.substr(2), [1.5, "rock"])
 	for prefix in SIZES:

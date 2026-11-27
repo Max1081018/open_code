@@ -21,6 +21,10 @@ var fill: DirectionalLight3D
 var starstones: Starstones
 var nav: NavField
 var weather: Weather3D
+var realms: RealmFeatures
+## The chosen hero and starting land (from the profile, or --start= in captures).
+var character_id := "heroine"
+var start_island := ""
 var sun: DirectionalLight3D
 var environment: Environment
 var _sky_mat: ShaderMaterial
@@ -58,10 +62,20 @@ func _ready() -> void:
 	if saved.has("pos"):
 		var sp: Vector3 = saved.pos
 		spawn = Vector3(sp.x, 0, sp.z)
+	character_id = String(Account.profile.get("selected_character", "heroine"))
+	start_island = String(_args.get("start", Account.profile.get("start_island", "")))
+	if saved.has("start_island") and String(saved.start_island) != "":
+		start_island = String(saved.start_island)
+	var start_spot := Vector3.INF
+	if not saved.has("pos") and Realms.STARTS.has(start_island) and not _args.has("at"):
+		start_spot = Realms.spawn_point(world.gen, start_island)
+		spawn = start_spot
 	if _args.has("at"):
 		var p: PackedStringArray = _args.at.split(",")
 		spawn = Vector3(float(p[0]), 0, float(p[1]))
 	spawn.y = world.height_at(spawn.x, spawn.z) + 0.2
+	if start_spot != Vector3.INF:
+		spawn.y = start_spot.y + 0.3  # Skybound starts on a floating isle
 	if saved.has("pos"):
 		spawn.y = maxf(spawn.y, (saved.pos as Vector3).y + 0.2)  # saved on an isle
 	world.warm(spawn)
@@ -116,6 +130,9 @@ func _ready() -> void:
 	features = WorldFeatures.new()
 	add_child(features)
 	features.build(self)
+	realms = RealmFeatures.new()
+	add_child(realms)
+	realms.build(self)
 	hud = Hud3D.new()
 	add_child(hud)
 	hud.setup(self)
@@ -381,6 +398,9 @@ const REGION_MOOD := {
 	TerrainGen.Biome.DARK_FOREST: [Color(0.42, 0.62, 0.62, 0.6), 0.0028],
 	TerrainGen.Biome.VOLCANIC: [Color(0.5, 0.46, 0.47, 0.45), 0.0011],
 	TerrainGen.Biome.SNOW: [Color(0.86, 0.92, 1.0, 0.5), 0.002],
+	TerrainGen.Biome.JUNGLE: [Color(0.55, 0.78, 0.6, 0.5), 0.0022],
+	TerrainGen.Biome.CRYSTAL: [Color(0.7, 0.92, 1.0, 0.35), 0.0008],
+	TerrainGen.Biome.DRY: [Color(1.0, 0.8, 0.55, 0.45), 0.0012],
 }
 ## Each region's sky: [zenith, horizon]; blended in by the mood's weight.
 const REGION_SKY := {
@@ -388,6 +408,9 @@ const REGION_SKY := {
 	TerrainGen.Biome.DARK_FOREST: [Color(0.2, 0.34, 0.44), Color(0.56, 0.7, 0.68)],
 	TerrainGen.Biome.VOLCANIC: [Color(0.3, 0.33, 0.46), Color(0.8, 0.68, 0.6)],
 	TerrainGen.Biome.SNOW: [Color(0.36, 0.56, 0.9), Color(0.9, 0.95, 1.0)],
+	TerrainGen.Biome.JUNGLE: [Color(0.2, 0.46, 0.7), Color(0.7, 0.88, 0.8)],
+	TerrainGen.Biome.CRYSTAL: [Color(0.1, 0.42, 0.88), Color(0.68, 0.92, 1.0)],
+	TerrainGen.Biome.DRY: [Color(0.28, 0.5, 0.86), Color(1.0, 0.86, 0.64)],
 }
 var _sky_top := Color(0.15, 0.36, 0.85)
 var _sky_hor := Color(0.74, 0.86, 0.99)
@@ -437,6 +460,8 @@ func _update_sun(_delta: float) -> void:
 		_sky_mat.set_shader_parameter("cloud_cover", weather.cloud_cover)
 	sun.light_color = sun.light_color.lerp(sun.light_color * Color(_mood_col.r * 1.3, _mood_col.g * 1.3, _mood_col.b * 1.3), _mood_col.a * 0.2)
 	var night := clampf(1.0 - day, 0.0, 1.0)
+	if world:
+		world.set_sun(sun.global_transform.basis.z, day)
 	_sky_mat.set_shader_parameter("night", night)
 	if town:
 		town.set_night(night)

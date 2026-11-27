@@ -33,8 +33,8 @@ const ROADS := [
 	[Vector2(0, 0), Vector2(-7, 45), 1.6],
 ]
 
-enum Biome { FOREST, DARK_FOREST, SNOW, DRY, VOLCANIC, CORRUPTED, BEACH }
-const BIOME_NAMES := ["Greenwood", "The Gloomwood", "The Frostpeaks", "The Sunscar", "The Ashlands", "The Blight", "The Shore"]
+enum Biome { FOREST, DARK_FOREST, SNOW, DRY, VOLCANIC, CORRUPTED, BEACH, JUNGLE, CRYSTAL, SKY }
+const BIOME_NAMES := ["Greenwood", "The Gloomwood", "The Frostpeaks", "The Sunscar", "The Ashlands", "The Blight", "The Shore", "The Great Jungle", "The Crystal Coast", "Skybound Isle"]
 
 var seed_value: int
 var _continent := FastNoiseLite.new()
@@ -128,6 +128,8 @@ func height(x: float, z: float) -> float:
 			if vd < crater_r:
 				cone -= pow(1.0 - vd / crater_r, 1.6) * vh * 0.32
 			h += cone
+	# The designed lands (jungle, desert, coast) reshape the ground.
+	h = Realms.shape(self, x, z, h)
 	h = lerpf(-18.0, h, island)
 	h += _detail.get_noise_2d(x, z) * 0.35
 	# The village plateau, blended into the land around it.
@@ -173,6 +175,9 @@ func biome(x: float, z: float) -> int:
 	if volcanic(x, z) > 0.5:
 		return Biome.VOLCANIC
 	var h := height(x, z)
+	var realm := Realms.biome_override(self, x, z, h)
+	if realm >= 0:
+		return realm
 	if h < WATER + 1.6:
 		return Biome.BEACH
 	var t := _temperature.get_noise_2d(x, z) - h * 0.004
@@ -183,10 +188,6 @@ func biome(x: float, z: float) -> int:
 		return Biome.SNOW
 	if Vector2(x, z).distance_to(VILLAGE) < VILLAGE_RADIUS * 2.5:
 		return Biome.FOREST
-	if t > 0.3 and m < -0.05:
-		return Biome.DRY
-	if t > 0.18 and m < 0.1:
-		return Biome.DRY
 	if m > 0.2:
 		return Biome.CORRUPTED if t > 0.06 else Biome.DARK_FOREST
 	return Biome.FOREST
@@ -205,7 +206,8 @@ func splat(x: float, z: float, h: float, n: Vector3, b: int) -> Color:
 	if h < WATER + 2.2 and b != Biome.VOLCANIC:
 		sand = 1.0 - smoothstep(WATER + 0.8, WATER + 2.2, h)
 	if b == Biome.DRY:
-		sand = maxf(sand, 0.75)
+		sand = 1.0  # the Sunscar Sea: sand, all of it
+		rock *= 0.15
 	var grass := 1.0 - rock
 	match b:
 		Biome.DRY, Biome.VOLCANIC:
@@ -240,6 +242,10 @@ func tint(b: int) -> Color:
 			return Color(1.08, 0.98, 0.82, 0.0)
 		Biome.SNOW:
 			return Color(0.95, 0.98, 1.05, 0.0)
+		Biome.JUNGLE:
+			return Color(0.74, 1.04, 0.62, 0.0)
+		Biome.CRYSTAL:
+			return Color(0.92, 1.04, 1.08, 0.0)
 	return Color(1, 1, 1, 0)
 
 

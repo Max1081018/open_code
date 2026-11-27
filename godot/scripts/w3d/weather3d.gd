@@ -23,6 +23,9 @@ const TABLE := {
 	TerrainGen.Biome.DRY: [[Kind.CLEAR, 4], [Kind.SANDSTORM, 2]],
 	TerrainGen.Biome.VOLCANIC: [[Kind.ASHFALL, 5], [Kind.CLEAR, 1]],
 	TerrainGen.Biome.CORRUPTED: [[Kind.VOIDMOTES, 5], [Kind.STORM, 1]],
+	TerrainGen.Biome.JUNGLE: [[Kind.MIST, 3], [Kind.RAIN, 3], [Kind.CLEAR, 3], [Kind.STORM, 1]],
+	TerrainGen.Biome.CRYSTAL: [[Kind.CLEAR, 6], [Kind.RAIN, 1]],
+	TerrainGen.Biome.SKY: [[Kind.CLEAR, 5], [Kind.MIST, 1]],
 }
 
 ## kind -> [fog_extra, fog tint (a = weight), sun_mul, cloud_cover]

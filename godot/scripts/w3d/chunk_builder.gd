@@ -30,8 +30,8 @@ const FLORA := {
 	TerrainGen.Biome.SNOW: [["X:pines_1", 6], ["X:pines_4", 6], ["X:pines_6", 4], ["X:rocks_1", 4],
 		["X:rocks_4", 3], ["X:rocks_2", 3], ["X:rocks_7", 1], ["DeadTree_4", 1]],
 	# The Sunscar: red sandstone stacks and arches, dry trees, wispy tufts.
-	TerrainGen.Biome.DRY: [["DeadTree_1", 2], ["DeadTree_5", 2], ["X:sandstone_0", 1], ["X:sandstone_2", 2],
-		["X:sandstone_4", 2], ["X:sandstone_1", 2], ["X:sandstone_3", 2], ["DeadTree_3", 1], ["Grass_Wispy_Tall", 12]],
+	TerrainGen.Biome.DRY: [["DeadTree_1", 1], ["DeadTree_5", 1], ["X:sandstone_0", 1], ["X:sandstone_2", 1],
+		["X:sandstone_4", 1], ["X:sandstone_1", 2], ["X:sandstone_3", 2], ["P:cactus", 2], ["Grass_Wispy_Tall", 3]],
 	# The Ashlands: basalt pillars and cliffs, lava vents, ember-veined rock.
 	TerrainGen.Biome.VOLCANIC: [["DeadTree_2", 2], ["X:volcanic_7", 2], ["X:volcanic_8", 2], ["X:volcanic_10", 2],
 		["X:volcanic_14", 2], ["X:volcanic_0", 1], ["X:volcanic_3", 1], ["X:volcanic_18", 1], ["X:volcanic_19", 1],
@@ -39,11 +39,20 @@ const FLORA := {
 	# The Blight: twisted trees, dead wood, mushrooms, Void-veined rock.
 	TerrainGen.Biome.CORRUPTED: [["TwistedTree_4", 6], ["TwistedTree_5", 6], ["DeadTree_3", 3], ["DeadTree_4", 3],
 		["Mushroom_Laetiporus", 7], ["Mushroom_Common", 7], ["X:volcanic_27", 5], ["X:volcanic_12", 1], ["Plant_7", 6]],
+	# The Great Jungle: giant broadleaf and twisted trees, palms, buttress
+	# roots, ferns and big-leaf plants, glowing flowers, mossy rocks.
+	TerrainGen.Biome.JUNGLE: [["CommonTree_1", 5], ["CommonTree_2", 4], ["CommonTree_4", 4],
+		["P:palm", 7], ["P:giant_root", 3], ["Fern_1", 16], ["Plant_1_Big", 5],
+		["Bush_Common", 7], ["P:glowflower", 7], ["Mushroom_Laetiporus", 2], ["X:rocks_8", 1]],
+	# The Crystal Coast: palms, pale rock, crystal clusters, beach grass.
+	TerrainGen.Biome.CRYSTAL: [["P:palm", 8], ["X:rocks_6", 3], ["X:rocks_2", 3], ["P:crystal", 3], ["X:sakura_0", 1],
+		["Grass_Wispy_Tall", 10], ["Bush_Common_Flowers", 4], ["Flower_4_Group", 4]],
 	TerrainGen.Biome.BEACH: [["X:rocks_6", 2], ["X:rocks_2", 2], ["Grass_Wispy_Short", 10], ["X:rocks_9", 6], ["X:rocks_10", 6]],
 }
 const GRASS := {
 	TerrainGen.Biome.FOREST: "Grass_Common_Short", TerrainGen.Biome.DARK_FOREST: "Grass_Common_Tall",
-	TerrainGen.Biome.CORRUPTED: "Grass_Wispy_Short", TerrainGen.Biome.DRY: "Grass_Wispy_Short",
+	TerrainGen.Biome.CORRUPTED: "Grass_Wispy_Short", TerrainGen.Biome.JUNGLE: "Grass_Common_Tall",
+	TerrainGen.Biome.CRYSTAL: "Grass_Wispy_Short",
 }
 
 
@@ -148,8 +157,10 @@ static func _flora(gen: TerrainGen, coord: Vector2i, origin: Vector2) -> Array:
 				var total := 0
 				for e in table:
 					total += e[1]
-				# Density: about one thing in three candidate points.
-				if total == 0 or rng.randf() > 0.42:
+				# Density: about one thing in three candidate points (the jungle
+				# is thick, the open sand sparse).
+				var density := 0.5 if b == TerrainGen.Biome.JUNGLE else (0.1 if b == TerrainGen.Biome.DRY else 0.42)
+				if total == 0 or rng.randf() > density:
 					continue
 				var pick := rng.randi() % total
 				for e in table:
@@ -160,7 +171,7 @@ static func _flora(gen: TerrainGen, coord: Vector2i, origin: Vector2) -> Array:
 						if in_town and FoliageLib.category(kind) != "small":
 							break
 						# Trees gather in groves; open meadows get flowers instead.
-						if FoliageLib.category(kind) == "tree" and b != TerrainGen.Biome.DARK_FOREST and rng.randf() > gen.forest(x, z) * 0.75:
+						if FoliageLib.category(kind) == "tree" and b != TerrainGen.Biome.DARK_FOREST and b != TerrainGen.Biome.JUNGLE and rng.randf() > gen.forest(x, z) * 0.75:
 							if b != TerrainGen.Biome.FOREST or rng.randf() < 0.5:
 								break
 							kind = ["Flower_3_Group", "Flower_4_Group", "Bush_Common_Flowers"][rng.randi() % 3]
@@ -173,8 +184,11 @@ static func _flora(gen: TerrainGen, coord: Vector2i, origin: Vector2) -> Array:
 						# The drawn mesh is coarser than the height field: on a slope
 						# it can sit below the true surface, so bed things deeper there.
 						sink += (1.0 - nor.y) * 3.0
+						var sc := rng.randf_range(0.8, 1.25)
+						if b == TerrainGen.Biome.JUNGLE and (kind.begins_with("CommonTree") or kind.begins_with("TwistedTree")):
+							sc *= rng.randf_range(1.4, 2.2)  # the jungle's giants
 						placed.append({"kind": kind, "pos": Vector3(x, h - sink, z), "yaw": rng.randf() * TAU,
-							"scale": rng.randf_range(0.8, 1.25)})
+							"scale": sc})
 						break
 	return placed
 

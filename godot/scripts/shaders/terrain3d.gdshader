@@ -3,11 +3,11 @@ shader_type spatial;
 // blended by per-vertex weights (COLOR = grass, rock, snow, sand; soil takes
 // the rest), sampled at two scales to hide tiling, steep rock projected from
 // the side so cliffs do not stretch, a biome tint and ash from UV2.
-uniform sampler2D grass_tex : source_color, filter_linear_mipmap, repeat_enable;
-uniform sampler2D soil_tex : source_color, filter_linear_mipmap, repeat_enable;
-uniform sampler2D rock_tex : source_color, filter_linear_mipmap, repeat_enable;
-uniform sampler2D snow_tex : source_color, filter_linear_mipmap, repeat_enable;
-uniform sampler2D sand_tex : source_color, filter_linear_mipmap, repeat_enable;
+uniform sampler2D grass_tex : source_color, filter_linear_mipmap_anisotropic, repeat_enable;
+uniform sampler2D soil_tex : source_color, filter_linear_mipmap_anisotropic, repeat_enable;
+uniform sampler2D rock_tex : source_color, filter_linear_mipmap_anisotropic, repeat_enable;
+uniform sampler2D snow_tex : source_color, filter_linear_mipmap_anisotropic, repeat_enable;
+uniform sampler2D sand_tex : source_color, filter_linear_mipmap_anisotropic, repeat_enable;
 uniform float scale = 0.22;
 // Town paving (TerrainGen.PLAZA_RADIUS / ROADS): cobbles drawn into the ground.
 uniform sampler2D paving_tex : source_color, filter_linear_mipmap, repeat_enable;
@@ -24,6 +24,14 @@ uniform float flow_angles[5];
 uniform float flow_reach[5];
 // Horizon mesh: drawn only beyond this distance (near chunks cover the rest).
 uniform float cull_radius = 0.0;
+// The Sunscar Sea: its own sand, ripple normals, grains that glint.
+uniform sampler2D desert_tex : source_color, filter_linear_mipmap_anisotropic, repeat_enable;
+uniform sampler2D desert_fine : source_color, filter_linear_mipmap, repeat_enable;
+uniform sampler2D desert_n : filter_linear_mipmap_anisotropic, repeat_enable;
+uniform vec2 desert_pos = vec2(-1500.0, -250.0);
+uniform float desert_r = 800.0;
+uniform vec3 sun_dir = vec3(0.3, 0.8, 0.2);
+uniform float sun_up = 1.0;
 
 varying vec3 world_pos;
 varying vec3 world_normal;
@@ -152,12 +160,43 @@ void fragment() {
 			NORMAL = normalize(mix(NORMAL, (VIEW_MATRIX * vec4(wn, 0.0)).xyz, pave));
 		}
 	}
+	// The Sunscar Sea: warm sand with wind ripples, crests catching the sun,
+	// slip faces in warm shade, grains glinting toward the sun.
+	float dd = distance(p, desert_pos);
+	float des = w.a * (1.0 - smoothstep(desert_r - 160.0, desert_r + 40.0, dd));
+	float glint = 0.0;
+	if (des > 0.01) {
+		vec2 duv = p * 0.11;
+		vec3 dsand = mix(texture(desert_tex, duv).rgb, texture(desert_tex, p * 0.027 + 0.37).rgb, 0.4);
+		dsand = mix(dsand, texture(desert_fine, p * 0.45).rgb, 0.22);
+		dsand *= 0.88 + vnoise(p * 0.008) * 0.2 + vnoise(p * 0.05) * 0.06;
+		vec2 wind = normalize(vec2(0.94, 0.34));
+		float face = dot(world_normal.xz, wind) / max(length(world_normal.xz), 0.001) * smoothstep(0.02, 0.2, 1.0 - world_normal.y);
+		dsand *= mix(vec3(1.0), vec3(1.06, 1.0, 0.92), smoothstep(0.0, 0.6, face));
+		dsand = mix(dsand, dsand * vec3(0.8, 0.64, 0.52), smoothstep(0.0, 0.7, -face) * 0.55);
+		// Crests a shade paler where the wind scours them.
+		dsand = mix(dsand, dsand * vec3(1.08, 1.05, 1.0), smoothstep(0.96, 1.0, world_normal.y) * 0.3);
+		c = mix(c, dsand, des);
+		float far = smoothstep(35.0, 140.0, distance(world_pos, CAMERA_POSITION_WORLD));
+		vec3 nt = texture(desert_n, duv).rgb * 2.0 - 1.0;
+		vec3 big = vec3(sin(dot(p, wind) * 1.9 + vnoise(p * 0.2) * 4.0), 0.0, 0.0) * 0.12;
+		vec3 wn = normalize(world_normal + (vec3(nt.x, 0.0, nt.y) * 0.75 + big) * (1.0 - far));
+		NORMAL = normalize(mix(NORMAL, (VIEW_MATRIX * vec4(wn, 0.0)).xyz, des));
+		// Glints: a few grains per cell mirror the sun toward the eye.
+		vec2 cell = floor(p * 22.0);
+		float hsh = fract(sin(dot(cell, vec2(12.9898, 78.233))) * 43758.5453);
+		vec3 gn = normalize(wn + (vec3(fract(hsh * 13.1), 1.0, fract(hsh * 7.7)) - 0.5) * 0.6);
+		vec3 eye = normalize(CAMERA_POSITION_WORLD - world_pos);
+		float mirror = max(dot(reflect(-eye, gn), normalize(sun_dir)), 0.0);
+		glint = step(0.93, hsh) * pow(mirror, 48.0) * (1.0 - far) * des * sun_up * (0.7 + 0.3 * sin(TIME * 3.0 + hsh * 40.0));
+	}
 	// Shadows of clouds drifting over the land.
 	float cs = vnoise(world_pos.xz * 0.004 + vec2(TIME * 0.006, TIME * 0.0035));
 	cs = smoothstep(0.48, 0.62, cs * 0.75 + vnoise(world_pos.xz * 0.011 + vec2(TIME * 0.009, 0.0)) * 0.25);
 	c *= 1.0 - cs * cloud_shade;
 	ALBEDO = c;
-	EMISSION = vec3(1.0, 0.3, 0.05) * lava * 2.0 + vec3(0.9, 0.25, 0.05) * heat * 0.25 * smoothstep(0.3, 0.6, UV2.y);
-	ROUGHNESS = mix(mix(0.92, 0.55, w.b), 0.78, pave);
+	EMISSION = vec3(1.0, 0.3, 0.05) * lava * 2.0 + vec3(0.9, 0.25, 0.05) * heat * 0.25 * smoothstep(0.3, 0.6, UV2.y)
+		+ vec3(1.0, 0.94, 0.82) * glint * 3.0;
+	ROUGHNESS = mix(mix(mix(0.92, 0.55, w.b), 0.78, pave), 0.96, des);
 	SPECULAR = 0.25;
 }

@@ -241,3 +241,10 @@ Cinzel, Cinzel Decorative (Natanael Gama), Cormorant Garamond Italic — Google 
 | Recast Navigation | built into Godot 4.4 (NavigationServer3D) | Zlib | Navmesh baking and pathfinding |
 
 Android x86_64 (emulator-only) voxel libraries were dropped to save space; arm64 is kept.
+
+## Front-end art and terrain textures (Higgsfield, GPT Image 2.6)
+
+Generated for this game with Higgsfield and processed locally (chroma-keyed, resized, made seamless, colour-matched):
+- `assets/ui/front/menu_bg.jpg` (title vista with the parapet), `title_bg.jpg`, `shrine_bg.jpg`, `logo.png`, `corner.png`, `divider.png`, `panel*.png`, `button*.png`
+- `assets/ui/islands/jungle.jpg`, `sky.jpg`, `coast.jpg` (start-island previews)
+- `assets/textures/terrain/grass.jpg`, `soil.jpg`, `rock.jpg`, `snow.jpg` (2048 px, replacing the 512 px ambientCG set), `sand_desert.jpg`, `sand_fine.jpg`, `sand_desert_n.png` (normal derived locally)

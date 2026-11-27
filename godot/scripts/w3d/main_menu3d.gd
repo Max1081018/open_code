@@ -1,189 +1,354 @@
 extends Control
-## The title screen: the key art (the heroine over the crystal city and
-## floating isles) slowly drifting, light petals in the air, a soft dark veil
-## on the left, the star emblem and title, and the menu as gold-edged rows
-## with diamond markers. The hovered or focused row glows.
+## The title screen. The painted vista of the Starfall (World Tree, dune sea,
+## sky isles, crystal coast) drifts slowly under a violet veil, petals fall,
+## the Lanternbound logo glows top-left. Signed out, the sign-in panel shows
+## (LoginPanel); signed in, a column of gem-plate buttons:
+##   Continue (if this account has a journey), New Journey (→ character →
+##   starting island → loading → world), Settings, Credits, Sign Out, Quit.
+## Capture harness: --shot=path [--frames=N] [--front=login|menu|character|island].
 
 const GAME := "res://scenes/main3d.tscn"
-const GOLD := Color(0.96, 0.84, 0.56)
-const PALE := Color(0.95, 0.93, 1.0)
 
-var _art: TextureRect
+var _stage: MenuStage
 var _time := 0.0
-var _rows: Array = []
-var _selected := 0
-var _settings: Control
-var _emblem: Control
+var _menu: VBoxContainer
+var _login: LoginPanel
+var _overlay: Control
+var _who: Label
+var _chip: PanelContainer
+var _frames := 0
 
 
 func _ready() -> void:
-	set_anchors_preset(Control.PRESET_FULL_RECT)
-	var title_font: Font = load("res://assets/fonts/CinzelDecorative-Bold.ttf")
-	var menu_font := FontVariation.new()
-	menu_font.base_font = load("res://assets/fonts/Cinzel.ttf")
-	menu_font.variation_opentype = {"wght": 600}
-	var italic: Font = load("res://assets/fonts/Cormorant-Italic.ttf")
-
-	_art = TextureRect.new()
-	_art.texture = load("res://assets/ui/menu/keyart.jpg")
-	_art.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
-	_art.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_COVERED
-	_art.set_anchors_preset(Control.PRESET_FULL_RECT)
-	_art.pivot_offset = Vector2(960, 540)
-	add_child(_art)
-
-	# Veil: deep blue-violet on the left, fading out by the middle.
-	var veil := TextureRect.new()
-	var grad := Gradient.new()
-	grad.set_color(0, Color(0.04, 0.05, 0.14, 0.82))
-	grad.set_color(1, Color(0.04, 0.05, 0.14, 0.0))
-	grad.add_point(0.38, Color(0.05, 0.06, 0.16, 0.55))
-	var gt := GradientTexture2D.new()
-	gt.gradient = grad
-	gt.fill_to = Vector2(1, 0)
-	gt.width = 512
-	gt.height = 4
-	veil.texture = gt
-	veil.set_anchors_preset(Control.PRESET_FULL_RECT)
-	veil.anchor_right = 0.62
-	veil.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
-	veil.stretch_mode = TextureRect.STRETCH_SCALE
+	set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	# The live world behind everything: Lyra on Skybound's rim at dusk.
+	_stage = MenuStage.new()
+	add_child(_stage)
+	# A soft veil on the left for the menu column.
+	var veil := ColorRect.new()
+	veil.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	veil.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	var vm := ShaderMaterial.new()
+	vm.shader = Shader.new()
+	vm.shader.code = """shader_type canvas_item;
+void fragment() { COLOR = vec4(0.01, 0.01, 0.03, (1.0 - smoothstep(0.0, 0.5, UV.x)) * 0.62 + (1.0 - smoothstep(0.75, 1.0, 1.0 - UV.y)) * 0.25); }"""
+	veil.material = vm
 	add_child(veil)
-
-	_petals()
-
-	var column := VBoxContainer.new()
-	column.position = Vector2(96, 70)
-	column.add_theme_constant_override("separation", 10)
-	add_child(column)
-
-	var head := HBoxContainer.new()
-	head.add_theme_constant_override("separation", 18)
-	column.add_child(head)
-	var emblem := Control.new()
-	emblem.custom_minimum_size = Vector2(150, 150)
-	emblem.draw.connect(_draw_emblem.bind(emblem))
-	_emblem = emblem
-	head.add_child(emblem)
-	var titles := VBoxContainer.new()
-	titles.alignment = BoxContainer.ALIGNMENT_CENTER
-	head.add_child(titles)
-	var title := _text("Lanternbound", title_font, 92, PALE)
-	title.add_theme_color_override("font_shadow_color", Color(0.3, 0.4, 0.9, 0.6))
-	title.add_theme_constant_override("shadow_outline_size", 14)
-	titles.add_child(title)
-	titles.add_child(_text("—  REALMS OF THE STARFALL  —", menu_font, 22, GOLD))
-
-	var spacer := Control.new()
-	spacer.custom_minimum_size = Vector2(0, 70)
-	column.add_child(spacer)
-
-	var entries := [["New Journey", _new_journey], ["Settings", _open_settings], ["Credits", _credits], ["Quit", _quit]]
-	if Save3D.exists():
-		entries.push_front(["Continue", _continue])
-	for i in entries.size():
-		var row := _row(entries[i][0], menu_font, entries[i][1], i)
-		column.add_child(row)
-		_rows.append(row)
-
-	var tag := _text("A journey beyond the stars...", italic, 34, Color(0.9, 0.9, 1.0, 0.85))
-	tag.set_anchors_preset(Control.PRESET_BOTTOM_LEFT)
-	tag.position = Vector2(100, -110)
+	var logo := UiKit.logo(620)
+	logo.position = Vector2(90, 110)
+	add_child(logo)
+	_menu = VBoxContainer.new()
+	_menu.position = Vector2(110, 420)
+	_menu.add_theme_constant_override("separation", 14)
+	add_child(_menu)
+	var tag := UiKit.label("A journey beyond the stars…", 30, Color(0.88, 0.86, 0.92, 0.8), "italic")
+	tag.position = Vector2(110, 960)
 	add_child(tag)
-	var version := _text("v0.3  ·  3D preview", menu_font, 16, Color(1, 1, 1, 0.45))
-	version.set_anchors_preset(Control.PRESET_BOTTOM_LEFT)
-	version.position = Vector2(100, -54)
+	var version := UiKit.label("v0.4  ·  development build", 18, Color(1, 1, 1, 0.45))
+	version.position = Vector2(102, 1022)
 	add_child(version)
-	_select(0)
+	_chip = PanelContainer.new()
+	var cs := StyleBoxFlat.new()
+	cs.bg_color = Color(0.03, 0.035, 0.06, 0.6)
+	cs.border_color = Color(1, 1, 1, 0.16)
+	cs.set_border_width_all(1)
+	cs.set_corner_radius_all(3)
+	cs.content_margin_left = 26
+	cs.content_margin_right = 26
+	cs.content_margin_top = 10
+	cs.content_margin_bottom = 10
+	_chip.add_theme_stylebox_override("panel", cs)
+	_chip.position = Vector2(1400, 36)
+	add_child(_chip)
+	_who = UiKit.label("", 20, UiKit.PALE, "bold")
+	_chip.add_child(_who)
+	_build()
 	Sfx.play_music("title")
+	for a in OS.get_cmdline_user_args():
+		if a.begins_with("--front="):
+			var what := a.substr(8)
+			if what == "login":
+				Account.sign_out()
+				_build()
+			elif not Account.signed_in():
+				Account.sign_in_guest()
+				_build()
+			if what == "character":
+				_choose_character()
+			elif what == "island":
+				_choose_island()
 
 
-func _text(t: String, font: Font, size: int, colour: Color) -> Label:
-	var l := Label.new()
-	l.text = t
-	l.add_theme_font_override("font", font)
-	l.add_theme_font_size_override("font_size", size)
-	l.add_theme_color_override("font_color", colour)
-	l.add_theme_color_override("font_outline_color", Color(0.05, 0.05, 0.15, 0.6))
-	l.add_theme_constant_override("outline_size", 6)
-	l.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	return l
+## The buttons for the signed-in account, or the sign-in panel.
+func _build() -> void:
+	for c in _menu.get_children():
+		c.queue_free()
+	if not Account.signed_in():
+		_chip.visible = false
+		_menu.visible = false
+		if _login == null:
+			_login = LoginPanel.new()
+			add_child(_login)
+			_login.signed_in.connect(func():
+				_login.queue_free()
+				_login = null
+				_build())
+		return
+	_menu.visible = true
+	_chip.visible = true
+	var p := Account.profile
+	var kind: String = {"guest": "Guest", "email": "Email · dev", "google": "Google", "apple": "Apple"}.get(String(p.provider), "")
+	_who.text = "✦  %s   ·   %s" % [String(p.display_name), kind]
+	_chip.position.x = 1880 - _who.get_minimum_size().x - 52
+	var entries := []
+	if Save3D.exists():
+		entries.append(["Continue", _continue, "primary"])
+	entries.append_array([["New Journey", _new_journey, "normal" if Save3D.exists() else "primary"],
+		["Settings", _open_settings, "normal"], ["Credits", _credits, "normal"],
+		["Sign Out", _sign_out, "normal"], ["Quit", _quit, "normal"]])
+	var i := 0
+	for e in entries:
+		var b := UiKit.button(e[0], e[1], e[2], 440, 66)
+		_menu.add_child(b)
+		UiKit.appear(b, 0.05 * i)
+		i += 1
+	(_menu.get_child(0) as Button).grab_focus.call_deferred()
 
 
-func _row(label: String, font: Font, action: Callable, index: int) -> Control:
-	var row := Control.new()
-	row.custom_minimum_size = Vector2(520, 66)
-	row.mouse_filter = Control.MOUSE_FILTER_STOP
-	var text := _text(label, font, 36, PALE)
-	text.position = Vector2(84, 10)
-	row.add_child(text)
-	row.set_meta("text", text)
-	row.draw.connect(_draw_row.bind(row))
-	row.mouse_entered.connect(_select.bind(index))
-	row.gui_input.connect(func(e):
-		if (e is InputEventMouseButton and e.pressed and e.button_index == MOUSE_BUTTON_LEFT) or (e is InputEventScreenTouch and e.pressed):
-			Sfx.play("click")
-			action.call())
-	row.set_meta("action", action)
-	return row
+func _sign_out() -> void:
+	Account.sign_out()
+	_build()
 
 
-func _select(index: int) -> void:
-	_selected = index
-	for i in _rows.size():
-		var r: Control = _rows[i]
-		(r.get_meta("text") as Label).add_theme_color_override("font_color", Color(0.15, 0.1, 0.05) if i == index else PALE)
-		r.queue_redraw()
+func _continue() -> void:
+	Save3D.load_on_start = true
+	Account.touch()
+	_start()
 
 
-func _draw_row(row: Control) -> void:
-	var i := _rows.find(row)
-	var on := i == _selected
-	var h := row.size.y
-	var w := row.size.x
+## New Journey: (confirm replacing a journey) → character → island → world.
+func _new_journey() -> void:
+	if Save3D.exists():
+		_confirm("Begin a new journey? Your current journey on this account will be replaced.", _choose_character)
+		return
+	_choose_character()
+
+
+func _choose_character() -> void:
+	_close_overlay()
+	var cs := CharacterSelect.new()
+	cs.stage = _stage
+	_set_menu_visible(false)
+	_overlay = cs
+	add_child(cs)
+	cs.back.connect(func():
+		_close_overlay()
+		_set_menu_visible(true))
+	cs.chosen.connect(func(_id): _choose_island())
+
+
+func _choose_island() -> void:
+	_close_overlay()
+	var isl := IslandSelect.new()
+	_set_menu_visible(false)
+	_overlay = isl
+	add_child(isl)
+	isl.back.connect(_choose_character)
+	isl.chosen.connect(func(_id):
+		Save3D.load_on_start = false
+		if FileAccess.file_exists(Save3D.path()):
+			DirAccess.remove_absolute(Save3D.path())
+		Account.touch()
+		_start())
+
+
+func _close_overlay() -> void:
+	if _overlay:
+		_overlay.queue_free()
+		_overlay = null
+
+
+## The logo, menu column and tagline hide while a full screen is open.
+func _set_menu_visible(on: bool) -> void:
+	for c in get_children():
+		if c != _stage and c != _overlay and not (c is ColorRect) and c != _login:
+			(c as CanvasItem).visible = on
 	if on:
-		# A gold bar with pointed ends and a soft glow behind it.
-		var pts := PackedVector2Array([Vector2(18, h * 0.5), Vector2(44, 4), Vector2(w - 40, 4), Vector2(w - 12, h * 0.5),
-			Vector2(w - 40, h - 4), Vector2(44, h - 4)])
-		for g in 3:
-			var grow := 6.0 + g * 6.0
-			var glow := PackedVector2Array()
-			for p in pts:
-				glow.append(p + (p - Vector2(w * 0.5, h * 0.5)).normalized() * grow)
-			row.draw_colored_polygon(glow, Color(1.0, 0.85, 0.5, 0.08))
-		row.draw_colored_polygon(pts, Color(0.97, 0.86, 0.6, 0.95))
-		row.draw_polyline(pts + PackedVector2Array([pts[0]]), Color(1, 0.97, 0.85), 2.0, true)
-	else:
-		row.draw_line(Vector2(70, h - 2), Vector2(w - 60, h - 2), Color(1, 1, 1, 0.12), 1.0)
-	# Diamond marker.
-	var c := Vector2(52, h * 0.5)
-	var r := 13.0
-	var diamond := PackedVector2Array([c + Vector2(0, -r), c + Vector2(r, 0), c + Vector2(0, r), c + Vector2(-r, 0)])
-	row.draw_colored_polygon(diamond, Color(0.3, 0.2, 0.08) if on else Color(0.85, 0.88, 1.0, 0.9))
-	row.draw_circle(c, 4.0, Color(1.0, 0.95, 0.75) if on else Color(0.2, 0.3, 0.7))
+		_build()
 
 
-func _draw_emblem(e: Control) -> void:
-	var c := e.size * 0.5
-	var t := _time
-	# A four-pointed compass star with a tilted ring, gently turning light.
-	e.draw_arc(c, 64, 0, TAU, 64, Color(1, 0.9, 0.65, 0.35), 2.0, true)
-	for k in 4:
-		var a := k * PI * 0.5 - PI * 0.5
-		var tip := c + Vector2.from_angle(a) * (70 if k % 2 == 0 else 52)
-		var l := c + Vector2.from_angle(a - 0.32) * 14
-		var r := c + Vector2.from_angle(a + 0.32) * 14
-		e.draw_colored_polygon(PackedVector2Array([c, l, tip]), Color(1.0, 0.92, 0.7))
-		e.draw_colored_polygon(PackedVector2Array([c, tip, r]), Color(0.86, 0.68, 0.38))
-	for k in 4:
-		var a := k * PI * 0.5 - PI * 0.25
-		e.draw_line(c, c + Vector2.from_angle(a) * 32, Color(1, 0.92, 0.7, 0.8), 2.0, true)
-	e.draw_circle(c, 6 + sin(t * 2.0) * 1.5, Color(1, 1, 0.95))
+func _shade() -> ColorRect:
+	var shade := ColorRect.new()
+	shade.color = Color(0.0, 0.0, 0.02, 0.6)
+	shade.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	add_child(shade)
+	return shade
 
+
+func _confirm(text: String, yes: Callable) -> void:
+	_close_overlay()
+	var shade := _shade()
+	_overlay = shade
+	var p := UiKit.panel(Vector2(900, 0))
+	p.position = Vector2(510, 330)
+	shade.add_child(p)
+	var box := VBoxContainer.new()
+	box.add_theme_constant_override("separation", 24)
+	p.add_child(box)
+	var l := UiKit.label(text, 30, UiKit.PALE)
+	l.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	l.custom_minimum_size = Vector2(780, 0)
+	l.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	box.add_child(l)
+	box.add_child(UiKit.divider(600))
+	var row := HBoxContainer.new()
+	row.alignment = BoxContainer.ALIGNMENT_CENTER
+	row.add_theme_constant_override("separation", 20)
+	row.add_child(UiKit.button("Keep it", _close_overlay, "normal", 360, 80))
+	row.add_child(UiKit.button("Begin anew", yes, "primary", 380, 80))
+	box.add_child(row)
+	UiKit.appear(p)
+
+
+func _start() -> void:
+	var fade := ColorRect.new()
+	fade.color = Color(0, 0, 0, 0)
+	fade.set_anchors_preset(Control.PRESET_FULL_RECT)
+	add_child(fade)
+	var t := create_tween()
+	t.tween_property(fade, "color:a", 1.0, 0.5)
+	t.tween_callback(func(): LoadingScreen.go(get_tree(), GAME, ["res://assets/models/heroes/"]))
+
+
+# ---------------------------------------------------------- settings ---
+
+func _open_settings() -> void:
+	_close_overlay()
+	var shade := _shade()
+	_overlay = shade
+	var p := UiKit.panel(Vector2(980, 0))
+	p.position = Vector2(470, 120)
+	shade.add_child(p)
+	var box := VBoxContainer.new()
+	box.add_theme_constant_override("separation", 16)
+	p.add_child(box)
+	var t := UiKit.label("Settings", 52, UiKit.GOLD, "title")
+	t.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	box.add_child(t)
+	box.add_child(UiKit.divider(700))
+	_choice(box, "Graphics", ["Low", "Medium", "High", "Ultra"], Settings.quality, func(i):
+		Settings.apply_preset(i))
+	_choice(box, "Shadows", ["Off", "On"], 1 if Settings.shadows else 0, func(i): Settings.shadows = i == 1)
+	_choice(box, "Bloom", ["Off", "On"], 1 if Settings.bloom else 0, func(i): Settings.bloom = i == 1)
+	_slider(box, "Music", Settings.music_volume, func(v): Settings.music_volume = v)
+	_slider(box, "Effects", Settings.sfx_volume, func(v): Settings.sfx_volume = v)
+	_slider(box, "Voices", Settings.voice_volume, func(v): Settings.voice_volume = v)
+	var close := UiKit.button("Done", func():
+		Settings.save_settings()
+		_close_overlay(), "primary", 420, 80)
+	var row := HBoxContainer.new()
+	row.alignment = BoxContainer.ALIGNMENT_CENTER
+	row.add_child(close)
+	box.add_child(row)
+	UiKit.appear(p)
+
+
+func _choice(box: VBoxContainer, name: String, options: Array, current: int, on_pick: Callable) -> void:
+	var line := HBoxContainer.new()
+	var l := UiKit.label(name, 30, UiKit.PALE, "bold")
+	l.custom_minimum_size = Vector2(300, 0)
+	line.add_child(l)
+	var group := []
+	for i in options.size():
+		var b := Button.new()
+		b.text = options[i]
+		b.toggle_mode = true
+		b.button_pressed = i == current
+		b.custom_minimum_size = Vector2(130, 56)
+		b.add_theme_font_override("font", UiKit.font("bold"))
+		b.add_theme_font_size_override("font_size", 22)
+		for state in ["normal", "hover", "pressed", "focus", "hover_pressed"]:
+			var s := StyleBoxFlat.new()
+			s.set_corner_radius_all(28)
+			s.set_border_width_all(2)
+			var on: bool = state in ["pressed", "hover_pressed"]
+			s.bg_color = Color(0.42, 0.26, 0.72, 0.9) if on else Color(0.08, 0.06, 0.18, 0.8)
+			s.border_color = Color(UiKit.GOLD, 0.9 if on or state in ["hover", "focus"] else 0.35)
+			b.add_theme_stylebox_override(state, s)
+		b.add_theme_color_override("font_pressed_color", Color(1, 0.95, 0.8))
+		group.append(b)
+		b.pressed.connect(func():
+			for o in group:
+				(o as Button).button_pressed = o == b
+			Sfx.play("click", -8.0)
+			on_pick.call(i))
+		line.add_child(b)
+	box.add_child(line)
+
+
+func _slider(box: VBoxContainer, name: String, value: float, on_change: Callable) -> void:
+	var line := HBoxContainer.new()
+	var l := UiKit.label(name, 30, UiKit.PALE, "bold")
+	l.custom_minimum_size = Vector2(300, 0)
+	line.add_child(l)
+	var s := HSlider.new()
+	s.min_value = 0.0
+	s.max_value = 1.0
+	s.step = 0.05
+	s.value = value
+	s.custom_minimum_size = Vector2(540, 56)
+	var track := StyleBoxFlat.new()
+	track.bg_color = Color(1, 1, 1, 0.15)
+	track.set_corner_radius_all(4)
+	track.content_margin_top = 4
+	track.content_margin_bottom = 4
+	s.add_theme_stylebox_override("slider", track)
+	var fill := StyleBoxFlat.new()
+	fill.bg_color = UiKit.VIOLET
+	fill.set_corner_radius_all(4)
+	s.add_theme_stylebox_override("grabber_area", fill)
+	s.add_theme_stylebox_override("grabber_area_highlight", fill)
+	s.value_changed.connect(func(v):
+		on_change.call(v)
+		Settings._apply_audio())
+	line.add_child(s)
+	box.add_child(line)
+
+
+func _credits() -> void:
+	_close_overlay()
+	var shade := _shade()
+	_overlay = shade
+	var p := UiKit.panel(Vector2(980, 0))
+	p.position = Vector2(470, 200)
+	shade.add_child(p)
+	var box := VBoxContainer.new()
+	box.add_theme_constant_override("separation", 16)
+	p.add_child(box)
+	var t := UiKit.label("Credits", 52, UiKit.GOLD, "title")
+	t.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	box.add_child(t)
+	box.add_child(UiKit.divider(700))
+	var l := UiKit.label("Characters, weapons and scenery: free models from Sketchfab creators (CC BY)\nNature: Quaternius (CC0) · Terrain textures: ambientCG (CC0)\nTitle art, logo and UI frames made with Higgsfield\nSounds: Soundza · Fonts: Cinzel, Cormorant (OFL)\nEngine: Godot 4 with Jolt Physics and Recast navigation\nThe full list is in ASSET_CATALOG.md", 26, UiKit.PALE)
+	l.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	l.custom_minimum_size = Vector2(860, 0)
+	box.add_child(l)
+	var row := HBoxContainer.new()
+	row.alignment = BoxContainer.ALIGNMENT_CENTER
+	row.add_child(UiKit.button("Close", _close_overlay, "normal", 360, 80))
+	box.add_child(row)
+	UiKit.appear(p)
+
+
+func _quit() -> void:
+	get_tree().quit()
+
+
+# ------------------------------------------------------------ motion ---
 
 func _petals() -> void:
 	var p := CPUParticles2D.new()
-	p.amount = 40
+	p.amount = 46
 	p.lifetime = 14.0
 	p.preprocess = 14.0
 	p.emission_shape = CPUParticles2D.EMISSION_SHAPE_RECTANGLE
@@ -198,136 +363,27 @@ func _petals() -> void:
 	p.angular_velocity_max = 90
 	p.scale_amount_min = 3
 	p.scale_amount_max = 6
-	p.color = Color(1, 0.9, 0.97, 0.75)
+	p.color = Color(1, 0.88, 0.98, 0.75)
 	add_child(p)
 
 
-var _frames := 0
+func _shot_frame() -> int:
+	for a in OS.get_cmdline_user_args():
+		if a.begins_with("--frames="):
+			return int(a.substr(9))
+	return 40
 
 
 func _process(delta: float) -> void:
 	_time += delta
 	_frames += 1
-	# Capture harness: --shot=path saves the menu after 40 frames.
 	for a in OS.get_cmdline_user_args():
-		if a.begins_with("--shot=") and _frames == 40:
+		if a.begins_with("--shot=") and _frames == _shot_frame():
 			await RenderingServer.frame_post_draw
 			get_viewport().get_texture().get_image().save_png(a.substr(7))
 			get_tree().quit()
-	# Slow drift, as if the camera breathes over the vista.
-	var s := 1.04 + sin(_time * 0.12) * 0.02
-	_art.scale = Vector2(s, s)
-	_art.position = Vector2(sin(_time * 0.07) * 14.0, cos(_time * 0.05) * 8.0)
-	_art.pivot_offset = size * 0.5
-	if _emblem:
-		_emblem.queue_redraw()
 
 
 func _unhandled_input(event: InputEvent) -> void:
-	if _settings and _settings.visible:
-		return
-	if event.is_action_pressed("ui_down"):
-		_select((_selected + 1) % _rows.size())
-	elif event.is_action_pressed("ui_up"):
-		_select((_selected + _rows.size() - 1) % _rows.size())
-	elif event.is_action_pressed("ui_accept"):
-		(_rows[_selected].get_meta("action") as Callable).call()
-
-
-func _continue() -> void:
-	Save3D.load_on_start = true
-	_start()
-
-
-func _new_journey() -> void:
-	Save3D.load_on_start = false
-	_start()
-
-
-func _start() -> void:
-	var fade := ColorRect.new()
-	fade.color = Color(1, 1, 1, 0)
-	fade.set_anchors_preset(Control.PRESET_FULL_RECT)
-	add_child(fade)
-	var t := create_tween()
-	t.tween_property(fade, "color:a", 1.0, 0.6)
-	t.tween_callback(func(): get_tree().change_scene_to_file(GAME))
-
-
-func _open_settings() -> void:
-	if _settings == null:
-		_settings = _panel("Settings", [
-			["Graphics quality", ["Low", "Medium", "High"], 2],
-			["Shadows", ["Off", "On"], 1 if Settings.shadows else 0],
-			["Bloom", ["Off", "On"], 1 if Settings.bloom else 0],
-		])
-	_settings.visible = true
-
-
-func _credits() -> void:
-	var p := _panel("Credits", [])
-	var l := Label.new()
-	l.text = "Characters, weapons and scenery: free models from Sketchfab creators (CC BY)\nNature: Quaternius (CC0) · Terrain textures: ambientCG (CC0)\nKey art made with Higgsfield · Fonts: Cinzel, Cormorant (OFL)\nFull list in ASSET_CATALOG.md"
-	l.add_theme_font_size_override("font_size", 24)
-	p.get_child(0).get_child(0).add_child(l)
-
-
-func _panel(title: String, options: Array) -> Control:
-	var shade := ColorRect.new()
-	shade.color = Color(0.02, 0.02, 0.08, 0.55)
-	shade.set_anchors_preset(Control.PRESET_FULL_RECT)
-	add_child(shade)
-	var panel := PanelContainer.new()
-	var style := StyleBoxFlat.new()
-	style.bg_color = Color(0.09, 0.1, 0.22, 0.92)
-	style.border_color = Color(0.96, 0.84, 0.56, 0.8)
-	style.set_border_width_all(2)
-	style.set_corner_radius_all(18)
-	style.content_margin_left = 40
-	style.content_margin_right = 40
-	style.content_margin_top = 30
-	style.content_margin_bottom = 30
-	panel.add_theme_stylebox_override("panel", style)
-	panel.set_anchors_and_offsets_preset(Control.PRESET_CENTER)
-	panel.custom_minimum_size = Vector2(900, 420)
-	panel.position -= Vector2(450, 210)
-	shade.add_child(panel)
-	var box := VBoxContainer.new()
-	box.add_theme_constant_override("separation", 18)
-	panel.add_child(box)
-	box.add_child(_text(title, load("res://assets/fonts/CinzelDecorative-Bold.ttf"), 48, GOLD))
-	for o in options:
-		var line := HBoxContainer.new()
-		var name := Label.new()
-		name.text = o[0]
-		name.custom_minimum_size = Vector2(420, 0)
-		name.add_theme_font_size_override("font_size", 28)
-		line.add_child(name)
-		var pick := OptionButton.new()
-		for v in o[1]:
-			pick.add_item(v)
-		pick.select(o[2])
-		pick.add_theme_font_size_override("font_size", 26)
-		var key: String = o[0]
-		pick.item_selected.connect(func(i):
-			match key:
-				"Shadows":
-					Settings.shadows = i == 1
-				"Bloom":
-					Settings.bloom = i == 1
-				"Graphics quality":
-					Settings.quality = i
-			if Settings.has_method("save_settings"):
-				Settings.save_settings())
-		line.add_child(pick)
-		box.add_child(line)
-	var close := Button.new()
-	close.text = "Close"
-	close.add_theme_font_size_override("font_size", 28)
-	close.pressed.connect(func(): shade.visible = false)
-	box.add_child(close)
-	return shade
-
-
-func _quit() -> void:
-	get_tree().quit()
+	if event.is_action_pressed("ui_cancel") and _overlay:
+		_close_overlay()

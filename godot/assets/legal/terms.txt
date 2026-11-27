@@ -1,0 +1,11 @@
+LANTERNBOUND — TERMS OF USE (DRAFT FOR THE DEVELOPMENT BUILD)
+
+Lanternbound is a work in progress. Features may change and saved journeys from development builds may not carry over to the release.
+
+Development email accounts live only on this device. They are not backed up and cannot be recovered on another device.
+
+Third-party art, sound and fonts are used under their own licences, listed in the game's credits (ASSET_CATALOG.md).
+
+Play kindly. Do not attempt to tamper with other players' data once online features exist.
+
+This draft must be reviewed and replaced by the publisher's final terms before release.

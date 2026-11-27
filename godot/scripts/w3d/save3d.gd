@@ -6,21 +6,25 @@ extends RefCounted
 ## Written atomically (to a temporary file, then renamed) so a crash or a
 ## phone killing the app mid-write never corrupts the only copy.
 
-const PATH := "user://starfall3d.save"
-const VERSION := 1
+## Each account has its own journey (Account.save_path()).
+const VERSION := 2
+
+
+static func path() -> String:
+	return Account.save_path()
 
 ## Set by the title screen: Continue loads, New Journey starts fresh.
 static var load_on_start := false
 
 
 static func exists() -> bool:
-	return FileAccess.file_exists(PATH)
+	return FileAccess.file_exists(path())
 
 
 static func read() -> Dictionary:
 	if not exists():
 		return {}
-	var f := FileAccess.open(PATH, FileAccess.READ)
+	var f := FileAccess.open(path(), FileAccess.READ)
 	if f == null:
 		return {}
 	var data = f.get_var(false)
@@ -31,16 +35,17 @@ static func read() -> Dictionary:
 
 static func write(state: Dictionary) -> bool:
 	state["version"] = VERSION
-	var temp := PATH + ".tmp"
+	var target := path()
+	DirAccess.make_dir_recursive_absolute(target.get_base_dir())
+	var temp := target + ".tmp"
 	var f := FileAccess.open(temp, FileAccess.WRITE)
 	if f == null:
 		return false
 	f.store_var(state, false)
 	f.close()
-	var dir := DirAccess.open("user://")
-	if dir.file_exists(PATH.get_file()):
-		dir.remove(PATH.get_file())
-	return dir.rename(temp.get_file(), PATH.get_file()) == OK
+	if FileAccess.file_exists(target):
+		DirAccess.remove_absolute(target)
+	return DirAccess.rename_absolute(temp, target) == OK
 
 
 ## Everything worth keeping from a running game.
@@ -67,6 +72,8 @@ static func capture(game: Node) -> Dictionary:
 		"world_clock": game.world.clock,
 		"starstones": game.starstones.attuned.keys() if game.starstones else [],
 		"time": game.time_of_day,
+		"character": String(game.get("character_id")) if game.get("character_id") else "heroine",
+		"start_island": String(game.get("start_island")) if game.get("start_island") else "",
 	}
 
 

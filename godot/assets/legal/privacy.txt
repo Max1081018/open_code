@@ -1,0 +1,16 @@
+LANTERNBOUND — PRIVACY POLICY (DRAFT FOR THE DEVELOPMENT BUILD)
+
+This build stores everything on your device. Nothing is sent to a server.
+
+What is stored, on this device only:
+• Your profile: the name you chose, your email if you made an email account, the character and starting island you picked, and when you last played.
+• Email accounts: a salted, one-way hash of your password, never the password itself.
+• Your saved journey: position, items, quests and settings.
+
+Guest play keeps a random identifier on this device so a returning guest finds their journey again.
+
+Google and Apple sign-in are not active in this build. When they are, only the account identifier, name and email the provider shares will be used, to identify your save.
+
+You can remove all of this by signing out and clearing the app's data, or by uninstalling the game.
+
+This draft must be reviewed and replaced by the publisher's final policy before release.

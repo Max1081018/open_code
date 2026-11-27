@@ -29,6 +29,21 @@ var _crystal_mat: StandardMaterial3D
 
 func build(the_gen: TerrainGen) -> void:
 	gen = the_gen
+	_materials()
+	_build_all()
+
+
+## One isle on its own (the title screen's perch): returns its crown centre.
+func build_one(centre: Vector3, radius: float, seed_i: int) -> Vector3:
+	_materials()
+	_island(centre, radius, seed_i, false)
+	tops.append([centre, radius])
+	return centre
+
+
+func _materials() -> void:
+	if _material:
+		return
 	_material = ShaderMaterial.new()
 	_material.shader = load("res://scripts/shaders/sky_island.gdshader")
 	_material.set_shader_parameter("grass_tex", load("res://assets/textures/terrain/grass.jpg"))
@@ -47,6 +62,9 @@ func build(the_gen: TerrainGen) -> void:
 	_crystal_mat.rim = 0.8
 	_cloud_mat = ShaderMaterial.new()
 	_cloud_mat.shader = load("res://scripts/shaders/cloud_puff.gdshader")
+
+
+func _build_all() -> void:
 	var i := 0
 	for spec in ISLANDS:
 		var ground := maxf(gen.height(spec[0], spec[1]), TerrainGen.WATER)
@@ -54,6 +72,12 @@ func build(the_gen: TerrainGen) -> void:
 		_island(centre, spec[3], i, spec[4])
 		tops.append([centre, float(spec[3])])
 		_cloud_ring(centre, float(spec[3]), i)
+		i += 1
+	# Skybound Isle: its own archipelago in the north-west (see Realms).
+	for isle in Realms.sky_isles(gen):
+		_island(isle[0], isle[1], i, isle[2])
+		tops.append([isle[0], float(isle[1])])
+		_cloud_ring(isle[0], float(isle[1]), i)
 		i += 1
 	# A drifting layer of cloud banks across the sky.
 	var rng := RandomNumberGenerator.new()

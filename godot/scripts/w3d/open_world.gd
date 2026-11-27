@@ -36,12 +36,23 @@ var _timer := 0.0
 var _material: ShaderMaterial
 
 
+## Where the sun is, for the sand's glints (set by Main3D each frame).
+func set_sun(dir: Vector3, up: float) -> void:
+	_material.set_shader_parameter("sun_dir", dir)
+	_material.set_shader_parameter("sun_up", up)
+
+
 func setup(the_seed: int) -> void:
 	gen = TerrainGen.new(the_seed)
 	_material = ShaderMaterial.new()
 	_material.shader = load("res://scripts/shaders/terrain3d.gdshader")
 	for t in ["grass", "soil", "rock", "snow", "sand"]:
 		_material.set_shader_parameter(t + "_tex", load("res://assets/textures/terrain/%s.jpg" % t))
+	_material.set_shader_parameter("desert_tex", load("res://assets/textures/terrain/sand_desert.jpg"))
+	_material.set_shader_parameter("desert_fine", load("res://assets/textures/terrain/sand_fine.jpg"))
+	_material.set_shader_parameter("desert_n", load("res://assets/textures/terrain/sand_desert_n.png"))
+	_material.set_shader_parameter("desert_pos", Realms.DESERT)
+	_material.set_shader_parameter("desert_r", Realms.DESERT_R)
 	_material.set_shader_parameter("paving_tex", load("res://assets/textures/town/paving.jpg"))
 	_material.set_shader_parameter("paving_normal", load("res://assets/textures/town/paving_normal.jpg"))
 	var roads := PackedVector4Array()
@@ -413,4 +424,6 @@ func regrow() -> void:
 
 
 func biome_at(p: Vector3) -> int:
+	if Realms.realm_at(gen, p) == "sky":
+		return TerrainGen.Biome.SKY
 	return gen.biome(p.x, p.z)
