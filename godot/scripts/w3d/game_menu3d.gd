@@ -21,7 +21,7 @@ const INK := Color(0.16, 0.12, 0.08)
 const PANEL := Color(0.08, 0.08, 0.2, 0.8)
 const TABS := [["bag", "Backpack"], ["craft", "Crafting"], ["book", "Quests"], ["map", "Map"],
 	["person", "Character"], ["pause", "Game Paused"]]
-const TITLES := {"gear": "Settings"}
+const TITLES := {"gear": "Settings", "shop": "Tobin's Stall"}
 ## Slot colours by rarity (common .. legendary).
 const RARITY_BG := [Color(0.36, 0.38, 0.46), Color(0.24, 0.46, 0.4), Color(0.24, 0.38, 0.66), Color(0.44, 0.32, 0.68),
 	Color(0.72, 0.5, 0.24)]
@@ -216,6 +216,8 @@ func show_tab(which: String) -> void:
 			_build_pause()
 		"gear":
 			_build_settings()
+		"shop":
+			_build_shop()
 
 
 func _clear() -> void:
@@ -432,6 +434,13 @@ func glyph(c: Control, kind: String, m: Vector2, w: Color, k := 1.0) -> void:
 			c.draw_line(m + Vector2(-12, 10) * k, m + Vector2(8, -10) * k, w, 3.5 * k, true)
 			c.draw_rect(Rect2(m + Vector2(2, -18) * k, Vector2(16, 9) * k), w)
 			c.draw_rect(Rect2(m + Vector2(-16, 12) * k, Vector2(32, 5) * k), w)
+		"shop":
+			c.draw_circle(m, 13 * k, Color(0.98, 0.8, 0.36))
+			c.draw_arc(m, 13 * k, 0, TAU, 24, Color(0.6, 0.4, 0.1), 2.0, true)
+			hud.draw_star(c, m, 7.0 * k, Color(0.6, 0.4, 0.1))
+		"buy", "sell":
+			c.draw_circle(m, 9 * k, w)
+			c.draw_line(m + Vector2(0, -15 if kind == "sell" else 15) * k, m + Vector2(0, 5 if kind == "sell" else -5) * k, w, 2.5, true)
 		"pause":
 			c.draw_rect(Rect2(m + Vector2(-10, -12) * k, Vector2(7, 24) * k), w)
 			c.draw_rect(Rect2(m + Vector2(3, -12) * k, Vector2(7, 24) * k), w)
@@ -963,8 +972,9 @@ func _build_map() -> void:
 	_map_marks = Control.new()
 	_map_marks.position = img.position
 	_map_marks.size = img.size
-	_map_marks.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_map_marks.mouse_filter = Control.MOUSE_FILTER_STOP
 	_map_marks.draw.connect(_draw_map_marks)
+	_map_marks.gui_input.connect(_on_map_input)
 	frame.add_child(_map_marks)
 	# Legend.
 	var leg := _panel(Vector2(1020, 6), Vector2(816, 900))
@@ -976,7 +986,8 @@ func _build_map() -> void:
 	leg.add_child(region)
 	var keys := [["You", Color(0.55, 0.9, 1.0)], ["Starfall Haven", Color(1.0, 0.95, 0.85)],
 		["Townsfolk", GOLD], ["Quest goal", GOLD], ["Floating isle", Color(0.85, 0.92, 1.0)],
-		["The Starspire", Color(0.75, 0.9, 1.0)], ["The Warden's ruin", Color(0.9, 0.3, 0.32)]]
+		["The Starspire", Color(0.75, 0.9, 1.0)], ["The Warden's ruin", Color(0.9, 0.3, 0.32)],
+		["Starstone", Color(0.82, 0.62, 1.0)]]
 	var y := 190.0
 	for k in keys:
 		var dot := Control.new()
@@ -989,6 +1000,20 @@ func _build_map() -> void:
 		l.position = Vector2(92, y)
 		leg.add_child(l)
 		y += 56.0
+	# Fast travel: tap an attuned starstone on the map.
+	var ss: Starstones = game.starstones
+	var pick: Dictionary = ss.stone(_map_pick) if ss and _map_pick != "" else {}
+	var hint := _label("Tap a glowing starstone to travel there." if pick.is_empty() else "Starstone:  " + String(pick.name), 24,
+		DIM if pick.is_empty() else PALE, _ui_font)
+	hint.position = Vector2(42, 740)
+	leg.add_child(hint)
+	if not pick.is_empty():
+		var go := _button("Travel", Vector2(500, 790), Vector2(270, 64), leg)
+		go.pressed.connect(func():
+			var id := _map_pick
+			_map_pick = ""
+			close()
+			game.starstones.travel(id))
 	var tr: Dictionary = game.quests.tracker()
 	var goal := _label("Tracking:  " + String(tr.title), 26, GOLD, _ui_font)
 	goal.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
@@ -997,9 +1022,31 @@ func _build_map() -> void:
 	leg.add_child(goal)
 
 
+var _map_pick := ""
+
+
+func _on_map_input(event: InputEvent) -> void:
+	if not _pressed(event) or game.starstones == null:
+		return
+	var at: Vector2 = event.position
+	var best := ""
+	var best_d := 30.0
+	for s in game.starstones.stones:
+		var d := _map_point(s.pos).distance_to(at)
+		if game.starstones.attuned.has(s.id) and d < best_d:
+			best = s.id
+			best_d = d
+	if best != "":
+		_map_pick = best
+		Sfx.play("click", -6.0)
+		show_tab("map")
+
+
 func _draw_legend_dot(c: Control, what: String, col: Color) -> void:
 	var m := c.size * 0.5
 	match what:
+		"Starstone":
+			c.draw_colored_polygon(PackedVector2Array([m + Vector2(0, -12), m + Vector2(8, 0), m + Vector2(0, 12), m + Vector2(-8, 0)]), col)
 		"You":
 			c.draw_colored_polygon(PackedVector2Array([m + Vector2(0, -12), m + Vector2(9, 9), m + Vector2(0, 4), m + Vector2(-9, 9)]), col)
 		"Quest goal":
@@ -1142,6 +1189,20 @@ func _draw_map_marks() -> void:
 		var q := _map_point(target)
 		c.draw_colored_polygon(PackedVector2Array([q + Vector2(0, -14), q + Vector2(11, 0), q + Vector2(0, 14), q + Vector2(-11, 0)]), GOLD)
 		c.draw_polyline(PackedVector2Array([q + Vector2(0, -14), q + Vector2(11, 0), q + Vector2(0, 14), q + Vector2(-11, 0), q + Vector2(0, -14)]), Color(0.3, 0.18, 0.04), 2.0, true)
+	# Starstones: violet diamonds, bright once attuned; the chosen one ringed.
+	if game.starstones:
+		for st in game.starstones.stones:
+			var at := _map_point(st.pos)
+			var on: bool = game.starstones.attuned.has(st.id)
+			var dia := PackedVector2Array([at + Vector2(0, -11), at + Vector2(7, 0), at + Vector2(0, 11), at + Vector2(-7, 0)])
+			if on:
+				c.draw_circle(at, 13, Color(0.75, 0.55, 1.0, 0.3))
+				c.draw_colored_polygon(dia, Color(0.86, 0.68, 1.0))
+			else:
+				dia.append(dia[0])
+				c.draw_polyline(dia, Color(0.86, 0.8, 1.0, 0.6), 2.0, true)
+			if st.id == _map_pick:
+				c.draw_arc(at, 18, 0, TAU, 32, GOLD, 3.0, true)
 	# The heroine.
 	var p := _map_point(game.player.global_position)
 	var face: float = -game.player.model.rotation.y + PI
@@ -1712,3 +1773,141 @@ func _set_sfx(v: float) -> void:
 func _to_title() -> void:
 	get_tree().paused = false
 	get_tree().change_scene_to_file("res://scenes/menu3d.tscn")
+
+
+# ----------------------------------------------------------------- shop ---
+
+var _shop_page := "buy"
+var _shop_sel := -1
+var _shop_qty := 1
+
+
+## What Tobin pays for one: more for rarer things; never her own blade,
+## coins, keys or relics.
+static func sell_price(id: String) -> int:
+	if id in KEEP or id == "gold_coin" or Items.kind(id) in [Items.Kind.KEY, Items.Kind.RELIC]:
+		return 0
+	return 1 + Items.rarity(id) * 3 + int(Items.def(id).get("tier", 0))
+
+
+func _shop_rows() -> Array:
+	var rows: Array = []
+	if _shop_page == "buy":
+		for t in Items.TRADES:
+			rows.append({"id": t[0], "count": int(t[1]), "price": int(t[2])})
+	else:
+		var inv: Inventory = game.play.inventory
+		var seen := {}
+		for i in inv.size():
+			var st = inv.get_slot(i)
+			if st == null or seen.has(st.id) or sell_price(st.id) <= 0:
+				continue
+			seen[st.id] = true
+			rows.append({"id": st.id, "count": 1, "price": sell_price(st.id), "have": inv.count(st.id)})
+	return rows
+
+
+func _build_shop() -> void:
+	_category_column([["buy", "Buy"], ["sell", "Sell"]], _shop_page, {}, func(k):
+		_shop_page = k
+		_shop_sel = -1
+		_shop_qty = 1
+		Sfx.play("click", -8.0)
+		show_tab("shop"))
+	var rows := _shop_rows()
+	if _shop_sel < 0 or _shop_sel >= rows.size():
+		_shop_sel = 0 if rows.size() > 0 else -1
+		_shop_qty = 1
+	var coins: int = game.play.inventory.count("gold_coin")
+	var grid_panel := _panel(Vector2(360, 6), Vector2(760, 880), Color(0.06, 0.06, 0.16, 0.55))
+	var grid := GridContainer.new()
+	grid.columns = 5
+	grid.position = Vector2(20, 20)
+	grid.add_theme_constant_override("h_separation", 12)
+	grid.add_theme_constant_override("v_separation", 40)
+	grid_panel.add_child(grid)
+	for i in rows.size():
+		var r: Dictionary = rows[i]
+		var cell := Control.new()
+		cell.custom_minimum_size = Vector2(SLOT, SLOT)
+		cell.mouse_filter = Control.MOUSE_FILTER_STOP
+		var can: bool = _shop_page == "sell" or coins >= int(r.price)
+		cell.draw.connect(func():
+			_draw_slot_card(cell, r.id, int(r.get("have", r.count)), false, i == _shop_sel, not can)
+			cell.draw_string(_num_font, Vector2(0, SLOT + 28), "%d" % int(r.price), HORIZONTAL_ALIGNMENT_CENTER, SLOT - 24, 22, GOLD))
+		var idx := i
+		cell.gui_input.connect(func(ev):
+			if _pressed(ev):
+				_shop_sel = idx
+				_shop_qty = 1
+				Sfx.play("click", -10.0)
+				show_tab("shop"))
+		grid.add_child(cell)
+		_icon_child(cell, r.id, Vector2(16, 8), SLOT - 32)
+		_icon_child(cell, "gold_coin", Vector2(SLOT - 30, SLOT + 6), 26.0)
+	var p := _panel(Vector2(1140, 6), Vector2(740, 880))
+	if rows.is_empty():
+		var none := _label("Nothing he wants from you yet." if _shop_page == "sell" else "His stall is bare.", 28, DIM, _ui_font)
+		none.position = Vector2(40, 40)
+		p.add_child(none)
+		return
+	var row: Dictionary = rows[_shop_sel]
+	_detail_card(p, row.id)
+	var most := 1
+	if _shop_page == "buy":
+		most = maxi(1, coins / maxi(1, int(row.price)))
+	else:
+		most = maxi(1, int(row.get("have", 1)))
+	_shop_qty = clampi(_shop_qty, 1, most)
+	var total := int(row.price) * _shop_qty
+	var line := _label(("Buy  %d" if _shop_page == "buy" else "Sell  %d") % (_shop_qty * int(row.count)), 28, PALE, _ui_font)
+	line.position = Vector2(32, 700)
+	p.add_child(line)
+	var price := _label("%d" % total, 30, GOLD if (_shop_page == "sell" or total <= coins) else Color(1.0, 0.55, 0.5), _num_font)
+	price.position = Vector2(560, 700)
+	price.size = Vector2(110, 36)
+	price.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
+	p.add_child(price)
+	_icon_child(p, "gold_coin", Vector2(676, 698), 38.0)
+	var minus := _button("-", Vector2(32, 794), Vector2(62, 62), p, false)
+	minus.add_theme_font_override("font", _num_font)
+	minus.add_theme_font_size_override("font_size", 36)
+	minus.disabled = _shop_qty <= 1
+	minus.pressed.connect(func():
+		_shop_qty -= 1
+		show_tab("shop"))
+	var qty := _label("%d" % _shop_qty, 30, PALE, _num_font)
+	qty.position = Vector2(98, 804)
+	qty.size = Vector2(100, 40)
+	qty.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	p.add_child(qty)
+	var plus := _button("+", Vector2(202, 794), Vector2(62, 62), p, false)
+	plus.add_theme_font_override("font", _num_font)
+	plus.add_theme_font_size_override("font_size", 36)
+	plus.disabled = _shop_qty >= most
+	plus.pressed.connect(func():
+		_shop_qty += 1
+		show_tab("shop"))
+	var deal := _button("Buy" if _shop_page == "buy" else "Sell", Vector2(420, 794), Vector2(288, 62), p)
+	deal.disabled = _shop_page == "buy" and total > coins
+	deal.pressed.connect(_trade.bind(row))
+
+
+func _trade(row: Dictionary) -> void:
+	var inv: Inventory = game.play.inventory
+	var total := int(row.price) * _shop_qty
+	if _shop_page == "buy":
+		if inv.count("gold_coin") < total or not inv.can_fit(row.id, int(row.count) * _shop_qty):
+			game.play.toast.emit("No room in the bag")
+			return
+		inv.remove("gold_coin", total)
+		inv.add(row.id, int(row.count) * _shop_qty)
+		game.play.toast.emit("Bought %s ×%d" % [Items.item_name(row.id), int(row.count) * _shop_qty])
+	else:
+		if not inv.remove(row.id, _shop_qty):
+			return
+		inv.add("gold_coin", total)
+		game.play.toast.emit("Sold %s ×%d for %d coins" % [Items.item_name(row.id), _shop_qty, total])
+	Sfx.play("pickup")
+	_shop_qty = 1
+	show_tab("shop")

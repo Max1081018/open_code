@@ -16,8 +16,15 @@ var rings := [1, 3, 5]
 var clump_grass := true
 var gen: TerrainGen
 var focus := Vector3.ZERO
-## "cx,cz,i" -> true for flora removed by the player (saved).
+## "cx,cz,i" -> the world clock when the player removed it (saved).
 var removed := {}
+## Seconds of play, for regrowth (saved).
+var clock := 0.0
+## Felled trees and broken rock come back after this much play, once she
+## is out of sight of the spot.
+const REGROW := 600.0
+const REGROW_AWAY := 50.0
+var _regrow_timer := 5.0
 ## "cx,cz,i" -> damage taken so far.
 var _damage := {}
 
@@ -129,6 +136,11 @@ func warm(at: Vector3) -> void:
 
 
 func _process(delta: float) -> void:
+	clock += delta
+	_regrow_timer -= delta
+	if _regrow_timer <= 0.0:
+		_regrow_timer = 5.0
+		regrow()
 	_timer -= delta
 	if _timer <= 0.0:
 		_timer = 0.25
@@ -363,7 +375,7 @@ func hit_resource(res: Dictionary, damage: float) -> bool:
 	_damage[key] = _damage.get(key, 0.0) + damage
 	if _damage[key] < health:
 		return false
-	removed[key] = true
+	removed[key] = clock
 	_damage.erase(key)
 	var entry = _chunks.get(res.coord)
 	if entry:
@@ -378,6 +390,26 @@ func restore_removed(keys: Dictionary) -> void:
 	removed = keys.duplicate()
 	for c in _chunks:
 		_build_flora(c, _chunks[c])
+
+
+## Bring back what has been gone long enough, out of her sight.
+func regrow() -> void:
+	var redraw := {}
+	for key in removed.keys():
+		var when = removed[key]
+		var t: float = float(when) if (when is float or when is int) else 0.0
+		if clock - t < REGROW:
+			continue
+		var parts: PackedStringArray = String(key).split(",")
+		var c := Vector2i(int(parts[0]), int(parts[1]))
+		var centre := Vector2((c.x + 0.5) * SIZE, (c.y + 0.5) * SIZE)
+		if centre.distance_to(Vector2(focus.x, focus.z)) < REGROW_AWAY + SIZE * 0.7:
+			continue
+		removed.erase(key)
+		redraw[c] = true
+	for c in redraw:
+		if _chunks.has(c):
+			_build_flora(c, _chunks[c])
 
 
 func biome_at(p: Vector3) -> int:

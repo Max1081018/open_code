@@ -64,6 +64,8 @@ static func capture(game: Node) -> Dictionary:
 		"shards": game.features.found_ids.duplicate(),
 		"chests": game.town.opened_ids(),
 		"removed": game.world.removed.duplicate(),
+		"world_clock": game.world.clock,
+		"starstones": game.starstones.attuned.keys() if game.starstones else [],
 		"time": game.time_of_day,
 	}
 
@@ -91,5 +93,10 @@ static func restore(game: Node, s: Dictionary) -> void:
 		game.play.skip_boss()
 	game.features.restore_found(s.get("shards", []))
 	game.town.restore_opened(s.get("chests", []))
+	game.world.clock = float(s.get("world_clock", 0.0))
+	if game.starstones:
+		for id in s.get("starstones", []):
+			game.starstones.attuned[String(id)] = true
+			game.starstones._refresh(String(id))
 	game.world.restore_removed(s.get("removed", {}))
 	game.time_of_day = float(s.get("time", game.time_of_day))

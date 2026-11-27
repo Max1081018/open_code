@@ -116,11 +116,14 @@ func talk(npc: String) -> void:
 			say.append_array(lines(start.id + "_offer"))
 		elif say.is_empty():
 			say.append(lines(npc + "_idle").pick_random())
-	game.hud.dialogue.open(npc, speakers.get(npc, {}), say, _after_talk.bind(finish, start))
+	game.hud.dialogue.open(npc, speakers.get(npc, {}), say, _after_talk.bind(finish, start, npc))
 
 
-func _after_talk(finish: Dictionary, start: Dictionary) -> void:
+func _after_talk(finish: Dictionary, start: Dictionary, npc := "") -> void:
 	_end_talk()
+	# Tobin keeps a stall: an ordinary chat with him ends at his wares.
+	if npc == "tobin" and finish.is_empty() and start.is_empty() and state.get("ore", "") != "active":
+		game.hud.menu.call_deferred("open", "shop")
 	game.call_deferred("autosave")
 	if not finish.is_empty():
 		_complete(finish)

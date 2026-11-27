@@ -17,6 +17,7 @@ var features: WorldFeatures
 var town: Town
 var quests: Quests3D
 var grass: GrassField
+var starstones: Starstones
 var sun: DirectionalLight3D
 var environment: Environment
 var _sky_mat: ShaderMaterial
@@ -116,6 +117,9 @@ func _ready() -> void:
 	add_child(town)
 	town.build(self)
 	_place_townsfolk()
+	starstones = Starstones.new()
+	add_child(starstones)
+	starstones.build(self)
 	var life := AmbientLife.new()
 	add_child(life)
 	life.setup(self)
