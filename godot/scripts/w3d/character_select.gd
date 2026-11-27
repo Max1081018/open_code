@@ -36,6 +36,7 @@ func _ready() -> void:
 		add_child(stage)
 		_own_stage = true
 	stage.focus("hero")
+	stage.show_hero(true)
 	var shade := ColorRect.new()
 	shade.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	shade.mouse_filter = Control.MOUSE_FILTER_IGNORE
@@ -60,15 +61,15 @@ void fragment() { COLOR = vec4(0.01, 0.01, 0.03, (1.0 - smoothstep(0.0, 0.55, UV
 	var hint := UiKit.label("Drag to turn her", 22, UiKit.DIM, "italic")
 	hint.position = Vector2(1200, 1010)
 	add_child(hint)
-	var p := UiKit.panel(Vector2(660, 700))
-	p.position = Vector2(80, 200)
+	var p := UiKit.panel(Vector2(640, 0))
+	p.position = Vector2(80, 196)
 	add_child(p)
 	_info = VBoxContainer.new()
-	_info.add_theme_constant_override("separation", 14)
+	_info.add_theme_constant_override("separation", 8)
 	p.add_child(_info)
 	var buttons := HBoxContainer.new()
 	buttons.add_theme_constant_override("separation", 18)
-	buttons.position = Vector2(80, 940)
+	buttons.position = Vector2(80, 966)
 	add_child(buttons)
 	buttons.add_child(UiKit.button("Back", _back, "normal", 260))
 	_select = UiKit.button("Select", _confirm, "primary", 382)
@@ -83,21 +84,21 @@ func _show(i: int) -> void:
 	var playable: bool = Account.CHARACTERS[c.id].playable
 	for child in _info.get_children():
 		child.queue_free()
-	_info.add_child(UiKit.label(c.name.to_upper(), 56, UiKit.PALE, "title"))
-	_info.add_child(UiKit.label(c.title, 28, UiKit.GOLD, "italic"))
+	_info.add_child(UiKit.label(c.name.to_upper(), 46, UiKit.PALE, "title"))
+	_info.add_child(UiKit.label(c.title, 24, UiKit.GOLD, "italic"))
 	_info.add_child(UiKit.divider(560))
-	var story := UiKit.label(c.story, 24, Color(0.85, 0.85, 0.9))
+	var story := UiKit.label(c.story, 20, Color(0.85, 0.85, 0.9))
 	story.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	story.custom_minimum_size = Vector2(560, 0)
+	story.custom_minimum_size = Vector2(540, 0)
 	_info.add_child(story)
 	for kv in [["Weapon", c.weapon], ["Element", c.element], ["Style", c.style]]:
 		var line := HBoxContainer.new()
 		var k := UiKit.label(String(kv[0]).to_upper(), 20, UiKit.DIM, "bold")
 		k.custom_minimum_size = Vector2(150, 0)
 		line.add_child(k)
-		var v := UiKit.label(kv[1], 22, UiKit.PALE)
+		var v := UiKit.label(kv[1], 19, UiKit.PALE)
 		v.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-		v.custom_minimum_size = Vector2(410, 0)
+		v.custom_minimum_size = Vector2(390, 0)
 		line.add_child(v)
 		_info.add_child(line)
 	for s in c.stats:
@@ -106,7 +107,7 @@ func _show(i: int) -> void:
 		k.custom_minimum_size = Vector2(150, 0)
 		line.add_child(k)
 		var bar := Control.new()
-		bar.custom_minimum_size = Vector2(410, 26)
+		bar.custom_minimum_size = Vector2(390, 22)
 		var v: float = s[1]
 		bar.draw.connect(func():
 			bar.draw_rect(Rect2(0, 12, 410, 2), Color(1, 1, 1, 0.14))
@@ -118,16 +119,15 @@ func _show(i: int) -> void:
 	if not playable:
 		_info.add_child(UiKit.label("Coming in a later update", 24, UiKit.ERROR, "bold"))
 	_select.disabled = not playable
-	if stage and stage.model:
-		stage.model.visible = playable
+	if stage:
+		stage.show_hero(playable)
 
 
 func _back() -> void:
 	if stage and not _own_stage:
 		stage.focus("menu")
 		stage.turn = 0.0
-		if stage.model:
-			stage.model.visible = true
+		stage.show_hero(false)
 	back.emit()
 
 
@@ -138,6 +138,7 @@ func _confirm() -> void:
 		if stage and not _own_stage:
 			stage.focus("menu")
 			stage.turn = 0.0
+			stage.show_hero(false)
 		var t := create_tween()
 		t.tween_property(self, "modulate:a", 0.0, 0.3)
 		t.tween_callback(func(): chosen.emit(id))

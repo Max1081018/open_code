@@ -1,14 +1,10 @@
 class_name MenuStage
 extends Control
-## The title screen's backdrop. A painted dusk vista of the Starfall (the
+## The title screen's backdrop: the painted dusk vista of the Starfall (the
 ## World Tree on its mesa, the sea at sunset, the sky isles; Higgsfield key
-## art) with a carved stone parapet in the foreground — and on that parapet,
-## live in 3D, Lyra: the playable model, sitting with her legs swinging over
-## the edge (SitPose), lit warm from the sunset behind her and cool from the
-## sky. Around her: a star-lantern glowing at her side, fireflies, the
-## painted lantern flickering, glints dancing on the sea.
-## The 3D camera is fixed so she stays seated on the painted stone; the
-## character screen turns her (`turn`) rather than moving the camera.
+## art), alive: a violet wisp drifting over the parapet, fireflies, the
+## painted lantern flickering, glints dancing on the sea. On the character
+## screen Lyra — the playable model — stands on the terrace (`show_hero`).
 
 const BG := "res://assets/ui/front/menu_bg.jpg"
 ## Where her hips sit, in the 1920x1080 painting: on the parapet's top edge.
@@ -16,6 +12,8 @@ const SEAT_PX := Vector2(1330, 640)
 ## Where her hip joint goes on screen: a little above the stone's edge.
 const HIPS_PX := Vector2(1330, 616)
 const DEPTH := 7.0
+## The hero screen: she stands on the terrace floor, feet here.
+const FEET_PX := Vector2(1420, 1000)
 
 var model: Node3D
 var cam: Camera3D
@@ -28,7 +26,7 @@ var _lantern: Node3D
 var _glow: TextureRect
 var _sit: SitPose
 var _skel: Skeleton3D
-var _seated := 0        ## frames spent settling her hips onto the stone
+var _shadow: TextureRect
 
 
 func _ready() -> void:
@@ -42,12 +40,13 @@ func _ready() -> void:
 	art.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	add_child(art)
 	add_child(_sea_glints())
-	# Her contact shadow on the stone (drawn under the 3D layer).
-	var shadow := _soft_glow(SEAT_PX + Vector2(0, 4), 120.0, Color(0, 0, 0, 0.55))
-	shadow.material = null
-	shadow.scale = Vector2(1.0, 0.16)
-	shadow.pivot_offset = Vector2(120, 120)
-	add_child(shadow)
+	# Her contact shadow on the terrace (shown with her on the hero screen).
+	_shadow = _soft_glow(FEET_PX, 110.0, Color(0, 0, 0, 0.5))
+	_shadow.material = null
+	_shadow.scale = Vector2(1.0, 0.18)
+	_shadow.pivot_offset = Vector2(110, 110)
+	_shadow.visible = false
+	add_child(_shadow)
 	_glow = _soft_glow(Vector2(1824, 512), 90.0, Color(1.0, 0.78, 0.45, 0.55))
 	add_child(_glow)
 	var view := SubViewportContainer.new()
@@ -66,22 +65,6 @@ func _ready() -> void:
 	_vp.add_child(cam)
 	cam.look_at_from_position(Vector3(0, 0, 0), Vector3(0, 0, -1), Vector3.UP)
 	_seat = _project(SEAT_PX, DEPTH)
-	model = CharacterKit.build(Account.character_kit() if Account.signed_in() else "player")
-	_vp.add_child(model)
-	# First guess; `_settle` then measures her hip joint and seats it exactly.
-	model.position = _seat - Vector3(0, 0.8, 0.2)
-	model.rotation.y = 0.28
-	var ap: AnimationPlayer = model.find_child("AnimationPlayer", true, false)
-	if ap:
-		var style: Dictionary = model.get_meta("style", {})
-		var idle: String = String(style.get("clips", {}).get("Idle", "Idle"))
-		if ap.has_animation(idle):
-			ap.play(idle)
-	var sks := model.find_children("*", "Skeleton3D", true, false)
-	if not sks.is_empty():
-		_skel = sks[0]
-		_sit = SitPose.new()
-		CharacterKit.add_pose_modifier(_skel, _sit)
 	_build_vfx()
 	add_child(_fireflies())
 
@@ -129,7 +112,7 @@ func _build_vfx() -> void:
 	# A small star-lantern on the stone at her side.
 	_lantern = Node3D.new()
 	_vp.add_child(_lantern)
-	_lantern.position = _seat + Vector3(-0.55, 0.12, 0.0)
+	_lantern.position = _seat + Vector3(-0.2, 0.25, 0.0)
 	# A wisp: a soft bright core with a halo (her own magic, at rest).
 	var wisp := MeshInstance3D.new()
 	var quad := QuadMesh.new()
@@ -251,25 +234,30 @@ func focus(_mode: String) -> void:
 	pass
 
 
-## Seat her: move the model so her hip joint lands on HIPS_PX at DEPTH.
-func _settle() -> void:
-	if _skel == null:
-		return
-	var hb := _skel.find_bone("Hips")
-	if hb < 0:
-		return
-	var hips: Vector3 = (_skel.global_transform * _skel.get_bone_global_pose(hb)).origin
-	var want := _project(HIPS_PX, DEPTH)
-	model.position += want - hips
+## Show (or hide) Lyra standing on the terrace in her idle: the character
+## screen's preview. The title screen itself shows only the vista.
+func show_hero(on: bool) -> void:
+	if on and model == null:
+		model = CharacterKit.build(Account.character_kit() if Account.signed_in() else "player")
+		_vp.add_child(model)
+		model.position = _project(FEET_PX, 6.0)
+		model.rotation.y = 0.35
+		var ap: AnimationPlayer = model.find_child("AnimationPlayer", true, false)
+		if ap:
+			var style: Dictionary = model.get_meta("style", {})
+			var idle: String = String(style.get("clips", {}).get("Idle", "Idle"))
+			if ap.has_animation(idle):
+				ap.play(idle)
+	if model:
+		model.visible = on
+	if _shadow:
+		_shadow.visible = on
 
 
 func _process(delta: float) -> void:
 	_t += delta
-	if _seated < 4:
-		_seated += 1
-		_settle()
 	if model:
-		var want := 0.28 + clampf(turn + orbit, -0.9, 0.9)
+		var want := 0.35 + clampf(turn + orbit, -1.2, 1.2)
 		model.rotation.y = lerpf(model.rotation.y, want, 1.0 - exp(-6.0 * delta))
 	if _lantern:
 		var c := _lantern.get_child(0) as Node3D

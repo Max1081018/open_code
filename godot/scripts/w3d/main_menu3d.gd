@@ -94,6 +94,9 @@ func _build() -> void:
 				_login = null
 				_build())
 		return
+	if _login:
+		_login.queue_free()
+		_login = null
 	_menu.visible = true
 	_chip.visible = true
 	var p := Account.profile
