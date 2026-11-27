@@ -353,6 +353,7 @@ const ITEM_MODELS := {
 	"gold_pickaxe": ["pickaxe", 0.88, Color(1.25, 1.0, 0.45)], "lumen_pickaxe": ["pickaxe", 0.88, Color(0.6, 1.1, 1.3)],
 	"wood_axe": ["axe", 0.8, Color(0.62, 0.5, 0.4)], "iron_axe": ["axe", 0.8, null],
 	"wood_hammer": ["hammer", 0.7, Color(0.62, 0.5, 0.4)], "iron_hammer": ["hammer", 0.7, null],
+	"moonblade": ["starlit", 1.08, Color(0.78, 0.62, 1.0)],
 	"wood_sword": ["starlit", 1.0, null], "copper_sword": ["autumn", 1.05, null],
 	"iron_sword": ["crystal", 1.05, null], "silver_sword": ["jade", 1.05, null],
 	"gold_sword": ["autumn", 1.1, Color(1.25, 1.05, 0.6)], "lumen_sword": ["crystal", 1.1, Color(0.6, 1.1, 1.4)],
@@ -400,7 +401,15 @@ static func item_model(id: String) -> Node3D:
 				if material:
 					var copy: BaseMaterial3D = material.duplicate()
 					copy.albedo_color = copy.albedo_color * tint
-					if id.begins_with("lumen"):
+					if id == "moonblade":
+						# Violet arcana runs along the edges and runes (where the
+						# texture is bright); the steel stays dark.
+						copy.emission_enabled = true
+						copy.emission = Color(0.7, 0.38, 1.0)
+						copy.emission_texture = copy.albedo_texture
+						copy.emission_operator = BaseMaterial3D.EMISSION_OP_MULTIPLY
+						copy.emission_energy_multiplier = 1.6
+					elif id.begins_with("lumen"):
 						copy.emission_enabled = true
 						copy.emission = Color(0.35, 0.85, 1.0)
 						copy.emission_energy_multiplier = 0.8

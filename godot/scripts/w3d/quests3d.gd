@@ -141,6 +141,7 @@ func _accept(q: Dictionary) -> void:
 
 func _complete(q: Dictionary) -> void:
 	state[q.id] = "done"
+	game.play.prog.gain(Progression.XP_QUEST)
 	if q.goal == "item":
 		game.play.inventory.remove(q.item, int(q.count))
 	var got: Array = []

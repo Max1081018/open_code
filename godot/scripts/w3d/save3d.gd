@@ -53,6 +53,7 @@ static func capture(game: Node) -> Dictionary:
 		"health": p.health,
 		"max_health": p.max_health,
 		"max_stamina": p.max_stamina,
+		"progress": game.play.prog.to_dict(),
 		"bag": game.play.inventory.to_array(),
 		"hotbar": game.play.hotbar_index,
 		"quest_state": q.state.duplicate(),
@@ -72,7 +73,8 @@ static func capture(game: Node) -> Dictionary:
 static func restore(game: Node, s: Dictionary) -> void:
 	var p: Player3D = game.player
 	p.model.rotation.y = float(s.get("yaw", 0.0))
-	p.max_health = float(s.get("max_health", p.max_health))
+	game.play.prog.from_dict(s.get("progress", {}))
+	p.max_health = float(s.get("max_health", Progression.max_health_at(game.play.prog.level)))
 	p.health = clampf(float(s.get("health", p.max_health)), 1.0, p.max_health)
 	p.max_stamina = float(s.get("max_stamina", p.max_stamina))
 	p.stamina = p.max_stamina

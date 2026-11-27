@@ -48,3 +48,7 @@ Music (assets/audio/music, converted to Ogg Vorbis q2 by ffmpeg):
 - growl2.ogg — "Monster Sound 23" — https://soundza.com/sound/monster-sound-23
 - anvil.ogg — "Metal Hammer Hit 2" — https://soundza.com/sound/metal-hammer-hit-2
 - bodyfall.ogg — "Thud, Fall" — https://soundza.com/sound/thud-fall
+- magic_cast.ogg — "Fast Magic Spell Cast" — https://soundza.com/sound/fast-magic-spell-cast
+- magic_impact.ogg — "Magical Impact Spell" — https://soundza.com/sound/magical-impact-spell
+- magic_burst.ogg — "Crystalline Magic Spell Cast Delayed" — https://soundza.com/sound/crystalline-magic-spell-cast-delayed
+- magic_slash.ogg — "Spell 2" — https://soundza.com/sound/spell-2

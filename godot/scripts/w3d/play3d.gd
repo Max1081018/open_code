@@ -27,11 +27,14 @@ const SKILL_COOLDOWN := 6.0
 const BURST_COST := 60.0
 var skill_cooldown := 0.0
 var energy := 0.0
+var prog := Progression.new()
+const VIOLET := Color(0.72, 0.45, 1.0)
 
 
 func setup(the_game: Node) -> void:
 	game = the_game
-	for start in [["wood_sword", 1], ["wood_axe", 1], ["wood_pickaxe", 1], ["apple", 3], ["torch", 4]]:
+	# Her own Moonblade fights and gathers alike: no starting axe or pickaxe.
+	for start in [["moonblade", 1], ["apple", 3], ["torch", 4]]:
 		inventory.add(start[0], start[1])
 	inventory.changed.connect(func(): inventory_changed.emit())
 	game.player.swung.connect(_on_swing)
@@ -40,6 +43,7 @@ func setup(the_game: Node) -> void:
 		Sfx.play("hit")
 		toast.emit("The lava burns!"))
 	game.player.died.connect(_on_player_died)
+	prog.leveled.connect(_on_level_up)
 	select(0)
 	_debris_mesh = BoxMesh.new()
 	_debris_mesh.size = Vector3(0.12, 0.08, 0.1)
@@ -75,7 +79,12 @@ func held_id() -> String:
 func _on_swing(kind: String) -> void:
 	_impacts.append([IMPACT.get(kind, 0.4), kind.trim_suffix("_heavy"), kind.ends_with("_heavy")])
 	if kind.begins_with("attack") and Items.kind(held_id()) == Items.Kind.SWORD:
-		get_tree().create_timer(0.08).timeout.connect(_slash.bind(kind.ends_with("_heavy")))
+		var heavy := kind.ends_with("_heavy")
+		get_tree().create_timer(0.08).timeout.connect(_slash.bind(heavy))
+		if _arcane():
+			Sfx.play("magic_slash", -10.0 if not heavy else -6.0, 0.12)
+			if heavy and prog.unlocked("crescent"):
+				get_tree().create_timer(0.2).timeout.connect(_crescent_wave)
 
 
 static var _arc: ArrayMesh
@@ -92,7 +101,10 @@ func _slash(heavy: bool) -> void:
 	mi.mesh = _arc
 	var mat := ShaderMaterial.new()
 	mat.shader = load("res://scripts/shaders/slash.gdshader")
-	mat.set_shader_parameter("core", Color(1.0, 0.8, 0.4) if heavy else Color(0.55, 0.85, 1.0))
+	var core := Color(1.0, 0.8, 0.4) if heavy else Color(0.55, 0.85, 1.0)
+	if _arcane():
+		core = Color(0.95, 0.62, 1.0) if heavy else VIOLET
+	mat.set_shader_parameter("core", core)
 	mi.material_override = mat
 	mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 	game.add_child(mi)
@@ -184,28 +196,42 @@ func _impact(kind: String, heavy: bool) -> void:
 			debris(spark_at, Color(0.6, 0.6, 0.6), 4)
 			toast.emit("Wrong tool")
 			return
-		debris(spark_at, Color(0.42, 0.3, 0.2) if wants == "tree" else Color(0.55, 0.55, 0.58), 10)
-		Sfx.play("chop" if wants == "tree" else "dig")
-		_shake = maxf(_shake, 0.25)
-		if game.world.hit_resource(res, power):
-			if wants == "tree":
-				var fall := FallingTree.new()
-				fall.kind = res.kind
-				fall.game = self
-				fall.scale_factor = res.scale
-				var away: Vector3 = res.pos - at
-				away.y = 0
-				fall.away = away.normalized() if away.length() > 0.1 else forward
-				fall.rotation.y = res.yaw
-				game.add_child(fall)
-				fall.global_position = res.pos
-				fall.rotation = Vector3.ZERO
-				toast.emit("Timber!")
-			else:
-				_break_rock(res)
+		_strike_resource(res, power, at, forward)
 		return
-	# A weapon strike: every foe in a frontal arc within reach.
-	var damage: float = float(Items.def(id).get("damage", 4)) if id != "" else 4.0
+	_weapon_strike(id, heavy, at, forward)
+
+
+## A tree or rock struck by a tool or by the Moonblade's arcana.
+func _strike_resource(res: Dictionary, power: float, at: Vector3, forward: Vector3) -> void:
+	var wants: String = res.category
+	var spark_at: Vector3 = res.pos + Vector3(0, 1.0 if wants == "tree" else 0.6, 0)
+	debris(spark_at, Color(0.42, 0.3, 0.2) if wants == "tree" else Color(0.55, 0.55, 0.58), 10)
+	if _arcane():
+		Arcana.sparks(game, spark_at, VIOLET, 14, 4.0, 0.1)
+	Sfx.play("chop" if wants == "tree" else "dig")
+	_shake = maxf(_shake, 0.25)
+	if game.world.hit_resource(res, power):
+		prog.gain(Progression.XP_TREE if wants == "tree" else Progression.XP_ROCK)
+		if wants == "tree":
+			var fall := FallingTree.new()
+			fall.kind = res.kind
+			fall.game = self
+			fall.scale_factor = res.scale
+			var away: Vector3 = res.pos - at
+			away.y = 0
+			fall.away = away.normalized() if away.length() > 0.1 else forward
+			fall.rotation.y = res.yaw
+			game.add_child(fall)
+			fall.global_position = res.pos
+			fall.rotation = Vector3.ZERO
+			toast.emit("Timber!")
+		else:
+			_break_rock(res)
+
+
+## A weapon strike: every foe in a frontal arc within reach.
+func _weapon_strike(id: String, heavy: bool, at: Vector3, forward: Vector3) -> void:
+	var damage: float = (float(Items.def(id).get("damage", 4)) if id != "" else 4.0) * prog.damage_bonus()
 	if heavy:
 		damage *= 2.2
 	var struck := 0
@@ -229,34 +255,188 @@ func _impact(kind: String, heavy: bool) -> void:
 		Sfx.play("hit")
 		_shake = maxf(_shake, 0.35 if heavy else 0.2)
 		_hitstop(0.06 if heavy else 0.035)
+	elif Items.def(id).has("power") and Items.kind(id) == Items.Kind.SWORD:
+		# Nothing to fight: the Moonblade's arcana cuts wood and stone.
+		var res: Dictionary = game.world.nearest_resource(at, forward, 2.8)
+		if not res.is_empty():
+			_strike_resource(res, float(Items.def(id).power) * (1.5 if heavy else 1.0), at, forward)
 
 
-## Starfall Slash (E): a dash-strike through everything in a wide arc ahead,
-## leaving a ring of starlight.
+## Is she wielding her arcane Moonblade?
+func _arcane() -> bool:
+	return held_id() == "moonblade"
+
+
+## Arcane Comet (E, Lv 3): a homing violet orb launched from her blade;
+## it bursts among foes in a ring of runes.
 func use_skill() -> void:
 	var p: Player3D = game.player
-	if skill_cooldown > 0.0 or p.busy() or p.swimming:
+	if skill_cooldown > 0.0 or p.busy() or p.swimming or p.dead:
+		return
+	if not prog.unlocked("comet"):
+		toast.emit("Arcane Comet awakens at Lv. %d" % Progression.UNLOCKS.comet)
 		return
 	skill_cooldown = SKILL_COOLDOWN
-	p.perform("Sword_Dash", 0.7, 1.1)
-	var fwd := p.model.global_transform.basis.z
-	p.velocity += fwd * 9.0
-	get_tree().create_timer(0.25).timeout.connect(func():
-		_area_strike(p.global_position + fwd * 2.0, 4.2, 38.0, Color(0.75, 0.62, 1.0))
-		energy = minf(BURST_COST, energy + 8.0))
+	p.perform("Spell_Simple_Shoot", 0.55, 1.2)
+	var fwd: Vector3 = p.model.global_transform.basis.z
+	Arcana.circle(game, p.global_position, 1.3, VIOLET, 0.35, 1.2)
+	Sfx.play("magic_cast", -4.0)
+	get_tree().create_timer(0.22).timeout.connect(func():
+		var orb := Arcana.Orb.new()
+		orb.heading = (fwd + Vector3(0, 0.08, 0)).normalized()
+		orb.target = _nearest_enemy(p.global_position, fwd, 22.0)
+		orb.ground = game.world.height_at
+		orb.burst = _comet_burst
+		game.add_child(orb)
+		orb.global_position = p.global_position + Vector3(0, 1.3, 0) + fwd * 0.8
+		Arcana.flash(game, orb.global_position, VIOLET, 3.0, 5.0, 0.25))
 
 
-## Starburst (Q): when charged, a great burst of starlight around her.
+func _comet_burst(at: Vector3) -> void:
+	var ground := Vector3(at.x, game.world.height_at(at.x, at.z), at.z)
+	Arcana.circle(game, ground, 3.6, VIOLET, 0.25, 2.0)
+	Arcana.sparks(game, at, VIOLET, 36, 8.0, 0.12)
+	Arcana.flash(game, at, VIOLET, 3.0, 9.0, 0.4)
+	Sfx.play("magic_impact", -3.0)
+	_area_strike(ground, 3.6, 44.0 * prog.damage_bonus(), VIOLET)
+	energy = minf(BURST_COST, energy + 10.0)
+
+
+## The closest living foe ahead within `reach` (or null).
+func _nearest_enemy(at: Vector3, fwd: Vector3, reach: float) -> Enemy3D:
+	var best: Enemy3D = null
+	var best_d := reach
+	for e in get_tree().get_nodes_in_group("enemies"):
+		var enemy := e as Enemy3D
+		if enemy.dead:
+			continue
+		var to := enemy.global_position - at
+		var d := to.length()
+		if d < best_d and (d < 3.0 or fwd.dot(to.normalized()) > 0.2):
+			best = enemy
+			best_d = d
+	return best
+
+
+## Crescent Wave (heavy stroke, Lv 2): a violet crescent flung forward,
+## cutting every foe along its path.
+func _crescent_wave() -> void:
+	var p: Player3D = game.player
+	if _arc == null:
+		_arc = _make_arc()
+	var fwd: Vector3 = p.model.global_transform.basis.z
+	fwd.y = 0.0
+	fwd = fwd.normalized()
+	var mi := MeshInstance3D.new()
+	mi.mesh = _arc
+	var mat := ShaderMaterial.new()
+	mat.shader = load("res://scripts/shaders/slash.gdshader")
+	mat.set_shader_parameter("core", Color(0.85, 0.55, 1.0))
+	mat.set_shader_parameter("progress", 0.78)
+	mat.set_shader_parameter("strength", 3.0)
+	mi.material_override = mat
+	mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	game.add_child(mi)
+	var from := p.global_position + Vector3(0, 0.9, 0) + fwd * 0.6
+	mi.global_position = from
+	mi.global_basis = Basis.looking_at(-fwd, Vector3.UP).scaled(Vector3(0.8, 0.8, 0.8))
+	var reach := 11.0
+	var t := mi.create_tween()
+	t.tween_property(mi, "global_position", from + fwd * reach, 0.45)
+	t.parallel().tween_method(func(v: float): mat.set_shader_parameter("strength", v), 3.0, 0.0, 0.45).set_ease(Tween.EASE_IN)
+	t.tween_callback(mi.queue_free)
+	# Foes in the corridor are cut as the crescent reaches them.
+	var damage: float = float(Items.def(held_id()).get("damage", 10)) * 1.6 * prog.damage_bonus()
+	for e in get_tree().get_nodes_in_group("enemies"):
+		var enemy := e as Enemy3D
+		if enemy.dead:
+			continue
+		var to := enemy.global_position - p.global_position
+		to.y = 0.0
+		var along := to.dot(fwd)
+		var side := (to - fwd * along).length()
+		if along > 0.0 and along < reach and side < 2.0 + (1.0 if enemy.is_boss else 0.0):
+			get_tree().create_timer(along / reach * 0.45).timeout.connect(func():
+				if not is_instance_valid(enemy) or enemy.dead:
+					return
+				var amount := damage * randf_range(0.9, 1.1)
+				enemy.take_hit(amount, p.global_position, true)
+				damage_number(enemy.global_position + Vector3(0, 2.0, 0), amount, false)
+				Arcana.sparks(game, enemy.global_position + Vector3(0, 1.1, 0), VIOLET, 16, 5.0, 0.1)
+				energy = minf(BURST_COST, energy + 4.0))
+
+
+## Violet Starfall (Q, Lv 5): a great rune circle opens beneath her, light
+## rises, and star lances rain on every foe around her.
 func use_burst() -> void:
 	var p: Player3D = game.player
-	if energy < BURST_COST or p.busy() or p.swimming:
+	if p.busy() or p.swimming or p.dead:
+		return
+	if not prog.unlocked("starfall"):
+		toast.emit("Violet Starfall awakens at Lv. %d" % Progression.UNLOCKS.starfall)
+		return
+	if energy < BURST_COST:
 		return
 	energy = 0.0
-	p.perform("Sword_Heavy_Combo", 1.1, 1.0)
-	toast.emit("Starburst!")
-	get_tree().create_timer(0.55).timeout.connect(func():
-		_area_strike(p.global_position, 7.5, 95.0, Color(0.6, 0.9, 1.0))
+	p.perform("Spell_Simple_Shoot", 1.3, 0.8)
+	var centre := p.global_position
+	Arcana.circle(game, centre, 8.0, VIOLET, 1.4, 0.6)
+	Arcana.circle(game, centre, 3.0, Arcana.LILAC, 1.4, -1.4)
+	Arcana.pillar(game, centre, 0.8, 12.0, VIOLET, 0.5)
+	Arcana.flash(game, centre + Vector3(0, 3, 0), VIOLET, 1.4, 12.0, 1.0)
+	Sfx.play("magic_burst", -2.0)
+	toast.emit("Violet Starfall!")
+	_shake = maxf(_shake, 0.5)
+	# One lance on each foe in reach, the rest scattered round the circle.
+	var spots: Array = []
+	for e in get_tree().get_nodes_in_group("enemies"):
+		var enemy := e as Enemy3D
+		if not enemy.dead and enemy.global_position.distance_to(centre) < 9.0:
+			spots.append(enemy.global_position)
+	while spots.size() < 9:
+		var a := randf() * TAU
+		var r := randf_range(2.5, 7.5)
+		var pt := centre + Vector3(cos(a) * r, 0, sin(a) * r)
+		pt.y = game.world.height_at(pt.x, pt.z)
+		spots.append(pt)
+	for i in spots.size():
+		var at: Vector3 = spots[i]
+		at.y = game.world.height_at(at.x, at.z)
+		Arcana.lance(game, at, 0.35 + i * 0.09, _lance_strike)
+	get_tree().create_timer(0.35 + spots.size() * 0.09 + 0.35).timeout.connect(func():
+		_area_strike(centre, 8.0, 60.0 * prog.damage_bonus(), VIOLET)
+		Sfx.play("magic_impact", 0.0)
 		_shake = 1.0)
+
+
+func _lance_strike(at: Vector3) -> void:
+	Sfx.play("magic_impact", -12.0, 0.2)
+	_shake = maxf(_shake, 0.25)
+	for e in get_tree().get_nodes_in_group("enemies"):
+		var enemy := e as Enemy3D
+		if enemy.dead or enemy.global_position.distance_to(at) > 2.4:
+			continue
+		var amount := 34.0 * prog.damage_bonus() * randf_range(0.9, 1.1)
+		enemy.take_hit(amount, at, true)
+		damage_number(enemy.global_position + Vector3(0, 2.2, 0), amount, true)
+
+
+## A new level: stronger, healed, and perhaps a new art of the Moonblade.
+func _on_level_up(level: int, art: String) -> void:
+	var p: Player3D = game.player
+	p.max_health = Progression.max_health_at(level)
+	p.max_stamina = Progression.max_stamina_at(level)
+	p.health = p.max_health
+	p.stamina = p.max_stamina
+	var at := p.global_position
+	Arcana.circle(game, at, 2.6, Color(1.0, 0.85, 0.5), 0.9, 0.8)
+	Arcana.pillar(game, at, 0.9, 8.0, Color(1.0, 0.85, 0.55), 0.7)
+	Arcana.sparks(game, at + Vector3(0, 1.0, 0), Color(1.0, 0.85, 0.5), 50, 6.0, 0.12, 1.5)
+	Sfx.play("magic_cast", -2.0)
+	if art != "":
+		game.hud.banner("Level %d" % level, "New art:  " + String(Progression.ART_NAMES[art]))
+	else:
+		game.hud.banner("Level %d" % level, "Max HP %d  ·  ATK +%d%%" % [int(p.max_health), int(round((prog.damage_bonus() - 1.0) * 100.0))])
 
 
 func _area_strike(at: Vector3, radius: float, damage: float, colour: Color) -> void:
@@ -502,6 +682,7 @@ func spawn_enemy(kind: String, at: Vector3) -> Enemy3D:
 
 func _on_enemy_died(e: Enemy3D) -> void:
 	enemy_killed.emit(e)
+	prog.gain(int(float(e.spec.get("health", 30.0)) / 3.0))
 	for drop in e.spec.get("loot", []):
 		if randf() < drop[1]:
 			spawn_pickup(drop[0], randi_range(1, drop[2]), e.global_position + Vector3(0, 1, 0),

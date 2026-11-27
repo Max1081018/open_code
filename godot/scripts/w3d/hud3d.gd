@@ -286,6 +286,12 @@ func _build_vitals() -> void:
 	_place(_level, Vector2(0.5, 1), Vector2(-320, -74))
 	_hp_bar = _canvas(Vector2.ZERO, Vector2(480, 16), _draw_hp)
 	_place(_hp_bar, Vector2(0.5, 1), Vector2(-240, -64))
+	_xp_bar = _canvas(Vector2.ZERO, Vector2(480, 6), _draw_xp)
+	_place(_xp_bar, Vector2(0.5, 1), Vector2(-240, -42))
+	game.play.prog.xp_gained.connect(func(_a): _xp_bar.queue_redraw())
+	game.play.prog.leveled.connect(func(_l, _a):
+		_xp_bar.queue_redraw()
+		_skills.queue_redraw())
 	_hp_label = _label("", 18, PALE, _num_font)
 	root.add_child(_hp_label)
 	_place(_hp_label, Vector2(0.5, 1), Vector2(-40, -98))
@@ -309,6 +315,24 @@ func _draw_hp(c: Control) -> void:
 		fill.bg_color = HP_GREEN if f > 0.3 else Color(0.9, 0.35, 0.3)
 		fill.set_corner_radius_all(8)
 		c.draw_style_box(fill, Rect2(Vector2(2, 2), Vector2((c.size.x - 4) * f, c.size.y - 4)))
+
+
+## Experience toward the next level: a thin violet line under the health.
+var _xp_bar: Control
+
+
+func _draw_xp(c: Control) -> void:
+	var prog: Progression = game.play.prog
+	var f := clampf(float(prog.xp) / Progression.need(prog.level), 0.0, 1.0)
+	var back := StyleBoxFlat.new()
+	back.bg_color = Color(0.05, 0.05, 0.1, 0.55)
+	back.set_corner_radius_all(3)
+	c.draw_style_box(back, Rect2(Vector2.ZERO, c.size))
+	if f > 0.0:
+		var fill := StyleBoxFlat.new()
+		fill.bg_color = Color(0.78, 0.58, 1.0)
+		fill.set_corner_radius_all(3)
+		c.draw_style_box(fill, Rect2(Vector2.ZERO, Vector2(c.size.x * f, c.size.y)))
 
 
 func _draw_stamina(c: Control) -> void:
@@ -367,9 +391,11 @@ func _draw_skills(c: Control) -> void:
 	# Skill (E): a star slash, with a cooldown sweep.
 	var s: Vector2 = SKILL_POS.skill
 	_ring(c, s, 50, Color(0.18, 0.14, 0.34, 0.75), GOLD, 3.0)
-	_star(c, s, 24, Color(0.8, 0.72, 1.0))
+	_comet_glyph(c, s, Color(0.86, 0.72, 1.0))
 	var cd: float = play.skill_cooldown / Play3D.SKILL_COOLDOWN
-	if cd > 0.0:
+	if not play.prog.unlocked("comet"):
+		_locked(c, s, 50, Progression.UNLOCKS.comet)
+	elif cd > 0.0:
 		c.draw_circle(s, 50, Color(0, 0, 0, 0.45))
 		c.draw_arc(s, 46, -PI * 0.5, -PI * 0.5 + TAU * cd, 40, Color(1, 1, 1, 0.65), 6.0, true)
 		c.draw_string(_num_font, s + Vector2(-14, 10), "%.0f" % ceilf(play.skill_cooldown), HORIZONTAL_ALIGNMENT_LEFT, -1, 30, PALE)
@@ -382,10 +408,12 @@ func _draw_skills(c: Control) -> void:
 	if ready:
 		var pulse := 0.5 + 0.5 * sin(Time.get_ticks_msec() / 180.0)
 		c.draw_circle(b, 66 + pulse * 6, Color(0.55, 0.85, 1.0, 0.25))
-	_ring(c, b, 58, Color(0.1, 0.18, 0.4, 0.8), Color(0.6, 0.9, 1.0) if ready else Color(1, 1, 1, 0.4), 3.0)
-	c.draw_arc(b, 52, -PI * 0.5, -PI * 0.5 + TAU * clampf(e, 0, 1), 48, Color(0.55, 0.9, 1.0), 6.0, true)
-	_star(c, b, 30, Color(0.7, 0.95, 1.0) if ready else Color(0.5, 0.6, 0.75))
-	if not touch:
+	_ring(c, b, 58, Color(0.2, 0.1, 0.38, 0.8), Color(0.85, 0.65, 1.0) if ready else Color(1, 1, 1, 0.4), 3.0)
+	c.draw_arc(b, 52, -PI * 0.5, -PI * 0.5 + TAU * clampf(e, 0, 1), 48, Color(0.78, 0.55, 1.0), 6.0, true)
+	_rune_glyph(c, b, Color(0.92, 0.8, 1.0) if ready else Color(0.6, 0.55, 0.75))
+	if not play.prog.unlocked("starfall"):
+		_locked(c, b, 58, Progression.UNLOCKS.starfall)
+	elif not touch:
 		c.draw_string(_num_font, b + Vector2(-8, 84), "Q", HORIZONTAL_ALIGNMENT_LEFT, -1, 22, PALE)
 	# Interact appears only when there is something to use.
 	if _prompt and _prompt.text != "" and touch:
@@ -406,6 +434,31 @@ func _draw_skills(c: Control) -> void:
 	_draw_slot(c, SKILL_POS.gadget)
 	# The backpack: opens the bag.
 	_draw_backpack_button(c, SKILL_POS.bag)
+
+
+## A sealed skill: dimmed, a padlock, the level that opens it.
+func _locked(c: Control, at: Vector2, r: float, lv: int) -> void:
+	c.draw_circle(at, r, Color(0.02, 0.02, 0.06, 0.62))
+	var body := Rect2(at + Vector2(-11, -4), Vector2(22, 17))
+	c.draw_rect(body, Color(0.9, 0.86, 0.96))
+	c.draw_arc(at + Vector2(0, -4), 7.5, PI, TAU, 14, Color(0.9, 0.86, 0.96), 3.0, true)
+	c.draw_circle(at + Vector2(0, 3), 2.5, Color(0.2, 0.15, 0.3))
+	c.draw_string(_num_font, at + Vector2(-30, r * 0.45 + 20), "Lv %d" % lv, HORIZONTAL_ALIGNMENT_CENTER, 60, 20, GOLD)
+
+
+## The skill's mark: a comet (a crescent with a trailing tail).
+func _comet_glyph(c: Control, at: Vector2, col: Color) -> void:
+	c.draw_circle(at + Vector2(7, -7), 9, col)
+	for k in 3:
+		var o := Vector2(-4 - k * 6, 4 + k * 6)
+		c.draw_line(at + Vector2(7, -7) + o * 0.6, at + o * 1.4, Color(col, 0.8 - k * 0.2), 4.0 - k, true)
+
+
+## The burst's mark: a small rune circle with a star.
+func _rune_glyph(c: Control, at: Vector2, col: Color) -> void:
+	c.draw_arc(at, 26, 0, TAU, 40, col, 2.0, true)
+	c.draw_arc(at, 20, 0, TAU, 40, Color(col, 0.6), 1.2, true)
+	_star(c, at, 17, col)
 
 
 func _draw_slot(c: Control, at: Vector2) -> void:
@@ -663,6 +716,7 @@ func _process(delta: float) -> void:
 		return
 	_hp_label.text = "%d / %d" % [ceili(p.health), int(p.max_health)]
 	_hp_bar.queue_redraw()
+	_level.text = "Lv. %d" % game.play.prog.level
 	_stamina.queue_redraw()
 	_skills.queue_redraw()
 	_minimap.queue_redraw()

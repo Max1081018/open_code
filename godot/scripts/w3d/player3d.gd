@@ -164,8 +164,53 @@ func hold(id: String) -> void:
 	_held = Body3D.item_model(id)
 	if _held:
 		right_hand.add_child(_held)
+		if id == "moonblade":
+			_moonblade_aura(_held)
 		if _summonable(id) and _summoned <= 0.0:
 			_held.visible = false
+
+
+## Violet arcana around the Moonblade: motes drifting up off the blade and
+## a soft light on her hand.
+func _moonblade_aura(blade: Node3D) -> void:
+	var length: float = blade.get_meta("length", 1.0)
+	var motes := CPUParticles3D.new()
+	var q := QuadMesh.new()
+	q.size = Vector2(0.05, 0.05)
+	motes.mesh = q
+	var m := StandardMaterial3D.new()
+	m.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	m.billboard_mode = BaseMaterial3D.BILLBOARD_PARTICLES
+	m.blend_mode = BaseMaterial3D.BLEND_MODE_ADD
+	m.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+	m.albedo_texture = Play3D._spark_texture()
+	m.vertex_color_use_as_albedo = true
+	motes.material_override = m
+	var ramp := Gradient.new()
+	ramp.colors = PackedColorArray([Color(0.95, 0.85, 1.0, 0.0), Color(0.8, 0.55, 1.0, 0.9), Color(0.6, 0.35, 1.0, 0.0)])
+	ramp.offsets = PackedFloat32Array([0.0, 0.2, 1.0])
+	motes.color_ramp = ramp
+	motes.amount = 22
+	motes.lifetime = 0.9
+	motes.local_coords = false
+	motes.emission_shape = CPUParticles3D.EMISSION_SHAPE_BOX
+	motes.emission_box_extents = Vector3(0.03, length * 0.38, 0.03)
+	motes.position = Vector3(0, length * 0.55, 0)
+	motes.direction = Vector3.UP
+	motes.spread = 40.0
+	motes.initial_velocity_min = 0.1
+	motes.initial_velocity_max = 0.4
+	motes.gravity = Vector3(0, 0.6, 0)
+	motes.scale_amount_min = 0.6
+	motes.scale_amount_max = 1.4
+	blade.add_child(motes)
+	var light := OmniLight3D.new()
+	light.light_color = Color(0.72, 0.45, 1.0)
+	light.light_energy = 0.7
+	light.omni_range = 2.2
+	light.shadow_enabled = false
+	light.position = Vector3(0, length * 0.6, 0)
+	blade.add_child(light)
 
 
 static func _summonable(id: String) -> bool:
@@ -281,7 +326,7 @@ func _puff(at: Vector3, surf: String, amount: int, spread: float) -> void:
 	ramp.colors = PackedColorArray([c, Color(c.r, c.g, c.b, 0.0)])
 	p.color_ramp = ramp
 	p.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
-	get_tree().current_scene.add_child(p)
+	(get_tree().current_scene if get_tree().current_scene else get_parent()).add_child(p)
 	p.global_position = at + Vector3(0, 0.05, 0)
 	p.emitting = true
 	get_tree().create_timer(1.2).timeout.connect(p.queue_free)
@@ -323,7 +368,7 @@ func _sparkle(at: Vector3) -> void:
 	var ramp := Gradient.new()
 	ramp.colors = PackedColorArray([Color(0.75, 0.9, 1.0, 1.0), Color(1.0, 0.86, 0.5, 0.0)])
 	p.color_ramp = ramp
-	get_tree().current_scene.add_child(p)
+	(get_tree().current_scene if get_tree().current_scene else get_parent()).add_child(p)
 	p.global_position = at
 	p.emitting = true
 	get_tree().create_timer(1.0).timeout.connect(p.queue_free)

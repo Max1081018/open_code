@@ -93,6 +93,10 @@ var defs := {
 	"iron_axe": {"name": "Iron Axe", "icon": "items/axe_iron", "kind": Kind.AXE, "stack": 1,
 		"tier": 3, "power": 4, "speed": 0.28, "damage": 13, "desc": "Fells trees in a few blows."},
 
+	# The heroine's own blade: arcane, it cuts wood and stone as well as foes.
+	"moonblade": {"name": "Violet Moonblade", "icon": "items/sword_diamond", "kind": Kind.SWORD,
+		"stack": 1, "tier": 3, "damage": 20, "power": 3, "speed": 0.3,
+		"desc": "Forged from the heart of a fallen star. Its edge sings with violet arcana: it parts wood and stone as easily as the risen dead."},
 	"wood_sword": {"name": "Starlit Blade", "icon": "items/toolSword", "kind": Kind.SWORD,
 		"stack": 1, "tier": 1, "damage": 10, "speed": 0.42, "desc": "Better than fists."},
 	"copper_sword": {"name": "Autumn Ember", "icon": "items/sword_bronze", "kind": Kind.SWORD,
@@ -322,7 +326,7 @@ const RARITY_COLORS := [Color(0.78, 0.76, 0.72), Color(0.45, 0.85, 0.45), Color(
 const SPECIAL := {"relic_featherbone": 3, "relic_ember_heart": 3, "relic_deepsong": 3,
 	"relic_moth_lantern": 3, "relic_bulwark": 3, "relic_swiftroot": 3, "relic_seers_eye": 3,
 	"relic_luckstone": 3, "relic_tidecaller": 4, "lumen_core": 4, "heart_crystal": 3, "vault_key": 3, "lumen_pickaxe": 4,
-	"lumen_sword": 4, "wardstone": 2, "glow_flask": 1, "ruby": 2, "emerald": 2}
+	"lumen_sword": 4, "moonblade": 4, "wardstone": 2, "glow_flask": 1, "ruby": 2, "emerald": 2}
 
 
 func rarity(id: String) -> int:

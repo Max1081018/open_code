@@ -89,6 +89,10 @@ func _ready() -> void:
 	play = Play3D.new()
 	add_child(play)
 	play.setup(self)
+	if _args.has("level"):
+		play.prog.level = clampi(int(_args.level), 1, Progression.MAX_LEVEL)
+		player.max_health = Progression.max_health_at(play.prog.level)
+		player.health = player.max_health
 	if _args.has("hold"):
 		play.inventory.slots[0] = {"id": _args.hold, "count": 1}
 		play.select(0)
@@ -449,7 +453,7 @@ func _script_input() -> void:
 			input.heavy = f == 30
 		"chop", "mine":
 			if f == 2:
-				play.select(1 if _args.action == "chop" else 2)
+				play.select(0)  # the Moonblade gathers
 			input.attack = f > 20 and f % 40 == 0
 		"glide":
 			# Jump off a slope, then spread the wings and fly forward.
