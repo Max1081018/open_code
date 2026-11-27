@@ -14,7 +14,7 @@ uniform float clarity = 2.6;   // metres until the bed fades out
 uniform float night = 0.0;
 // The Ashlands' lakes and rivers are lava: a mask over the island.
 uniform sampler2D lava_map : filter_linear;
-uniform float island_span = 3072.0;
+uniform float island_span = 5120.0;
 
 float wave(vec2 p, vec2 dir, float freq, float speed) {
 	return sin(dot(p, dir) * freq + TIME * speed);

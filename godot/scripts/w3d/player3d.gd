@@ -655,9 +655,12 @@ var _still := 0.0
 var _float_pose: FloatPose
 var _float_fx: Node3D
 var _float_circle: ShaderMaterial
+var _float_shade: ShaderMaterial
 var _float_light: OmniLight3D
 var _float_motes: CPUParticles3D
 var _float_t := 0.0
+## Capture harness: float as soon as she is calm.
+var force_float := false
 
 
 func floating() -> bool:
@@ -668,12 +671,12 @@ func _update_float(delta: float, speed: float) -> void:
 	var calm := speed < 0.3 and is_on_floor() and not swimming and _action <= 0.0 and _dodge <= 0.0 \
 		and not _on_guard and not input.block and not dead and _landing <= 0.0
 	_still = _still + delta if calm else 0.0
-	var want := 1.0 if _still > 4.5 else 0.0
+	var want := 1.0 if calm and _idle_break <= 0.0 and (_still > 4.5 or force_float) else 0.0
 	_float = move_toward(_float, want, delta * (0.55 if want > _float else 3.5))
 	_float_t += delta
 	var k := _float * _float * (3.0 - 2.0 * _float)
 	model.position.y = k * (0.5 + sin(_float_t * 1.3) * 0.06)
-	model.rotation.x = -0.42 * k
+	model.rotation.x = -0.6 * k
 	if _float_pose:
 		_float_pose.amount = k
 	if _float > 0.01 and _float_fx == null:
@@ -682,6 +685,7 @@ func _update_float(delta: float, speed: float) -> void:
 		_float_fx.visible = _float > 0.01
 		_float_circle.set_shader_parameter("fade", k)
 		_float_circle.set_shader_parameter("grow", clampf(k * 1.2, 0.0, 1.0))
+		_float_shade.set_shader_parameter("amount", k * 0.85)
 		_float_light.light_energy = 1.3 * k
 		_float_motes.emitting = k > 0.4
 		_float_fx.global_position = global_position + Vector3(0, 0.06, 0)
@@ -698,11 +702,22 @@ func _make_float_fx() -> void:
 	ring.mesh = plane
 	_float_circle = ShaderMaterial.new()
 	_float_circle.shader = load("res://scripts/shaders/magic_circle.gdshader")
-	_float_circle.set_shader_parameter("tint", Color(0.72, 0.45, 1.0))
-	_float_circle.set_shader_parameter("strength", 1.1)
+	_float_circle.set_shader_parameter("tint", Color(0.62, 0.3, 1.0))
+	_float_circle.set_shader_parameter("strength", 1.0)
 	_float_circle.set_shader_parameter("spin", 0.18)
 	ring.material_override = _float_circle
 	ring.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	# A violet dusk under the lines keeps them coloured in bright sun.
+	var under := MeshInstance3D.new()
+	var up := PlaneMesh.new()
+	up.size = Vector2(2.6, 2.6)
+	under.mesh = up
+	_float_shade = ShaderMaterial.new()
+	_float_shade.shader = load("res://scripts/shaders/magic_shade.gdshader")
+	under.material_override = _float_shade
+	under.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	under.position.y = -0.005
+	_float_fx.add_child(under)
 	_float_fx.add_child(ring)
 	_float_light = OmniLight3D.new()
 	_float_light.light_color = Color(0.72, 0.48, 1.0)
@@ -778,6 +793,8 @@ func _animate(speed: float) -> void:
 		_idle_time += dt
 		if _idle_break > 0.0:
 			_idle_break -= dt
+			if _float > 0.01:
+				_idle_break = 0.0  # never strike a pose while rising into the float
 			if _idle_break > 0.0:
 				return
 		elif _idle_time > 2.6 and randf() < dt * 0.9 and not _on_guard and _still < 3.5 and _float < 0.01:

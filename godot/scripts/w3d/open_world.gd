@@ -69,7 +69,7 @@ func setup(the_seed: int) -> void:
 ## The whole island as one coarse mesh (24 m cells), drawn only beyond the
 ## streamed rings: distant mountains and coasts are always on the horizon.
 func _build_horizon() -> void:
-	var cell := 24.0
+	var cell := 32.0
 	var half := TerrainGen.HALF + 200.0
 	var n := int(half * 2.0 / cell) + 1
 	var st := SurfaceTool.new()

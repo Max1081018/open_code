@@ -6,13 +6,13 @@ extends SkeletonModifier3D
 ## local rotations (degrees) on her humanoid bones, found by rendering.
 
 const OFFSETS := {
-	"LeftUpperLeg": Vector3(24, 0, 4), "LeftLowerLeg": Vector3(30, 0, 0),
-	"RightUpperLeg": Vector3(12, 0, -4), "RightLowerLeg": Vector3(60, 0, 0),
-	"Head": Vector3(-7, 0, 0), "Spine": Vector3(-6, 0, 0), "Chest": Vector3(-8, 0, 0),
-	"LeftUpperArm": Vector3(32, 0, 0), "RightUpperArm": Vector3(0, 0, 42),
+	"LeftUpperLeg": Vector3(38, 0, 2), "LeftLowerLeg": Vector3(18, 0, 0),
+	"RightUpperLeg": Vector3(55, 0, -3), "RightLowerLeg": Vector3(65, 0, 0),
+	"Head": Vector3(-4, 0, 0), "Spine": Vector3(-4, 0, 0), "Chest": Vector3(-5, 0, 0),
+	"LeftUpperArm": Vector3(20, 0, -25), "RightUpperArm": Vector3(20, 0, 25),
 }
 ## Slow drift on top (degrees of extra swing, per bone).
-const DRIFT := {"LeftUpperArm": Vector3(6, 0, 0), "RightUpperArm": Vector3(0, 0, 6),
+const DRIFT := {"LeftUpperArm": Vector3(4, 0, -4), "RightUpperArm": Vector3(4, 0, 4),
 	"LeftLowerLeg": Vector3(6, 0, 0), "RightLowerLeg": Vector3(-5, 0, 0), "Head": Vector3(2, 3, 0)}
 
 var amount := 0.0

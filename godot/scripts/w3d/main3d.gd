@@ -19,6 +19,8 @@ var quests: Quests3D
 var grass: GrassField
 var fill: DirectionalLight3D
 var starstones: Starstones
+var nav: NavField
+var weather: Weather3D
 var sun: DirectionalLight3D
 var environment: Environment
 var _sky_mat: ShaderMaterial
@@ -63,6 +65,9 @@ func _ready() -> void:
 	if saved.has("pos"):
 		spawn.y = maxf(spawn.y, (saved.pos as Vector3).y + 0.2)  # saved on an isle
 	world.warm(spawn)
+	nav = NavField.new()
+	add_child(nav)
+	nav.setup(world)
 	if dense_grass:
 		grass = GrassField.new()
 		add_child(grass)
@@ -124,6 +129,11 @@ func _ready() -> void:
 	var life := AmbientLife.new()
 	add_child(life)
 	life.setup(self)
+	weather = Weather3D.new()
+	add_child(weather)
+	weather.setup(self)
+	if _args.has("weather"):
+		weather.force(Weather3D.NAMES.map(func(n: String) -> String: return n.to_lower().replace(" ", "")).find(String(_args.weather).to_lower()))
 	if not saved.is_empty():
 		Save3D.restore(self, saved)
 		play.toast.emit("Welcome back to the Starfall")
@@ -138,6 +148,8 @@ func _ready() -> void:
 		free.look_at_from_position(Vector3(float(c[0]), float(c[1]), float(c[2])), Vector3(float(l[0]), float(l[1]), float(l[2])))
 		free.make_current()
 		world.focus = free.global_position
+	if _args.has("float"):
+		player.force_float = true  # she settles into the floating repose at once
 	if _args.has("shot"):
 		input.scripted = true
 		Engine.max_fps = 0
@@ -259,7 +271,7 @@ func _build_water() -> void:
 	var mat := ShaderMaterial.new()
 	mat.shader = load("res://scripts/shaders/water3d.gdshader")
 	# Where the land is volcanic the water is lava (a mask over the island).
-	var n := 192
+	var n := 256
 	var img := Image.create(n, n, false, Image.FORMAT_L8)
 	var span := TerrainGen.HALF * 2.0
 	for j in n:
@@ -414,6 +426,15 @@ func _update_sun(_delta: float) -> void:
 	var fog_base := Color(0.7, 0.74, 0.78).lerp(Color(0.95, 0.66, 0.46), low).lerp(Color(0.08, 0.1, 0.18), 1.0 - day)
 	environment.fog_light_color = fog_base.lerp(Color(_mood_col.r, _mood_col.g, _mood_col.b) * lerpf(0.25, 1.0, day), _mood_col.a)
 	environment.fog_density = 0.0006 + _mood_fog
+	if weather:
+		# The weather thickens and tints the air and dims the sun.
+		var wt := weather.fog_tint
+		environment.fog_light_color = environment.fog_light_color.lerp(Color(wt.r, wt.g, wt.b) * lerpf(0.3, 1.0, day), wt.a)
+		environment.fog_density += weather.fog_extra
+		sun.light_energy *= weather.sun_mul
+		environment.ambient_light_energy += weather.flash * 1.6
+		sun.light_energy += weather.flash * 1.2
+		_sky_mat.set_shader_parameter("cloud_cover", weather.cloud_cover)
 	sun.light_color = sun.light_color.lerp(sun.light_color * Color(_mood_col.r * 1.3, _mood_col.g * 1.3, _mood_col.b * 1.3), _mood_col.a * 0.2)
 	var night := clampf(1.0 - day, 0.0, 1.0)
 	_sky_mat.set_shader_parameter("night", night)
@@ -426,7 +447,11 @@ func _update_sun(_delta: float) -> void:
 	_sky_mat.set_shader_parameter("dusk", low)
 	_sky_mat.set_shader_parameter("top_color", _sky_top.lerp(Color(0.35, 0.32, 0.6), low))
 	_sky_mat.set_shader_parameter("horizon_color", _sky_hor.lerp(Color(1.0, 0.66, 0.45), low))
-	_sky_mat.set_shader_parameter("cloud_shade", Color(0.7, 0.74, 0.92).lerp(Color(0.75, 0.55, 0.7), low))
+	var shade := Color(0.7, 0.74, 0.92).lerp(Color(0.75, 0.55, 0.7), low)
+	if weather:
+		# Rain clouds hang grey and heavy.
+		shade = shade.lerp(Color(0.42, 0.45, 0.52), clampf(weather.cloud_cover - 0.42, 0.0, 0.55) * 1.6)
+	_sky_mat.set_shader_parameter("cloud_shade", shade)
 
 
 ## The capture harness's scripted inputs.

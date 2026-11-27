@@ -952,7 +952,7 @@ func _track(id: String) -> void:
 
 # ----------------------------------------------------------------- map ---
 
-const MAP_RES := 200
+const MAP_RES := 256
 const MAP_SPAN := (TerrainGen.HALF + 120.0) * 2.0
 
 

@@ -87,6 +87,7 @@ var dead := false
 var _home := Vector3.ZERO
 var _wander_target := Vector3.ZERO
 var _wander_timer := 0.0
+var _nav := {}            ## path cache for NavField.path_dir
 var _aggro := false
 var _attack_timer := 0.0     ## time to the blow landing (wind-up)
 var _cooldown := 0.0
@@ -257,7 +258,7 @@ func _physics_process(delta: float) -> void:
 			wish = -to_player.normalized()
 			speed *= 0.8
 		elif dist > want:
-			wish = to_player.normalized()
+			wish = _toward(player.global_position, to_player)
 		else:
 			wish = to_player.normalized().cross(Vector3.UP) * _strafe
 			speed *= 0.45
@@ -278,7 +279,7 @@ func _physics_process(delta: float) -> void:
 			_cooldown = 3.0
 			_play(spec.run, 1.6, true)
 		else:
-			wish = to_player.normalized()
+			wish = _toward(player.global_position, to_player)
 			if dist < reach * 1.6:
 				# Close: circle a little rather than walking into the blade.
 				wish = (wish * 0.3 + wish.cross(Vector3.UP) * _strafe).normalized()
@@ -293,9 +294,11 @@ func _physics_process(delta: float) -> void:
 		var to := _wander_target - global_position
 		to.y = 0
 		if to.length() > 1.0:
-			wish = to.normalized()
+			wish = _toward(_wander_target, to)
 			speed *= 0.45
 
+	if wish.length() > 0.1 and _charge <= 0.0:
+		wish = (wish + _separation()).normalized()
 	var horizontal := Vector3(velocity.x, 0, velocity.z).lerp(wish * speed, 1.0 - exp(-8.0 * delta))
 	velocity.x = horizontal.x
 	velocity.z = horizontal.z
@@ -477,3 +480,27 @@ func _play(clip: String, speed := 1.0, restart := false) -> void:
 	anim.speed_scale = speed
 	if restart:
 		anim.seek(0.0, true)
+
+
+## Walk toward `target` along the navmesh when one is baked here (round
+## trees and boulders, not into lakes); straight otherwise.
+func _toward(target: Vector3, straight: Vector3) -> Vector3:
+	var nav: NavField = game.get("nav")
+	if nav == null:
+		return straight.normalized()
+	return nav.path_dir(global_position, target, _nav)
+
+
+## A gentle push away from other foes so a band spreads around her
+## instead of stacking in one spot.
+func _separation() -> Vector3:
+	var push := Vector3.ZERO
+	for e in get_tree().get_nodes_in_group("enemies"):
+		if e == self or e.dead:
+			continue
+		var d: Vector3 = global_position - e.global_position
+		d.y = 0.0
+		var l := d.length()
+		if l > 0.01 and l < 1.8:
+			push += d / l * (1.8 - l) * 0.8
+	return push

@@ -10,7 +10,7 @@ extends RefCounted
 ## Pure functions of the seed: safe to call from worker threads.
 
 const WATER := 0.0
-const HALF := 1536.0          ## the island's half-extent in metres (a 3 km island)
+const HALF := 2560.0          ## the island's half-extent in metres (a 5 km island)
 const VILLAGE := Vector2(0, 0)
 const VILLAGE_RADIUS := 70.0
 const VILLAGE_HEIGHT := 9.0
@@ -58,10 +58,10 @@ func _init(the_seed := 1337) -> void:
 	_setup(_hills, 2, 0.006, 3)
 	_setup(_ridges, 3, 0.0042, 5)
 	_ridges.fractal_type = FastNoiseLite.FRACTAL_RIDGED
-	_setup(_mountain_mask, 4, 0.0014, 2)
+	_setup(_mountain_mask, 4, 0.0008, 2)
 	_setup(_river, 5, 0.0016, 2)
-	_setup(_temperature, 6, 0.0009, 2)
-	_setup(_moisture, 7, 0.0011, 2)
+	_setup(_temperature, 6, 0.00042, 2)
+	_setup(_moisture, 7, 0.0005, 2)
 	_setup(_detail, 8, 0.05, 2)
 	_setup(_forest, 9, 0.0045, 3)
 	_setup(_meadow, 10, 0.06, 2)
@@ -77,8 +77,8 @@ func _setup(noise: FastNoiseLite, offset: int, frequency: float, octaves: int) -
 
 ## The Ashlands: one designed region in the north-east around a great
 ## volcano, its border warped by noise.
-const ASHLANDS := Vector2(820.0, -860.0)
-const ASH_R := 430.0
+const ASHLANDS := Vector2(1250.0, -1300.0)
+const ASH_R := 620.0
 
 
 ## How volcanic the land is here, 0..1 (the Ashlands), independent of height.
@@ -91,10 +91,11 @@ func volcanic(x: float, z: float) -> float:
 ## The great volcano and three lesser cones: [centre, radius, height].
 func _find_volcanoes() -> void:
 	volcanoes = [
-		[ASHLANDS + Vector2(40, -60), 175.0, 118.0],
-		[ASHLANDS + Vector2(-235, 120), 85.0, 48.0],
-		[ASHLANDS + Vector2(215, 175), 78.0, 42.0],
-		[ASHLANDS + Vector2(-130, -250), 70.0, 38.0],
+		[ASHLANDS + Vector2(55, -80), 220.0, 130.0],
+		[ASHLANDS + Vector2(-330, 170), 105.0, 55.0],
+		[ASHLANDS + Vector2(300, 245), 95.0, 48.0],
+		[ASHLANDS + Vector2(-180, -350), 88.0, 44.0],
+		[ASHLANDS + Vector2(330, -330), 80.0, 40.0],
 	]
 
 
@@ -178,7 +179,7 @@ func biome(x: float, z: float) -> int:
 	var m := _moisture.get_noise_2d(x, z)
 	if volcanic(x, z) > 0.5:
 		return Biome.VOLCANIC
-	if h > 85.0 or t < -0.32:
+	if h > 95.0 or t < -0.38:
 		return Biome.SNOW
 	if Vector2(x, z).distance_to(VILLAGE) < VILLAGE_RADIUS * 2.5:
 		return Biome.FOREST
@@ -186,8 +187,8 @@ func biome(x: float, z: float) -> int:
 		return Biome.DRY
 	if t > 0.18 and m < 0.1:
 		return Biome.DRY
-	if m > 0.28:
-		return Biome.CORRUPTED if t > 0.1 else Biome.DARK_FOREST
+	if m > 0.2:
+		return Biome.CORRUPTED if t > 0.06 else Biome.DARK_FOREST
 	return Biome.FOREST
 
 

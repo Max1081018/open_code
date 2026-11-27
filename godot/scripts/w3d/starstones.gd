@@ -35,7 +35,7 @@ func build(the_game: Node) -> void:
 ## Each region's heartland on dry, gentle ground: [name, position].
 static func heartlands(gen: TerrainGen) -> Array:
 	var span := (TerrainGen.HALF + 120.0) * 2.0
-	var n := 36
+	var n := 48
 	var cell := span / n
 	var grid := []
 	for j in n:

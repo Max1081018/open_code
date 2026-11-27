@@ -9,6 +9,8 @@ extends Node
 ##   item   — carry this many of an item (taken on hand-in)
 ##   kill   — defeat this many of the risen
 ##   boss   — defeat the Rusted Warden
+##   stone  — wake a region's Starstone (Starstones id)
+##   slay   — defeat this many foes of the given kinds (a region's foes)
 ## The tracker (top left of the HUD) follows the most recent quest.
 
 signal changed
@@ -26,6 +28,33 @@ const QUESTS := [
 		"reward": [["lumen_core", 1], ["gold_coin", 50]]},
 	{"id": "warden", "task": "Find the ruins beyond the hills and free the Rusted Warden from the dark.",  "giver": "aldous", "after": "hunt", "title": "The Rusted Warden", "goal": "boss",
 		"reward": [["silver_sword", 1], ["relic_bulwark", 1]]},
+	# The regions, one after another: wake the region's waystone, then thin
+	# out what haunts it.
+	{"id": "gloom_stone", "task": "Walk into the Gloomwood, west of the Haven, and wake its Starstone.", "giver": "mira", "after": "hunt",
+		"title": "Lights in the Gloomwood", "goal": "stone", "stone": "the_gloomwood", "reward": [["glow_flask", 2], ["gold_coin", 30]]},
+	{"id": "gloom_cull", "task": "Thornlings and wisp-callers choke the Gloomwood paths. Cut down eight of them.", "giver": "mira", "after": "gloom_stone",
+		"title": "Thorns and Wisps", "goal": "slay", "kinds": ["thornling", "wisp_caller", "shade"], "count": 8, "region": "the_gloomwood",
+		"reward": [["emerald", 2], ["heart_crystal", 1]]},
+	{"id": "frost_stone", "task": "Climb into the Frostpeaks and wake the Starstone among the snows.", "giver": "aldous", "after": "gloom_cull",
+		"title": "The Frozen Watch", "goal": "stone", "stone": "the_frostpeaks", "reward": [["stew", 3], ["gold_coin", 40]]},
+	{"id": "frost_cull", "task": "Frost knights and rime shades hold the high passes. Defeat eight of them.", "giver": "aldous", "after": "frost_stone",
+		"title": "Rime and Steel", "goal": "slay", "kinds": ["frost_knight", "rime_shade"], "count": 8, "region": "the_frostpeaks",
+		"reward": [["relic_luckstone", 1], ["gold_coin", 40]]},
+	{"id": "sun_stone", "task": "Cross into the Sunscar and wake the Starstone in the red sands.", "giver": "tobin", "after": "frost_cull",
+		"title": "Under the Sunscar", "goal": "stone", "stone": "the_sunscar", "reward": [["iron_ore", 8], ["gold_coin", 40]]},
+	{"id": "sun_cull", "task": "Dune raiders waylay the caravans. Drive off ten of them and their sand-throwers.", "giver": "tobin", "after": "sun_stone",
+		"title": "Caravan Road", "goal": "slay", "kinds": ["dune_raider", "sand_thrower"], "count": 10, "region": "the_sunscar",
+		"reward": [["ruby", 2], ["lumen_core", 1]]},
+	{"id": "ash_stone", "task": "Brave the Ashlands, where the mountains burn, and wake the Starstone there.", "giver": "aldous", "after": "sun_cull",
+		"title": "Ash and Embers", "goal": "stone", "stone": "the_ashlands", "reward": [["heart_crystal", 1], ["gold_coin", 60]]},
+	{"id": "ash_cull", "task": "Cinder knights and ember-callers march from the craters. Break ten of them.", "giver": "aldous", "after": "ash_stone",
+		"title": "The Cinder March", "goal": "slay", "kinds": ["cinder_knight", "ember_caller"], "count": 10, "region": "the_ashlands",
+		"reward": [["lumen_sword", 1]]},
+	{"id": "blight_stone", "task": "Go into the Blight, where the star fell darkest, and wake its Starstone.", "giver": "wren", "after": "ash_cull",
+		"title": "Where the Star Fell", "goal": "stone", "stone": "the_blight", "reward": [["lumen_core", 1], ["gold_coin", 80]]},
+	{"id": "blight_cull", "task": "Void shades pour from the Blight's heart. Banish twelve of them and their callers.", "giver": "wren", "after": "blight_stone",
+		"title": "The Void Tide", "goal": "slay", "kinds": ["void_shade", "void_caller"], "count": 12, "region": "the_blight",
+		"reward": [["relic_tidecaller", 1], ["heart_crystal", 1], ["gold_coin", 120]]},
 ]
 
 var game: Node
@@ -138,6 +167,8 @@ func _accept(q: Dictionary) -> void:
 	tracked = q.id
 	if q.goal == "boss" and boss_down:
 		state[q.id] = "ready"
+	if q.goal == "stone" and game.starstones and game.starstones.attuned.has(q.stone):
+		state[q.id] = "ready"
 	game.hud.banner("New Quest", q.title)
 	Sfx.play("pickup")
 
@@ -177,6 +208,13 @@ func _on_kill(e: Node) -> void:
 		var w := quest("warden")
 		_ready_up(w)
 		return
+	var kind: String = String(e.get("kind")) if e.get("kind") != null else ""
+	for q in QUESTS:
+		if q.goal == "slay" and state.get(q.id, "") == "active" and kind in q.kinds:
+			progress[q.id] = int(progress.get(q.id, 0)) + 1
+			if progress[q.id] >= int(q.count):
+				_ready_up(q)
+			changed.emit()
 	var h := quest("hunt")
 	if state.get("hunt", "") == "active":
 		progress["hunt"] = int(progress.get("hunt", 0)) + 1
@@ -256,6 +294,9 @@ func _process(_delta: float) -> void:
 				progress[q.id] = game.features.found
 				if game.features.found >= int(q.count):
 					_ready_up(q)
+			"stone":
+				if game.starstones and game.starstones.attuned.has(q.stone):
+					_ready_up(q)
 			"item":
 				progress[q.id] = game.play.inventory.count(q.item)
 				if progress[q.id] >= int(q.count):
@@ -276,6 +317,11 @@ func tracker() -> Dictionary:
 				return {"title": q.title, "detail": "", "target": (game.islands.tops[q.isle][0] as Vector3)}
 			"boss":
 				return {"title": q.title, "detail": "", "target": game.play.boss_site}
+			"stone":
+				return {"title": q.title, "detail": "", "target": _stone_pos(q.stone)}
+			"slay":
+				return {"title": q.title, "detail": "%d / %d" % [mini(int(progress.get(tracked, 0)), int(q.count)), int(q.count)],
+					"target": _stone_pos(q.region)}
 			_:
 				return {"title": q.title, "detail": "%d / %d" % [mini(int(progress.get(tracked, 0)), int(q.count)), int(q.count)],
 					"target": null}
@@ -285,3 +331,10 @@ func tracker() -> Dictionary:
 			var who: String = speakers.get(npc_id, {}).get("name", npc_id)
 			return {"title": "Talk to " + who, "detail": "", "target": (npcs[npc_id] as Npc3D).global_position}
 	return {"title": "Explore the Starfall", "detail": "", "target": null}
+
+
+func _stone_pos(id: String):
+	if game.starstones == null:
+		return null
+	var st: Dictionary = game.starstones.stone(id)
+	return st.get("pos", null)

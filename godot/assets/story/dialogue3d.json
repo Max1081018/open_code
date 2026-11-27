@@ -1,113 +1,235 @@
 {
-  "speakers": {
-    "wren": {"name": "Wren", "title": "Keeper of the Haven"},
-    "mira": {"name": "Mira", "title": "Herbalist"},
-    "tobin": {"name": "Tobin", "title": "Smith of the Haven"},
-    "aldous": {"name": "Sir Aldous", "title": "Last of the Lightwardens"}
+ "speakers": {
+  "wren": {
+   "name": "Wren",
+   "title": "Keeper of the Haven"
   },
-  "talk": {
-    "wren_greet": [
-      "Oh! You're awake! We found you asleep in the meadow with starlight still clinging to your hair.",
-      "This is Starfall Haven. Ever since the star broke over the hills, pieces of the land have been drifting up into the sky.",
-      "Those floating isles? They were fields and orchards once. Now only the wind can reach them."
-    ],
-    "wren_idle": [
-      "When the wind sings around the isles, it means the star is dreaming.",
-      "Mira's stall smells of moonmint today. You should visit her.",
-      "If you ever get lost, look for the light of the Starspire. It always points home."
-    ],
-    "wings_offer": [
-      "See the columns of swirling wind? Updrafts. Step inside one, jump, and jump again to spread your wings.",
-      "There's a little isle just north of town. Ride its updraft and land on top. Show me you can fly!"
-    ],
-    "wings_remind": [
-      "The isle north of town, above the tower road. Jump twice in the wind column to glide!"
-    ],
-    "wings_done": [
-      "You flew! I watched you from the fountain. You were like a falling star going the wrong way!",
-      "Take this crystal. It holds a heartbeat of the old star. It'll make you stronger."
-    ],
-    "starspire_offer": [
-      "Now for the real journey. The Starspire, the great isle with the pillar of light, is where the star fell.",
-      "Nobody has stood on it since. If anyone can reach it, it's you. Follow the light to the north-east."
-    ],
-    "starspire_remind": [
-      "The Starspire is the isle with the pillar of light. Find an updraft beneath it and climb the wind."
-    ],
-    "starspire_done": [
-      "You stood on the Starspire... and it let you. Then the star chose you, I'm sure of it.",
-      "Here. The core of a fallen star. Tobin will want to see this one day."
-    ],
-    "mira_greet": [
-      "Well, hello there, sleepyhead. Wren told me all about you.",
-      "I'm Mira. Herbs, teas, salves, and a little bit of star-magic when nobody's looking."
-    ],
-    "mira_idle": [
-      "Apples from the meadow, mushrooms from the woods. The land still feeds us, even now.",
-      "A pinch of glowshard in the tea and you'll see in the dark for an hour. Probably.",
-      "Mind the woods at night. The things that walk there aren't looking for herbs."
-    ],
-    "shards_offer": [
-      "Have you seen the Starshards? Little floating crystals, glowing blue. They're scattered everywhere since the star fell.",
-      "Find three of them. Each one you touch will make your breath last longer. And I'll brew you something special."
-    ],
-    "shards_remind": [
-      "Starshards float above hilltops, isles and lonely corners. Three of them, love."
-    ],
-    "shards_done": [
-      "Three shards! You're positively glowing. Literally, a little.",
-      "Here, a hearty stew and a flask of liquid light. Don't drink them at the same time."
-    ],
-    "tobin_greet": [
-      "Ho there! Tobin's the name, hammers are the game.",
-      "That blade of yours is pretty, I'll give you that. But pretty doesn't stop a Rusted knight."
-    ],
-    "tobin_idle": [
-      "A good hammer, a hot fire, and a cup of Mira's tea. That's all a smith needs.",
-      "Iron sings different since the star fell. Higher. Happier, almost.",
-      "Rocks out in the hills give up iron if you strike them true."
-    ],
-    "ore_offer": [
-      "Tell you what. Bring me five chunks of iron ore and I'll forge you a sword worth swinging.",
-      "Strike the big rocks out past the town. Some of them hide iron in their hearts."
-    ],
-    "ore_remind": [
-      "Five iron ore, friend. The grey boulders in the hills are your best bet."
-    ],
-    "ore_done": [
-      "Now that's good iron. Stand back, this'll take a moment.",
-      "There! The Crystalline Sword. Forged in starfire and stubbornness. Take care of her."
-    ],
-    "aldous_greet": [
-      "Hold, traveller. You carry yourself like a Lightwarden, and there have been none of us for thirty years.",
-      "I am Aldous. I guard this town as I once guarded the star. Badly, some would say."
-    ],
-    "aldous_idle": [
-      "A blade is a promise. Keep it sharp, and keep it.",
-      "When the sun goes down, the dead walk the old roads. Stay near the lanterns.",
-      "My order sealed its secrets away when the star fell. One day I will find them again."
-    ],
-    "hunt_offer": [
-      "The dark has been bold of late. The risen dead walk the roads by night, and the woods are no longer safe.",
-      "Prove your blade. Defeat six of them, and I will tell you of the thing that leads them."
-    ],
-    "hunt_remind": [
-      "Six of the risen. Night brings them out in numbers. Strike first, dodge always."
-    ],
-    "hunt_done": [
-      "Six! You fight like a storm. My old order would have been proud to call you sister.",
-      "Take these coins. Spend them on something that makes you smile."
-    ],
-    "warden_offer": [
-      "Now hear me. Beyond the hills stands a ruin, and in it the Rusted Warden, once my brother in arms.",
-      "The dark wears him like armour now. Set him free. Your compass will show you the way."
-    ],
-    "warden_remind": [
-      "The Rusted Warden waits in the ruins. Watch his great swings, and strike when he stumbles."
-    ],
-    "warden_done": [
-      "So he is at peace at last. Thank you, Lightwarden. Yes, I will call you that now.",
-      "This blade was his, before the rust. The Jadewind Saber. It belongs to the one who freed him."
-    ]
+  "mira": {
+   "name": "Mira",
+   "title": "Herbalist"
+  },
+  "tobin": {
+   "name": "Tobin",
+   "title": "Smith of the Haven"
+  },
+  "aldous": {
+   "name": "Sir Aldous",
+   "title": "Last of the Lightwardens"
   }
+ },
+ "talk": {
+  "wren_greet": [
+   "Oh! You're awake! We found you asleep in the meadow with starlight still clinging to your hair.",
+   "This is Starfall Haven. Ever since the star broke over the hills, pieces of the land have been drifting up into the sky.",
+   "Those floating isles? They were fields and orchards once. Now only the wind can reach them."
+  ],
+  "wren_idle": [
+   "When the wind sings around the isles, it means the star is dreaming.",
+   "Mira's stall smells of moonmint today. You should visit her.",
+   "If you ever get lost, look for the light of the Starspire. It always points home."
+  ],
+  "wings_offer": [
+   "See the columns of swirling wind? Updrafts. Step inside one, jump, and jump again to spread your wings.",
+   "There's a little isle just north of town. Ride its updraft and land on top. Show me you can fly!"
+  ],
+  "wings_remind": [
+   "The isle north of town, above the tower road. Jump twice in the wind column to glide!"
+  ],
+  "wings_done": [
+   "You flew! I watched you from the fountain. You were like a falling star going the wrong way!",
+   "Take this crystal. It holds a heartbeat of the old star. It'll make you stronger."
+  ],
+  "starspire_offer": [
+   "Now for the real journey. The Starspire, the great isle with the pillar of light, is where the star fell.",
+   "Nobody has stood on it since. If anyone can reach it, it's you. Follow the light to the north-east."
+  ],
+  "starspire_remind": [
+   "The Starspire is the isle with the pillar of light. Find an updraft beneath it and climb the wind."
+  ],
+  "starspire_done": [
+   "You stood on the Starspire... and it let you. Then the star chose you, I'm sure of it.",
+   "Here. The core of a fallen star. Tobin will want to see this one day."
+  ],
+  "mira_greet": [
+   "Well, hello there, sleepyhead. Wren told me all about you.",
+   "I'm Mira. Herbs, teas, salves, and a little bit of star-magic when nobody's looking."
+  ],
+  "mira_idle": [
+   "Apples from the meadow, mushrooms from the woods. The land still feeds us, even now.",
+   "A pinch of glowshard in the tea and you'll see in the dark for an hour. Probably.",
+   "Mind the woods at night. The things that walk there aren't looking for herbs."
+  ],
+  "shards_offer": [
+   "Have you seen the Starshards? Little floating crystals, glowing blue. They're scattered everywhere since the star fell.",
+   "Find three of them. Each one you touch will make your breath last longer. And I'll brew you something special."
+  ],
+  "shards_remind": [
+   "Starshards float above hilltops, isles and lonely corners. Three of them, love."
+  ],
+  "shards_done": [
+   "Three shards! You're positively glowing. Literally, a little.",
+   "Here, a hearty stew and a flask of liquid light. Don't drink them at the same time."
+  ],
+  "tobin_greet": [
+   "Ho there! Tobin's the name, hammers are the game.",
+   "That blade of yours is pretty, I'll give you that. But pretty doesn't stop a Rusted knight."
+  ],
+  "tobin_idle": [
+   "A good hammer, a hot fire, and a cup of Mira's tea. That's all a smith needs.",
+   "Iron sings different since the star fell. Higher. Happier, almost.",
+   "Rocks out in the hills give up iron if you strike them true."
+  ],
+  "ore_offer": [
+   "Tell you what. Bring me five chunks of iron ore and I'll forge you a sword worth swinging.",
+   "Strike the big rocks out past the town. Some of them hide iron in their hearts."
+  ],
+  "ore_remind": [
+   "Five iron ore, friend. The grey boulders in the hills are your best bet."
+  ],
+  "ore_done": [
+   "Now that's good iron. Stand back, this'll take a moment.",
+   "There! The Crystalline Sword. Forged in starfire and stubbornness. Take care of her."
+  ],
+  "aldous_greet": [
+   "Hold, traveller. You carry yourself like a Lightwarden, and there have been none of us for thirty years.",
+   "I am Aldous. I guard this town as I once guarded the star. Badly, some would say."
+  ],
+  "aldous_idle": [
+   "A blade is a promise. Keep it sharp, and keep it.",
+   "When the sun goes down, the dead walk the old roads. Stay near the lanterns.",
+   "My order sealed its secrets away when the star fell. One day I will find them again."
+  ],
+  "hunt_offer": [
+   "The dark has been bold of late. The risen dead walk the roads by night, and the woods are no longer safe.",
+   "Prove your blade. Defeat six of them, and I will tell you of the thing that leads them."
+  ],
+  "hunt_remind": [
+   "Six of the risen. Night brings them out in numbers. Strike first, dodge always."
+  ],
+  "hunt_done": [
+   "Six! You fight like a storm. My old order would have been proud to call you sister.",
+   "Take these coins. Spend them on something that makes you smile."
+  ],
+  "warden_offer": [
+   "Now hear me. Beyond the hills stands a ruin, and in it the Rusted Warden, once my brother in arms.",
+   "The dark wears him like armour now. Set him free. Your compass will show you the way."
+  ],
+  "warden_remind": [
+   "The Rusted Warden waits in the ruins. Watch his great swings, and strike when he stumbles."
+  ],
+  "warden_done": [
+   "So he is at peace at last. Thank you, Lightwarden. Yes, I will call you that now.",
+   "This blade was his, before the rust. The Jadewind Saber. It belongs to the one who freed him."
+  ],
+  "gloom_stone_offer": [
+   "West of the Haven the trees close in and the light turns green and cold. The Gloomwood.",
+   "There is a Starstone in its heart, asleep. Wake it, and the herbs there might be gathered safely again."
+  ],
+  "gloom_stone_remind": [
+   "The Gloomwood lies west. Look for the pale obelisk with the crystal floating above it."
+  ],
+  "gloom_stone_done": [
+   "You woke it! I could feel the woods breathe easier from here.",
+   "Take these flasks. The Gloomwood is dark even at noon."
+  ],
+  "gloom_cull_offer": [
+   "The stone is awake, but the thornlings still choke the paths, and the wisp-callers lure travellers off them.",
+   "Cut down eight of them. Mind the thornlings: they lunge when they crouch."
+  ],
+  "gloom_cull_remind": [
+   "Eight of the Gloomwood's creatures. The thornlings crouch before they charge. Step aside when they do."
+  ],
+  "gloom_cull_done": [
+   "The paths are clear. I can gather moonmoss again.",
+   "These emeralds grew in the roots of the old trees. And a heart crystal, for your courage."
+  ],
+  "frost_stone_offer": [
+   "You fought well in the Gloomwood. Now I ask something harder.",
+   "The Frostpeaks rise north and west. The Lightwardens kept a watch there once, beside a Starstone. Wake it."
+  ],
+  "frost_stone_remind": [
+   "The Frostpeaks. Dress warm, and keep your blade dry. The Starstone stands among the snows."
+  ],
+  "frost_stone_done": [
+   "The old watch burns again. My brothers would weep to see it.",
+   "Eat. Snow takes more from a body than any blade."
+  ],
+  "frost_cull_offer": [
+   "Frost knights hold the passes. Once they were men of my order, frozen in their oath.",
+   "Grant them rest. Eight of them, knights or shades."
+  ],
+  "frost_cull_remind": [
+   "The frost knights swing slow but hard. Their ground cracks before the blow lands. Watch for it."
+  ],
+  "frost_cull_done": [
+   "They rest now. Thank you, sister.",
+   "This luckstone was our captain's. It is yours by right."
+  ],
+  "sun_stone_offer": [
+   "My caravans run through the Sunscar for copper and glass. Or did, until the raiders came.",
+   "Wake the Starstone out in the red sands. Once it shines, my drivers will have a light to steer by."
+  ],
+  "sun_stone_remind": [
+   "The Sunscar's south and west, past the dunes. When the sand blows, find shelter and wait it out."
+  ],
+  "sun_stone_done": [
+   "They saw it from the road! A star in the desert!",
+   "Here, iron for whatever you mean to forge. And coin, of course."
+  ],
+  "sun_cull_offer": [
+   "Now the raiders. Ten of them, the dune raiders and the ones who hurl sand in your eyes.",
+   "Do that and the road is open again."
+  ],
+  "sun_cull_remind": [
+   "The throwers keep their distance. Close in fast. The raiders will come to you."
+  ],
+  "sun_cull_done": [
+   "The road is open! My first caravan in a month came in this morning.",
+   "Rubies from the south, and a lumen core. Don't ask what I paid for it."
+  ],
+  "ash_stone_offer": [
+   "The Ashlands. Where the mountains bleed fire.",
+   "Something marches out of those craters. Before we fight it, we need a light there. Wake the Starstone."
+  ],
+  "ash_stone_remind": [
+   "Do not walk on the lava, whatever you do. The Starstone stands on cool ground between the cones."
+  ],
+  "ash_stone_done": [
+   "You walked through fire and came back. I have known knights who could not.",
+   "Take this. And the coin; you have earned a thousand times more."
+  ],
+  "ash_cull_offer": [
+   "Cinder knights and ember-callers march from the craters. Ten of them must fall.",
+   "The callers throw fire from afar. The knights slam the ground. Never stand where it glows."
+  ],
+  "ash_cull_remind": [
+   "Ten of the cinder host. Strike the callers first; they will burn you from behind."
+  ],
+  "ash_cull_done": [
+   "The march is broken.",
+   "This blade was forged from star-iron for the last Lightwarden. I think she has finally been found."
+  ],
+  "blight_stone_offer": [
+   "There is one place left. The Blight. Where the star fell, and the dark came up through the hole it left.",
+   "Wake its Starstone. If anything can push the dark back, it is starlight."
+  ],
+  "blight_stone_remind": [
+   "The Blight is east of the Haven, under the violet sky. Be careful. Please."
+  ],
+  "blight_stone_done": [
+   "I saw the light from the harbour wall. The whole sky over the Blight went silver for a moment.",
+   "Here. A lumen core, and every coin the Haven could spare."
+  ],
+  "blight_cull_offer": [
+   "The shades still pour out of the Blight's heart. Twelve of them, and the callers who summon them.",
+   "After that, I think the Starfall can finally sleep."
+  ],
+  "blight_cull_remind": [
+   "Twelve shades. They flicker when they strike. Watch for the violet glow under them."
+  ],
+  "blight_cull_done": [
+   "It's quiet. Truly quiet. For the first time since the star fell.",
+   "The Tidecaller relic, and a heart crystal. You are the Haven's light now."
+  ]
+ }
 }
