@@ -45,6 +45,8 @@ var sfx_volume := 0.9
 var voice_volume := 1.0
 var control_scale := 1.0  ## 0.7 .. 1.4, multiplies every on-screen control
 var control_opacity := 0.85
+## Camera turn speed, touch drag and mouse alike (0.4 .. 2.0).
+var look_sensitivity := 1.0
 var left_handed := false  ## swap the stick and the action buttons
 var camera_zoom := 1.0  ## 0.8 .. 1.25 on top of the screen-fitted zoom
 var screen_shake := true
@@ -54,6 +56,18 @@ var fps_cap := 60
 ## 3D resolution scale (0.5 .. 1.0): the world renders smaller and is
 ## stretched to the screen; the UI stays sharp.
 var render_scale := 1.0
+## Screen-space ambient occlusion from the depth buffer (contact shadows).
+var ao := true
+## Crepuscular rays from the sun past trees and cliffs.
+var sun_shafts := true
+## Streamed land around her: 0 near .. 3 farthest (rings of terrain chunks).
+var view_distance := 2
+## Anti-aliasing: 0 off, 1 FXAA, 2 MSAA 2x, 3 MSAA 4x.
+var antialiasing := 3
+const PRESET_AO := [false, false, true, true]
+const PRESET_SHAFTS := [false, true, true, true]
+const PRESET_VIEW := [0, 1, 2, 3]
+const PRESET_AA := [1, 1, 3, 3]
 const PRESET_SCALE := [0.6, 0.75, 0.9, 1.0]
 var debug_collision := false
 ## Per-control offsets set in the layout editor: name -> Vector2 (fraction of screen).
@@ -77,6 +91,10 @@ func apply_preset(preset: int) -> void:
 	bloom = p[5]
 	weather = p[6]
 	render_scale = PRESET_SCALE[quality]
+	ao = PRESET_AO[quality]
+	sun_shafts = PRESET_SHAFTS[quality]
+	view_distance = PRESET_VIEW[quality]
+	antialiasing = PRESET_AA[quality]
 
 
 func load_settings() -> void:
@@ -98,12 +116,17 @@ func load_settings() -> void:
 	show_fps = config.get_value("graphics", "show_fps", show_fps)
 	fps_cap = config.get_value("graphics", "fps_cap", fps_cap)
 	render_scale = config.get_value("graphics", "render_scale", render_scale)
+	ao = config.get_value("graphics", "ao", ao)
+	sun_shafts = config.get_value("graphics", "sun_shafts", sun_shafts)
+	view_distance = config.get_value("graphics", "view_distance", view_distance)
+	antialiasing = config.get_value("graphics", "antialiasing", antialiasing)
 	debug_collision = config.get_value("graphics", "debug_collision", debug_collision)
 	music_volume = config.get_value("audio", "music", music_volume)
 	sfx_volume = config.get_value("audio", "sfx", sfx_volume)
 	voice_volume = config.get_value("audio", "voice", voice_volume)
 	control_scale = config.get_value("controls", "scale", control_scale)
 	control_opacity = config.get_value("controls", "opacity", control_opacity)
+	look_sensitivity = config.get_value("controls", "look_sensitivity", look_sensitivity)
 	left_handed = config.get_value("controls", "left_handed", left_handed)
 	control_offsets = config.get_value("controls", "offsets", control_offsets)
 
@@ -112,6 +135,8 @@ func load_settings() -> void:
 func apply_display(vp: Viewport) -> void:
 	Engine.max_fps = fps_cap
 	vp.scaling_3d_scale = clampf(render_scale, 0.5, 1.0)
+	vp.msaa_3d = [Viewport.MSAA_DISABLED, Viewport.MSAA_DISABLED, Viewport.MSAA_2X, Viewport.MSAA_4X][clampi(antialiasing, 0, 3)]
+	vp.screen_space_aa = Viewport.SCREEN_SPACE_AA_FXAA if antialiasing == 1 else Viewport.SCREEN_SPACE_AA_DISABLED
 
 
 func save_settings() -> void:
@@ -129,12 +154,17 @@ func save_settings() -> void:
 	config.set_value("graphics", "show_fps", show_fps)
 	config.set_value("graphics", "fps_cap", fps_cap)
 	config.set_value("graphics", "render_scale", render_scale)
+	config.set_value("graphics", "ao", ao)
+	config.set_value("graphics", "sun_shafts", sun_shafts)
+	config.set_value("graphics", "view_distance", view_distance)
+	config.set_value("graphics", "antialiasing", antialiasing)
 	config.set_value("graphics", "debug_collision", debug_collision)
 	config.set_value("audio", "music", music_volume)
 	config.set_value("audio", "sfx", sfx_volume)
 	config.set_value("audio", "voice", voice_volume)
 	config.set_value("controls", "scale", control_scale)
 	config.set_value("controls", "opacity", control_opacity)
+	config.set_value("controls", "look_sensitivity", look_sensitivity)
 	config.set_value("controls", "left_handed", left_handed)
 	config.set_value("controls", "offsets", control_offsets)
 	config.save(PATH)

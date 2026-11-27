@@ -69,11 +69,13 @@ func setup(the_seed: int) -> void:
 	_material.set_shader_parameter("volcano_r", great[1])
 	_material.set_shader_parameter("flow_angles", PackedFloat32Array([0.3, 1.5, 2.6, 3.9, 5.2]))
 	_material.set_shader_parameter("flow_reach", PackedFloat32Array([0.6, 0.2, 0.9, 0.4, 0.7]))
-	match Settings.quality if "quality" in Settings else 2:
+	match Settings.view_distance:
 		0:
 			rings = [1, 2, 3]
 		1:
 			rings = [1, 2, 4]
+		3:
+			rings = [1, 3, 6]
 	_build_horizon()
 
 

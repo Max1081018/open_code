@@ -32,7 +32,7 @@ const SPECS := {
 ## "element": the colour of its magic, sparks and telegraphs.
 const ZONE_SPECS := {
 	"thornling": {"model": "thornling", "health": 55.0, "speed": 4.4, "damage": 10.0, "reach": 1.8, "windup": 0.4,
-		"style": "charge", "element": Color(0.5, 0.9, 0.4), "name": "Thornling",
+		"style": "charge", "element": Color(0.5, 0.9, 0.4), "name": "Thornling", "resist": {"arcane": -0.2},
 		"idle": "Zombie_Idle", "walk": "Walk", "run": "Jog_Fwd", "attack": ["Zombie_Scratch", "Punch_Jab"],
 		"loot": [["wood", 0.6, 3], ["glowshard", 0.3, 1]], "sight": 20.0},
 	"wisp_caller": {"model": "wisp_caller", "health": 50.0, "speed": 3.0, "damage": 12.0, "reach": 11.0, "windup": 0.8,
@@ -40,11 +40,11 @@ const ZONE_SPECS := {
 		"idle": "Spell_Simple_Idle", "walk": "Walk", "run": "Jog_Fwd", "attack": ["Spell_Simple_Shoot"],
 		"loot": [["glowshard", 0.7, 2], ["gold_coin", 0.4, 3]], "sight": 24.0},
 	"frost_knight": {"model": "frost_knight", "health": 160.0, "speed": 2.6, "damage": 22.0, "reach": 3.4, "windup": 0.9,
-		"style": "slam", "element": Color(0.6, 0.85, 1.0), "name": "Frost Knight",
+		"style": "slam", "element": Color(0.6, 0.85, 1.0), "name": "Frost Knight", "resist": {"arcane": 0.15},
 		"idle": "Sword_Idle", "walk": "Walk", "run": "Jog_Fwd", "attack": ["Sword_Heavy_Combo"],
 		"weapon": "iron_hammer", "loot": [["iron_ore", 0.8, 4], ["silver_ore", 0.5, 3], ["gold_coin", 0.7, 5]], "sight": 22.0},
 	"rime_shade": {"model": "rime_shade", "health": 60.0, "speed": 3.4, "damage": 13.0, "reach": 12.0, "windup": 0.7,
-		"style": "ranged", "element": Color(0.7, 0.9, 1.0), "name": "Rime Shade",
+		"style": "ranged", "element": Color(0.7, 0.9, 1.0), "name": "Rime Shade", "resist": {"arcane": 0.3},
 		"idle": "Spell_Simple_Idle", "walk": "Walk", "run": "Jog_Fwd", "attack": ["Spell_Simple_Shoot"],
 		"loot": [["glowshard", 0.6, 2], ["silver_ore", 0.4, 2]], "sight": 26.0},
 	"dune_raider": {"model": "dune_raider", "health": 110.0, "speed": 3.8, "damage": 16.0, "reach": 2.2, "windup": 0.45,
@@ -101,6 +101,11 @@ var _style := "melee"
 var _bar: Node3D
 var _bar_fill: MeshInstance3D
 var _bar_time := 0.0
+## Seconds left of an Arcane Mark (Phase Step): takes 20% more harm.
+var mark := 0.0
+const MARK_VULN := 0.2
+## Armour by fighting style (heavier styles shrug off more of each blow).
+const STYLE_DEFENSE := {"melee": 8.0, "charge": 10.0, "ranged": 0.0, "slam": 35.0}
 
 
 func setup(the_kind: String, the_game: Node) -> void:
@@ -193,6 +198,7 @@ func _build_bar() -> void:
 
 func _physics_process(delta: float) -> void:
 	_flash_time -= delta
+	mark = maxf(0.0, mark - delta)
 	if _bar:
 		_bar_time -= delta
 		_bar.visible = _bar_time > 0.0 and not dead
@@ -427,10 +433,20 @@ func _end_telegraph(landed: bool) -> void:
 
 
 ## Hit by the player. Returns true if it died.
+## What DamageCalc needs from this foe: armour, resistances, debuffs.
+func combat_stats() -> Dictionary:
+	var defense: float = float(spec.get("defense", STYLE_DEFENSE.get(_style, 8.0)))
+	if is_boss:
+		defense = maxf(defense, 30.0)
+	return {"defense": defense, "resist": spec.get("resist", {}), "vulnerable": MARK_VULN if mark > 0.0 else 0.0}
+
+
 func take_hit(amount: float, from: Vector3, heavy: bool) -> bool:
 	if dead:
 		return false
-	health -= amount
+	if is_nan(amount) or is_inf(amount) or amount < 0.0:
+		amount = 0.0
+	health = maxf(0.0, health - amount)
 	_flash_time = 0.25
 	_bar_time = 4.0
 	if spec.has("element") and not is_boss:

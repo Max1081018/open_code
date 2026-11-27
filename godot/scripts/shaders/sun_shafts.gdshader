@@ -17,15 +17,6 @@ void vertex() {
 	POSITION = vec4(VERTEX.xy, 1.0, 1.0);
 }
 
-float sky_at(vec2 uv) {
-	float raw = textureLod(depth_tex, uv, 0.0).r;
-	// Nothing drawn there: open sky (or clouds in the sky shader).
-	float open = step(0.99999, raw);
-	vec3 c = textureLod(screen_tex, uv, 1.5).rgb;
-	float lum = dot(c, vec3(0.3, 0.55, 0.15));
-	return open * smoothstep(0.45, 1.0, lum);
-}
-
 void fragment() {
 	if (intensity < 0.001) {
 		ALBEDO = vec3(0.0);
@@ -38,7 +29,11 @@ void fragment() {
 		float w = 1.0;
 		float sum = 0.0;
 		for (int i = 0; i < 20; i++) {
-			sum += sky_at(clamp(s, vec2(0.001), vec2(0.999))) * w;
+			// Open sky (nothing drawn there) that is bright: the sun's light.
+			vec2 q = clamp(s, vec2(0.001), vec2(0.999));
+			float open = step(0.99999, textureLod(depth_tex, q, 0.0).r);
+			float lum = dot(textureLod(screen_tex, q, 1.5).rgb, vec3(0.3, 0.55, 0.15));
+			sum += open * smoothstep(0.45, 1.0, lum) * w;
 			w *= decay;
 			s += delta;
 		}

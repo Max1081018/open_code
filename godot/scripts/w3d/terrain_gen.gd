@@ -243,7 +243,7 @@ func tint(b: int) -> Color:
 		Biome.SNOW:
 			return Color(0.95, 0.98, 1.05, 0.0)
 		Biome.JUNGLE:
-			return Color(0.68, 0.92, 0.6, 0.0)
+			return Color(0.8, 1.08, 0.7, 0.0)
 		Biome.CRYSTAL:
 			return Color(0.92, 1.04, 1.08, 0.0)
 	return Color(1, 1, 1, 0)

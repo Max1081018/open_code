@@ -153,13 +153,23 @@ static func _make_arc() -> ArrayMesh:
 
 func _process(delta: float) -> void:
 	skill_cooldown = maxf(0.0, skill_cooldown - delta)
+	for a in cooldowns:
+		cooldowns[a] = maxf(0.0, float(cooldowns[a]) - delta)
+	_buff_time = maxf(0.0, _buff_time - delta)
 	var inp: Input3D = game.input
 	if inp.skill:
 		inp.skill = false
 		use_skill()
+	if inp.skill2:
+		inp.skill2 = false
+		use_phase()
+	if inp.skill3:
+		inp.skill3 = false
+		use_orbit()
 	if inp.burst:
 		inp.burst = false
 		use_burst()
+	_update_orbit(delta)
 	for i in range(_impacts.size() - 1, -1, -1):
 		_impacts[i][0] -= delta
 		if _impacts[i][0] <= 0.0:
@@ -234,12 +244,7 @@ func _strike_resource(res: Dictionary, power: float, at: Vector3, forward: Vecto
 
 ## A weapon strike: every foe in a frontal arc within reach.
 func _weapon_strike(id: String, heavy: bool, at: Vector3, forward: Vector3) -> void:
-	var damage: float = (float(Items.def(id).get("damage", 4)) if id != "" else 4.0) * prog.damage_bonus()
-	if heavy:
-		damage *= 2.2
-	else:
-		# The combo's finisher hits hardest.
-		damage *= [1.0, 1.1, 1.45][game.player.combo_step]
+	var mult := 2.2 if heavy else float([1.0, 1.1, 1.45][game.player.combo_step])  # the finisher hits hardest
 	var struck := 0
 	for e in get_tree().get_nodes_in_group("enemies"):
 		var enemy := e as Enemy3D
@@ -250,10 +255,7 @@ func _weapon_strike(id: String, heavy: bool, at: Vector3, forward: Vector3) -> v
 		var reach := ARC_REACH + (0.6 if enemy.is_boss else 0.0) + (0.4 if heavy else 0.0)
 		if to.length() > reach or (to.length() > 0.5 and forward.dot(to.normalized()) < (0.0 if heavy else 0.35)):
 			continue
-		var crit := randf() < 0.12
-		var amount := damage * (2.0 if crit else 1.0) * randf_range(0.9, 1.1)
-		enemy.take_hit(amount, at, heavy)
-		damage_number(enemy.global_position + Vector3(0, 2.0 * (1.5 if enemy.is_boss else 1.0), 0), amount, crit)
+		hit(enemy, mult, at, heavy, "arcane" if _arcane() else "")
 		debris(enemy.global_position + Vector3(0, 1.1, 0), Color(0.85, 0.82, 0.75), 6)
 		struck += 1
 		energy = minf(BURST_COST, energy + (6.0 if heavy else 3.5))
@@ -282,7 +284,7 @@ func use_skill() -> void:
 	if not prog.unlocked("comet"):
 		toast.emit("Arcane Comet awakens at Lv. %d" % Progression.UNLOCKS.comet)
 		return
-	skill_cooldown = SKILL_COOLDOWN
+	skill_cooldown = prog.art_cooldown("comet")
 	p.perform("Spell_Simple_Shoot", 0.55, 1.2)
 	var fwd: Vector3 = p.model.global_transform.basis.z
 	Arcana.circle(game, p.global_position, 1.3, VIOLET, 0.35, 1.2)
@@ -304,7 +306,7 @@ func _comet_burst(at: Vector3) -> void:
 	Arcana.sparks(game, at, VIOLET, 36, 8.0, 0.12)
 	Arcana.flash(game, at, VIOLET, 3.0, 9.0, 0.4)
 	Sfx.play("magic_impact", -3.0)
-	_area_strike(ground, 3.6, 44.0 * prog.damage_bonus(), VIOLET)
+	_area_strike(ground, 3.6, prog.art_mult("comet"), VIOLET)
 	energy = minf(BURST_COST, energy + 10.0)
 
 
@@ -352,7 +354,7 @@ func _crescent_wave() -> void:
 	t.parallel().tween_method(func(v: float): mat.set_shader_parameter("strength", v), 3.0, 0.0, 0.45).set_ease(Tween.EASE_IN)
 	t.tween_callback(mi.queue_free)
 	# Foes in the corridor are cut as the crescent reaches them.
-	var damage: float = float(Items.def(held_id()).get("damage", 10)) * 1.6 * prog.damage_bonus()
+	var mult := prog.art_mult("crescent")
 	for e in get_tree().get_nodes_in_group("enemies"):
 		var enemy := e as Enemy3D
 		if enemy.dead:
@@ -365,9 +367,7 @@ func _crescent_wave() -> void:
 			get_tree().create_timer(along / reach * 0.45).timeout.connect(func():
 				if not is_instance_valid(enemy) or enemy.dead:
 					return
-				var amount := damage * randf_range(0.9, 1.1)
-				enemy.take_hit(amount, p.global_position, true)
-				damage_number(enemy.global_position + Vector3(0, 2.0, 0), amount, false)
+				hit(enemy, mult, p.global_position, true, "arcane")
 				Arcana.sparks(game, enemy.global_position + Vector3(0, 1.1, 0), VIOLET, 16, 5.0, 0.1)
 				energy = minf(BURST_COST, energy + 4.0))
 
@@ -410,7 +410,7 @@ func use_burst() -> void:
 		at.y = game.world.height_at(at.x, at.z)
 		Arcana.lance(game, at, 0.35 + i * 0.09, _lance_strike)
 	get_tree().create_timer(0.35 + spots.size() * 0.09 + 0.35).timeout.connect(func():
-		_area_strike(centre, 8.0, 60.0 * prog.damage_bonus(), VIOLET)
+		_area_strike(centre, 8.0, prog.art_mult("starfall"), VIOLET)
 		Sfx.play("magic_impact", 0.0)
 		_shake = 1.0)
 
@@ -422,9 +422,7 @@ func _lance_strike(at: Vector3) -> void:
 		var enemy := e as Enemy3D
 		if enemy.dead or enemy.global_position.distance_to(at) > 2.4:
 			continue
-		var amount := 34.0 * prog.damage_bonus() * randf_range(0.9, 1.1)
-		enemy.take_hit(amount, at, true)
-		damage_number(enemy.global_position + Vector3(0, 2.2, 0), amount, true)
+		hit(enemy, prog.art_mult("starfall") * 0.57, at, true, "arcane")
 
 
 ## A new level: stronger, healed, and perhaps a new art of the Moonblade.
@@ -442,19 +440,17 @@ func _on_level_up(level: int, art: String) -> void:
 	if art != "":
 		game.hud.banner("Level %d" % level, "New art:  " + String(Progression.ART_NAMES[art]))
 	else:
-		game.hud.banner("Level %d" % level, "Max HP %d  ·  ATK +%d%%" % [int(p.max_health), int(round((prog.damage_bonus() - 1.0) * 100.0))])
+		game.hud.banner("Level %d" % level, "Max HP %d  ·  Power %d  ·  +1 skill point" % [int(p.max_health), int(round(DamageCalc.power(attacker_stats())))])
 
 
-func _area_strike(at: Vector3, radius: float, damage: float, colour: Color) -> void:
+func _area_strike(at: Vector3, radius: float, mult: float, colour: Color) -> void:
 	_star_ring(at, radius, colour)
 	var hits := 0
 	for e in get_tree().get_nodes_in_group("enemies"):
 		var enemy := e as Enemy3D
 		if enemy.dead or enemy.global_position.distance_to(at) > radius + (1.0 if enemy.is_boss else 0.0):
 			continue
-		var amount := damage * randf_range(0.9, 1.1)
-		enemy.take_hit(amount, at, true)
-		damage_number(enemy.global_position + Vector3(0, 2.2, 0), amount, true)
+		hit(enemy, mult, at, true, "arcane")
 		hits += 1
 	_shake = maxf(_shake, 0.6)
 	if hits > 0:
@@ -769,3 +765,164 @@ func boss_slam(e: Enemy3D) -> void:
 	var d: float = game.player.global_position.distance_to(e.global_position)
 	if d < 5.5:
 		game.player.hurt(14.0, e.global_position)
+
+
+# -------------------------------------------------------- damage & arts ---
+
+## Seconds left on each art's cooldown (the Comet keeps skill_cooldown).
+var cooldowns := {"phase": 0.0, "orbit": 0.0}
+## A short buff on her power (multiplier) and its time left.
+var _buff := 1.0
+var _buff_time := 0.0
+
+
+## Her side of DamageCalc: weapon, level, buffs and what her relics add.
+func attacker_stats() -> Dictionary:
+	var id := held_id()
+	var weapon: float = float(Items.def(id).get("damage", 4)) if id != "" and Items.def(id).has("damage") else 4.0
+	var buff := _buff if _buff_time > 0.0 else 1.0
+	return {"weapon": weapon, "level": prog.level, "buff": buff,
+		"crit_chance": DamageCalc.CRIT_CHANCE, "crit_damage": DamageCalc.CRIT_DAMAGE}
+
+
+## Every blow on a foe lands here: one DamageCalc result, the same number
+## shown and taken. Returns the damage dealt.
+func hit(enemy: Enemy3D, mult: float, from: Vector3, heavy: bool, element := "") -> int:
+	if enemy == null or enemy.dead:
+		return 0
+	var r: Dictionary = DamageCalc.compute(attacker_stats(), enemy.combat_stats(), mult, element)
+	var amount: int = r.amount
+	enemy.take_hit(float(amount), from, heavy)
+	damage_number(enemy.global_position + Vector3(0, 2.0 * (1.5 if enemy.is_boss else 1.0), 0), amount, r.crit)
+	return amount
+
+
+## The art on a control slot, if unlocked ("" otherwise).
+func art_for_slot(slot: String) -> String:
+	for a in Progression.ARTS:
+		if Progression.ARTS[a].slot == slot:
+			return a if prog.unlocked(a) else ""
+	return ""
+
+
+func cooldown_left(art: String) -> float:
+	if art == "comet":
+		return skill_cooldown
+	return float(cooldowns.get(art, 0.0))
+
+
+## Phase Step (Lv 4): she blinks up to 7 m ahead, untouchable, through
+## foes; the violet afterimage she leaves cuts everything along the line
+## and Marks it (20% more harm for 5 s).
+func use_phase() -> void:
+	var p: Player3D = game.player
+	if not prog.unlocked("phase"):
+		toast.emit("Phase Step awakens at Lv. %d" % Progression.UNLOCKS.phase)
+		return
+	if cooldowns.phase > 0.0 or p.busy() or p.swimming or p.dead:
+		return
+	cooldowns.phase = prog.art_cooldown("phase")
+	var fwd: Vector3 = game.input.move.x * game.cam.right_flat() + game.input.move.y * game.cam.forward_flat()
+	if fwd.length() < 0.2:
+		fwd = p.model.global_transform.basis.z
+	fwd.y = 0.0
+	fwd = fwd.normalized()
+	var from := p.global_position
+	# Stop short of walls: probe along the ground.
+	var reach := 7.0
+	var space := p.get_world_3d().direct_space_state
+	var q := PhysicsRayQueryParameters3D.create(from + Vector3(0, 0.9, 0), from + Vector3(0, 0.9, 0) + fwd * reach, 1)
+	var ray := space.intersect_ray(q)
+	if not ray.is_empty():
+		reach = maxf(0.0, from.distance_to(ray.position) - 0.6)
+	var to := from + fwd * reach
+	to.y = game.world.height_at(to.x, to.z) + 0.05
+	_afterimage(p, from)
+	Arcana.sparks(game, from + Vector3(0, 1.0, 0), VIOLET, 26, 5.0, 0.1)
+	Sfx.play("magic_slash", -4.0, 0.1, 1.3)
+	p.blink_to(to, fwd)
+	Arcana.flash(game, to + Vector3(0, 1.0, 0), VIOLET, 2.0, 6.0, 0.3)
+	var mult := prog.art_mult("phase")
+	for e in get_tree().get_nodes_in_group("enemies"):
+		var enemy := e as Enemy3D
+		if enemy.dead:
+			continue
+		var rel := enemy.global_position - from
+		rel.y = 0.0
+		var along := rel.dot(fwd)
+		var side := (rel - fwd * along).length()
+		if along > -0.5 and along < reach + 1.0 and side < 1.8 + (0.8 if enemy.is_boss else 0.0):
+			enemy.mark = 5.0
+			get_tree().create_timer(0.12 + along / maxf(reach, 1.0) * 0.12).timeout.connect(func():
+				if is_instance_valid(enemy) and not enemy.dead:
+					hit(enemy, mult, from, true, "arcane")
+					Arcana.sparks(game, enemy.global_position + Vector3(0, 1.2, 0), Color(0.95, 0.7, 1.0), 14, 4.0, 0.08)
+					energy = minf(BURST_COST, energy + 5.0))
+
+
+## A violet ghost of her, fading where she stood.
+func _afterimage(p: Player3D, at: Vector3) -> void:
+	var ghost := MeshInstance3D.new()
+	var cap := CapsuleMesh.new()
+	cap.radius = 0.3
+	cap.height = 1.6
+	ghost.mesh = cap
+	var m := ShaderMaterial.new()
+	m.shader = load("res://scripts/shaders/magic_energy.gdshader")
+	m.set_shader_parameter("energy", 1.2)
+	ghost.material_override = m
+	ghost.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	game.add_child(ghost)
+	ghost.global_position = at + Vector3(0, 0.85, 0)
+	var t := ghost.create_tween()
+	t.tween_method(func(v: float): m.set_shader_parameter("energy", v), 1.2, 0.0, 0.6)
+	t.tween_callback(ghost.queue_free)
+
+
+## Blade Orbit (Lv 7): her floating blade leaves her hand and circles her
+## for 4 s; each foe it sweeps through is cut, at most every 0.45 s.
+const ORBIT_TIME := 4.0
+const ORBIT_RADIUS := 2.4
+var _orbit := 0.0
+var _orbit_hits := {}   ## enemy instance id -> seconds until it can be cut again
+
+
+func use_orbit() -> void:
+	var p: Player3D = game.player
+	if not prog.unlocked("orbit"):
+		toast.emit("Blade Orbit awakens at Lv. %d" % Progression.UNLOCKS.orbit)
+		return
+	if cooldowns.orbit > 0.0 or _orbit > 0.0 or p.dead or not MagicHold.floats(held_id()):
+		if not MagicHold.floats(held_id()) and prog.unlocked("orbit"):
+			toast.emit("Blade Orbit needs a blade or tool to send")
+		return
+	cooldowns.orbit = prog.art_cooldown("orbit")
+	_orbit = ORBIT_TIME
+	_orbit_hits.clear()
+	p.magic_hold.orbit(ORBIT_TIME, ORBIT_RADIUS)
+	Arcana.circle(game, p.global_position, ORBIT_RADIUS, VIOLET, 0.6, 2.4)
+	Sfx.play("magic_cast", -3.0, 0.1, 1.2)
+
+
+func _update_orbit(delta: float) -> void:
+	if _orbit <= 0.0:
+		return
+	_orbit -= delta
+	var p: Player3D = game.player
+	var blade: Vector3 = p.magic_hold.global_position
+	for k in _orbit_hits.keys():
+		_orbit_hits[k] = float(_orbit_hits[k]) - delta
+	var mult := prog.art_mult("orbit")
+	for e in get_tree().get_nodes_in_group("enemies"):
+		var enemy := e as Enemy3D
+		if enemy.dead:
+			continue
+		var id := enemy.get_instance_id()
+		if float(_orbit_hits.get(id, 0.0)) > 0.0:
+			continue
+		var d := Vector2(enemy.global_position.x - blade.x, enemy.global_position.z - blade.z).length()
+		if d < 1.3 + (0.8 if enemy.is_boss else 0.0):
+			_orbit_hits[id] = 0.45
+			hit(enemy, mult, p.global_position, false, "arcane")
+			Arcana.sparks(game, blade, VIOLET, 10, 4.0, 0.07)
+			energy = minf(BURST_COST, energy + 1.5)

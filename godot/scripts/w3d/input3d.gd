@@ -19,6 +19,8 @@ var block := false
 var interact := false
 var toggle_view := false
 var skill := false
+var skill2 := false   ## Phase Step
+var skill3 := false   ## Blade Orbit
 var burst := false
 var scripted := false
 ## While a conversation is open the heroine does not move or fight.
@@ -41,7 +43,7 @@ func _ensure_actions() -> void:
 	var keys := {
 		"w_forward": [KEY_W, KEY_UP], "w_back": [KEY_S, KEY_DOWN], "w_left": [KEY_A, KEY_LEFT],
 		"w_right": [KEY_D, KEY_RIGHT], "w_jump": [KEY_SPACE], "w_sprint": [KEY_SHIFT], "w_dodge": [KEY_CTRL, KEY_C],
-		"w_interact": [KEY_F], "w_view": [KEY_V], "w_heavy": [KEY_R], "w_skill": [KEY_E], "w_burst": [KEY_Q],
+		"w_interact": [KEY_F], "w_view": [KEY_V], "w_heavy": [KEY_R], "w_skill": [KEY_E], "w_skill2": [KEY_Z], "w_skill3": [KEY_X], "w_burst": [KEY_Q],
 	}
 	for action in keys:
 		if not InputMap.has_action(action):
@@ -54,7 +56,7 @@ func _ensure_actions() -> void:
 
 func _unhandled_input(event: InputEvent) -> void:
 	if event is InputEventMouseMotion and Input.mouse_mode == Input.MOUSE_MODE_CAPTURED:
-		_mouse += event.relative * mouse_sensitivity
+		_mouse += event.relative * mouse_sensitivity * Settings.look_sensitivity
 	if event is InputEventMouseButton and event.pressed and Input.mouse_mode != Input.MOUSE_MODE_CAPTURED \
 			and not DisplayServer.is_touchscreen_available():
 		Input.mouse_mode = Input.MOUSE_MODE_CAPTURED
@@ -94,10 +96,12 @@ func _process(_delta: float) -> void:
 	toggle_view = Input.is_action_just_pressed("w_view") or touch_buttons.get("view", false)
 	skill = Input.is_action_just_pressed("w_skill") or touch_buttons.get("skill", false)
 	burst = Input.is_action_just_pressed("w_burst") or touch_buttons.get("burst", false)
+	skill2 = Input.is_action_just_pressed("w_skill2") or touch_buttons.get("skill2", false)
+	skill3 = Input.is_action_just_pressed("w_skill3") or touch_buttons.get("skill3", false)
 	if touch_buttons.get("dash", false):
 		dodge = true
 	# One-shot touch buttons last one frame; held ones are re-set by the HUD.
-	for b in ["jump", "dodge", "heavy", "interact", "view", "skill", "burst", "dash"]:
+	for b in ["jump", "dodge", "heavy", "interact", "view", "skill", "skill2", "skill3", "burst", "dash"]:
 		touch_buttons.erase(b)
 	if blocked:
 		clear()

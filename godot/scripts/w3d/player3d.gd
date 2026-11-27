@@ -30,8 +30,17 @@ var left_hand: Node3D
 var head_anchor: Node3D
 var held_id := ""
 var _held: Node3D
+## Weapons and tools float under her magic (MagicHold); torches and shields
+## stay in her hand.
+var magic_hold: MagicHold
 
 var health := 100.0
+## Armour (DamageCalc defense) and a flat share of harm turned aside (0..0.9),
+## both from what she wears (set by Play3D from her relics).
+var armor := 0.0
+var damage_reduction := 0.0
+## The last blow's damage after DamageCalc (what the HUD shows).
+var last_hit := 0
 var max_health := 100.0
 var stamina := 100.0
 var max_stamina := 100.0
@@ -88,6 +97,9 @@ func _ready() -> void:
 	_build_look()
 	right_hand = HumanoidGrip.grip(skeleton, model, "RightHand", "RightIndexProximal", "RightLittleProximal", "RightMiddleProximal")
 	left_hand = HumanoidGrip.grip(skeleton, model, "LeftHand", "LeftIndexProximal", "LeftLittleProximal", "LeftMiddleProximal")
+	magic_hold = MagicHold.new()
+	add_child(magic_hold)
+	magic_hold.setup(self, right_hand)
 	var head := BoneAttachment3D.new()
 	head.bone_name = "Head"
 	skeleton.add_child(head)
@@ -161,19 +173,26 @@ func _update_look(delta: float) -> void:
 
 
 func hold(id: String) -> void:
-	if _held:
+	if _held and is_instance_valid(_held) and _held.get_parent() != magic_hold:
 		_held.queue_free()
 	_held = null
 	held_id = id
+	if not MagicHold.floats(id):
+		magic_hold.set_item("", null)
 	if id == "":
 		return
 	_held = Body3D.item_model(id)
-	if _held:
+	if _held == null:
+		return
+	if MagicHold.floats(id):
+		magic_hold.set_item(id, _held)
+		_sparkle(right_hand.global_position)
+	else:
 		right_hand.add_child(_held)
-		if id == "moonblade":
-			_moonblade_aura(_held)
 		if _summonable(id) and _summoned <= 0.0:
 			_held.visible = false
+	if id == "moonblade":
+		_moonblade_aura(_held)
 
 
 ## While a heavy stroke charges, the Moonblade's light swells; a chime and
@@ -245,6 +264,9 @@ static func _summonable(id: String) -> bool:
 
 ## Bring the held weapon or tool into the hand (if it is away).
 func summon() -> void:
+	if MagicHold.floats(held_id):
+		magic_hold.pulse(0.7)
+		return
 	if _held == null or not _summonable(held_id):
 		return
 	var was := _summoned
@@ -257,7 +279,7 @@ func summon() -> void:
 
 
 func _dismiss() -> void:
-	if _held == null or not _held.visible:
+	if _held == null or not _held.visible or MagicHold.floats(held_id):
 		return
 	_sparkle(right_hand.global_position)
 	var t := _held.create_tween()
@@ -651,8 +673,21 @@ func _start_action(heavy: bool) -> void:
 ## Play a scripted move (skills): locks movement like an attack.
 func perform(clip: String, seconds: float, speed := 1.0) -> void:
 	_action = seconds
+	magic_hold.cast(seconds * 0.85)
 	summon()
 	_play(clip, speed, true)
+
+
+## Phase Step: she is simply there, facing on, untouchable for a moment.
+func blink_to(at: Vector3, fwd: Vector3) -> void:
+	global_position = at
+	velocity = fwd * 4.0
+	model.rotation.y = atan2(fwd.x, fwd.z)
+	_grace = maxf(_grace, 0.35)
+	_action = 0.25
+	_action_name = "cast"
+	magic_hold.cast(0.3)
+	_play("Spell_Simple_Shoot", 1.6, true)
 
 
 func busy() -> bool:
@@ -1017,8 +1052,13 @@ func revive(at: Vector3) -> void:
 func hurt(amount: float, from: Vector3) -> void:
 	if invulnerable or dead or _grace > 0.0:
 		return
+	# Every blow on her goes through DamageCalc: armour, then her guard
+	# (a raised block takes 80%, relics such as the Bulwark Sigil more).
+	var reduction := damage_reduction
 	if input.block and _spend(amount * 0.8):
-		amount *= 0.2
+		reduction = 1.0 - (1.0 - reduction) * 0.2
+	amount = float(DamageCalc.incoming(amount, armor, reduction))
+	last_hit = int(amount)
 	health = maxf(0.0, health - amount)
 	if health <= 0.0:
 		_die()

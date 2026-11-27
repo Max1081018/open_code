@@ -390,8 +390,9 @@ var _skills_over: Control
 func _build_skills() -> void:
 	_skills = _canvas(Vector2.ZERO, Vector2(1, 1), _draw_skills)
 	_place(_skills, Vector2(1, 1), Vector2.ZERO)
-	for k in [["attack", "attack", 78.0], ["skill", "comet", 58.0], ["burst", "starfall", 70.0], ["jump", "jump", 44.0],
-			["dash", "dash", 44.0], ["bag", "bag", 50.0], ["interact", "interact", 46.0]]:
+	for k in [["attack", "attack", 72.0], ["skill", "comet", 56.0], ["burst", "starfall", 66.0], ["jump", "jump", 66.0],
+			["dash", "dash", 46.0], ["bag", "bag", 50.0], ["interact", "interact", 46.0],
+			["skill2", "phase", 58.0], ["skill3", "orbit", 58.0]]:
 		_skill_icons[k[0]] = _icon_on(_skills, k[1], SKILL_POS[k[0]], k[2])
 	# Cooldowns, padlocks and the charge ring draw over the glyphs.
 	_skills_over = Control.new()
@@ -404,36 +405,46 @@ func _build_skills() -> void:
 	_gadget_icon.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	_gadget_icon.size = Vector2(SLOT - 22, SLOT - 22)
 	_gadget_icon.pivot_offset = _gadget_icon.size * 0.5
-	root.add_child(_gadget_icon)
-	_place(_gadget_icon, Vector2(1, 1), SKILL_POS.gadget - _gadget_icon.size * 0.5)
+	_skills.add_child(_gadget_icon)
+	_gadget_icon.position = SKILL_POS.gadget - _gadget_icon.size * 0.5
 	_gadget_count = _label("", 20, PALE, _num_font)
 	_gadget_count.size = Vector2(40, 24)
 	_gadget_count.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
-	root.add_child(_gadget_count)
-	_place(_gadget_count, Vector2(1, 1), SKILL_POS.gadget + Vector2(SLOT * 0.5 - 50, SLOT * 0.5 - 30))
+	_skills.add_child(_gadget_count)
+	_gadget_count.position = SKILL_POS.gadget + Vector2(SLOT * 0.5 - 50, SLOT * 0.5 - 30)
 	# The item's name, shown for a moment when it changes.
 	_gadget_name = _label("", 20, GOLD, _ui_font)
 	_gadget_name.size = Vector2(260, 28)
 	_gadget_name.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	_gadget_name.modulate.a = 0.0
-	root.add_child(_gadget_name)
-	_place(_gadget_name, Vector2(1, 1), SKILL_POS.gadget + Vector2(-130, -SLOT * 0.5 - 40))
+	_skills.add_child(_gadget_name)
+	_gadget_name.position = SKILL_POS.gadget + Vector2(-130, -SLOT * 0.5 - 40)
 
 
 ## Buttons' centres relative to the bottom-right corner.
 const SLOT := 104.0   ## the held-item slot's size (px)
-const SKILL_POS := {"attack": Vector2(-150, -150), "skill": Vector2(-300, -110), "burst": Vector2(-150, -310),
-	"jump": Vector2(-60, -280), "dash": Vector2(-300, -250), "gadget": Vector2(-440, -86), "bag": Vector2(-570, -70),
-	"interact": Vector2(-430, -230)}
+## Jump sits in the corner under the thumb's rest, attack beside it, the same
+## size and well apart; dash, the arts and the ultimate arc above them.
+const SKILL_POS := {"jump": Vector2(-118, -128), "attack": Vector2(-290, -178), "dash": Vector2(-112, -296),
+	"skill": Vector2(-270, -340), "skill2": Vector2(-420, -300), "skill3": Vector2(-125, -450),
+	"burst": Vector2(-280, -490), "gadget": Vector2(-450, -86), "bag": Vector2(-580, -70),
+	"interact": Vector2(-440, -190)}
+## Visible radius of each control (px at control size 1.0).
+const BUTTON_R := {"jump": 60.0, "attack": 60.0, "dash": 40.0, "skill": 44.0, "skill2": 44.0, "skill3": 44.0,
+	"burst": 52.0, "interact": 36.0, "bag": 50.0, "gadget": 52.0}
+## Controls shown on screen (sealed arts show a padlock and their level).
+func _shown(_k: String) -> bool:
+	return true
 
 
 func _draw_skills(c: Control) -> void:
 	var play: Play3D = game.play
 	# Attack: the largest disc, a fine gold rim.
-	_glass(c, SKILL_POS.attack, 66, 0.4, Color(1.0, 0.9, 0.7, 0.5))
-	c.draw_arc(SKILL_POS.attack, 60, 0, TAU, 64, Color(1, 1, 1, 0.1), 1.0, true)
+	_glass(c, SKILL_POS.attack, BUTTON_R.attack, 0.4, Color(1.0, 0.9, 0.7, 0.5))
+	c.draw_arc(SKILL_POS.attack, BUTTON_R.attack - 6, 0, TAU, 64, Color(1, 1, 1, 0.1), 1.0, true)
 	# Skill and burst: violet-tinted glass; the burst fills with energy.
-	_glass(c, SKILL_POS.skill, 46, 0.46, Color(0.86, 0.74, 1.0, 0.5))
+	for k in ["skill", "skill2", "skill3"]:
+		_glass(c, SKILL_POS[k], BUTTON_R[k], 0.46, Color(0.86, 0.74, 1.0, 0.5))
 	var b: Vector2 = SKILL_POS.burst
 	var e: float = clampf(play.energy / Play3D.BURST_COST, 0.0, 1.0)
 	var ready := e >= 1.0 and play.prog.unlocked("starfall")
@@ -443,13 +454,16 @@ func _draw_skills(c: Control) -> void:
 	_glass(c, b, 54, 0.46, Color(0.86, 0.74, 1.0, 0.6) if ready else Color(1, 1, 1, 0.3))
 	if e > 0.0 and play.prog.unlocked("starfall"):
 		c.draw_arc(b, 54, -PI * 0.5, -PI * 0.5 + TAU * e, 64, Color(0.82, 0.62, 1.0, 0.95), 3.0, true)
-	for k in ["jump", "dash"]:
-		_glass(c, SKILL_POS[k], 36, 0.34)
+	# Jump: the same size as attack, a cooler rim.
+	_glass(c, SKILL_POS.jump, BUTTON_R.jump, 0.4, Color(0.8, 0.9, 1.0, 0.45))
+	c.draw_arc(SKILL_POS.jump, BUTTON_R.jump - 6, 0, TAU, 64, Color(1, 1, 1, 0.1), 1.0, true)
+	_glass(c, SKILL_POS.dash, BUTTON_R.dash, 0.34)
 	if _prompt and _prompt.text != "" and touch:
 		_glass(c, SKILL_POS.interact, 36, 0.45, Color(1.0, 0.86, 0.55, 0.7))
 	_skill_icons.interact.visible = _prompt != null and _prompt.text != "" and touch
-	var comet_ok: bool = play.prog.unlocked("comet") and play.skill_cooldown <= 0.0
-	_skill_icons.skill.modulate = Color(1, 1, 1, 1.0 if comet_ok else 0.45)
+	for pair in [["skill", "comet"], ["skill2", "phase"], ["skill3", "orbit"]]:
+		var ok: bool = play.prog.unlocked(pair[1]) and play.cooldown_left(pair[1]) <= 0.0
+		_skill_icons[pair[0]].modulate = Color(1, 1, 1, 1.0 if ok else 0.45)
 	_skill_icons.burst.modulate = Color(1, 1, 1, 1.0 if ready else 0.5)
 	_skills_over.queue_redraw()
 	# The held item: a framed slot showing the item itself (its icon is a
@@ -468,18 +482,21 @@ func _draw_skills_over() -> void:
 	var ch: float = game.input.charge
 	if ch > 0.0:
 		c.draw_arc(a, 72, -PI * 0.5, -PI * 0.5 + TAU * ch, 72, GOLD if ch >= 1.0 else Color(0.85, 0.7, 1.0), 4.0, true)
-	var s: Vector2 = SKILL_POS.skill
-	if not play.prog.unlocked("comet"):
-		_locked(c, s, 46, Progression.UNLOCKS.comet)
-	elif play.skill_cooldown > 0.0:
-		var cd: float = play.skill_cooldown / Play3D.SKILL_COOLDOWN
-		var pts := PackedVector2Array([s])
-		for k in 33:
-			pts.append(s + Vector2.from_angle(-PI * 0.5 + TAU * cd * k / 32.0) * 46)
-		c.draw_colored_polygon(pts, Color(0.02, 0.02, 0.06, 0.55))
-		c.draw_string(_num_font, s + Vector2(-30, 11), "%.0f" % ceilf(play.skill_cooldown), HORIZONTAL_ALIGNMENT_CENTER, 60, 30, PALE)
-	elif not touch:
-		c.draw_string(_num_font, s + Vector2(-30, 70), "E", HORIZONTAL_ALIGNMENT_CENTER, 60, 20, Color(PALE, 0.8))
+	for t in [["skill", "comet", "E"], ["skill2", "phase", "Z"], ["skill3", "orbit", "X"]]:
+		var s: Vector2 = SKILL_POS[t[0]]
+		var r: float = BUTTON_R[t[0]]
+		var left: float = play.cooldown_left(t[1])
+		if not play.prog.unlocked(t[1]):
+			_locked(c, s, r, Progression.UNLOCKS[t[1]])
+		elif left > 0.0:
+			var cd: float = clampf(left / maxf(play.prog.art_cooldown(t[1]), 0.01), 0.0, 1.0)
+			var pts := PackedVector2Array([s])
+			for k in 33:
+				pts.append(s + Vector2.from_angle(-PI * 0.5 + TAU * cd * k / 32.0) * r)
+			c.draw_colored_polygon(pts, Color(0.02, 0.02, 0.06, 0.55))
+			c.draw_string(_num_font, s + Vector2(-30, 11), "%.0f" % ceilf(left), HORIZONTAL_ALIGNMENT_CENTER, 60, 30, PALE)
+		elif not touch:
+			c.draw_string(_num_font, s + Vector2(-30, r + 24), t[2], HORIZONTAL_ALIGNMENT_CENTER, 60, 20, Color(PALE, 0.8))
 	var b: Vector2 = SKILL_POS.burst
 	if not play.prog.unlocked("starfall"):
 		_locked(c, b, 54, Progression.UNLOCKS.starfall)
@@ -856,6 +873,8 @@ func _process(delta: float) -> void:
 	_minimap.queue_redraw()
 	_crosshair.visible = game.cam.first_person
 	root.visible = not dialogue.showing and not menu.is_open and not cinematic
+	_skills.scale = Vector2.ONE * Settings.control_scale
+	_skills.modulate.a = Settings.control_opacity
 	visible = not cinematic
 	_show_prompt()
 	if game.get("quests"):
@@ -933,9 +952,12 @@ func _input(event: InputEvent) -> void:
 					return
 		# Skill buttons (bottom-right).
 		if pressed:
+			var cs := Settings.control_scale
 			for k in SKILL_POS:
-				var centre: Vector2 = screen + SKILL_POS[k]
-				var radius := 70.0 if k == "attack" else (SLOT * 0.55 if k == "gadget" else 50.0)
+				if not _shown(k) or (k == "interact" and not _skill_icons.interact.visible):
+					continue
+				var centre: Vector2 = screen + SKILL_POS[k] * cs
+				var radius: float = (float(BUTTON_R.get(k, 50.0)) + 10.0) * cs
 				if pos.distance_to(centre) < radius:
 					match k:
 						"attack":
@@ -972,4 +994,4 @@ func _input(event: InputEvent) -> void:
 			game.input.touch_move = Vector2(v.x, -v.y)
 			_stick_knob.position = Vector2(75, 75) + v * 70.0
 		elif event.index == _look_touch:
-			game.input.touch_look += event.relative * 0.005
+			game.input.touch_look += event.relative * 0.005 * Settings.look_sensitivity

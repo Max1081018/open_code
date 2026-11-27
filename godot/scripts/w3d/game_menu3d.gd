@@ -747,8 +747,8 @@ func _stats_of(id: String) -> Array:
 	var d: Dictionary = Items.def(id)
 	var out: Array = []
 	if d.has("damage"):
-		var bonus: float = game.play.prog.damage_bonus() if Items.kind(id) == Items.Kind.SWORD else 1.0
-		out.append(["Base ATK", str(int(round(float(d.damage) * bonus)))])
+		# Her power with this weapon at her level (DamageCalc.power).
+		out.append(["Power", str(int(round(DamageCalc.power({"weapon": float(d.damage), "level": game.play.prog.level}))))])
 	if d.has("power"):
 		out.append(["Gathering power", str(d.power)])
 	if d.has("heal"):
@@ -1532,14 +1532,15 @@ func _build_character() -> void:
 		_character_arts(card, prog)
 		return
 	var weapon: String = game.play.held_id()
-	var atk := int(round(float(Items.def(weapon).get("damage", 4)) * prog.damage_bonus())) if weapon != "" else 4
+	var atk := int(round(DamageCalc.power(game.play.attacker_stats())))
 	var found: int = game.features.found
 	var done := 0
 	for qd in Quests3D.QUESTS:
 		if game.quests.state.get(qd.id, "") == "done":
 			done += 1
 	var rows := [["Max HP", "%d" % int(p.max_health)], ["HP", "%d" % ceili(p.health)], ["Max Stamina", "%d" % int(p.max_stamina)],
-		["ATK", str(atk)], ["Arcane power", "+%d%%" % int(round((prog.damage_bonus() - 1.0) * 100.0))],
+		["Power", str(atk)], ["Critical", "%d%%  x%.1f" % [int(DamageCalc.CRIT_CHANCE * 100.0), DamageCalc.CRIT_DAMAGE]],
+		["Skill points", str(prog.points())],
 		["Starshards", "%d / %d" % [found, game.features.total]], ["Quests completed", "%d / %d" % [done, Quests3D.QUESTS.size()]]]
 	var y := 196.0
 	for r in rows:
@@ -1578,82 +1579,148 @@ func _build_character() -> void:
 ## The Moonblade's arts: each with its mark, what it does, and the level
 ## that opens it (sealed ones dimmed behind a padlock).
 func _character_arts(card: Control, prog: Progression) -> void:
-	var arts := [
-		["slash", "Violet Slashes", 1, "Her strokes leave violet crescents; the blade parts wood and stone as easily as foes."],
-		["crescent", "Crescent Wave", Progression.UNLOCKS.crescent, "A heavy stroke flings a travelling crescent that cuts all in its path."],
-		["comet", "Arcane Comet  (E)", Progression.UNLOCKS.comet, "A homing orb of arcana that bursts in a ring of runes among her foes."],
-		["starfall", "Violet Starfall  (Q)", Progression.UNLOCKS.starfall, "When charged: a great rune circle opens and star lances rain on every foe near her."]]
-	var y := 196.0
+	var arts := [["slash", "Violet Slashes", 1, "Her strokes leave violet crescents; three in time make a combo whose finisher hits hardest. The blade parts wood and stone as easily as foes.", "attack"]]
+	var keys := {"comet": "E", "phase": "Z", "orbit": "X", "starfall": "Q", "crescent": "hold"}
+	for a in ["crescent", "comet", "phase", "orbit", "starfall"]:
+		arts.append([a, Progression.ART_NAMES[a], Progression.UNLOCKS[a], Progression.ARTS[a].desc, keys[a]])
+	var pts := _label("Skill points:  %d" % prog.points(), 24, GOLD, _num_font)
+	pts.position = Vector2(46, 150)
+	card.add_child(pts)
+	var sc := ScrollContainer.new()
+	sc.position = Vector2(30, 190)
+	sc.size = Vector2(752, card.size.y - 210)
+	sc.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
+	card.add_child(sc)
+	var list := Control.new()
+	list.custom_minimum_size = Vector2(736, arts.size() * 128.0)
+	sc.add_child(list)
+	var y := 0.0
 	for a in arts:
-		var open: bool = prog.level >= int(a[2])
-		var row := Panel.new()
-		row.add_theme_stylebox_override("panel", _style(Color(0.12, 0.1, 0.28, 0.7) if open else Color(0.05, 0.05, 0.12, 0.6), 16,
-			Color(GOLD, 0.5) if open else Color(LAVENDER, 0.18)))
-		row.position = Vector2(40, y)
-		row.size = Vector2(722, 150)
-		row.mouse_filter = Control.MOUSE_FILTER_IGNORE
 		var key: String = a[0]
+		var open: bool = prog.level >= int(a[2])
+		var rank: int = prog.rank(key) if Progression.ARTS.has(key) else (1 if open else 0)
+		var row := Panel.new()
+		row.add_theme_stylebox_override("panel", _style(Color(0.12, 0.1, 0.28, 0.7) if open else Color(0.05, 0.05, 0.12, 0.6), 14,
+			Color(GOLD, 0.5) if open else Color(LAVENDER, 0.18)))
+		row.position = Vector2(10, y)
+		row.size = Vector2(722, 118)
+		row.mouse_filter = Control.MOUSE_FILTER_PASS
 		row.draw.connect(func():
-			var m := Vector2(70, 75)
-			row.draw_circle(m, 44, Color(0.2, 0.12, 0.38, 0.9) if open else Color(0.1, 0.1, 0.16, 0.9))
-			row.draw_arc(m, 44, 0, TAU, 40, Color(0.85, 0.65, 1.0) if open else Color(1, 1, 1, 0.2), 2.0, true)
+			var m := Vector2(58, 59)
+			row.draw_circle(m, 38, Color(0.2, 0.12, 0.38, 0.9) if open else Color(0.1, 0.1, 0.16, 0.9))
+			row.draw_arc(m, 38, 0, TAU, 40, Color(0.85, 0.65, 1.0) if open else Color(1, 1, 1, 0.2), 2.0, true)
+			var ink := Color(0.9, 0.78, 1.0) if open else Color(0.5, 0.5, 0.6)
 			match key:
 				"comet":
-					hud._comet_glyph(row, m, Color(0.9, 0.78, 1.0) if open else Color(0.5, 0.5, 0.6))
+					hud._comet_glyph(row, m, ink)
 				"starfall":
-					hud._rune_glyph(row, m, Color(0.9, 0.78, 1.0) if open else Color(0.5, 0.5, 0.6))
+					hud._rune_glyph(row, m, ink)
+				"phase":
+					for k in 3:
+						row.draw_line(m + Vector2(-20 + k * 8, -14), m + Vector2(-8 + k * 8, 14), Color(ink, 1.0 - k * 0.3), 4.0, true)
+					row.draw_circle(m + Vector2(16, 0), 7, ink)
+				"orbit":
+					row.draw_arc(m, 22, 0, TAU * 0.8, 30, ink, 3.0, true)
+					row.draw_line(m + Vector2(18, -14), m + Vector2(26, -26), ink, 4.0, true)
 				_:
-					row.draw_arc(m + Vector2(6, 0), 24, PI * 0.6, PI * 1.4, 18, Color(0.9, 0.78, 1.0) if open else Color(0.5, 0.5, 0.6), 5.0, true)
+					row.draw_arc(m + Vector2(6, 0), 22, PI * 0.6, PI * 1.4, 18, ink, 5.0, true)
 			if not open:
-				hud._locked(row, m, 44, int(a[2])))
-		card.add_child(row)
-		var t := _label(a[1], 28, PALE if open else DIM, _ui_font)
-		t.position = Vector2(140, 18)
+				hud._locked(row, m, 38, int(a[2]))
+			# Rank pips.
+			if Progression.ARTS.has(key) and open:
+				for k in Progression.MAX_RANK:
+					var c := Vector2(132 + k * 22, 98)
+					var pts2 := PackedVector2Array([c + Vector2(0, -7), c + Vector2(7, 0), c + Vector2(0, 7), c + Vector2(-7, 0)])
+					row.draw_colored_polygon(pts2, GOLD if k < rank else Color(1, 1, 1, 0.15)))
+		list.add_child(row)
+		var t := _label("%s  (%s)" % [a[1], a[4]], 26, PALE if open else DIM, _ui_font)
+		t.position = Vector2(120, 8)
 		row.add_child(t)
-		var lvl := _label("Unlocked" if open else "Awakens at Lv. %d" % int(a[2]), 20, GOLD if open else Color(1.0, 0.7, 0.55), _num_font)
-		lvl.position = Vector2(470, 24)
-		lvl.size = Vector2(230, 26)
-		lvl.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
-		row.add_child(lvl)
-		var d := _label(a[3], 21, Color(0.88, 0.88, 0.96) if open else Color(DIM, 0.7), _num_font)
+		var d := _label(a[3], 18, Color(0.88, 0.88, 0.96) if open else Color(DIM, 0.7), _num_font)
 		d.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-		d.size = Vector2(560, 80)
-		d.position = Vector2(142, 62)
+		d.size = Vector2(450, 56)
+		d.position = Vector2(122, 40)
 		row.add_child(d)
-		y += 166.0
+		if not open:
+			var lvl := _label("Awakens at Lv. %d" % int(a[2]), 18, Color(1.0, 0.7, 0.55), _num_font)
+			lvl.position = Vector2(560, 12)
+			lvl.size = Vector2(150, 24)
+			lvl.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
+			row.add_child(lvl)
+		elif Progression.ARTS.has(key):
+			if rank < Progression.MAX_RANK:
+				var cost := prog.upgrade_cost(key)
+				var b := _button("Rank up · %d" % cost, Vector2(584, 34), Vector2(128, 50), row, prog.points() >= cost)
+				b.disabled = prog.points() < cost
+				b.pressed.connect(func():
+					if prog.upgrade(key):
+						Sfx.play("magic_cast", -6.0)
+						game.call_deferred("autosave")
+					show_tab("person"))
+			else:
+				var mx := _label("Mastered", 18, GOLD, _num_font)
+				mx.position = Vector2(584, 44)
+				row.add_child(mx)
+		y += 128.0
 
 
 # ------------------------------------------------------------ settings ---
 
+var _settings_sc: ScrollContainer
+var _settings_scroll := 0
+
+
 func _build_settings() -> void:
-	var p := _panel(Vector2(84, 6), Vector2(1752, 898))
-	var y := 22.0
-	_setting_choice(p, y, "Graphics", ["Low", "Medium", "High"], Settings.quality, _set_quality)
-	y += 74
-	_setting_toggle(p, y, "Shadows", Settings.shadows, _set_shadows)
-	y += 74
-	_setting_toggle(p, y, "Bloom and glow", Settings.bloom, _set_bloom)
-	y += 74
-	_setting_toggle(p, y, "Screen shake", Settings.screen_shake, _set_shake)
-	y += 74
-	_setting_choice(p, y, "Frame rate", ["30", "60", "Unlimited"], [30, 60, 0].find(Settings.fps_cap), _set_fps)
-	y += 74
-	_setting_slider(p, y, "Render scale", Settings.render_scale, 0.5, 1.0, _set_scale)
-	y += 74
-	_setting_toggle(p, y, "Show FPS", Settings.show_fps, _set_show_fps)
-	y += 74
-	_setting_slider(p, y, "Camera sensitivity", game.input.mouse_sensitivity / 0.0032, 0.4, 2.0, _set_sens)
-	y += 74
-	_setting_slider(p, y, "Music", Settings.music_volume, 0.0, 1.0, _set_music)
-	y += 74
-	_setting_slider(p, y, "Sound effects", Settings.sfx_volume, 0.0, 1.0, _set_sfx)
-	var resume := _button("Resume", Vector2(1180, 790), Vector2(260, 68), p)
+	var panel := _panel(Vector2(84, 6), Vector2(1752, 898))
+	# The rows scroll (drag on a phone) inside the panel.
+	var sc := ScrollContainer.new()
+	sc.position = Vector2(0, 8)
+	sc.size = Vector2(1752, 760)
+	sc.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
+	panel.add_child(sc)
+	_settings_sc = sc
+	# Keep the place in the list when a choice rebuilds the page.
+	var keep := _settings_scroll
+	sc.ready.connect(func(): sc.set_deferred("scroll_vertical", keep))
+	var p := Control.new()
+	sc.add_child(p)
+	var y := 14.0
+	var rows := [
+		["choice", "Graphics preset", ["Low", "Medium", "High", "Ultra"], Settings.quality, _set_quality],
+		["toggle", "Shadows", Settings.shadows, _set_shadows],
+		["toggle", "Bloom and glow", Settings.bloom, _set_bloom],
+		["toggle", "Ambient occlusion", Settings.ao, _set_ao],
+		["toggle", "Sun shafts", Settings.sun_shafts, _set_shafts],
+		["choice", "Anti-aliasing", ["Off", "FXAA", "MSAA 2x", "MSAA 4x"], Settings.antialiasing, _set_aa],
+		["choice", "View distance", ["Near", "Medium", "Far", "Farthest"], Settings.view_distance, _set_view],
+		["slider", "Render scale", Settings.render_scale, 0.5, 1.0, _set_scale],
+		["choice", "Frame rate", ["30", "60", "Unlimited"], [30, 60, 0].find(Settings.fps_cap), _set_fps],
+		["toggle", "Show FPS", Settings.show_fps, _set_show_fps],
+		["toggle", "Screen shake", Settings.screen_shake, _set_shake],
+		["slider", "Camera sensitivity", Settings.look_sensitivity, 0.4, 2.0, _set_sens],
+		["slider", "Button size", Settings.control_scale, 0.7, 1.4, _set_button_size],
+		["slider", "Button opacity", Settings.control_opacity, 0.3, 1.0, _set_button_opacity],
+		["slider", "Music", Settings.music_volume, 0.0, 1.0, _set_music],
+		["slider", "Sound effects", Settings.sfx_volume, 0.0, 1.0, _set_sfx],
+		["slider", "Voices", Settings.voice_volume, 0.0, 1.0, _set_voice],
+	]
+	for r in rows:
+		match r[0]:
+			"choice":
+				_setting_choice(p, y, r[1], r[2], r[3], r[4])
+			"toggle":
+				_setting_toggle(p, y, r[1], r[2], r[3])
+			"slider":
+				_setting_slider(p, y, r[1], r[2], r[3], r[4], r[5])
+		y += 74
+	p.custom_minimum_size = Vector2(1730, y + 10)
+	var resume := _button("Resume", Vector2(1180, 790), Vector2(260, 68), panel)
 	resume.pressed.connect(close)
-	var title := _button("Title Screen", Vector2(1460, 790), Vector2(260, 68), p, false)
+	var title := _button("Title Screen", Vector2(1460, 790), Vector2(260, 68), panel, false)
 	title.pressed.connect(_to_title)
-	var note := _label("Draw distance follows the Graphics setting the next time the world loads.", 22, DIM, _num_font)
-	note.position = Vector2(60, 820)
-	p.add_child(note)
+	var note := _label("View distance applies the next time the world loads. Scroll for more.", 22, DIM, _num_font)
+	note.position = Vector2(60, 812)
+	panel.add_child(note)
 
 
 func _row_label(p: Control, y: float, text: String) -> void:
@@ -1669,12 +1736,15 @@ func _row_label(p: Control, y: float, text: String) -> void:
 
 func _setting_choice(p: Control, y: float, text: String, options: Array, value: int, apply: Callable) -> void:
 	_row_label(p, y, text)
+	var w := (790.0 - (options.size() - 1) * 16.0) / options.size()
 	for i in options.size():
-		var b := _button(options[i], Vector2(900 + i * 270, y + 4), Vector2(250, 54), p, i == value)
+		var b := _button(options[i], Vector2(900 + i * (w + 16.0), y + 4), Vector2(w, 54), p, i == value)
 		b.pressed.connect(_choose.bind(apply, i))
 
 
 func _choose(apply: Callable, i: int) -> void:
+	if is_instance_valid(_settings_sc):
+		_settings_scroll = _settings_sc.scroll_vertical
 	apply.call(i)
 	Settings.save_settings()
 	show_tab("gear")
@@ -1719,12 +1789,10 @@ func _slide(v: float, apply: Callable) -> void:
 func _set_quality(i: int) -> void:
 	# A preset: shadows, glow and render scale follow it.
 	Settings.apply_preset(i)
-	var vp := get_viewport()
-	vp.msaa_3d = Viewport.MSAA_4X if i >= 2 else Viewport.MSAA_DISABLED
-	vp.screen_space_aa = Viewport.SCREEN_SPACE_AA_DISABLED if i >= 2 else Viewport.SCREEN_SPACE_AA_FXAA
-	Settings.apply_display(vp)
+	Settings.apply_display(get_viewport())
 	game.sun.shadow_enabled = Settings.shadows
 	game.environment.glow_enabled = Settings.bloom
+	game.refresh_depth_fx()
 
 
 func _set_fps(i: int) -> void:
@@ -1756,7 +1824,40 @@ func _set_shake(on: int) -> void:
 
 
 func _set_sens(v: float) -> void:
-	game.input.mouse_sensitivity = 0.0032 * v
+	Settings.look_sensitivity = v
+
+
+func _set_button_size(v: float) -> void:
+	Settings.control_scale = v
+
+
+func _set_button_opacity(v: float) -> void:
+	Settings.control_opacity = v
+
+
+func _set_voice(v: float) -> void:
+	Settings.voice_volume = v
+	if Settings.has_method("_apply_audio"):
+		Settings._apply_audio()
+
+
+func _set_ao(on: int) -> void:
+	Settings.ao = on == 1
+	game.refresh_depth_fx()
+
+
+func _set_shafts(on: int) -> void:
+	Settings.sun_shafts = on == 1
+	game.refresh_depth_fx()
+
+
+func _set_aa(i: int) -> void:
+	Settings.antialiasing = i
+	Settings.apply_display(get_viewport())
+
+
+func _set_view(i: int) -> void:
+	Settings.view_distance = i
 
 
 func _set_music(v: float) -> void:

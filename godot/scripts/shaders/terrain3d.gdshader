@@ -74,7 +74,7 @@ void fragment() {
 		discard;
 	}
 	vec2 p = world_pos.xz;
-	vec3 grass = two_scale(grass_tex, p) * vec3(1.0, 0.9, 0.82);
+	vec3 grass = two_scale(grass_tex, p) * vec3(0.8, 0.76, 0.6);
 	// Meadows are never one flat green: broad patches of lush deep grass and
 	// sun-dried lighter grass, broken up again at a smaller scale.
 	float meadow = vnoise(p * 0.011) * 0.6 + vnoise(p * 0.047 + 3.1) * 0.4;

@@ -50,11 +50,8 @@ func _ready() -> void:
 		time_of_day = float(_args.time)
 	# Crisp edges: MSAA on capable settings, FXAA otherwise; full resolution.
 	var vp := get_viewport()
+	# Crisp edges and resolution as the player set them (Settings).
 	Settings.apply_display(vp)
-	if Settings.quality >= 2:
-		vp.msaa_3d = Viewport.MSAA_4X
-	else:
-		vp.screen_space_aa = Viewport.SCREEN_SPACE_AA_FXAA
 	_build_environment()
 	world = OpenWorld.new()
 	add_child(world)
@@ -308,18 +305,29 @@ func _build_environment() -> void:
 ## water and particles drawn before them are kept.
 var _ao_mat: ShaderMaterial
 var _shaft_mat: ShaderMaterial
+var _depth_quads: Array[MeshInstance3D] = []
+
+
+## Rebuild the depth effects after the player changes them.
+func refresh_depth_fx() -> void:
+	_build_depth_fx()
 
 
 func _build_depth_fx() -> void:
+	for q in _depth_quads:
+		q.queue_free()
+	_depth_quads.clear()
+	_ao_mat = null
+	_shaft_mat = null
 	if _args.get("depthfx", "1") == "0":
 		return
-	if Settings.shader_fx >= 2:
+	if Settings.ao:
 		_ao_mat = ShaderMaterial.new()
 		_ao_mat.shader = load("res://scripts/shaders/depth_ao.gdshader")
 		_ao_mat.render_priority = 120
-		_ao_mat.set_shader_parameter("strength", 1.0 if Settings.shader_fx >= 3 else 0.85)
+		_ao_mat.set_shader_parameter("strength", 1.0 if Settings.quality >= 3 else 0.85)
 		cam.camera.add_child(_screen_quad(_ao_mat))
-	if Settings.shader_fx >= 1:
+	if Settings.sun_shafts:
 		_shaft_mat = ShaderMaterial.new()
 		_shaft_mat.shader = load("res://scripts/shaders/sun_shafts.gdshader")
 		_shaft_mat.render_priority = 121
@@ -335,6 +343,7 @@ func _screen_quad(mat: ShaderMaterial) -> MeshInstance3D:
 	q.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 	q.extra_cull_margin = 16384.0
 	q.position = Vector3(0, 0, -1)
+	_depth_quads.append(q)
 	return q
 
 
@@ -593,9 +602,13 @@ func _script_input() -> void:
 	input.toggle_view = false
 	input.sprint = false
 	input.skill = false
+	input.skill2 = false
+	input.skill3 = false
 	input.burst = false
 	if _args.has("menu") and f == 30:
 		hud.menu.open(_args.menu)
+	if _args.has("hold") and f == 2:
+		player.hold(_args.hold)
 	match _args.get("action", "idle"):
 		"walk":
 			input.move = Vector2(0, 0.45) if f > 20 else Vector2.ZERO

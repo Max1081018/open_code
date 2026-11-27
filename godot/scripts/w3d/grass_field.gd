@@ -236,7 +236,7 @@ static func build_tile(g: TerrainGen, t: Vector2i, per_m2: float) -> Dictionary:
 static func _root_colour(b: int) -> Color:
 	match b:
 		TerrainGen.Biome.FOREST:
-			return Color(0.36, 0.56, 0.22, 1)
+			return Color(0.27, 0.47, 0.15, 1)
 		TerrainGen.Biome.DARK_FOREST:
 			return Color(0.14, 0.27, 0.22, 1)
 		TerrainGen.Biome.CORRUPTED:
