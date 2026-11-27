@@ -445,8 +445,15 @@ func _update_sun(_delta: float) -> void:
 	if islands:
 		islands.set_night(night)
 	_sky_mat.set_shader_parameter("dusk", low)
-	_sky_mat.set_shader_parameter("top_color", _sky_top.lerp(Color(0.35, 0.32, 0.6), low))
-	_sky_mat.set_shader_parameter("horizon_color", _sky_hor.lerp(Color(1.0, 0.66, 0.45), low))
+	var top := _sky_top.lerp(Color(0.35, 0.32, 0.6), low)
+	var hor := _sky_hor.lerp(Color(1.0, 0.66, 0.45), low)
+	if weather:
+		# Storm, dust or snow: the whole sky takes the weather's colour.
+		var wc := Color(weather.fog_tint.r, weather.fog_tint.g, weather.fog_tint.b) * lerpf(0.3, 1.0, day)
+		top = top.lerp(wc * 0.85, weather.fog_tint.a * 0.6)
+		hor = hor.lerp(wc, weather.fog_tint.a * 0.75)
+	_sky_mat.set_shader_parameter("top_color", top)
+	_sky_mat.set_shader_parameter("horizon_color", hor)
 	var shade := Color(0.7, 0.74, 0.92).lerp(Color(0.75, 0.55, 0.7), low)
 	if weather:
 		# Rain clouds hang grey and heavy.

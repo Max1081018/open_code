@@ -61,10 +61,11 @@ var _scale := 1.0
 func setup(the_game: Node) -> void:
 	game = the_game
 	_scale = [0.35, 0.6, 1.0, 1.3][clampi(Settings.quality, 0, 3)]
-	_fx.rain = _make("rain", Vector2(0.022, 0.75), Color(0.75, 0.82, 0.95, 0.55), false, 900)
-	_fx.snow = _make("snow", Vector2(0.07, 0.07), Color(1, 1, 1, 0.9), true, 700)
-	_fx.dust = _make("dust", Vector2(0.06, 0.035), Color(0.9, 0.74, 0.5, 0.75), true, 900)
-	_fx.ash = _make("ash", Vector2(0.06, 0.06), Color(0.42, 0.4, 0.4, 0.85), true, 500)
+	_fx.rain = _make("rain", Vector2(0.014, 0.8), Color(0.75, 0.82, 0.95, 0.55), false, 900)
+	_fx.snow = _make("snow", Vector2(0.12, 0.12), Color(1, 1, 1, 0.95), true, 900)
+	_fx.dust = _make("dust", Vector2(0.3, 0.06), Color(0.95, 0.8, 0.56, 0.6), false, 900)
+	_fx.veil = _make("veil", Vector2(5.0, 2.2), Color(0.9, 0.72, 0.48, 0.16), true, 60)
+	_fx.ash = _make("ash", Vector2(0.09, 0.09), Color(0.42, 0.4, 0.4, 0.85), true, 500)
 	_fx.ember = _make("ember", Vector2(0.05, 0.05), Color(1.0, 0.5, 0.18, 1.0), true, 80, true)
 	_fx.motes = _make("motes", Vector2(0.07, 0.07), Color(0.72, 0.45, 1.0, 1.0), true, 160, true)
 	_rain_sound = AudioStreamPlayer.new()
@@ -98,8 +99,8 @@ func _make(id: String, size: Vector2, col: Color, flake: bool, count: int, glow 
 	m.albedo_color = col
 	m.vertex_color_use_as_albedo = true
 	m.disable_receive_shadows = true
-	if flake:
-		m.albedo_texture = Play3D._spark_texture()
+	if id != "rain":
+		m.albedo_texture = Play3D._spark_texture()  # soft-edged, never a hard card
 	if glow:
 		m.blend_mode = BaseMaterial3D.BLEND_MODE_ADD
 	p.material_override = m
@@ -120,7 +121,7 @@ func _make(id: String, size: Vector2, col: Color, flake: bool, count: int, glow 
 			p.gravity = Vector3(0, -6, 0)
 			p.lifetime = 1.0
 		"snow":
-			p.emission_box_extents = Vector3(16, 0.2, 16)
+			p.emission_box_extents = Vector3(9, 0.2, 9)
 			p.direction = Vector3(0.3, -1, 0.1)
 			p.spread = 30.0
 			p.initial_velocity_min = 1.0
@@ -129,8 +130,8 @@ func _make(id: String, size: Vector2, col: Color, flake: bool, count: int, glow 
 			p.lifetime = 7.0
 			p.scale_amount_min = 0.5
 			p.scale_amount_max = 1.4
-		"dust":
-			p.emission_box_extents = Vector3(18, 3.0, 18)
+		"dust", "veil":
+			p.emission_box_extents = Vector3(10, 2.5, 10)
 			p.direction = Vector3(1, 0.05, 0.35)
 			p.spread = 8.0
 			p.initial_velocity_min = 9.0
@@ -163,6 +164,8 @@ func _make(id: String, size: Vector2, col: Color, flake: bool, count: int, glow 
 			ramp.colors = PackedColorArray([Color(1, 1, 1, 0), Color(1, 1, 1, 1), Color(1, 1, 1, 0)])
 			ramp.offsets = PackedFloat32Array([0.0, 0.3, 1.0])
 			p.color_ramp = ramp
+	# Already falling when it begins: no empty sky while the first flakes drop.
+	p.preprocess = p.lifetime
 	add_child(p)
 	return p
 
@@ -196,6 +199,7 @@ func _process(delta: float) -> void:
 	_set_fx("rain", kind == Kind.RAIN or kind == Kind.STORM, 0.75 if kind == Kind.RAIN else 1.0)
 	_set_fx("snow", kind == Kind.SNOW or kind == Kind.BLIZZARD, 1.0)
 	_set_fx("dust", kind == Kind.SANDSTORM, 1.0)
+	_set_fx("veil", kind == Kind.SANDSTORM, 1.0)
 	_set_fx("ash", kind == Kind.ASHFALL, 1.0)
 	_set_fx("ember", kind == Kind.ASHFALL, 1.0)
 	_set_fx("motes", kind == Kind.VOIDMOTES, 1.0)
@@ -232,9 +236,10 @@ func _place(p: Vector3) -> void:
 	fwd.y = 0.0
 	var at := c + fwd.normalized() * 6.0
 	(_fx.rain as Node3D).global_position = at + Vector3(0, 13, 0)
-	(_fx.snow as Node3D).global_position = at + Vector3(0, 9, 0)
+	(_fx.snow as Node3D).global_position = c + fwd.normalized() * 3.0 + Vector3(0, 6, 0)
 	(_fx.ash as Node3D).global_position = at + Vector3(0, 9, 0)
-	(_fx.dust as Node3D).global_position = at + Vector3(-12, 1.5, -4)
+	(_fx.dust as Node3D).global_position = Vector3(at.x - 10, p.y + 1.8, at.z - 3)
+	(_fx.veil as Node3D).global_position = Vector3(at.x - 10, p.y + 2.0, at.z - 3)
 	(_fx.ember as Node3D).global_position = Vector3(at.x, p.y + 0.5, at.z)
 	(_fx.motes as Node3D).global_position = Vector3(at.x, p.y + 0.8, at.z)
 
