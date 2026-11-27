@@ -93,6 +93,10 @@ func _ready() -> void:
 		play.prog.level = clampi(int(_args.level), 1, Progression.MAX_LEVEL)
 		player.max_health = Progression.max_health_at(play.prog.level)
 		player.health = player.max_health
+	if _args.has("give"):
+		for pair in String(_args.give).split(","):
+			var kv := pair.split(":")
+			play.inventory.add(kv[0], int(kv[1]) if kv.size() > 1 else 1)
 	if _args.has("hold"):
 		play.inventory.slots[0] = {"id": _args.hold, "count": 1}
 		play.select(0)

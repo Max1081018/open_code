@@ -771,7 +771,7 @@ func _input(event: InputEvent) -> void:
 			for i in MENU_ICONS.size():
 				var centre := Vector2(screen.x - 100 - (MENU_ICONS.size() - 1 - i) * 78 + 32, 62)
 				if pos.distance_to(centre) < 36:
-					menu.open(MENU_ICONS[i])
+					menu.open("pause" if MENU_ICONS[i] == "gear" else MENU_ICONS[i])
 					get_viewport().set_input_as_handled()
 					return
 		# Skill buttons (bottom-right).
