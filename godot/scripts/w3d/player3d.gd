@@ -96,7 +96,7 @@ func _ready() -> void:
 	_build_tree()
 	_gait(0.0)
 	_float_pose = FloatPose.new()
-	skeleton.add_child(_float_pose)
+	CharacterKit.add_pose_modifier(skeleton, _float_pose)
 
 
 ## Meshes of the head and hood: hidden from the first-person camera (layer 2).

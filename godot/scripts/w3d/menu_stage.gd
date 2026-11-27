@@ -12,8 +12,10 @@ extends Control
 
 const BG := "res://assets/ui/front/menu_bg.jpg"
 ## Where her hips sit, in the 1920x1080 painting: on the parapet's top edge.
-const SEAT_PX := Vector2(1330, 646)
-const DEPTH := 6.0
+const SEAT_PX := Vector2(1330, 640)
+## Where her hip joint goes on screen: a little above the stone's edge.
+const HIPS_PX := Vector2(1330, 616)
+const DEPTH := 7.0
 
 var model: Node3D
 var cam: Camera3D
@@ -25,6 +27,8 @@ var _seat := Vector3.ZERO
 var _lantern: Node3D
 var _glow: TextureRect
 var _sit: SitPose
+var _skel: Skeleton3D
+var _seated := 0        ## frames spent settling her hips onto the stone
 
 
 func _ready() -> void:
@@ -38,6 +42,12 @@ func _ready() -> void:
 	art.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	add_child(art)
 	add_child(_sea_glints())
+	# Her contact shadow on the stone (drawn under the 3D layer).
+	var shadow := _soft_glow(SEAT_PX + Vector2(0, 4), 120.0, Color(0, 0, 0, 0.55))
+	shadow.material = null
+	shadow.scale = Vector2(1.0, 0.16)
+	shadow.pivot_offset = Vector2(120, 120)
+	add_child(shadow)
 	_glow = _soft_glow(Vector2(1824, 512), 90.0, Color(1.0, 0.78, 0.45, 0.55))
 	add_child(_glow)
 	var view := SubViewportContainer.new()
@@ -58,8 +68,8 @@ func _ready() -> void:
 	_seat = _project(SEAT_PX, DEPTH)
 	model = CharacterKit.build(Account.character_kit() if Account.signed_in() else "player")
 	_vp.add_child(model)
-	# Hips on the stone, a hand's breadth back from the face; facing out.
-	model.position = _seat - Vector3(0, 0.5, 0.3)
+	# First guess; `_settle` then measures her hip joint and seats it exactly.
+	model.position = _seat - Vector3(0, 0.8, 0.2)
 	model.rotation.y = 0.28
 	var ap: AnimationPlayer = model.find_child("AnimationPlayer", true, false)
 	if ap:
@@ -69,8 +79,9 @@ func _ready() -> void:
 			ap.play(idle)
 	var sks := model.find_children("*", "Skeleton3D", true, false)
 	if not sks.is_empty():
+		_skel = sks[0]
 		_sit = SitPose.new()
-		(sks[0] as Skeleton3D).add_child(_sit)
+		CharacterKit.add_pose_modifier(_skel, _sit)
 	_build_vfx()
 	add_child(_fireflies())
 
@@ -240,8 +251,23 @@ func focus(_mode: String) -> void:
 	pass
 
 
+## Seat her: move the model so her hip joint lands on HIPS_PX at DEPTH.
+func _settle() -> void:
+	if _skel == null:
+		return
+	var hb := _skel.find_bone("Hips")
+	if hb < 0:
+		return
+	var hips: Vector3 = (_skel.global_transform * _skel.get_bone_global_pose(hb)).origin
+	var want := _project(HIPS_PX, DEPTH)
+	model.position += want - hips
+
+
 func _process(delta: float) -> void:
 	_t += delta
+	if _seated < 4:
+		_seated += 1
+		_settle()
 	if model:
 		var want := 0.28 + clampf(turn + orbit, -0.9, 0.9)
 		model.rotation.y = lerpf(model.rotation.y, want, 1.0 - exp(-6.0 * delta))

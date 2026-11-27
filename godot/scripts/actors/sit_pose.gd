@@ -8,11 +8,11 @@ extends SkeletonModifier3D
 ## her humanoid bones, found by rendering them side-on (tools/_float.gd).
 
 const OFFSETS := {
-	"LeftUpperLeg": Vector3(55, 0, 5), "RightUpperLeg": Vector3(60, 0, -5),
-	"LeftLowerLeg": Vector3(50, 0, 0), "RightLowerLeg": Vector3(70, 0, 0),
-	"Spine": Vector3(8, 0, 0), "Head": Vector3(6, 0, 0),
-	"LeftUpperArm": Vector3(-35, 0, -20), "RightUpperArm": Vector3(-35, 0, 20),
-	"LeftLowerArm": Vector3(0, 0, -15), "RightLowerArm": Vector3(0, 0, 15),
+	"LeftUpperLeg": Vector3(69, 0, 4), "RightUpperLeg": Vector3(74, 0, -4),
+	"LeftLowerLeg": Vector3(66, 0, 0), "RightLowerLeg": Vector3(84, 0, 0),
+	"Spine": Vector3(4, 0, 0), "Head": Vector3(6, 0, 0),
+	"LeftUpperArm": Vector3(-30, 0, -24), "RightUpperArm": Vector3(-30, 0, 24),
+	"LeftLowerArm": Vector3(0, 0, -12), "RightLowerArm": Vector3(0, 0, 12),
 }
 
 var amount := 1.0

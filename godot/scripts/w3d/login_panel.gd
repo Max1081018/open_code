@@ -35,7 +35,7 @@ func show_page(page: String, data := {}) -> void:
 	shade.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	add_child(shade)
 	var p := UiKit.panel(Vector2(700, 0))
-	p.position = Vector2(1120, 150)
+	p.position = Vector2(80, 300)
 	add_child(p)
 	_box = VBoxContainer.new()
 	_box.add_theme_constant_override("separation", 16)

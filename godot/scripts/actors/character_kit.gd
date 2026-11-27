@@ -126,6 +126,18 @@ const OUTFIT_GROW := 0.022
 static var _library: AnimationLibrary
 
 
+## Add a pose modifier (sitting, floating) so it runs BEFORE the soft-bone
+## simulator: the skirt, hair and tails then collide with the legs where the
+## pose puts them, not where the animation had them.
+static func add_pose_modifier(skeleton: Skeleton3D, modifier: SkeletonModifier3D) -> void:
+	skeleton.add_child(modifier)
+	for after in ["SkirtFollow", "SoftBones"]:
+		var n := skeleton.get_node_or_null(after)
+		if n:
+			skeleton.move_child(modifier, n.get_index())
+			return
+
+
 static func has(name: String) -> bool:
 	return RECIPES.has(name) or HEROES.has(name)
 
@@ -283,6 +295,13 @@ static func _build_hero(name: String) -> Node3D:
 	for mesh in model.find_children("*", "MeshInstance3D", true, false):
 		_toon(mesh as MeshInstance3D, tints)
 	SecondaryMotion.setup(skeleton)
+	# Skirts ride on the thighs (before the spring bones drape them).
+	var follow := SkirtFollow.new()
+	follow.name = "SkirtFollow"
+	skeleton.add_child(follow)
+	var soft := skeleton.get_node_or_null("SoftBones")
+	if soft:
+		skeleton.move_child(follow, soft.get_index())
 	return root
 
 
