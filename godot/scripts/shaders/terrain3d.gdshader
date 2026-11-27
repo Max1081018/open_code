@@ -66,7 +66,7 @@ void fragment() {
 		discard;
 	}
 	vec2 p = world_pos.xz;
-	vec3 grass = two_scale(grass_tex, p) * vec3(0.68, 0.78, 0.55);
+	vec3 grass = two_scale(grass_tex, p) * vec3(0.56, 0.68, 0.42);
 	vec3 soil = two_scale(soil_tex, p);
 	vec3 snow = two_scale(snow_tex, p);
 	vec3 sand = two_scale(sand_tex, p);
@@ -140,7 +140,10 @@ void fragment() {
 		pave = 1.0 - smoothstep(-0.2, 0.2, d);
 		if (pave > 0.0) {
 			vec2 puv = p / 3.2;
-			vec3 stones = texture(paving_tex, puv).rgb * vec3(0.9, 0.85, 0.78);
+			vec3 stones = texture(paving_tex, puv).rgb * vec3(0.82, 0.77, 0.7);
+			// Mortar and gaps in shade, worn stone tops lighter.
+			float lum = dot(stones, vec3(0.33));
+			stones *= mix(0.55, 1.08, smoothstep(0.18, 0.5, lum));
 			float curb = smoothstep(-0.75, -0.3, d);
 			stones = mix(stones, stones * vec3(0.7, 0.68, 0.66), curb);
 			c = mix(c, stones, pave);

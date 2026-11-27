@@ -17,6 +17,7 @@ var features: WorldFeatures
 var town: Town
 var quests: Quests3D
 var grass: GrassField
+var fill: DirectionalLight3D
 var starstones: Starstones
 var sun: DirectionalLight3D
 var environment: Environment
@@ -193,14 +194,17 @@ func _build_environment() -> void:
 	environment.background_mode = Environment.BG_SKY
 	environment.sky = sky
 	environment.ambient_light_source = Environment.AMBIENT_SOURCE_SKY
-	environment.ambient_light_energy = 0.55
-	environment.ambient_light_sky_contribution = 0.85
-	environment.tonemap_mode = Environment.TONE_MAPPER_ACES
-	environment.tonemap_exposure = 0.9
-	environment.tonemap_white = 6.0
+	environment.ambient_light_energy = 0.45
+	environment.ambient_light_sky_contribution = 0.8
+	# AgX: highlights roll off softly (pale walls and skies stop clipping
+	# to white) and colours stay rich in the light.
+	environment.tonemap_mode = Environment.TONE_MAPPER_AGX
+	environment.tonemap_exposure = 1.0
+	environment.tonemap_white = 8.0
 	environment.glow_enabled = Settings.bloom
-	environment.glow_intensity = 0.35
-	environment.glow_bloom = 0.08
+	environment.glow_intensity = 0.28
+	environment.glow_bloom = 0.03
+	environment.glow_hdr_threshold = 1.2
 	environment.fog_enabled = true
 	environment.fog_light_color = Color(0.72, 0.82, 0.95)
 	environment.fog_density = 0.0006
@@ -209,8 +213,8 @@ func _build_environment() -> void:
 	environment.fog_height = 30.0
 	environment.fog_height_density = 0.004
 	environment.adjustment_enabled = true
-	environment.adjustment_saturation = 1.06
-	environment.adjustment_contrast = 1.02
+	environment.adjustment_saturation = 1.08
+	environment.adjustment_contrast = 1.06
 	var we := WorldEnvironment.new()
 	we.environment = environment
 	add_child(we)
@@ -223,6 +227,13 @@ func _build_environment() -> void:
 	sun.shadow_bias = 0.04
 	sun.shadow_normal_bias = 1.2
 	add_child(sun)
+	# A soft cool fill from the open sky opposite the sun: shade stays
+	# luminous (anime lighting), never a dead grey. No shadows.
+	fill = DirectionalLight3D.new()
+	fill.shadow_enabled = false
+	fill.light_color = Color(0.7, 0.8, 1.0)
+	fill.light_specular = 0.0
+	add_child(fill)
 	# The final grade over the 3D frame (bloom, sharpen, split toning).
 	var post_layer := CanvasLayer.new()
 	post_layer.layer = 1
@@ -232,7 +243,7 @@ func _build_environment() -> void:
 	post.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	var pm := ShaderMaterial.new()
 	pm.shader = load("res://scripts/shaders/post3d.gdshader")
-	pm.set_shader_parameter("bloom", 0.22 if Settings.bloom else 0.0)
+	pm.set_shader_parameter("bloom", 0.14 if Settings.bloom else 0.0)
 	post.material = pm
 	post_layer.add_child(post)
 	_update_sun(0.0)
@@ -383,8 +394,12 @@ func _update_sun(_delta: float) -> void:
 	sun.rotation = Vector3(-maxf(absf(elevation), 0.12) * 1.25 - 0.1, deg_to_rad(-35.0) + cos(angle) * 0.9, 0)
 	sun.light_color = Color(1.0, 0.95, 0.86).lerp(Color(1.0, 0.62, 0.34), low).lerp(Color(0.52, 0.62, 1.0), 1.0 - day)
 	# Anime nights stay readable: a strong blue moon and a lifted ambient.
-	sun.light_energy = lerpf(0.42, 1.35, day)
-	environment.ambient_light_energy = lerpf(0.4, 0.55, day)
+	sun.light_energy = lerpf(0.42, 1.25, day)
+	environment.ambient_light_energy = lerpf(0.4, 0.5, day)
+	if fill:
+		# Opposite the sun in yaw, from higher up.
+		fill.rotation = Vector3(-0.75, sun.rotation.y + PI, 0)
+		fill.light_energy = lerpf(0.08, 0.32, day)
 	# Each region has its own air: the fog and light lean toward its colour,
 	# blended smoothly as the heroine crosses a border.
 	var region: int = world.biome_at(player.global_position) if player else -1

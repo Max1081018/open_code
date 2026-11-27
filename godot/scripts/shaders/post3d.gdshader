@@ -6,10 +6,11 @@ shader_type canvas_item;
 //   saturation lift, light vignette, and dithering against banding.
 uniform sampler2D screen_texture : hint_screen_texture, filter_linear_mipmap;
 uniform float bloom = 0.22;
-uniform float bloom_threshold = 0.85;
+uniform float bloom_threshold = 0.92;
 uniform float sharpen = 0.5;
 uniform float saturation = 1.08;
-uniform float contrast = 1.04;
+uniform float contrast = 1.0;
+uniform float curve = 0.3;   // a filmic S-curve: deeper shade, kept highlights
 uniform float vignette = 0.28;
 uniform vec3 warm : source_color = vec3(1.03, 0.99, 0.94);
 uniform vec3 cool : source_color = vec3(0.92, 0.96, 1.06);
@@ -48,6 +49,9 @@ void fragment() {
 	l = dot(c, vec3(0.299, 0.587, 0.114));
 	c = mix(vec3(l), c, saturation);
 	c = (c - 0.5) * contrast + 0.5;
+	vec3 cc = clamp(c, 0.0, 1.0);
+	vec3 s_curve = cc * cc * (3.0 - 2.0 * cc);
+	c = mix(c, s_curve, curve);
 	vec2 d = uv - 0.5;
 	c *= 1.0 - dot(d, d) * vignette * 1.4;
 	c += (fract(sin(dot(FRAGCOORD.xy, vec2(12.9898, 78.233))) * 43758.5453) - 0.5) / 255.0;

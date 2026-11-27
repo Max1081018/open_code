@@ -11,7 +11,7 @@ uniform vec3 player_pos = vec3(0.0);
 uniform vec3 field_centre = vec3(0.0);
 uniform float field_radius = 40.0;
 uniform float wind_strength = 0.16;
-uniform vec4 tip_color : source_color = vec4(0.72, 0.9, 0.44, 1.0);
+uniform vec4 tip_color : source_color = vec4(0.6, 0.78, 0.36, 1.0);
 uniform float tip_mix = 0.42;
 // Wildflowers: the same sway, a green stem (UV.x 0) and a petal head
 // (UV.x 1) in the instance's colour.

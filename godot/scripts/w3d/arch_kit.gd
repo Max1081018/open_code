@@ -14,6 +14,13 @@ const ROOFS := {"cobalt": Color(0.17, 0.28, 0.56), "teal": Color(0.13, 0.38, 0.4
 	"rose": Color(0.56, 0.3, 0.3)}
 
 static var _mats := {}
+## Painted shutter colours (one per house).
+const SHUTTERS := {"teal": Color(0.32, 0.6, 0.62), "navy": Color(0.26, 0.34, 0.58), "sage": Color(0.48, 0.6, 0.44),
+	"wine": Color(0.58, 0.3, 0.36)}
+## Plaster tints, one per house (chosen by its seed): cream, peach, sky
+## and lilac: a town of pale pastel walls, not one white block.
+const WALLS := {"cream": Color(0.84, 0.76, 0.62), "peach": Color(0.88, 0.68, 0.56),
+	"sky": Color(0.64, 0.72, 0.82), "lilac": Color(0.74, 0.66, 0.84)}
 ## Window glass; its glow is set by the time of day (set_night).
 static var glass: StandardMaterial3D
 
@@ -33,34 +40,42 @@ static func material(name: String) -> Material:
 		var s := StandardMaterial3D.new()
 		s.uv1_triplanar = true
 		s.uv1_world_triplanar = true
+		# Baked occlusion (vertex colours, see Builder.tri) darkens every
+		# solid surface where it meets the ground and under overhangs.
+		s.vertex_color_use_as_albedo = true
+		if name.begins_with("shutter"):
+			s.albedo_texture = load(TEX + "wood.jpg")
+			s.albedo_color = SHUTTERS.get(name.substr(8), SHUTTERS.teal)
+			s.uv1_scale = Vector3.ONE * 0.9
+			s.roughness = 0.6
+		if name.begins_with("wall"):
+			s.albedo_texture = load(TEX + "plaster.jpg")
+			s.normal_enabled = true
+			s.normal_texture = load(TEX + "plaster_n.jpg")
+			s.normal_scale = 0.7
+			s.albedo_color = WALLS.get(name.substr(5), WALLS.cream)
+			s.uv1_scale = Vector3.ONE * 0.4
+			s.roughness = 0.92
 		match name:
-			"wall":
-				s.albedo_texture = load(TEX + "plaster.jpg")
-				s.normal_enabled = true
-				s.normal_texture = load(TEX + "plaster_n.jpg")
-				s.normal_scale = 0.5
-				s.albedo_color = Color(0.93, 0.89, 0.83)
-				s.uv1_scale = Vector3.ONE * 0.4
-				s.roughness = 0.9
 			"stone":
 				s.albedo_texture = load(TEX + "sandstone.jpg")
 				s.normal_enabled = true
 				s.normal_texture = load(TEX + "sandstone_n.jpg")
-				s.albedo_color = Color(1.05, 0.94, 0.78)
+				s.albedo_color = Color(0.92, 0.82, 0.68)
 				s.uv1_scale = Vector3.ONE * 0.28
 				s.roughness = 0.85
 			"marble":
 				s.albedo_texture = load(TEX + "marble.jpg")
 				s.normal_enabled = true
 				s.normal_texture = load(TEX + "marble_n.jpg")
-				s.albedo_color = Color(1.05, 1.05, 1.08)
+				s.albedo_color = Color(0.94, 0.94, 0.98)
 				s.uv1_scale = Vector3.ONE * 0.5
 				s.roughness = 0.35
 			"wood":
 				s.albedo_texture = load(TEX + "wood.jpg")
 				s.normal_enabled = true
 				s.normal_texture = load(TEX + "wood_n.jpg")
-				s.albedo_color = Color(0.78, 0.6, 0.52)
+				s.albedo_color = Color(0.62, 0.46, 0.38)
 				s.uv1_scale = Vector3.ONE * 0.7
 				s.roughness = 0.7
 			"gold":
@@ -73,10 +88,13 @@ static func material(name: String) -> Material:
 				s.albedo_color = Color(0.3, 0.34, 0.44)
 				s.roughness = 0.6
 			"glass":
+				# Dark leaded glass that mirrors the sky by day, glows at night.
 				s.uv1_triplanar = false
-				s.albedo_color = Color(0.16, 0.24, 0.42)
-				s.metallic = 0.3
-				s.roughness = 0.12
+				s.vertex_color_use_as_albedo = false
+				s.albedo_color = Color(0.07, 0.1, 0.17)
+				s.metallic = 0.75
+				s.roughness = 0.06
+				s.specular = 0.8
 				s.emission_enabled = true
 				s.emission = Color(1.0, 0.74, 0.42)
 				s.emission_energy_multiplier = 0.0
@@ -138,8 +156,16 @@ class Builder:
 		for p in [[a, ua], [b, ub], [c, uc]]:
 			st.set_normal(n)
 			st.set_uv(p[1])
-			st.set_color(col)
+			st.set_color(col * _occlusion(p[0], n) if col == Color.WHITE else col)
 			st.add_vertex(p[0])
+
+	## Fake ambient occlusion: darker toward the ground (y = 0 is the
+	## building's foot) and on faces turned downward (eaves, balconies).
+	func _occlusion(p: Vector3, n: Vector3) -> Color:
+		var k := 0.62 + 0.38 * smoothstep(-0.2, 1.8, p.y)
+		if n.y < -0.4:
+			k *= 0.6
+		return Color(k, k, k)
 
 	func quad(m: String, a: Vector3, b: Vector3, c: Vector3, d: Vector3, n: Vector3, uv := [Vector2.ZERO, Vector2.ZERO, Vector2.ZERO, Vector2.ZERO], col := Color.WHITE) -> void:
 		tri(m, a, b, c, n, uv[0], uv[1], uv[2], col)
@@ -230,7 +256,8 @@ static func house(w: float, d: float, floors: int, roof: String, opts := {}) -> 
 	var plinth := 0.7
 	# Plinth, walls, string courses, quoins.
 	b.box("stone", Transform3D(Basis.IDENTITY, Vector3(0, plinth * 0.5 - 0.3, 0)), Vector3(w + 0.3, plinth + 0.6, d + 0.3))
-	b.box("wall", Transform3D(Basis.IDENTITY, Vector3(0, plinth + (wall_h - plinth) * 0.5, 0)), Vector3(w, wall_h - plinth, d))
+	var wall: String = "wall_" + String(WALLS.keys()[rng.randi() % WALLS.size()])
+	b.box(wall, Transform3D(Basis.IDENTITY, Vector3(0, plinth + (wall_h - plinth) * 0.5, 0)), Vector3(w, wall_h - plinth, d))
 	for f in range(1, floors):
 		b.box("stone", Transform3D(Basis.IDENTITY, Vector3(0, f * STOREY, 0)), Vector3(w + 0.16, 0.22, d + 0.16))
 	b.box("stone", Transform3D(Basis.IDENTITY, Vector3(0, wall_h - 0.12, 0)), Vector3(w + 0.24, 0.28, d + 0.24))
@@ -245,6 +272,7 @@ static func house(w: float, d: float, floors: int, roof: String, opts := {}) -> 
 					Vector3(qx, 0.42, 0.4 if big else 0.62))
 				y += 0.46
 				k += 1
+	var shutter: String = "shutter_" + String(SHUTTERS.keys()[rng.randi() % SHUTTERS.size()])
 	# Windows on every face; the front's ground floor gets the door.
 	var faces := [[Vector3.BACK, w, d], [Vector3.FORWARD, w, d], [Vector3.RIGHT, d, w], [Vector3.LEFT, d, w]]
 	for fc in faces:
@@ -263,6 +291,18 @@ static func house(w: float, d: float, floors: int, roof: String, opts := {}) -> 
 				var t := Transform3D(basis, n * (depth * 0.5 + 0.01) + basis * Vector3(x, y0, 0))
 				b.arch_panel("wood" if door else "glass", t, wdt, hgt)
 				b.arch_frame("stone", t, wdt, hgt)
+				if not door:
+					# Leaded panes (a cross of glazing bars) and painted
+					# shutters folded half open on either side.
+					b.box("wood", t * Transform3D(Basis.IDENTITY, Vector3(0, (hgt + wdt * 0.5) * 0.5, 0.03)), Vector3(0.05, hgt + wdt * 0.45, 0.04))
+					b.box("wood", t * Transform3D(Basis.IDENTITY, Vector3(0, hgt * 0.62, 0.03)), Vector3(wdt, 0.05, 0.04))
+					for sx in [-1.0, 1.0]:
+						var hinge := Vector3(sx * (wdt * 0.5 + 0.14), 0, 0.06)
+						var open := Basis(Vector3.UP, -sx * 0.55)
+						var sh := Transform3D(open, hinge) * Transform3D(Basis.IDENTITY, Vector3(sx * 0.27, hgt * 0.5 + 0.1, 0))
+						b.box(shutter, t * sh, Vector3(0.52, hgt + 0.2, 0.06))
+						for slat in 4:
+							b.box(shutter, t * sh * Transform3D(Basis.IDENTITY, Vector3(0, -hgt * 0.4 + slat * hgt * 0.27, 0.035)), Vector3(0.44, 0.05, 0.03))
 				if not door and f > 0 and rng.randf() < 0.45:
 					# A flower box under the window.
 					b.box("wood", t * Transform3D(Basis.IDENTITY, Vector3(0, -0.22, 0.2)), Vector3(wdt + 0.3, 0.26, 0.34))
@@ -318,7 +358,7 @@ static func house(w: float, d: float, floors: int, roof: String, opts := {}) -> 
 		_roof_quad(b, rm, Vector3(rw, top, -rd), Vector3(-rw, top, -rd), R0, R1, Vector3(0, rd, -rh).normalized())
 		for sx in [-1.0, 1.0]:
 			var x: float = sx * w * 0.5
-			b.tri("wall", Vector3(x, top, d * 0.5), Vector3(x, top, -d * 0.5), Vector3(x, top + rh - 0.3, 0), Vector3(sx, 0, 0))
+			b.tri(wall, Vector3(x, top, d * 0.5), Vector3(x, top, -d * 0.5), Vector3(x, top + rh - 0.3, 0), Vector3(sx, 0, 0))
 			# A round window in the gable.
 			var t := Transform3D(Basis.looking_at(Vector3(-sx, 0, 0), Vector3.UP), Vector3(x + sx * 0.02, top + rh * 0.35, 0))
 			b.arch_panel("glass", t, 0.7, 0.01)

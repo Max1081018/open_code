@@ -56,7 +56,7 @@ var _head_meshes: Array = []
 var _idle_time := 0.0
 var _idle_break := 0.0
 ## Little things she does when left standing.
-const IDLE_BREAKS := [["Idle_FoldArms", 2.6, 1.0], ["Yes", 2.0, 1.0], ["Idle_No", 2.0, 1.0], ["Idle_Rest", 2.0, 1.0]]
+const IDLE_BREAKS := [["Idle_FoldArms", 2.6, 1.0], ["Yes", 2.0, 1.0], ["Idle_No", 2.0, 1.0], ["Idle_Talking", 2.4, 1.0]]
 
 
 func _ready() -> void:
@@ -76,7 +76,7 @@ func _ready() -> void:
 	add_child(model)
 	anim = model.find_child("AnimationPlayer", true, false)
 	skeleton = model.find_children("*", "Skeleton3D", true, false)[0]
-	for clip in ["Idle_FoldArms", "Idle_Talking", "Idle", "Walk", "Walk_Formal", "Jog_Fwd", "Sprint", "Swim_Fwd", "Swim_Idle", "Jump", "Sword_Block", "Sword_Idle", "ual/Jog_Fwd", "ual/Sprint"]:
+	for clip in ["Idle_FoldArms", "Idle_Talking", "Idle", "ual/Idle", "Walk", "Walk_Formal", "Jog_Fwd", "Sprint", "Swim_Fwd", "Swim_Idle", "Jump", "Sword_Block", "Sword_Idle", "ual/Jog_Fwd", "ual/Sprint"]:
 		if anim.has_animation(clip):
 			anim.get_animation(clip).loop_mode = Animation.LOOP_LINEAR
 	for m in model.find_children("*", "MeshInstance3D", true, false):

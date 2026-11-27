@@ -76,7 +76,9 @@ const HEROES := {
 const HERO_STYLE := {
 	# Her own clips, but the even stride of the shared jog for running; her
 	# own bounding run, arms flying, becomes the sprint.
-	"player": {"height": 1.56, "library": "anim/heroine.res", "speed": 1.0, "clips": {"Jog_Fwd": "ual/Jog_Fwd"},
+	# Her own idle clutches her hands at her chest; the shared relaxed idle
+	# (arms easy at her sides, weight settled) reads far more natural.
+	"player": {"height": 1.56, "library": "anim/heroine.res", "speed": 1.0, "clips": {"Jog_Fwd": "ual/Jog_Fwd", "Idle": "ual/Idle"},
 		# No wings: their root bones collapse to nothing (the rest follows).
 		"hide_bones": ["Wing02_"]},
 	"wren": {"height": 1.6, "clips": {"Idle": "Idle_Talking"}, "speed": 1.05},
