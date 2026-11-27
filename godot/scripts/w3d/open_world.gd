@@ -266,19 +266,21 @@ func _build_flora(c: Vector2i, entry: Dictionary) -> void:
 		by_kind[rec.kind].append(t)
 		if entry.lod == 0:
 			var cat := FoliageLib.category(rec.kind)
-			if cat == "tree" or cat == "rock":
+			if cat == "tree" or cat == "rock" or cat == "formation":
 				var cs := CollisionShape3D.new()
-				if cat == "tree":
-					var cyl := CylinderShape3D.new()
-					cyl.radius = 0.35 * rec.scale
-					cyl.height = 6.0
-					cs.shape = cyl
-					cs.position = rec.pos - node.position + Vector3(0, 3.0, 0)
-				else:
+				var r: float = FoliageLib.solid_radius(rec.kind) * rec.scale
+				if cat == "rock":
 					var sphere := SphereShape3D.new()
-					sphere.radius = 0.75 * rec.scale
+					sphere.radius = r
 					cs.shape = sphere
-					cs.position = rec.pos - node.position + Vector3(0, 0.45, 0)
+					cs.position = rec.pos - node.position + Vector3(0, r * 0.6, 0)
+				else:
+					var h: float = 6.0 if cat == "tree" else float(FoliageLib.spec_for(rec.kind)[0]) * rec.scale
+					var cyl := CylinderShape3D.new()
+					cyl.radius = r
+					cyl.height = h
+					cs.shape = cyl
+					cs.position = rec.pos - node.position + Vector3(0, h * 0.5, 0)
 				solid.add_child(cs)
 	if solid.get_child_count() > 0:
 		node.add_child(solid)

@@ -15,22 +15,31 @@ const SKIRT := 4.0
 ## Foliage per biome: [kind, density per chunk, scale range]. Kinds are
 ## FoliageLib names; "tree" kinds can be felled, "rock" kinds mined.
 const FLORA := {
+	# Greenwood: round broadleaf groves, sakura here and there, clean pale
+	# stone, standing stones, flowers.
 	TerrainGen.Biome.FOREST: [["CommonTree_1", 7], ["CommonTree_2", 6], ["CommonTree_3", 6], ["CommonTree_4", 4],
-		["CommonTree_5", 5], ["Pine_1", 3], ["Pine_2", 3], ["Bush_Common", 10], ["Bush_Common_Flowers", 5],
-		["Fern_1", 10], ["Plant_1", 6], ["Rock_Medium_1", 2], ["Rock_Medium_2", 2], ["Flower_3_Group", 8],
-		["Flower_4_Group", 6], ["Mushroom_Common", 3]],
-	TerrainGen.Biome.DARK_FOREST: [["TwistedTree_1", 6], ["TwistedTree_2", 6], ["TwistedTree_3", 5], ["Pine_4", 6],
-		["Pine_5", 6], ["DeadTree_1", 3], ["Fern_1", 16], ["Mushroom_Laetiporus", 5], ["Mushroom_Common", 6],
-		["Rock_Medium_3", 3], ["Plant_7", 8]],
-	TerrainGen.Biome.SNOW: [["Pine_1", 6], ["Pine_2", 6], ["Pine_3", 6], ["Pine_4", 4], ["Rock_Medium_1", 5],
-		["Rock_Medium_2", 4], ["Rock_Medium_3", 4], ["DeadTree_4", 2]],
-	TerrainGen.Biome.DRY: [["DeadTree_1", 3], ["DeadTree_2", 3], ["DeadTree_5", 2], ["Rock_Medium_1", 7],
-		["Rock_Medium_2", 6], ["Rock_Medium_3", 6], ["Plant_7", 5], ["Grass_Wispy_Tall", 14]],
-	TerrainGen.Biome.VOLCANIC: [["DeadTree_2", 3], ["DeadTree_3", 3], ["Rock_Medium_1_Basalt", 9], ["Rock_Medium_2_Basalt", 9],
-		["Rock_Medium_3_Basalt", 8]],
-	TerrainGen.Biome.CORRUPTED: [["TwistedTree_4", 6], ["TwistedTree_5", 6], ["DeadTree_3", 4], ["DeadTree_4", 4],
-		["Mushroom_Laetiporus", 8], ["Mushroom_Common", 8], ["Rock_Medium_3", 4], ["Plant_7", 6]],
-	TerrainGen.Biome.BEACH: [["Rock_Medium_1", 2], ["Rock_Medium_2", 2], ["Grass_Wispy_Short", 10], ["Pebble_Round_2", 8]],
+		["CommonTree_5", 5], ["X:sakura_0", 3], ["X:pines_4", 2], ["Bush_Common", 9], ["Bush_Common_Flowers", 6],
+		["Fern_1", 8], ["Plant_1", 5], ["X:rocks_0", 2], ["X:rocks_3", 1], ["X:rocks_5", 1], ["X:rocks_7", 1],
+		["Flower_3_Group", 8], ["Flower_4_Group", 6], ["Mushroom_Common", 2]],
+	# The Gloomwood: tall dark pines, twisted trunks, ferns, mushrooms,
+	# rocks threaded with teal light.
+	TerrainGen.Biome.DARK_FOREST: [["X:pines_6", 7], ["X:pines_0", 5], ["X:pines_4", 5], ["TwistedTree_1", 4],
+		["TwistedTree_2", 3], ["Fern_1", 16], ["Mushroom_Laetiporus", 5], ["Mushroom_Common", 7],
+		["X:volcanic_29", 2], ["X:rocks_8", 1], ["Plant_7", 8]],
+	# The Frostpeaks: pines, pale boulders, standing stones.
+	TerrainGen.Biome.SNOW: [["X:pines_1", 6], ["X:pines_4", 6], ["X:pines_6", 4], ["X:rocks_1", 4],
+		["X:rocks_4", 3], ["X:rocks_2", 3], ["X:rocks_7", 1], ["DeadTree_4", 1]],
+	# The Sunscar: red sandstone stacks and arches, dry trees, wispy tufts.
+	TerrainGen.Biome.DRY: [["DeadTree_1", 2], ["DeadTree_5", 2], ["X:sandstone_0", 1], ["X:sandstone_2", 2],
+		["X:sandstone_4", 2], ["X:sandstone_1", 2], ["X:sandstone_3", 2], ["Plant_7", 4], ["Grass_Wispy_Tall", 12]],
+	# The Ashlands: basalt pillars and cliffs, lava vents, ember-veined rock.
+	TerrainGen.Biome.VOLCANIC: [["DeadTree_2", 2], ["X:volcanic_7", 2], ["X:volcanic_8", 2], ["X:volcanic_10", 2],
+		["X:volcanic_14", 2], ["X:volcanic_0", 1], ["X:volcanic_3", 1], ["X:volcanic_18", 1], ["X:volcanic_19", 1],
+		["X:volcanic_24", 4], ["X:volcanic_28", 4], ["X:volcanic_16", 4], ["X:volcanic_22", 4], ["X:volcanic_25", 3]],
+	# The Blight: twisted trees, dead wood, mushrooms, Void-veined rock.
+	TerrainGen.Biome.CORRUPTED: [["TwistedTree_4", 6], ["TwistedTree_5", 6], ["DeadTree_3", 3], ["DeadTree_4", 3],
+		["Mushroom_Laetiporus", 7], ["Mushroom_Common", 7], ["X:volcanic_27", 5], ["X:volcanic_12", 1], ["Plant_7", 6]],
+	TerrainGen.Biome.BEACH: [["X:rocks_6", 2], ["X:rocks_2", 2], ["Grass_Wispy_Short", 10], ["X:rocks_9", 6], ["X:rocks_10", 6]],
 }
 const GRASS := {
 	TerrainGen.Biome.FOREST: "Grass_Common_Short", TerrainGen.Biome.DARK_FOREST: "Grass_Common_Tall",
@@ -149,7 +158,13 @@ static func _flora(gen: TerrainGen, coord: Vector2i, origin: Vector2) -> Array:
 							if b != TerrainGen.Biome.FOREST or rng.randf() < 0.5:
 								break
 							kind = ["Flower_3_Group", "Flower_4_Group", "Bush_Common_Flowers"][rng.randi() % 3]
-						placed.append({"kind": kind, "pos": Vector3(x, h - 0.05, z), "yaw": rng.randf() * TAU,
+						var sink := 0.05
+						if FoliageLib.category(kind) == "formation":
+							# Big formations are landmarks: a few per square kilometre.
+							if rng.randf() > 0.18:
+								break
+							sink = float(FoliageLib.spec_for(kind)[0]) * 0.08  # bedded into slopes
+						placed.append({"kind": kind, "pos": Vector3(x, h - sink, z), "yaw": rng.randf() * TAU,
 							"scale": rng.randf_range(0.8, 1.25)})
 						break
 	return placed

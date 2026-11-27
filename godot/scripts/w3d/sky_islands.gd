@@ -186,7 +186,7 @@ func _island(centre: Vector3, radius: float, seed_i: int, spire: bool) -> void:
 	for k in 3 + seed_i % 4:
 		var a := rng.randf() * TAU
 		var r := radius * rng.randf_range(1.15, 1.7)
-		var kind: String = ["Rock_Medium_1", "Rock_Medium_2", "Rock_Medium_3"][rng.randi() % 3]
+		var kind: String = ["X:rocks_1", "X:rocks_3", "X:rocks_4"][rng.randi() % 3]
 		var sc := rng.randf_range(1.2, 2.6) * (radius / 24.0 + 0.5)
 		var rot := Basis.from_euler(Vector3(rng.randf_range(-0.6, 0.6), rng.randf() * TAU, rng.randf_range(-0.6, 0.6)))
 		var t := Transform3D(rot.scaled(Vector3.ONE * sc), Vector3(cos(a) * r, rng.randf_range(-depth * 0.5, 3.0), sin(a) * r))

@@ -31,7 +31,7 @@ var _timer := 0.0
 func setup(the_gen: TerrainGen, quality: int) -> void:
 	gen = the_gen
 	radius_tiles = 3 if quality >= 2 else 2
-	density = 3.2 if quality >= 2 else 2.0
+	density = 4.0 if quality >= 2 else 2.5
 	_material = ShaderMaterial.new()
 	_material.shader = load("res://scripts/shaders/grass_blades.gdshader")
 	_material.set_shader_parameter("field_radius", TILE * (radius_tiles + 0.5))
@@ -43,37 +43,32 @@ func setup(the_gen: TerrainGen, quality: int) -> void:
 	_flower.surface_set_material(0, _flower_mat)
 
 
-## Five tapered, slightly curved blades round a point; UV.y is 0 at the
-## root and 1 at the tip.
+## A soft clump: nine broad blades in three segments, curving outward,
+## with rounded (flat-topped) tips; UV.y is 0 at the root, 1 at the tip.
 static func _make_clump() -> ArrayMesh:
 	var st := SurfaceTool.new()
 	st.begin(Mesh.PRIMITIVE_TRIANGLES)
 	var rng := RandomNumberGenerator.new()
 	rng.seed = 5
-	for b in 7:
-		var a := rng.randf() * TAU
-		var off := Vector3(cos(a), 0, sin(a)) * rng.randf_range(0.02, 0.14)
-		var face := rng.randf() * TAU
-		var side := Vector3(cos(face), 0, sin(face)) * 0.024
-		var lean := Vector3(-sin(face), 0, cos(face)) * rng.randf_range(0.05, 0.16)
-		var h := rng.randf_range(0.32, 0.6)
-		var p0 := off - side
-		var p1 := off + side
-		var m0 := off - side * 0.65 + lean * 0.35 + Vector3(0, h * 0.55, 0)
-		var m1 := off + side * 0.65 + lean * 0.35 + Vector3(0, h * 0.55, 0)
-		var t := off + lean + Vector3(0, h, 0)
-		var quads := [[p0, 0.0], [p1, 0.0], [m1, 0.55], [m0, 0.55]]
-		# Lower quad as two triangles, then the tip.
-		for tri in [[0, 1, 2], [0, 2, 3]]:
-			for i in tri:
-				st.set_uv(Vector2(0.0, quads[i][1]))
-				st.add_vertex(quads[i][0])
-		st.set_uv(Vector2(0, 0.55))
-		st.add_vertex(m0)
-		st.set_uv(Vector2(0, 0.55))
-		st.add_vertex(m1)
-		st.set_uv(Vector2(0, 1.0))
-		st.add_vertex(t)
+	for b in 9:
+		var a := TAU * b / 9.0 + rng.randf_range(-0.3, 0.3)
+		var out := Vector3(cos(a), 0, sin(a))
+		var off := out * rng.randf_range(0.0, 0.1)
+		var side := Vector3(-out.z, 0, out.x) * rng.randf_range(0.035, 0.05)
+		var lean := out * rng.randf_range(0.08, 0.2)
+		var h := rng.randf_range(0.2, 0.4)
+		# Three rings up the blade: width narrows, lean grows (a curve).
+		var rings := [[0.0, 1.0, 0.0], [0.45, 0.85, 0.25], [0.8, 0.6, 0.65], [1.0, 0.32, 1.0]]
+		var pts: Array = []
+		for r in rings:
+			var c: Vector3 = off + lean * float(r[2]) + Vector3(0, h * float(r[0]), 0)
+			pts.append([c - side * float(r[1]), c + side * float(r[1]), float(r[0])])
+		for i in rings.size() - 1:
+			var lo: Array = pts[i]
+			var hi: Array = pts[i + 1]
+			for q in [[lo[0], lo[2]], [lo[1], lo[2]], [hi[1], hi[2]], [lo[0], lo[2]], [hi[1], hi[2]], [hi[0], hi[2]]]:
+				st.set_uv(Vector2(0, q[1]))
+				st.add_vertex(q[0])
 	st.generate_normals()
 	return st.commit()
 
@@ -213,13 +208,16 @@ static func build_tile(g: TerrainGen, t: Vector2i, per_m2: float) -> Dictionary:
 				continue
 			var x := origin.x + fx * TILE
 			var z := origin.y + fz * TILE
+			# Meadows grow in drifts: thick patches, thin ones, bare spots.
+			if rng.randf() > g.meadow(x, z):
+				continue
 			var cb: int = bgrid[mini(int(fz * 4.0), 3) * 4 + mini(int(fx * 4.0), 3)]
 			var root := _root_colour(cb)
 			if root.a <= 0.0:
 				continue
 			if g.paved(x, z) > 0.05:
 				continue
-			var s := rng.randf_range(0.75, 1.35)
+			var s := rng.randf_range(0.7, 1.3) * (0.75 + g.meadow(x, z) * 0.45)
 			xforms.append(Transform3D(Basis(Vector3.UP, rng.randf() * TAU).scaled(Vector3(s, s * rng.randf_range(0.8, 1.25), s)),
 				Vector3(x, h - 0.03, z)))
 			var v := rng.randf_range(-0.06, 0.06)

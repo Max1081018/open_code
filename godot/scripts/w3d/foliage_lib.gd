@@ -14,6 +14,28 @@ const SIZES := {
 	"Pebble": [0.3, "small"], "Clover": [0.3, "small"],
 }
 
+## Downloaded pieces (Sketchfab CC BY, split by tools/split_nature.gd into
+## assets/models/nature_ext). Kind "X:<piece>"; [height m, category].
+## Category "formation": solid landmark rock, not mineable.
+const EXT_DIR := "res://assets/models/nature_ext/"
+const EXT := {
+	"pines_0": [13.0, "tree"], "pines_1": [11.0, "tree"], "pines_4": [12.0, "tree"], "pines_6": [14.0, "tree"],
+	"sakura_0": [8.0, "tree"],
+	"rocks_0": [1.6, "rock"], "rocks_1": [1.8, "rock"], "rocks_2": [1.4, "rock"], "rocks_3": [1.5, "rock"],
+	"rocks_4": [1.9, "rock"], "rocks_5": [1.4, "rock"], "rocks_6": [1.6, "rock"],
+	"rocks_7": [3.4, "formation"], "rocks_8": [3.0, "formation"], "rocks_9": [0.5, "small"], "rocks_10": [0.45, "small"],
+	"sandstone_0": [7.0, "formation"], "sandstone_2": [5.0, "formation"], "sandstone_4": [5.5, "formation"],
+	"sandstone_1": [1.8, "rock"], "sandstone_3": [2.0, "rock"],
+	"volcanic_0": [9.0, "formation"], "volcanic_1": [9.0, "formation"], "volcanic_2": [8.0, "formation"],
+	"volcanic_3": [9.0, "formation"], "volcanic_5": [8.0, "formation"], "volcanic_6": [7.0, "formation"],
+	"volcanic_7": [9.0, "formation"], "volcanic_8": [12.0, "formation"], "volcanic_10": [8.0, "formation"],
+	"volcanic_12": [7.0, "formation"], "volcanic_14": [6.0, "formation"],
+	"volcanic_18": [7.0, "formation"], "volcanic_19": [7.0, "formation"],
+	"volcanic_16": [2.0, "rock"], "volcanic_17": [2.0, "rock"], "volcanic_22": [1.8, "rock"], "volcanic_23": [1.8, "rock"],
+	"volcanic_24": [1.8, "rock"], "volcanic_26": [1.8, "rock"], "volcanic_27": [1.8, "rock"],
+	"volcanic_28": [1.8, "rock"], "volcanic_29": [1.8, "rock"], "volcanic_25": [0.8, "small"],
+}
+
 static var _cache := {}
 static var _wind: Shader
 
@@ -22,6 +44,8 @@ static var _wind: Shader
 static func parts(kind: String) -> Array:
 	if _cache.has(kind):
 		return _cache[kind]
+	if kind.begins_with("X:"):
+		return _ext_parts(kind)
 	# "<kind>_Basalt": the same model as dark volcanic stone.
 	var basalt := kind.ends_with("_Basalt")
 	var scene: PackedScene = load(DIR + kind.trim_suffix("_Basalt") + ".gltf")
@@ -67,7 +91,51 @@ static func _tinted(mesh: Mesh, colour: Color) -> Mesh:
 	return copy
 
 
+static func _ext_parts(kind: String) -> Array:
+	var piece := kind.substr(2)
+	var mesh: Mesh = load(EXT_DIR + piece + ".res")
+	var spec: Array = spec_for(kind)
+	var k: float = float(spec[0]) / maxf(mesh.get_aabb().size.y, 0.01)
+	var m: Mesh = _windy(mesh, spec[1], piece) if spec[1] == "tree" else mesh
+	# Lava vents and veined rocks glow.
+	if piece in ["volcanic_18", "volcanic_19", "volcanic_24", "volcanic_26", "volcanic_27", "volcanic_28", "volcanic_29"]:
+		m = _glowing(m)
+	var out := [[m, Transform3D(Basis.IDENTITY.scaled(Vector3.ONE * k), Vector3.ZERO)]]
+	_cache[kind] = out
+	return out
+
+
+## The palette's bright lava colours become emissive (vents, veins).
+static func _glowing(mesh: Mesh) -> Mesh:
+	var copy: Mesh = mesh.duplicate()
+	for s in copy.get_surface_count():
+		var m := copy.surface_get_material(s) as BaseMaterial3D
+		if m == null:
+			continue
+		m = m.duplicate()
+		m.emission_enabled = true
+		m.emission_texture = m.albedo_texture
+		m.emission = Color(0, 0, 0)
+		m.emission_energy_multiplier = 1.0
+		m.emission_operator = BaseMaterial3D.EMISSION_OP_ADD
+		copy.surface_set_material(s, m)
+	return copy
+
+
+## Footprint radius of a solid kind, for its collider (metres, unscaled).
+static func solid_radius(kind: String) -> float:
+	var spec := spec_for(kind)
+	match spec[1]:
+		"tree":
+			return 0.35
+		"formation":
+			return float(spec[0]) * 0.4
+	return float(spec[0]) * 0.44
+
+
 static func spec_for(kind: String) -> Array:
+	if kind.begins_with("X:"):
+		return EXT.get(kind.substr(2), [1.5, "rock"])
 	for prefix in SIZES:
 		if kind.begins_with(prefix):
 			return SIZES[prefix]

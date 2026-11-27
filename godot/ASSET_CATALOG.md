@@ -183,6 +183,11 @@ re-textured (downsized) and some recoloured.
 | Town statue | [PBR Stylized Statue - Mage / Wizard](https://sketchfab.com/3d-models/f0293fab679e44d1bfa38798e06db307) | Ignas3D |
 | Treasure chests | [Stylized Treasure Chest](https://sketchfab.com/3d-models/dbeae8db89eb433f832d0ef48f12480e) | VerbeeckTom |
 | Starlit chests | [Magic Chest](https://sketchfab.com/3d-models/f1da2ce3fcc9461fac5cca28fcb4d323) | lunequinox |
+| Sakura trees | [Sakura Tree 01 - Low Poly Model](https://sketchfab.com/3d-models/147ae7d0d332456a99ec6195e9b0cd4f) | thejogoss9 |
+| Pines (Gloomwood, Frostpeaks) | [Free Pack - Tree](https://sketchfab.com/3d-models/196525a9936a40c1ba7e74ce5c071d59) | polyone |
+| Pale boulders and standing stones | [Free Pack - Rocks Stylized](https://sketchfab.com/3d-models/7c60b4d1b8ab4187965f30c5e0212fc0) | polyone |
+| Basalt pillars, lava vents, veined rocks | [[FREE] Lowpoly Volcanic Rocks [Asset Pack]](https://sketchfab.com/3d-models/4fe6a72f8afa4bafbd03cf384add10f0) | SimplePolygon |
+| Sunscar sandstone stacks | [Stylized Rocks Formation Asset Pack](https://sketchfab.com/3d-models/726e8563eb634c529410f4e00857bbb3) | deadzik |
 | Plaza fountain | [Stylized fountain 3DEX tutorial](https://sketchfab.com/3d-models/1b88af909c6d4862a268823d0b0f1eed) | hermiMarske |
 | Wall fountain | [Stylized Fountain](https://sketchfab.com/3d-models/959f5011bcdd4a8c8700d6830824d1e1) | kesenkai |
 | Market stalls | [Hand-Painted Fish Market Stall](https://sketchfab.com/3d-models/cf2ed4d11385403d980fea31a0102093) | duckcracker02 |

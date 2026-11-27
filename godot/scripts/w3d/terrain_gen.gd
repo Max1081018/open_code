@@ -46,6 +46,7 @@ var _temperature := FastNoiseLite.new()
 var _moisture := FastNoiseLite.new()
 var _detail := FastNoiseLite.new()
 var _forest := FastNoiseLite.new()
+var _meadow := FastNoiseLite.new()
 
 
 func _init(the_seed := 1337) -> void:
@@ -60,6 +61,7 @@ func _init(the_seed := 1337) -> void:
 	_setup(_moisture, 7, 0.0011, 2)
 	_setup(_detail, 8, 0.05, 2)
 	_setup(_forest, 9, 0.0045, 3)
+	_setup(_meadow, 10, 0.06, 2)
 
 
 func _setup(noise: FastNoiseLite, offset: int, frequency: float, octaves: int) -> void:
@@ -116,6 +118,11 @@ func paved(x: float, z: float) -> float:
 		var t := clampf((p - a).dot(ab) / ab.length_squared(), 0.0, 1.0)
 		d = minf(d, p.distance_to(a + ab * t) - float(r[2]))
 	return 1.0 - smoothstep(-0.4, 0.4, d)
+
+
+## How thick the grass grows here, 0.15..1: drifts, thin patches, bare spots.
+func meadow(x: float, z: float) -> float:
+	return clampf(0.62 + _meadow.get_noise_2d(x, z) * 0.9, 0.15, 1.0)
 
 
 ## How wooded the land is here, 0..1: groves and open meadows alternate.
