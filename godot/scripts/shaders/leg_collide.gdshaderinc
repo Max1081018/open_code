@@ -26,9 +26,11 @@ vec3 leg_push(vec3 p, vec3 a, vec3 b) {
 	return p;
 }
 
-vec3 leg_collide(vec3 p) {
-	if (leg_r.x <= 0.0) {
+// `mask` (the vertex colour's red, baked from bone weights) is 0 on sleeves
+// and gloves: arms hang beside the thighs and must not be pushed.
+vec3 leg_collide(vec3 p, float mask) {
+	if (leg_r.x <= 0.0 || mask <= 0.01) {
 		return p;
 	}
-	return leg_push(leg_push(p, leg_a0, leg_b0), leg_a1, leg_b1);
+	return mix(p, leg_push(leg_push(p, leg_a0, leg_b0), leg_a1, leg_b1), mask);
 }

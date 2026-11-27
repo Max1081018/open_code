@@ -29,7 +29,7 @@ uniform vec4 ring_color : source_color = vec4(1.0, 0.96, 1.0, 1.0);
 #include "res://scripts/shaders/leg_collide.gdshaderinc"
 
 void vertex() {
-	VERTEX = leg_collide(VERTEX);
+	VERTEX = leg_collide(VERTEX, COLOR.r);
 }
 
 void fragment() {

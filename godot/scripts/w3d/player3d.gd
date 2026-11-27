@@ -58,8 +58,9 @@ var _idle_break := 0.0
 ## Little things she does when left standing.
 ## Idle breaks: [clip, seconds, speed, weight]. The spell flourish lights
 ## violet sparks at her hand; the little dance is rare.
-const IDLE_BREAKS := [["Idle_FoldArms", 2.6, 1.0, 3], ["Yes", 2.0, 1.0, 2], ["Idle_No", 2.0, 1.0, 2],
-	["Idle_Talking", 2.4, 1.0, 3], ["Spell_Simple_Idle", 2.2, 1.0, 3], ["Dance", 3.2, 1.0, 1]]
+const IDLE_BREAKS := [["Idle_Own", 4.0, 1.0, 4], ["Idle_FoldArms", 3.2, 1.0, 3], ["Yes", 2.0, 1.0, 2],
+	["Idle_Talking", 3.0, 1.0, 4], ["Spell_Simple_Idle", 2.6, 1.0, 3], ["Idle_No", 2.0, 1.0, 1],
+	["Dance", 3.4, 1.0, 1]]
 
 
 func _ready() -> void:
@@ -94,6 +95,8 @@ func _ready() -> void:
 	_find_head_meshes()
 	_build_tree()
 	_gait(0.0)
+	_float_pose = FloatPose.new()
+	skeleton.add_child(_float_pose)
 
 
 ## Meshes of the head and hood: hidden from the first-person camera (layer 2).
@@ -549,6 +552,7 @@ func _physics_process(delta: float) -> void:
 	_lean = lerpf(_lean, lean_want, 1.0 - exp(-8.0 * delta))
 	model.rotation.z = _lean
 	_animate(horizontal.length())
+	_update_float(delta, horizontal.length())
 	_ground_feet(delta)
 
 
@@ -557,7 +561,7 @@ func _physics_process(delta: float) -> void:
 func _ground_feet(delta: float) -> void:
 	var inner: Node3D = model.get_child(0)
 	var base: float = model.get_meta("model_y", inner.position.y)
-	if not is_on_floor() or swimming:
+	if not is_on_floor() or swimming or _float > 0.02:
 		inner.position.y = lerpf(inner.position.y, base, 1.0 - exp(-10.0 * delta))
 		return
 	var l := skeleton.find_bone("LeftFoot")
@@ -643,6 +647,103 @@ func _spend(amount: float) -> bool:
 	return true
 
 
+## Floating repose: still for a few seconds (no foes near), she rises half a
+## metre and reclines on the air, a violet rune circle turning beneath her,
+## motes rising and light at her hands; anything she does brings her down.
+var _float := 0.0
+var _still := 0.0
+var _float_pose: FloatPose
+var _float_fx: Node3D
+var _float_circle: ShaderMaterial
+var _float_light: OmniLight3D
+var _float_motes: CPUParticles3D
+var _float_t := 0.0
+
+
+func floating() -> bool:
+	return _float > 0.3
+
+
+func _update_float(delta: float, speed: float) -> void:
+	var calm := speed < 0.3 and is_on_floor() and not swimming and _action <= 0.0 and _dodge <= 0.0 \
+		and not _on_guard and not input.block and not dead and _landing <= 0.0
+	_still = _still + delta if calm else 0.0
+	var want := 1.0 if _still > 4.5 else 0.0
+	_float = move_toward(_float, want, delta * (0.55 if want > _float else 3.5))
+	_float_t += delta
+	var k := _float * _float * (3.0 - 2.0 * _float)
+	model.position.y = k * (0.5 + sin(_float_t * 1.3) * 0.06)
+	model.rotation.x = -0.42 * k
+	if _float_pose:
+		_float_pose.amount = k
+	if _float > 0.01 and _float_fx == null:
+		_make_float_fx()
+	if _float_fx:
+		_float_fx.visible = _float > 0.01
+		_float_circle.set_shader_parameter("fade", k)
+		_float_circle.set_shader_parameter("grow", clampf(k * 1.2, 0.0, 1.0))
+		_float_light.light_energy = 1.3 * k
+		_float_motes.emitting = k > 0.4
+		_float_fx.global_position = global_position + Vector3(0, 0.06, 0)
+		_float_fx.rotation.y += delta * 0.2
+
+
+func _make_float_fx() -> void:
+	_float_fx = Node3D.new()
+	_float_fx.top_level = true
+	add_child(_float_fx)
+	var ring := MeshInstance3D.new()
+	var plane := PlaneMesh.new()
+	plane.size = Vector2(2.2, 2.2)
+	ring.mesh = plane
+	_float_circle = ShaderMaterial.new()
+	_float_circle.shader = load("res://scripts/shaders/magic_circle.gdshader")
+	_float_circle.set_shader_parameter("tint", Color(0.72, 0.45, 1.0))
+	_float_circle.set_shader_parameter("strength", 1.1)
+	_float_circle.set_shader_parameter("spin", 0.18)
+	ring.material_override = _float_circle
+	ring.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	_float_fx.add_child(ring)
+	_float_light = OmniLight3D.new()
+	_float_light.light_color = Color(0.72, 0.48, 1.0)
+	_float_light.omni_range = 4.0
+	_float_light.shadow_enabled = false
+	_float_light.position = Vector3(0, 0.9, 0)
+	_float_fx.add_child(_float_light)
+	_float_motes = CPUParticles3D.new()
+	var q := QuadMesh.new()
+	q.size = Vector2(0.06, 0.06)
+	_float_motes.mesh = q
+	var m := StandardMaterial3D.new()
+	m.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	m.billboard_mode = BaseMaterial3D.BILLBOARD_PARTICLES
+	m.blend_mode = BaseMaterial3D.BLEND_MODE_ADD
+	m.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+	m.albedo_texture = Play3D._spark_texture()
+	m.vertex_color_use_as_albedo = true
+	_float_motes.material_override = m
+	var ramp := Gradient.new()
+	ramp.colors = PackedColorArray([Color(0.95, 0.85, 1.0, 0.0), Color(0.82, 0.6, 1.0, 0.9), Color(0.6, 0.35, 1.0, 0.0)])
+	ramp.offsets = PackedFloat32Array([0.0, 0.25, 1.0])
+	_float_motes.color_ramp = ramp
+	_float_motes.amount = 34
+	_float_motes.lifetime = 2.2
+	_float_motes.emission_shape = CPUParticles3D.EMISSION_SHAPE_RING
+	_float_motes.emission_ring_axis = Vector3.UP
+	_float_motes.emission_ring_radius = 0.9
+	_float_motes.emission_ring_inner_radius = 0.2
+	_float_motes.emission_ring_height = 0.05
+	_float_motes.direction = Vector3.UP
+	_float_motes.spread = 12.0
+	_float_motes.initial_velocity_min = 0.3
+	_float_motes.initial_velocity_max = 0.8
+	_float_motes.gravity = Vector3(0, 0.25, 0)
+	_float_motes.scale_amount_min = 0.6
+	_float_motes.scale_amount_max = 1.5
+	_float_fx.add_child(_float_motes)
+	_float_motes.position = Vector3(0, 0.05, 0)
+
+
 ## On guard: foes near or a fight just now: she stands in a sword stance.
 var _on_guard := false
 var _guard_hold := 0.0
@@ -679,7 +780,7 @@ func _animate(speed: float) -> void:
 			_idle_break -= dt
 			if _idle_break > 0.0:
 				return
-		elif _idle_time > 6.0 and randf() < dt * 0.35 and not _on_guard:
+		elif _idle_time > 2.6 and randf() < dt * 0.9 and not _on_guard and _still < 3.5 and _float < 0.01:
 			var total := 0
 			for e in IDLE_BREAKS:
 				total += int(e[3])

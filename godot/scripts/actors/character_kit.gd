@@ -69,6 +69,17 @@ const HEROES := {
 	"shade": ["skeleton", Color(0.62, 0.5, 0.85)],
 	"robot": ["knight", Color(0.8, 0.62, 0.5)],  # rust-eaten plate
 	"warden": ["warden", null],          # the cursed knight
+	# Zone foes on the same rigs, in their region's colours.
+	"thornling": ["skeleton", Color(0.55, 0.78, 0.5)],   # Gloomwood
+	"wisp_caller": ["skeleton", Color(0.45, 0.85, 0.82)],
+	"frost_knight": ["knight", Color(0.7, 0.85, 1.05)],   # Frostpeaks
+	"rime_shade": ["skeleton", Color(0.75, 0.88, 1.1)],
+	"dune_raider": ["knight", Color(1.05, 0.86, 0.6)],    # Sunscar
+	"sand_thrower": ["skeleton", Color(1.0, 0.85, 0.62)],
+	"cinder_knight": ["knight", Color(0.75, 0.4, 0.32)],  # Ashlands
+	"ember_caller": ["skeleton", Color(1.0, 0.6, 0.42)],
+	"void_shade": ["skeleton", Color(0.58, 0.42, 0.9)],   # Blight
+	"void_caller": ["skeleton", Color(0.7, 0.45, 1.0)],
 }
 ## Per-character presence: height in metres and their own way of moving
 ## (clip overrides on the shared library, playback speed). Anime heroines
@@ -78,7 +89,7 @@ const HERO_STYLE := {
 	# own bounding run, arms flying, becomes the sprint.
 	# Her own idle clutches her hands at her chest; the shared relaxed idle
 	# (arms easy at her sides, weight settled) reads far more natural.
-	"player": {"height": 1.56, "library": "anim/heroine.res", "speed": 1.0, "clips": {"Jog_Fwd": "ual/Jog_Fwd", "Idle": "ual/Idle"},
+	"player": {"height": 1.56, "library": "anim/heroine.res", "speed": 1.0, "clips": {"Jog_Fwd": "ual/Jog_Fwd", "Idle": "ual/Idle", "Idle_Own": "Idle"},
 		# No wings: their root bones collapse to nothing (the rest follows).
 		"hide_bones": ["Wing02_"]},
 	"wren": {"height": 1.6, "clips": {"Idle": "Idle_Talking"}, "speed": 1.05},
@@ -92,6 +103,16 @@ const HERO_STYLE := {
 	"robot": {"height": 1.85, "speed": 0.9},
 	"zombie": {"height": 1.8, "speed": 0.9},
 	"shade": {"height": 1.75, "speed": 1.15},
+	"thornling": {"height": 1.55, "speed": 1.3},
+	"wisp_caller": {"height": 1.75, "speed": 1.0},
+	"frost_knight": {"height": 2.05, "speed": 0.8},
+	"rime_shade": {"height": 1.75, "speed": 1.1},
+	"dune_raider": {"height": 1.85, "speed": 1.1},
+	"sand_thrower": {"height": 1.7, "speed": 1.0},
+	"cinder_knight": {"height": 2.1, "speed": 0.8},
+	"ember_caller": {"height": 1.75, "speed": 1.0},
+	"void_shade": {"height": 1.8, "speed": 1.25},
+	"void_caller": {"height": 1.8, "speed": 1.0},
 }
 const HERO_DIR := "res://assets/models/heroes/"
 const HERO_ANIMS := HERO_DIR + "anim/humanoid.res"
@@ -306,6 +327,8 @@ static func _add_leg_collider(root: Node3D, model: Node3D, skeleton: Skeleton3D,
 	near_hip.sort()
 	near_knee.sort()
 	var r := Vector2(near_hip[int(near_hip.size() * 0.9)], near_knee[int(near_knee.size() * 0.9)]) + Vector2.ONE * height * 0.004
+	for c in cloth:
+		_mask_arms(c as MeshInstance3D, skeleton)
 	var lc := LegCollider.new()
 	lc.name = "LegCollider"
 	lc.skeleton = skeleton
@@ -313,6 +336,50 @@ static func _add_leg_collider(root: Node3D, model: Node3D, skeleton: Skeleton3D,
 	lc.radius = r
 	lc.meshes = cloth
 	root.add_child(lc)
+
+
+## Vertex colour red = how much a clothing vertex may be pushed by the legs:
+## 1 - its weight on arm, hand and shoulder bones. Cached per mesh.
+static var _masked := {}
+
+
+static func _mask_arms(mi: MeshInstance3D, skeleton: Skeleton3D) -> void:
+	if _masked.has(mi.mesh):
+		mi.mesh = _masked[mi.mesh]
+		return
+	if mi.skin == null or mi.mesh.get_blend_shape_count() > 0:
+		return
+	var arm_bones := {}
+	for i in skeleton.get_bone_count():
+		var n := skeleton.get_bone_name(i)
+		if n.contains("Arm") or n.contains("Hand") or n.contains("Shoulder") or n.contains("Thumb") \
+				or n.contains("Index") or n.contains("Middle") or n.contains("Ring") or n.contains("Little"):
+			arm_bones[i] = true
+	var out := ArrayMesh.new()
+	for si in mi.mesh.get_surface_count():
+		var arrays: Array = mi.mesh.surface_get_arrays(si)
+		var verts: PackedVector3Array = arrays[Mesh.ARRAY_VERTEX]
+		var bones = arrays[Mesh.ARRAY_BONES]
+		var weights = arrays[Mesh.ARRAY_WEIGHTS]
+		var cols := PackedColorArray()
+		cols.resize(verts.size())
+		var per: int = (bones as PackedInt32Array).size() / maxi(verts.size(), 1) if bones != null else 0
+		for i in verts.size():
+			var arm := 0.0
+			for k in per:
+				var bind: int = bones[i * per + k]
+				var bone := mi.skin.get_bind_bone(bind)
+				if bone < 0:
+					bone = skeleton.find_bone(mi.skin.get_bind_name(bind))
+				if arm_bones.has(bone):
+					arm += float(weights[i * per + k])
+			var m := clampf(1.0 - arm * 1.5, 0.0, 1.0)
+			cols[i] = Color(m, m, m, 1.0)
+		arrays[Mesh.ARRAY_COLOR] = cols
+		out.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, arrays)
+		out.surface_set_material(si, mi.mesh.surface_get_material(si))
+	_masked[mi.mesh] = out
+	mi.mesh = out
 
 
 ## The lowest point of a mesh in rest pose, in `root`'s space: skinned

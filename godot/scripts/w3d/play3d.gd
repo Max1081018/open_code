@@ -635,8 +635,20 @@ func _hitstop(seconds: float) -> void:
 	get_tree().create_timer(seconds, true, false, true).timeout.connect(func(): Engine.time_scale = 1.0)
 
 
-func on_player_hit(_amount: float) -> void:
+func on_player_hit(amount: float) -> void:
 	_shake = maxf(_shake, 0.45)
+	game.hud.hurt_flash(clampf(amount / 30.0, 0.35, 1.0))
+	Sfx.play("hurt", -6.0)
+
+
+## A foe's ground blow: a ring of its element racing outward, dust, a jolt.
+func ring_burst(at: Vector3, radius: float, colour: Color) -> void:
+	_star_ring(at, radius, colour)
+	Arcana.sparks(game, at + Vector3(0, 0.3, 0), colour, 30, 7.0, 0.12, -6.0)
+	debris(at + Vector3(0, 0.2, 0), Color(0.5, 0.46, 0.42), 14)
+	Sfx.play("land", 0.0, 0.1, 0.7)
+	if game.player.global_position.distance_to(at) < radius * 3.0:
+		_shake = maxf(_shake, 0.5)
 
 
 # ---------------------------------------------------------------- enemies ---
@@ -659,19 +671,29 @@ func _spawn_enemies() -> void:
 	if at.y < TerrainGen.WATER + 0.5 or Vector2(at.x, at.z).distance_to(TerrainGen.VILLAGE) < TerrainGen.VILLAGE_RADIUS * 1.6:
 		return
 	var b: int = game.world.biome_at(at)
-	var kinds := ["zombie"]
-	match b:
-		TerrainGen.Biome.DARK_FOREST, TerrainGen.Biome.CORRUPTED:
-			kinds = ["shade", "zombie", "shade"]
-		TerrainGen.Biome.SNOW, TerrainGen.Biome.VOLCANIC:
-			kinds = ["robot", "zombie"]
-		TerrainGen.Biome.DRY:
-			kinds = ["robot", "zombie", "zombie"]
-		_:
-			kinds = ["zombie", "zombie", "robot"] if night else ["zombie"]
+	var kinds: Array = ZONE_FOES.get(b, ["zombie"])
+	if b == TerrainGen.Biome.FOREST and night:
+		kinds = ["zombie", "zombie", "robot"]
 	if not night and b == TerrainGen.Biome.FOREST and randf() < 0.6:
 		return  # the green woods are mostly safe by day
 	spawn_enemy(kinds.pick_random(), at)
+	# Away from the meadows foes come in small bands.
+	if b != TerrainGen.Biome.FOREST and randf() < 0.45:
+		var p2 := at + Vector3(randf_range(-4, 4), 0, randf_range(-4, 4))
+		p2.y = game.world.height_at(p2.x, p2.z)
+		spawn_enemy(kinds.pick_random(), p2)
+
+
+## Who walks each region (weighted by repeats).
+const ZONE_FOES := {
+	TerrainGen.Biome.FOREST: ["zombie"],
+	TerrainGen.Biome.DARK_FOREST: ["thornling", "thornling", "wisp_caller", "shade"],
+	TerrainGen.Biome.SNOW: ["frost_knight", "rime_shade", "rime_shade"],
+	TerrainGen.Biome.DRY: ["dune_raider", "sand_thrower", "sand_thrower", "zombie"],
+	TerrainGen.Biome.VOLCANIC: ["cinder_knight", "ember_caller", "ember_caller"],
+	TerrainGen.Biome.CORRUPTED: ["void_shade", "void_shade", "void_caller"],
+	TerrainGen.Biome.BEACH: ["zombie"],
+}
 
 
 func spawn_enemy(kind: String, at: Vector3) -> Enemy3D:

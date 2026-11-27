@@ -42,11 +42,12 @@ window/handheld/orientation=4
 
 [editor_plugins]
 
-enabled=PackedStringArray("res://addons/beckett/plugin.cfg")
+enabled=PackedStringArray("res://addons/beckett/plugin.cfg", "res://addons/terrain_3d/plugin.cfg", "res://addons/effekseer/plugin.cfg")
 
 [physics]
 
 2d/default_gravity=2600.0
+3d/physics_engine="Jolt Physics"
 
 [rendering]
 

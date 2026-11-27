@@ -194,6 +194,8 @@ class Orb:
 	var heading := Vector3.FORWARD
 	var speed := 17.0
 	var target: Node3D
+	## Bursts on contact with this node without steering toward it (a foe's bolt).
+	var hit_target: Node3D
 	var life := 1.8
 	var burst: Callable
 	var ground: Callable   ## (x, z) -> ground height
@@ -270,6 +272,10 @@ class Orb:
 			if global_position.distance_to(target.global_position + Vector3(0, 1.0, 0)) < 0.9:
 				_pop()
 				return
+		if hit_target != null and is_instance_valid(hit_target) \
+				and global_position.distance_to(hit_target.global_position + Vector3(0, 1.0, 0)) < 0.8:
+			_pop()
+			return
 		global_position += heading * speed * delta
 		var floor_y: float = ground.call(global_position.x, global_position.z) if ground.is_valid() else -INF
 		if life <= 0.0 or global_position.y < floor_y + 0.2:

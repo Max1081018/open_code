@@ -229,3 +229,15 @@ Main-menu key art (`assets/ui/menu/keyart.jpg`) generated with Higgsfield (GPT I
 ## Fonts (OFL)
 
 Cinzel, Cinzel Decorative (Natanael Gama), Cormorant Garamond Italic — Google Fonts, SIL OFL 1.1.
+
+## Engine extensions (MIT)
+
+| Extension | Version | Licence | Use |
+|---|---|---|---|
+| Terrain3D (Tokisan Games, Cory Petkovsek) | 1.0.x for Godot 4.4 | MIT (`addons/terrain_3d/LICENSE.txt`) | Clipmap terrain, available for a larger world |
+| godot_voxel (Marc Gilleron) | 1.4.1x GDExtension | MIT (`addons/zylann.voxel/LICENSE.md`) | Voxel/SDF terrain (caves, deformable ground) |
+| Effekseer for Godot | 1.70e.10 (last build for Godot 4.4) | MIT | Particle effect runtime (`EffekseerEmitter3D`) |
+| Jolt Physics | built into Godot 4.4 | MIT | Physics engine (`physics/3d/physics_engine = Jolt Physics`) |
+| Recast Navigation | built into Godot 4.4 (NavigationServer3D) | Zlib | Navmesh baking and pathfinding |
+
+Android x86_64 (emulator-only) voxel libraries were dropped to save space; arm64 is kept.

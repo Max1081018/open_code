@@ -620,14 +620,50 @@ func _show_gadgets() -> void:
 
 # ---------------------------------------------------------- feed, boss ---
 
+## The region's name, shown once as she enters it: small, between two fine
+## gold rules, fading in and away within a few seconds.
 func _build_region() -> void:
-	_region = _label("", 64, Color(1.0, 0.95, 0.85), _title_font)
+	_region = _label("", 36, Color(1.0, 0.96, 0.88), _title_font, true)
 	_region.set_anchors_and_offsets_preset(Control.PRESET_CENTER_TOP)
-	_region.offset_left = -600
-	_region.offset_right = 600
-	_region.offset_top = 150
+	_region.offset_left = -400
+	_region.offset_right = 400
+	_region.offset_top = 118
 	_region.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	_region.modulate.a = 0.0
 	root.add_child(_region)
+	var rules := Control.new()
+	rules.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	rules.draw.connect(func():
+		var w := _region.size.x
+		var y := _region.size.y * 0.55
+		var tw := _title_font.get_string_size(_region.text, HORIZONTAL_ALIGNMENT_LEFT, -1, 36).x
+		var x0 := (w - tw) * 0.5 - 28.0
+		var x1 := (w + tw) * 0.5 + 28.0
+		for side in [[x0, x0 - 120.0], [x1, x1 + 120.0]]:
+			rules.draw_line(Vector2(side[0], y), Vector2(side[1], y), Color(GOLD, 0.8), 1.2, true)
+			var m := Vector2(side[0], y)
+			rules.draw_colored_polygon(PackedVector2Array([m + Vector2(0, -4), m + Vector2(4, 0), m + Vector2(0, 4), m + Vector2(-4, 0)]), GOLD))
+	_region.add_child(rules)
+	_region_rules = rules
+
+
+var _region_rules: Control
+var _region_seen := {}      ## biome -> time last announced (s)
+var _region_pending := -1
+var _region_stable := 0.0
+var _clock := 0.0
+
+
+func _announce_region(b: int) -> void:
+	_region.text = game.world.gen.biome_name(b)
+	_region_rules.size = _region.size
+	_region_rules.queue_redraw()
+	_region_seen[b] = _clock
+	var t := create_tween()
+	_region.modulate.a = 0.0
+	t.tween_property(_region, "modulate:a", 1.0, 0.8)
+	t.tween_interval(2.2)
+	t.tween_property(_region, "modulate:a", 0.0, 1.2)
 
 
 func _build_feed() -> void:
@@ -739,6 +775,33 @@ func banner(title: String, sub: String) -> void:
 	_banner_tween.parallel().tween_property(_banner_sub, "modulate:a", 0.0, 0.7)
 
 
+## A red bloom at the screen's edges when she is struck.
+var _hurt: ColorRect
+
+
+func hurt_flash(strength: float) -> void:
+	if _hurt == null:
+		_hurt = ColorRect.new()
+		_hurt.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		_hurt.set_anchors_preset(Control.PRESET_FULL_RECT)
+		var m := ShaderMaterial.new()
+		var sh := Shader.new()
+		sh.code = """shader_type canvas_item;
+uniform float amount = 0.0;
+void fragment() {
+	vec2 d = UV - 0.5;
+	float edge = smoothstep(0.25, 0.75, length(d * vec2(1.0, 1.3)));
+	COLOR = vec4(0.75, 0.05, 0.08, edge * amount * 0.7);
+}"""
+		m.shader = sh
+		_hurt.material = m
+		add_child(_hurt)
+		move_child(_hurt, 0)
+	var mat := _hurt.material as ShaderMaterial
+	var t := create_tween()
+	t.tween_method(func(v: float): mat.set_shader_parameter("amount", v), strength, 0.0, 0.55)
+
+
 ## Fade the whole screen to black (1) or back (0) over `time` seconds.
 var _veil: ColorRect
 
@@ -801,13 +864,21 @@ func _process(delta: float) -> void:
 		_boss_bar.value = maxf(_boss.health, 0.0) / _boss.max_health * 100.0
 	_gadget_name_time -= delta
 	_gadget_name.modulate.a = clampf(_gadget_name_time, 0.0, 1.0)
+	# A new region is announced once it has held for a moment (no flicker
+	# along a border), and not again for two minutes.
+	_clock += delta
 	var b: int = game.world.biome_at(p.global_position)
+	if b == TerrainGen.Biome.BEACH:
+		b = _last_biome   # the shore is not a region of its own
 	if b != _last_biome:
-		_last_biome = b
-		_region.text = game.world.gen.biome_name(b)
-		_region_time = 3.5
-	_region_time -= delta
-	_region.modulate.a = clampf(_region_time, 0.0, 1.0)
+		if b != _region_pending:
+			_region_pending = b
+			_region_stable = 0.0
+		_region_stable += delta
+		if _region_stable > 1.2:
+			_last_biome = b
+			if _clock - float(_region_seen.get(b, -999.0)) > 120.0:
+				_announce_region(b)
 
 
 # ---------------------------------------------------------------- touch ---
