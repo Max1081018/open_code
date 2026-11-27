@@ -294,6 +294,10 @@ func _sky() -> void:
 		to.y = cb.y + 0.3
 		_bridge(from, to)
 	_mark("aerie", "The Aerie", (isles[0][0] as Vector3))
+	# The isle's far edge (a hidden overlook) and the farthest, highest isle.
+	var c0: Vector3 = isles[0][0]
+	_mark("aerie_edge", "The Aerie's edge", c0 + Vector3(-float(isles[0][1]) * 0.8, 0.5, -float(isles[0][1]) * 0.35))
+	_mark("aerie_far", "The farthest isle", (isles[6][0] as Vector3) + Vector3(0, 0.5, 0))
 
 
 ## A rope-and-plank bridge with a walkable deck.

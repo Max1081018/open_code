@@ -305,6 +305,12 @@ func _process(_delta: float) -> void:
 
 ## For the HUD tracker: {title, detail, target (Vector3 or null)}.
 func tracker() -> Dictionary:
+	# The starting island's adventure leads until its chapter is done.
+	var adv = game.get("adventure")
+	if adv and adv.active():
+		var t: Dictionary = adv.tracker()
+		if not t.is_empty():
+			return t
 	if tracked != "":
 		var q := quest(tracked)
 		var s: String = state.get(tracked, "")

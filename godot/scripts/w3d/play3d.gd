@@ -8,6 +8,8 @@ extends Node
 signal toast(text: String)
 signal enemy_killed(e: Node)
 signal inventory_changed
+signal resource_struck(category: String)
+signal crafted(item: String)
 
 var game: Node
 var inventory := Inventory.new(40)
@@ -204,6 +206,7 @@ func _impact(kind: String, heavy: bool) -> void:
 ## A tree or rock struck by a tool or by the Moonblade's arcana.
 func _strike_resource(res: Dictionary, power: float, at: Vector3, forward: Vector3) -> void:
 	var wants: String = res.category
+	resource_struck.emit(wants)
 	var spark_at: Vector3 = res.pos + Vector3(0, 1.0 if wants == "tree" else 0.6, 0)
 	debris(spark_at, Color(0.42, 0.3, 0.2) if wants == "tree" else Color(0.55, 0.55, 0.58), 10)
 	if _arcane():

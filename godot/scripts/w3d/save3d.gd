@@ -74,6 +74,7 @@ static func capture(game: Node) -> Dictionary:
 		"time": game.time_of_day,
 		"character": String(game.get("character_id")) if game.get("character_id") else "heroine",
 		"start_island": String(game.get("start_island")) if game.get("start_island") else "",
+		"adventure": game.adventure.to_dict() if game.get("adventure") else {},
 	}
 
 
@@ -107,3 +108,5 @@ static func restore(game: Node, s: Dictionary) -> void:
 			game.starstones._refresh(String(id))
 	game.world.restore_removed(s.get("removed", {}))
 	game.time_of_day = float(s.get("time", game.time_of_day))
+	if game.get("adventure") and s.has("adventure"):
+		game.adventure.from_dict(s.adventure)

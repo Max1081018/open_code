@@ -1361,6 +1361,7 @@ func _do_craft() -> void:
 	var made := 0
 	for k in _craft_qty:
 		if game.play.inventory.craft(rec):
+			game.play.crafted.emit(String(rec[0]))
 			made += 1
 	if made > 0:
 		Sfx.play("craft")

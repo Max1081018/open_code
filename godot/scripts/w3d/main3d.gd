@@ -23,6 +23,7 @@ var nav: NavField
 var weather: Weather3D
 var realms: RealmFeatures
 var footprints: Footprints
+var adventure: Adventure
 var _post: ShaderMaterial
 var _heat := 0.0
 ## The chosen hero and starting land (from the profile, or --start= in captures).
@@ -156,6 +157,12 @@ func _ready() -> void:
 	weather.setup(self)
 	if _args.has("weather"):
 		weather.force(Weather3D.NAMES.map(func(n: String) -> String: return n.to_lower().replace(" ", "")).find(String(_args.weather).to_lower()))
+	# The first adventure on the chosen starting island.
+	if Realms.STARTS.has(start_island):
+		adventure = Adventure.new()
+		add_child(adventure)
+		var fresh := saved.is_empty() and (not _args.has("shot") or _args.has("arrival"))
+		adventure.setup(self, start_island, fresh)
 	if not saved.is_empty():
 		Save3D.restore(self, saved)
 		play.toast.emit("Welcome back to the Starfall")
