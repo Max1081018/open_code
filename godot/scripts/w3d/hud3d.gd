@@ -236,13 +236,44 @@ func _build_menu_icons() -> void:
 	var icons := MENU_ICONS
 	for i in icons.size():
 		var kind: String = icons[i]
-		var c := _canvas(Vector2.ZERO, Vector2(64, 64), func(cv: Control): _draw_icon(cv, kind))
+		var c := _canvas(Vector2.ZERO, Vector2(64, 64), func(cv: Control): _glass(cv, cv.size * 0.5, 28, 0.38))
 		_place(c, Vector2(1, 0), Vector2(-100 - (icons.size() - 1 - i) * 78, 30))
+		_icon_on(c, MENU_ART.get(kind, kind), Vector2(32, 32), 40.0)
 
 
-func _draw_icon(c: Control, kind: String) -> void:
-	_ring(c, c.size * 0.5, 28, Color(0.07, 0.08, 0.2, 0.45), Color(1, 1, 1, 0.55), 2.0)
-	draw_glyph(c, kind, Color(0.98, 0.97, 1.0))
+## The painted HUD glyphs (assets/ui/hud, made for this game).
+const MENU_ART := {"book": "quest"}
+static var _hud_art := {}
+
+
+static func hud_icon(name: String) -> Texture2D:
+	if not _hud_art.has(name):
+		var path := "res://assets/ui/hud/%s.png" % name
+		_hud_art[name] = load(path) if ResourceLoader.exists(path) else null
+	return _hud_art[name]
+
+
+## A painted glyph as a child TextureRect centred at `at` in `parent`.
+func _icon_on(parent: Control, name: String, at: Vector2, side: float) -> TextureRect:
+	var t := TextureRect.new()
+	t.texture = hud_icon(name)
+	t.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+	t.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+	t.size = Vector2(side, side)
+	t.position = at - t.size * 0.5
+	t.pivot_offset = t.size * 0.5
+	t.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	parent.add_child(t)
+	return t
+
+
+## A dark glass disc: a soft drop shadow, a translucent body a shade
+## lighter at the top, and a hairline rim.
+func _glass(c: Control, at: Vector2, r: float, alpha := 0.42, rim := Color(1, 1, 1, 0.32)) -> void:
+	c.draw_circle(at + Vector2(0, 2), r + 2, Color(0, 0, 0, 0.16))
+	c.draw_circle(at, r, Color(0.05, 0.05, 0.12, alpha))
+	c.draw_arc(at, r - 3, PI * 1.15, PI * 1.85, 32, Color(1, 1, 1, 0.08), r * 0.18, true)
+	c.draw_arc(at, r, 0, TAU, 64, rim, 1.5, true)
 
 
 ## The line glyph of a menu icon, centred in `c`.
@@ -349,9 +380,21 @@ func _draw_stamina(c: Control) -> void:
 
 # -------------------------------------------------------------- skills ---
 
+var _skill_icons := {}
+var _skills_over: Control
+
+
 func _build_skills() -> void:
 	_skills = _canvas(Vector2.ZERO, Vector2(1, 1), _draw_skills)
 	_place(_skills, Vector2(1, 1), Vector2.ZERO)
+	for k in [["attack", "attack", 78.0], ["skill", "comet", 58.0], ["burst", "starfall", 70.0], ["jump", "jump", 44.0],
+			["dash", "dash", 44.0], ["bag", "bag", 50.0], ["interact", "interact", 46.0]]:
+		_skill_icons[k[0]] = _icon_on(_skills, k[1], SKILL_POS[k[0]], k[2])
+	# Cooldowns, padlocks and the charge ring draw over the glyphs.
+	_skills_over = Control.new()
+	_skills_over.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_skills_over.draw.connect(_draw_skills_over)
+	_skills.add_child(_skills_over)
 	_gadget_icon = TextureRect.new()
 	_gadget_icon.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
 	_gadget_icon.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
@@ -383,57 +426,29 @@ const SKILL_POS := {"attack": Vector2(-150, -150), "skill": Vector2(-300, -110),
 
 func _draw_skills(c: Control) -> void:
 	var play: Play3D = game.play
-	# Attack: big round button with a sword.
-	var a: Vector2 = SKILL_POS.attack
-	_ring(c, a, 70, Color(0.08, 0.09, 0.2, 0.5), Color(1, 1, 1, 0.6), 3.0)
-	c.draw_line(a + Vector2(-26, 26), a + Vector2(24, -24), PALE, 7.0, true)
-	c.draw_line(a + Vector2(-30, 14), a + Vector2(-14, 30), PALE, 5.0, true)
-	c.draw_line(a + Vector2(-34, 34), a + Vector2(-26, 26), PALE, 6.0, true)
-	# Holding attack charges a heavy stroke: a ring fills, gold when ready.
-	var ch: float = game.input.charge
-	if ch > 0.0:
-		c.draw_arc(a, 78, -PI * 0.5, -PI * 0.5 + TAU * ch, 64, GOLD if ch >= 1.0 else Color(0.85, 0.7, 1.0), 6.0, true)
-	# Skill (E): a star slash, with a cooldown sweep.
-	var s: Vector2 = SKILL_POS.skill
-	_ring(c, s, 50, Color(0.18, 0.14, 0.34, 0.75), GOLD, 3.0)
-	_comet_glyph(c, s, Color(0.86, 0.72, 1.0))
-	var cd: float = play.skill_cooldown / Play3D.SKILL_COOLDOWN
-	if not play.prog.unlocked("comet"):
-		_locked(c, s, 50, Progression.UNLOCKS.comet)
-	elif cd > 0.0:
-		c.draw_circle(s, 50, Color(0, 0, 0, 0.45))
-		c.draw_arc(s, 46, -PI * 0.5, -PI * 0.5 + TAU * cd, 40, Color(1, 1, 1, 0.65), 6.0, true)
-		c.draw_string(_num_font, s + Vector2(-14, 10), "%.0f" % ceilf(play.skill_cooldown), HORIZONTAL_ALIGNMENT_LEFT, -1, 30, PALE)
-	elif not touch:
-		c.draw_string(_num_font, s + Vector2(-8, 76), "E", HORIZONTAL_ALIGNMENT_LEFT, -1, 22, PALE)
-	# Burst (Q): fills with energy, glows when ready.
+	# Attack: the largest disc, a fine gold rim.
+	_glass(c, SKILL_POS.attack, 66, 0.4, Color(1.0, 0.9, 0.7, 0.5))
+	c.draw_arc(SKILL_POS.attack, 60, 0, TAU, 64, Color(1, 1, 1, 0.1), 1.0, true)
+	# Skill and burst: violet-tinted glass; the burst fills with energy.
+	_glass(c, SKILL_POS.skill, 46, 0.46, Color(0.86, 0.74, 1.0, 0.5))
 	var b: Vector2 = SKILL_POS.burst
-	var e: float = play.energy / Play3D.BURST_COST
-	var ready := e >= 1.0
+	var e: float = clampf(play.energy / Play3D.BURST_COST, 0.0, 1.0)
+	var ready := e >= 1.0 and play.prog.unlocked("starfall")
 	if ready:
-		var pulse := 0.5 + 0.5 * sin(Time.get_ticks_msec() / 180.0)
-		c.draw_circle(b, 66 + pulse * 6, Color(0.55, 0.85, 1.0, 0.25))
-	_ring(c, b, 58, Color(0.2, 0.1, 0.38, 0.8), Color(0.85, 0.65, 1.0) if ready else Color(1, 1, 1, 0.4), 3.0)
-	c.draw_arc(b, 52, -PI * 0.5, -PI * 0.5 + TAU * clampf(e, 0, 1), 48, Color(0.78, 0.55, 1.0), 6.0, true)
-	_rune_glyph(c, b, Color(0.92, 0.8, 1.0) if ready else Color(0.6, 0.55, 0.75))
-	if not play.prog.unlocked("starfall"):
-		_locked(c, b, 58, Progression.UNLOCKS.starfall)
-	elif not touch:
-		c.draw_string(_num_font, b + Vector2(-8, 84), "Q", HORIZONTAL_ALIGNMENT_LEFT, -1, 22, PALE)
-	# Interact appears only when there is something to use.
-	if _prompt and _prompt.text != "" and touch:
-		var ip: Vector2 = SKILL_POS.interact
-		_ring(c, ip, 40, Color(0.25, 0.2, 0.08, 0.6), GOLD, 2.5)
-		c.draw_circle(ip, 9, GOLD)
-	# Jump and dash: small rings.
+		var pulse := 0.5 + 0.5 * sin(Time.get_ticks_msec() / 220.0)
+		c.draw_circle(b, 60 + pulse * 5, Color(0.7, 0.5, 1.0, 0.18))
+	_glass(c, b, 54, 0.46, Color(0.86, 0.74, 1.0, 0.6) if ready else Color(1, 1, 1, 0.3))
+	if e > 0.0 and play.prog.unlocked("starfall"):
+		c.draw_arc(b, 54, -PI * 0.5, -PI * 0.5 + TAU * e, 64, Color(0.82, 0.62, 1.0, 0.95), 3.0, true)
 	for k in ["jump", "dash"]:
-		var p: Vector2 = SKILL_POS[k]
-		_ring(c, p, 40, Color(0.08, 0.09, 0.2, 0.45), Color(1, 1, 1, 0.5), 2.0)
-		if k == "jump":
-			c.draw_polyline(PackedVector2Array([p + Vector2(-14, 8), p + Vector2(0, -8), p + Vector2(14, 8)]), PALE, 4.0, true)
-		else:
-			for o in [-10, 4]:
-				c.draw_polyline(PackedVector2Array([p + Vector2(o, -12), p + Vector2(o + 10, 0), p + Vector2(o, 12)]), PALE, 4.0, true)
+		_glass(c, SKILL_POS[k], 36, 0.34)
+	if _prompt and _prompt.text != "" and touch:
+		_glass(c, SKILL_POS.interact, 36, 0.45, Color(1.0, 0.86, 0.55, 0.7))
+	_skill_icons.interact.visible = _prompt != null and _prompt.text != "" and touch
+	var comet_ok: bool = play.prog.unlocked("comet") and play.skill_cooldown <= 0.0
+	_skill_icons.skill.modulate = Color(1, 1, 1, 1.0 if comet_ok else 0.45)
+	_skill_icons.burst.modulate = Color(1, 1, 1, 1.0 if ready else 0.5)
+	_skills_over.queue_redraw()
 	# The held item: a framed slot showing the item itself (its icon is a
 	# TextureRect over the frame: _gadget_icon). Tap: the next item.
 	_draw_slot(c, SKILL_POS.gadget)
@@ -441,14 +456,49 @@ func _draw_skills(c: Control) -> void:
 	_draw_backpack_button(c, SKILL_POS.bag)
 
 
+## Over the glyphs: the attack's charge ring, the skill's cooldown sweep and
+## count, padlocks on sealed arts, key hints with a keyboard.
+func _draw_skills_over() -> void:
+	var c := _skills_over
+	var play: Play3D = game.play
+	var a: Vector2 = SKILL_POS.attack
+	var ch: float = game.input.charge
+	if ch > 0.0:
+		c.draw_arc(a, 72, -PI * 0.5, -PI * 0.5 + TAU * ch, 72, GOLD if ch >= 1.0 else Color(0.85, 0.7, 1.0), 4.0, true)
+	var s: Vector2 = SKILL_POS.skill
+	if not play.prog.unlocked("comet"):
+		_locked(c, s, 46, Progression.UNLOCKS.comet)
+	elif play.skill_cooldown > 0.0:
+		var cd: float = play.skill_cooldown / Play3D.SKILL_COOLDOWN
+		var pts := PackedVector2Array([s])
+		for k in 33:
+			pts.append(s + Vector2.from_angle(-PI * 0.5 + TAU * cd * k / 32.0) * 46)
+		c.draw_colored_polygon(pts, Color(0.02, 0.02, 0.06, 0.55))
+		c.draw_string(_num_font, s + Vector2(-30, 11), "%.0f" % ceilf(play.skill_cooldown), HORIZONTAL_ALIGNMENT_CENTER, 60, 30, PALE)
+	elif not touch:
+		c.draw_string(_num_font, s + Vector2(-30, 70), "E", HORIZONTAL_ALIGNMENT_CENTER, 60, 20, Color(PALE, 0.8))
+	var b: Vector2 = SKILL_POS.burst
+	if not play.prog.unlocked("starfall"):
+		_locked(c, b, 54, Progression.UNLOCKS.starfall)
+	elif not touch:
+		c.draw_string(_num_font, b + Vector2(-30, 78), "Q", HORIZONTAL_ALIGNMENT_CENTER, 60, 20, Color(PALE, 0.8))
+
+
 ## A sealed skill: dimmed, a padlock, the level that opens it.
 func _locked(c: Control, at: Vector2, r: float, lv: int) -> void:
-	c.draw_circle(at, r, Color(0.02, 0.02, 0.06, 0.62))
-	var body := Rect2(at + Vector2(-11, -4), Vector2(22, 17))
-	c.draw_rect(body, Color(0.9, 0.86, 0.96))
-	c.draw_arc(at + Vector2(0, -4), 7.5, PI, TAU, 14, Color(0.9, 0.86, 0.96), 3.0, true)
-	c.draw_circle(at + Vector2(0, 3), 2.5, Color(0.2, 0.15, 0.3))
-	c.draw_string(_num_font, at + Vector2(-30, r * 0.45 + 20), "Lv %d" % lv, HORIZONTAL_ALIGNMENT_CENTER, 60, 20, GOLD)
+	c.draw_circle(at, r - 1, Color(0.02, 0.02, 0.07, 0.6))
+	var ink := Color(0.95, 0.9, 1.0, 0.95)
+	var body := StyleBoxFlat.new()
+	body.bg_color = Color(0, 0, 0, 0)
+	body.draw_center = false
+	body.set_border_width_all(2)
+	body.border_color = ink
+	body.set_corner_radius_all(3)
+	body.anti_aliasing = true
+	c.draw_style_box(body, Rect2(at + Vector2(-9, -6), Vector2(18, 15)))
+	c.draw_arc(at + Vector2(0, -6), 6, PI, TAU, 16, ink, 2.0, true)
+	c.draw_circle(at + Vector2(0, 1.5), 1.8, ink)
+	c.draw_string(_num_font, at + Vector2(-30, 30), "Lv %d" % lv, HORIZONTAL_ALIGNMENT_CENTER, 60, 17, GOLD)
 
 
 ## The skill's mark: a comet (a crescent with a trailing tail).
@@ -496,8 +546,7 @@ func _draw_slot(c: Control, at: Vector2) -> void:
 
 
 func _draw_backpack_button(c: Control, at: Vector2) -> void:
-	_ring(c, at, 42, Color(0.08, 0.09, 0.2, 0.6), Color(1, 1, 1, 0.55), 2.0)
-	draw_backpack(c, at, 1.0)
+	_glass(c, at, 38, 0.42)
 
 
 ## A leather backpack: rolled bedding on top, a flap with a brass buckle,
@@ -765,13 +814,27 @@ func _process(delta: float) -> void:
 
 func _build_touch() -> void:
 	_stick_base = _canvas(Vector2.ZERO, Vector2(240, 240), func(c: Control):
-		c.draw_circle(Vector2(120, 120), 110, Color(0.06, 0.07, 0.18, 0.28))
-		c.draw_arc(Vector2(120, 120), 110, 0, TAU, 64, Color(1, 1, 1, 0.3), 2.0, true))
+		var m := Vector2(120, 120)
+		c.draw_circle(m, 108, Color(0.04, 0.04, 0.1, 0.22))
+		c.draw_arc(m, 108, 0, TAU, 96, Color(1, 1, 1, 0.26), 1.5, true)
+		c.draw_arc(m, 98, 0, TAU, 96, Color(1, 1, 1, 0.07), 1.0, true)
+		# Four faint direction ticks.
+		for k in 4:
+			var d := Vector2.from_angle(k * PI * 0.5 - PI * 0.5)
+			var t := m + d * 92.0
+			var side := d.orthogonal() * 6.0
+			c.draw_colored_polygon(PackedVector2Array([t + d * 8.0, t + side, t - side]), Color(1, 1, 1, 0.3)))
 	_place(_stick_base, Vector2(0, 1), Vector2(110, -330))
 	_stick_knob = Control.new()
 	_stick_knob.size = Vector2(90, 90)
 	_stick_knob.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	_stick_knob.draw.connect(func(): _stick_knob.draw_circle(Vector2(45, 45), 42, Color(1, 1, 1, 0.42)))
+	_stick_knob.draw.connect(func():
+		var m := Vector2(45, 45)
+		_stick_knob.draw_circle(m + Vector2(0, 2), 40, Color(0, 0, 0, 0.18))
+		_stick_knob.draw_circle(m, 38, Color(0.1, 0.09, 0.2, 0.55))
+		_stick_knob.draw_circle(m, 22, Color(0.8, 0.66, 1.0, 0.22))
+		_stick_knob.draw_arc(m, 38, 0, TAU, 64, Color(1, 1, 1, 0.55), 1.5, true)
+		_stick_knob.draw_arc(m, 34, PI * 1.15, PI * 1.85, 24, Color(1, 1, 1, 0.16), 4.0, true))
 	_stick_base.add_child(_stick_knob)
 	_stick_knob.position = Vector2(75, 75)
 

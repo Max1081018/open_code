@@ -56,7 +56,10 @@ var _head_meshes: Array = []
 var _idle_time := 0.0
 var _idle_break := 0.0
 ## Little things she does when left standing.
-const IDLE_BREAKS := [["Idle_FoldArms", 2.6, 1.0], ["Yes", 2.0, 1.0], ["Idle_No", 2.0, 1.0], ["Idle_Talking", 2.4, 1.0]]
+## Idle breaks: [clip, seconds, speed, weight]. The spell flourish lights
+## violet sparks at her hand; the little dance is rare.
+const IDLE_BREAKS := [["Idle_FoldArms", 2.6, 1.0, 3], ["Yes", 2.0, 1.0, 2], ["Idle_No", 2.0, 1.0, 2],
+	["Idle_Talking", 2.4, 1.0, 3], ["Spell_Simple_Idle", 2.2, 1.0, 3], ["Dance", 3.2, 1.0, 1]]
 
 
 func _ready() -> void:
@@ -640,8 +643,32 @@ func _spend(amount: float) -> bool:
 	return true
 
 
+## On guard: foes near or a fight just now: she stands in a sword stance.
+var _on_guard := false
+var _guard_hold := 0.0
+
+
+func _update_guard(dt: float) -> void:
+	_guard_hold -= dt
+	if _action > 0.0 and _action_name == "attack":
+		_guard_hold = 4.0
+	var near := _guard_hold > 0.0
+	if not near:
+		for e in get_tree().get_nodes_in_group("enemies"):
+			if not e.dead and e.global_position.distance_to(global_position) < 14.0:
+				near = true
+				break
+	if near != _on_guard and tree:
+		_on_guard = near
+		var gait := (tree.tree_root as AnimationNodeBlendTree).get_node("gait") as AnimationNodeBlendSpace1D
+		var style: Dictionary = model.get_meta("style", {})
+		var idle: String = "Sword_Idle" if near else String(style.get("clips", {}).get("Idle", "Idle"))
+		(gait.get_blend_point_node(0) as AnimationNodeAnimation).animation = idle
+
+
 func _animate(speed: float) -> void:
 	var dt := get_physics_process_delta_time()
+	_update_guard(dt)
 	if _action > 0.0 or _dodge > 0.0 or _landing > 0.0:
 		_idle_time = 0.0
 		_idle_break = 0.0
@@ -652,11 +679,24 @@ func _animate(speed: float) -> void:
 			_idle_break -= dt
 			if _idle_break > 0.0:
 				return
-		elif _idle_time > 6.0 and randf() < dt * 0.35:
-			var b: Array = IDLE_BREAKS.pick_random()
+		elif _idle_time > 6.0 and randf() < dt * 0.35 and not _on_guard:
+			var total := 0
+			for e in IDLE_BREAKS:
+				total += int(e[3])
+			var pick := randi() % total
+			var b: Array = IDLE_BREAKS[0]
+			for e in IDLE_BREAKS:
+				pick -= int(e[3])
+				if pick < 0:
+					b = e
+					break
 			_idle_break = b[1]
 			_idle_time = 0.0
 			_play(b[0], b[2], true)
+			if b[0] == "Spell_Simple_Idle":
+				get_tree().create_timer(0.5).timeout.connect(func():
+					if is_instance_valid(right_hand):
+						Arcana.sparks(get_parent(), right_hand.global_position, Color(0.8, 0.55, 1.0), 22, 2.0, 0.07, 0.8))
 			return
 	else:
 		_idle_time = 0.0
