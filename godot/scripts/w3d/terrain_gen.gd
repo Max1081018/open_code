@@ -233,7 +233,7 @@ func blended_tint(x: float, z: float, b: int) -> Color:
 func tint(b: int) -> Color:
 	match b:
 		Biome.DARK_FOREST:
-			return Color(0.5, 0.68, 0.64, 0.0)
+			return Color(0.6, 0.74, 0.7, 0.0)
 		Biome.CORRUPTED:
 			return Color(0.66, 0.5, 0.78, 0.15)
 		Biome.VOLCANIC:
@@ -243,7 +243,7 @@ func tint(b: int) -> Color:
 		Biome.SNOW:
 			return Color(0.95, 0.98, 1.05, 0.0)
 		Biome.JUNGLE:
-			return Color(0.74, 1.04, 0.62, 0.0)
+			return Color(0.68, 0.92, 0.6, 0.0)
 		Biome.CRYSTAL:
 			return Color(0.92, 1.04, 1.08, 0.0)
 	return Color(1, 1, 1, 0)

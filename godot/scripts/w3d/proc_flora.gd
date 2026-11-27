@@ -171,22 +171,24 @@ static func _crystal() -> ArrayMesh:
 			var t1 := TAU * (s + 1) / 6.0
 			var d0 := side * cos(t0) + up * sin(t0)
 			var d1 := side * cos(t1) + up * sin(t1)
-			var col := Color(0.55, 0.95, 1.0).lerp(Color(0.85, 0.7, 1.0), float(s % 2) * 0.5)
+			var col := Color(0.22, 0.58, 0.9).lerp(Color(0.52, 0.34, 0.92), float(s % 2) * 0.6)
 			for v in [[base + d0 * r, d0], [top + d0 * r, d0], [top + d1 * r, d1], [base + d0 * r, d0], [top + d1 * r, d1], [base + d1 * r, d1]]:
 				st.set_color(col)
 				st.set_normal(v[1])
 				st.add_vertex(v[0])
 			var nt := (d0 + d1).normalized().lerp(axis, 0.5).normalized()
 			for v in [top + d0 * r, tip, top + d1 * r]:
-				st.set_color(Color(0.95, 1.0, 1.0))
+				st.set_color(Color(0.62, 0.86, 1.0))
 				st.set_normal(nt)
 				st.add_vertex(v)
 	st.commit(am)
-	var m := _mat(Color(1, 1, 1, 0.88), 0.08, false, Color(0.3, 0.75, 1.0))
+	var m := _mat(Color(1, 1, 1, 0.9), 0.08, false, Color(0.12, 0.36, 0.85))
+	# Deep, saturated crystal with an inner glow: never a blown-out white.
+	m.emission_energy_multiplier = 0.9
 	m.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
 	m.metallic = 0.3
 	m.rim_enabled = true
-	m.rim = 0.9
+	m.rim = 0.5
 	am.surface_set_material(0, m)
 	return am
 

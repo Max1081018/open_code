@@ -351,7 +351,8 @@ func _crystal(parent: Node3D, at: Vector3, s: float, tint: Color) -> void:
 		mi.mesh = part[0]
 		mi.transform = Transform3D(Basis(Vector3.UP, randf() * TAU).scaled(Vector3.ONE * s), at) * (part[1] as Transform3D)
 		var m := (part[0] as Mesh).surface_get_material(0).duplicate() as StandardMaterial3D
-		m.emission = tint * 0.7
+		m.albedo_color = Color(tint.r * 0.5, tint.g * 0.62, tint.b * 0.7, 0.9)
+		m.emission = tint * 0.45
 		mi.material_override = m
 		parent.add_child(mi)
 	_cylinder_body(at + Vector3(0, s * 1.4, 0), s * 0.6, s * 2.8)

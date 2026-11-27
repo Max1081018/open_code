@@ -241,6 +241,9 @@ static func _root_colour(b: int) -> Color:
 			return Color(0.14, 0.27, 0.22, 1)
 		TerrainGen.Biome.CORRUPTED:
 			return Color(0.34, 0.22, 0.42, 1)
+		TerrainGen.Biome.JUNGLE:
+			# Deep, lush undergrowth green.
+			return Color(0.2, 0.42, 0.16, 1)
 	return Color(0, 0, 0, 0)
 
 

@@ -74,7 +74,11 @@ void fragment() {
 		discard;
 	}
 	vec2 p = world_pos.xz;
-	vec3 grass = two_scale(grass_tex, p) * vec3(0.56, 0.68, 0.42);
+	vec3 grass = two_scale(grass_tex, p) * vec3(1.0, 0.9, 0.82);
+	// Meadows are never one flat green: broad patches of lush deep grass and
+	// sun-dried lighter grass, broken up again at a smaller scale.
+	float meadow = vnoise(p * 0.011) * 0.6 + vnoise(p * 0.047 + 3.1) * 0.4;
+	grass *= mix(vec3(0.8, 0.9, 0.76), vec3(1.12, 1.06, 0.86), smoothstep(0.2, 0.8, meadow));
 	vec3 soil = two_scale(soil_tex, p);
 	vec3 snow = two_scale(snow_tex, p);
 	vec3 sand = two_scale(sand_tex, p);
@@ -193,6 +197,21 @@ void fragment() {
 		vec3 eye = normalize(CAMERA_POSITION_WORLD - world_pos);
 		float mirror = max(dot(reflect(-eye, gn), normalize(sun_dir)), 0.0);
 		glint = step(0.9, hsh) * dot_ * pow(mirror, 32.0) * (1.0 - far) * des * sun_up * (0.7 + 0.3 * sin(TIME * 3.0 + hsh * 40.0));
+	}
+	// Relief from the ground texture itself (grass tufts, soil clods): a bump
+	// normal from the texture's brightness, fading out with distance.
+	float cam_d = distance(world_pos, CAMERA_POSITION_WORLD);
+	if (cam_d < 60.0 && des < 0.01 && pave < 0.01) {
+		vec2 tp = p * scale;
+		float e = 0.004;
+		float h0 = dot(texture(grass_tex, tp).rgb, vec3(0.33));
+		float hx = dot(texture(grass_tex, tp + vec2(e, 0.0)).rgb, vec3(0.33));
+		float hz = dot(texture(grass_tex, tp + vec2(0.0, e)).rgb, vec3(0.33));
+		float bump = (1.0 - smoothstep(25.0, 60.0, cam_d)) * (w.r + soil_w) * 2.2;
+		vec3 bn = normalize(world_normal + vec3(h0 - hx, 0.0, h0 - hz) * bump);
+		NORMAL = normalize((VIEW_MATRIX * vec4(bn, 0.0)).xyz);
+		// Crevices between tufts are darker.
+		c *= mix(1.0, 0.78 + h0 * 0.5, min(bump, 1.0) * 0.6);
 	}
 	// Shadows of clouds drifting over the land.
 	float cs = vnoise(world_pos.xz * 0.004 + vec2(TIME * 0.006, TIME * 0.0035));

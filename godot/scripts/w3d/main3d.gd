@@ -110,6 +110,7 @@ func _ready() -> void:
 	if _args.has("dist"):
 		cam.distance = float(_args.dist)
 	cam.set_view(float(_args.get("yaw", "0")), float(_args.get("pitch", "-0.16")))
+	_build_depth_fx()
 	_build_water()
 	play = Play3D.new()
 	add_child(play)
@@ -234,28 +235,36 @@ func _build_environment() -> void:
 	sky.radiance_size = Sky.RADIANCE_SIZE_64
 	environment.background_mode = Environment.BG_SKY
 	environment.sky = sky
-	environment.ambient_light_source = Environment.AMBIENT_SOURCE_SKY
-	environment.ambient_light_energy = 0.45
-	environment.ambient_light_sky_contribution = 0.8
-	# AgX: highlights roll off softly (pale walls and skies stop clipping
-	# to white) and colours stay rich in the light.
-	environment.tonemap_mode = Environment.TONE_MAPPER_AGX
+	# Ambient from a colour driven by the current sky each frame (zenith,
+	# horizon and light bounced off the ground): the sky's radiance map comes
+	# through far too weakly in the Compatibility renderer, leaving shade black.
+	environment.ambient_light_source = Environment.AMBIENT_SOURCE_COLOR
+	environment.ambient_light_energy = 2.1
+	# Sky light plus light bounced off the sunlit ground: shade stays green
+	# and warm instead of sinking into blue-black.
+	environment.ambient_light_color = Color(0.48, 0.6, 0.78)
+	# ACES: a filmic contrast curve with saturated mid-tones (AgX looked
+	# flat and milky); a strong sun against cooler, deeper shade.
+	environment.tonemap_mode = Environment.TONE_MAPPER_ACES
 	environment.tonemap_exposure = 1.0
-	environment.tonemap_white = 8.0
+	environment.tonemap_white = 6.0
 	environment.glow_enabled = Settings.bloom
-	environment.glow_intensity = 0.28
-	environment.glow_bloom = 0.03
-	environment.glow_hdr_threshold = 1.2
+	environment.glow_intensity = 0.35
+	environment.glow_strength = 1.0
+	environment.glow_bloom = 0.04
+	environment.glow_hdr_threshold = 1.05
 	environment.fog_enabled = true
-	environment.fog_light_color = Color(0.72, 0.82, 0.95)
-	environment.fog_density = 0.0006
-	environment.fog_aerial_perspective = 0.35
+	environment.fog_light_color = Color(0.6, 0.72, 0.9)
+	environment.fog_density = BASE_FOG
+	# Distant land takes the sky's colour (aerial perspective), not a milky veil.
+	environment.fog_aerial_perspective = 0.55
 	environment.fog_sky_affect = 0.0
-	environment.fog_height = 30.0
-	environment.fog_height_density = 0.004
+	# Low mist pooling in valleys and over water, not over the whole world.
+	environment.fog_height = 6.0
+	environment.fog_height_density = 0.0012
 	environment.adjustment_enabled = true
-	environment.adjustment_saturation = 1.08
-	environment.adjustment_contrast = 1.06
+	environment.adjustment_saturation = 1.0
+	environment.adjustment_contrast = 1.04
 	var we := WorldEnvironment.new()
 	we.environment = environment
 	add_child(we)
@@ -264,7 +273,8 @@ func _build_environment() -> void:
 	sun.directional_shadow_mode = DirectionalLight3D.SHADOW_PARALLEL_2_SPLITS
 	sun.directional_shadow_max_distance = 90.0
 	sun.directional_shadow_split_1 = 0.18
-	sun.shadow_blur = 1.2
+	sun.shadow_blur = 1.0
+	sun.light_angular_distance = 0.5
 	sun.shadow_bias = 0.04
 	sun.shadow_normal_bias = 1.2
 	add_child(sun)
@@ -288,7 +298,67 @@ func _build_environment() -> void:
 	post.material = pm
 	_post = pm
 	post_layer.add_child(post)
+	post.visible = _args.get("post", "1") != "0"   # capture harness: compare without the grade
 	_update_sun(0.0)
+
+
+## Depth-buffer effects drawn as full-screen quads after the scene:
+## ambient occlusion (multiplied in; High and Ultra) and sun shafts (added;
+## Medium and up). They blend over the frame instead of replacing it, so
+## water and particles drawn before them are kept.
+var _ao_mat: ShaderMaterial
+var _shaft_mat: ShaderMaterial
+
+
+func _build_depth_fx() -> void:
+	if _args.get("depthfx", "1") == "0":
+		return
+	if Settings.shader_fx >= 2:
+		_ao_mat = ShaderMaterial.new()
+		_ao_mat.shader = load("res://scripts/shaders/depth_ao.gdshader")
+		_ao_mat.render_priority = 120
+		_ao_mat.set_shader_parameter("strength", 1.0 if Settings.shader_fx >= 3 else 0.85)
+		cam.camera.add_child(_screen_quad(_ao_mat))
+	if Settings.shader_fx >= 1:
+		_shaft_mat = ShaderMaterial.new()
+		_shaft_mat.shader = load("res://scripts/shaders/sun_shafts.gdshader")
+		_shaft_mat.render_priority = 121
+		cam.camera.add_child(_screen_quad(_shaft_mat))
+
+
+func _screen_quad(mat: ShaderMaterial) -> MeshInstance3D:
+	var q := MeshInstance3D.new()
+	var m := QuadMesh.new()
+	m.size = Vector2(2, 2)
+	q.mesh = m
+	q.material_override = mat
+	q.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	q.extra_cull_margin = 16384.0
+	q.position = Vector3(0, 0, -1)
+	return q
+
+
+## Where the sun stands on screen, for the shafts.
+func _update_shafts(day: float, low: float) -> void:
+	if _shaft_mat == null or cam == null:
+		return
+	var c := cam.camera
+	var toward := sun.global_transform.basis.z
+	var strength := 0.0
+	if toward.y > -0.05:
+		var far := c.global_position + toward * 1000.0
+		if not c.is_position_behind(far):
+			var sp := c.unproject_position(far)
+			var vs := get_viewport().get_visible_rect().size
+			var uv := sp / vs
+			_shaft_mat.set_shader_parameter("sun_uv", uv)
+			# Fade as the sun leaves the screen, and in cloud and storm.
+			var off := maxf(maxf(-uv.x, uv.x - 1.0), maxf(-uv.y, uv.y - 1.0))
+			strength = (1.0 - smoothstep(0.0, 0.6, off)) * day
+			if weather:
+				strength *= weather.sun_mul
+	_shaft_mat.set_shader_parameter("intensity", strength * lerpf(0.55, 0.9, low))
+	_shaft_mat.set_shader_parameter("sun_color", sun.light_color)
 
 
 func _build_water() -> void:
@@ -405,15 +475,16 @@ func _breakdown() -> void:
 		print("BREAKDOWN %s nodes=%d surfaces=%d shadow_surfaces=%d" % [k, groups[k][0], groups[k][1], groups[k][2]])
 
 
+const BASE_FOG := 0.0002
 ## Region air: [fog tint (alpha = how strongly), extra fog density].
 const REGION_MOOD := {
-	TerrainGen.Biome.CORRUPTED: [Color(0.42, 0.34, 0.56, 0.6), 0.0018],
-	TerrainGen.Biome.DARK_FOREST: [Color(0.42, 0.62, 0.62, 0.6), 0.0028],
-	TerrainGen.Biome.VOLCANIC: [Color(0.5, 0.46, 0.47, 0.45), 0.0011],
-	TerrainGen.Biome.SNOW: [Color(0.86, 0.92, 1.0, 0.5), 0.002],
-	TerrainGen.Biome.JUNGLE: [Color(0.55, 0.78, 0.6, 0.5), 0.0022],
-	TerrainGen.Biome.CRYSTAL: [Color(0.7, 0.92, 1.0, 0.35), 0.0008],
-	TerrainGen.Biome.DRY: [Color(1.0, 0.86, 0.66, 0.28), 0.0004],
+	TerrainGen.Biome.CORRUPTED: [Color(0.36, 0.28, 0.5, 0.55), 0.0014],
+	TerrainGen.Biome.DARK_FOREST: [Color(0.3, 0.5, 0.52, 0.5), 0.0018],
+	TerrainGen.Biome.VOLCANIC: [Color(0.42, 0.36, 0.38, 0.4), 0.0008],
+	TerrainGen.Biome.SNOW: [Color(0.7, 0.8, 0.95, 0.4), 0.0012],
+	TerrainGen.Biome.JUNGLE: [Color(0.36, 0.6, 0.62, 0.3), 0.00025],
+	TerrainGen.Biome.CRYSTAL: [Color(0.5, 0.78, 0.95, 0.3), 0.0004],
+	TerrainGen.Biome.DRY: [Color(0.95, 0.78, 0.56, 0.25), 0.0002],
 }
 ## Each region's sky: [zenith, horizon]; blended in by the mood's weight.
 const REGION_SKY := {
@@ -421,12 +492,12 @@ const REGION_SKY := {
 	TerrainGen.Biome.DARK_FOREST: [Color(0.2, 0.34, 0.44), Color(0.56, 0.7, 0.68)],
 	TerrainGen.Biome.VOLCANIC: [Color(0.3, 0.33, 0.46), Color(0.8, 0.68, 0.6)],
 	TerrainGen.Biome.SNOW: [Color(0.36, 0.56, 0.9), Color(0.9, 0.95, 1.0)],
-	TerrainGen.Biome.JUNGLE: [Color(0.2, 0.46, 0.7), Color(0.7, 0.88, 0.8)],
-	TerrainGen.Biome.CRYSTAL: [Color(0.1, 0.42, 0.88), Color(0.68, 0.92, 1.0)],
+	TerrainGen.Biome.JUNGLE: [Color(0.12, 0.38, 0.74), Color(0.66, 0.84, 0.9)],
+	TerrainGen.Biome.CRYSTAL: [Color(0.08, 0.36, 0.86), Color(0.64, 0.86, 1.0)],
 	TerrainGen.Biome.DRY: [Color(0.1, 0.34, 0.82), Color(0.92, 0.88, 0.78)],
 }
-var _sky_top := Color(0.15, 0.36, 0.85)
-var _sky_hor := Color(0.74, 0.86, 0.99)
+var _sky_top := Color(0.1, 0.3, 0.8)
+var _sky_hor := Color(0.7, 0.84, 0.98)
 var _mood_col := Color(0, 0, 0, 0)
 var _mood_fog := 0.0
 var _mood_ready := false
@@ -442,26 +513,26 @@ func _update_sun(_delta: float) -> void:
 	sun.rotation = Vector3(-maxf(absf(elevation), 0.12) * 1.25 - 0.1, deg_to_rad(-35.0) + cos(angle) * 0.9, 0)
 	sun.light_color = Color(1.0, 0.95, 0.86).lerp(Color(1.0, 0.62, 0.34), low).lerp(Color(0.52, 0.62, 1.0), 1.0 - day)
 	# Anime nights stay readable: a strong blue moon and a lifted ambient.
-	sun.light_energy = lerpf(0.42, 1.25, day)
-	environment.ambient_light_energy = lerpf(0.4, 0.5, day)
+	sun.light_energy = lerpf(0.42, 1.55, day)
+	environment.ambient_light_energy = lerpf(0.9, 2.1, day)
 	if fill:
 		# Opposite the sun in yaw, from higher up.
 		fill.rotation = Vector3(-0.75, sun.rotation.y + PI, 0)
-		fill.light_energy = lerpf(0.08, 0.32, day)
+		fill.light_energy = lerpf(0.08, 0.3, day)
 	# Each region has its own air: the fog and light lean toward its colour,
 	# blended smoothly as the heroine crosses a border.
 	var region: int = world.biome_at(player.global_position) if player else -1
 	var mood: Array = REGION_MOOD.get(region, [Color(0, 0, 0, 0), 0.0])
-	var region_sky: Array = REGION_SKY.get(region, [Color(0.15, 0.36, 0.85), Color(0.74, 0.86, 0.99)])
+	var region_sky: Array = REGION_SKY.get(region, [Color(0.1, 0.3, 0.8), Color(0.7, 0.84, 0.98)])
 	var blend := minf(1.0, _delta * 0.8) if _mood_ready else 1.0
 	_mood_ready = player != null
 	_mood_col = _mood_col.lerp(mood[0], blend)
 	_mood_fog = lerpf(_mood_fog, float(mood[1]), blend)
 	_sky_top = _sky_top.lerp(region_sky[0], blend)
 	_sky_hor = _sky_hor.lerp(region_sky[1], blend)
-	var fog_base := Color(0.7, 0.74, 0.78).lerp(Color(0.95, 0.66, 0.46), low).lerp(Color(0.08, 0.1, 0.18), 1.0 - day)
+	var fog_base := Color(0.56, 0.68, 0.86).lerp(Color(0.95, 0.62, 0.42), low).lerp(Color(0.06, 0.08, 0.16), 1.0 - day)
 	environment.fog_light_color = fog_base.lerp(Color(_mood_col.r, _mood_col.g, _mood_col.b) * lerpf(0.25, 1.0, day), _mood_col.a)
-	environment.fog_density = 0.0006 + _mood_fog
+	environment.fog_density = BASE_FOG + _mood_fog
 	if region == TerrainGen.Biome.DRY:
 		# The Sunscar's sun: hard and bright.
 		sun.light_energy *= lerpf(1.0, 1.25, day)
@@ -476,6 +547,7 @@ func _update_sun(_delta: float) -> void:
 		_sky_mat.set_shader_parameter("cloud_cover", weather.cloud_cover)
 	sun.light_color = sun.light_color.lerp(sun.light_color * Color(_mood_col.r * 1.3, _mood_col.g * 1.3, _mood_col.b * 1.3), _mood_col.a * 0.2)
 	var night := clampf(1.0 - day, 0.0, 1.0)
+	_update_shafts(day, low)
 	if world:
 		world.set_sun(sun.global_transform.basis.z, day)
 	# Heat shimmer over the open sand by day.
@@ -499,6 +571,8 @@ func _update_sun(_delta: float) -> void:
 		top = top.lerp(wc * 0.85, weather.fog_tint.a * 0.6)
 		hor = hor.lerp(wc, weather.fog_tint.a * 0.75)
 	_sky_mat.set_shader_parameter("top_color", top)
+	var bounce := Color(0.56, 0.6, 0.44).lerp(Color(0.1, 0.12, 0.2), 1.0 - day)
+	environment.ambient_light_color = top * 0.3 + hor * 0.45 + bounce * 0.25
 	_sky_mat.set_shader_parameter("horizon_color", hor)
 	var shade := Color(0.7, 0.74, 0.92).lerp(Color(0.75, 0.55, 0.7), low)
 	if weather:

@@ -15,6 +15,9 @@ var _title_font: Font
 var _ui_font: Font
 var _num_font: Font
 var _region: Label
+## True while a cutscene plays: the whole HUD stays hidden and region titles
+## wait (the cutscene names the place itself).
+var cinematic := false
 var _region_time := 0.0
 var _last_biome := -1
 var _feed: VBoxContainer
@@ -655,6 +658,9 @@ var _clock := 0.0
 
 
 func _announce_region(b: int) -> void:
+	if cinematic:
+		_region_seen[b] = _clock  # the cutscene already named it
+		return
 	_region.text = game.world.gen.biome_name(b)
 	_region_rules.size = _region.size
 	_region_rules.queue_redraw()
@@ -849,7 +855,8 @@ func _process(delta: float) -> void:
 	_skills.queue_redraw()
 	_minimap.queue_redraw()
 	_crosshair.visible = game.cam.first_person
-	root.visible = not dialogue.showing and not menu.is_open
+	root.visible = not dialogue.showing and not menu.is_open and not cinematic
+	visible = not cinematic
 	_show_prompt()
 	if game.get("quests"):
 		var tr: Dictionary = game.quests.tracker()

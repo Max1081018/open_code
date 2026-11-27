@@ -8,10 +8,10 @@ uniform sampler2D screen_texture : hint_screen_texture, filter_linear_mipmap;
 uniform float bloom = 0.22;
 uniform float bloom_threshold = 0.92;
 uniform float sharpen = 0.5;
-uniform float saturation = 1.08;
+uniform float saturation = 1.05;
 uniform float contrast = 1.0;
-uniform float curve = 0.3;   // a filmic S-curve: deeper shade, kept highlights
-uniform float vignette = 0.28;
+uniform float curve = 0.12;   // a filmic S-curve: deeper shade, kept highlights
+uniform float vignette = 0.22;
 // Heat shimmer over hot sand: a gentle wobble, strongest low on the screen.
 uniform float heat = 0.0;
 uniform vec3 warm : source_color = vec3(1.03, 0.99, 0.94);

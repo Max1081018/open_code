@@ -143,7 +143,7 @@ func _arrive() -> void:
 		target = p + Vector3(40, 0, 40)
 	_cine = true
 	game.input.blocked = true
-	game.hud.visible = false  # a clean frame for the arrival
+	game.hud.cinematic = true  # a clean frame for the arrival
 	var layer := CanvasLayer.new()
 	layer.layer = 20
 	add_child(layer)
@@ -215,7 +215,7 @@ func _end_arrival(layer: CanvasLayer, cam: Camera3D) -> void:
 	if is_instance_valid(game.cam.camera):
 		game.cam.camera.make_current()
 	game.input.blocked = false
-	game.hud.visible = true
+	game.hud.cinematic = false
 	if is_instance_valid(cam):
 		cam.queue_free()
 	if is_instance_valid(layer):

@@ -175,6 +175,17 @@ static func _to_root(node: Node, root: Node) -> Transform3D:
 	return t
 
 
+## The bounds of one surface (a tree's leaves without its trunk).
+static func _surface_box(mesh: Mesh, s: int) -> AABB:
+	var verts: PackedVector3Array = mesh.surface_get_arrays(s)[Mesh.ARRAY_VERTEX]
+	if verts.is_empty():
+		return mesh.get_aabb()
+	var box := AABB(verts[0], Vector3.ZERO)
+	for v in verts:
+		box = box.expand(v)
+	return box
+
+
 ## The pines are deep blue-green conifers, not the pack's lime.
 static func _shade(kind_hint: String) -> Color:
 	return Color(0.58, 0.7, 0.66) if kind_hint.begins_with("pines") else Color(1, 1, 1)
@@ -241,5 +252,10 @@ static func _windy(mesh: Mesh, cat: String, kind_hint := "") -> Mesh:
 		sm.set_shader_parameter("saturation", saturation)
 		sm.set_shader_parameter("sway", 0.06 if cat == "tree" else 0.12)
 		sm.set_shader_parameter("near_fade", 5.5 if cat == "tree" else 0.0)
+		if cat == "tree" or (cat == "small" and kind_hint.begins_with("Bush")):
+			var box := _surface_box(copy, s)
+			sm.set_shader_parameter("canopy_center", box.get_center() + Vector3(0, box.size.y * 0.08, 0))
+			sm.set_shader_parameter("canopy_radius", maxf(box.size.x, maxf(box.size.y, box.size.z)) * 0.5)
+			sm.set_shader_parameter("translucency", 0.35)
 		copy.surface_set_material(s, sm)
 	return copy
