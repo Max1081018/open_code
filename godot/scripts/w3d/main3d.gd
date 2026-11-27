@@ -38,7 +38,7 @@ func _ready() -> void:
 		time_of_day = float(_args.time)
 	# Crisp edges: MSAA on capable settings, FXAA otherwise; full resolution.
 	var vp := get_viewport()
-	vp.scaling_3d_scale = 1.0
+	Settings.apply_display(vp)
 	if Settings.quality >= 2:
 		vp.msaa_3d = Viewport.MSAA_4X
 	else:

@@ -49,6 +49,12 @@ var left_handed := false  ## swap the stick and the action buttons
 var camera_zoom := 1.0  ## 0.8 .. 1.25 on top of the screen-fitted zoom
 var screen_shake := true
 var show_fps := false
+## Frames per second cap: 30 saves battery and heat on phones, 0 = none.
+var fps_cap := 60
+## 3D resolution scale (0.5 .. 1.0): the world renders smaller and is
+## stretched to the screen; the UI stays sharp.
+var render_scale := 1.0
+const PRESET_SCALE := [0.6, 0.75, 0.9, 1.0]
 var debug_collision := false
 ## Per-control offsets set in the layout editor: name -> Vector2 (fraction of screen).
 var control_offsets := {}
@@ -70,6 +76,7 @@ func apply_preset(preset: int) -> void:
 	shadows = p[4]
 	bloom = p[5]
 	weather = p[6]
+	render_scale = PRESET_SCALE[quality]
 
 
 func load_settings() -> void:
@@ -89,6 +96,8 @@ func load_settings() -> void:
 	camera_zoom = config.get_value("graphics", "camera_zoom", camera_zoom)
 	screen_shake = config.get_value("graphics", "screen_shake", screen_shake)
 	show_fps = config.get_value("graphics", "show_fps", show_fps)
+	fps_cap = config.get_value("graphics", "fps_cap", fps_cap)
+	render_scale = config.get_value("graphics", "render_scale", render_scale)
 	debug_collision = config.get_value("graphics", "debug_collision", debug_collision)
 	music_volume = config.get_value("audio", "music", music_volume)
 	sfx_volume = config.get_value("audio", "sfx", sfx_volume)
@@ -97,6 +106,12 @@ func load_settings() -> void:
 	control_opacity = config.get_value("controls", "opacity", control_opacity)
 	left_handed = config.get_value("controls", "left_handed", left_handed)
 	control_offsets = config.get_value("controls", "offsets", control_offsets)
+
+
+## Frame cap and 3D resolution onto a viewport (the game's own).
+func apply_display(vp: Viewport) -> void:
+	Engine.max_fps = fps_cap
+	vp.scaling_3d_scale = clampf(render_scale, 0.5, 1.0)
 
 
 func save_settings() -> void:
@@ -112,6 +127,8 @@ func save_settings() -> void:
 	config.set_value("graphics", "camera_zoom", camera_zoom)
 	config.set_value("graphics", "screen_shake", screen_shake)
 	config.set_value("graphics", "show_fps", show_fps)
+	config.set_value("graphics", "fps_cap", fps_cap)
+	config.set_value("graphics", "render_scale", render_scale)
 	config.set_value("graphics", "debug_collision", debug_collision)
 	config.set_value("audio", "music", music_volume)
 	config.set_value("audio", "sfx", sfx_volume)

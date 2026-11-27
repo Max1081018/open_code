@@ -1565,19 +1565,25 @@ func _character_arts(card: Control, prog: Progression) -> void:
 
 func _build_settings() -> void:
 	var p := _panel(Vector2(84, 6), Vector2(1752, 898))
-	var y := 40.0
+	var y := 22.0
 	_setting_choice(p, y, "Graphics", ["Low", "Medium", "High"], Settings.quality, _set_quality)
-	y += 96
+	y += 74
 	_setting_toggle(p, y, "Shadows", Settings.shadows, _set_shadows)
-	y += 96
+	y += 74
 	_setting_toggle(p, y, "Bloom and glow", Settings.bloom, _set_bloom)
-	y += 96
+	y += 74
 	_setting_toggle(p, y, "Screen shake", Settings.screen_shake, _set_shake)
-	y += 96
+	y += 74
+	_setting_choice(p, y, "Frame rate", ["30", "60", "Unlimited"], [30, 60, 0].find(Settings.fps_cap), _set_fps)
+	y += 74
+	_setting_slider(p, y, "Render scale", Settings.render_scale, 0.5, 1.0, _set_scale)
+	y += 74
+	_setting_toggle(p, y, "Show FPS", Settings.show_fps, _set_show_fps)
+	y += 74
 	_setting_slider(p, y, "Camera sensitivity", game.input.mouse_sensitivity / 0.0032, 0.4, 2.0, _set_sens)
-	y += 96
+	y += 74
 	_setting_slider(p, y, "Music", Settings.music_volume, 0.0, 1.0, _set_music)
-	y += 96
+	y += 74
 	_setting_slider(p, y, "Sound effects", Settings.sfx_volume, 0.0, 1.0, _set_sfx)
 	var resume := _button("Resume", Vector2(1180, 790), Vector2(260, 68), p)
 	resume.pressed.connect(close)
@@ -1594,7 +1600,7 @@ func _row_label(p: Control, y: float, text: String) -> void:
 	p.add_child(l)
 	var line := ColorRect.new()
 	line.color = Color(1, 1, 1, 0.06)
-	line.position = Vector2(40, y + 74)
+	line.position = Vector2(40, y + 66)
 	line.size = Vector2(1672, 2)
 	p.add_child(line)
 
@@ -1602,7 +1608,7 @@ func _row_label(p: Control, y: float, text: String) -> void:
 func _setting_choice(p: Control, y: float, text: String, options: Array, value: int, apply: Callable) -> void:
 	_row_label(p, y, text)
 	for i in options.size():
-		var b := _button(options[i], Vector2(900 + i * 270, y), Vector2(250, 60), p, i == value)
+		var b := _button(options[i], Vector2(900 + i * 270, y + 4), Vector2(250, 54), p, i == value)
 		b.pressed.connect(_choose.bind(apply, i))
 
 
@@ -1614,9 +1620,9 @@ func _choose(apply: Callable, i: int) -> void:
 
 func _setting_toggle(p: Control, y: float, text: String, value: bool, apply: Callable) -> void:
 	_row_label(p, y, text)
-	var on := _button("On", Vector2(1170, y), Vector2(250, 60), p, value)
+	var on := _button("On", Vector2(1170, y + 4), Vector2(250, 54), p, value)
 	on.pressed.connect(_choose.bind(apply, 1))
-	var off := _button("Off", Vector2(1440, y), Vector2(250, 60), p, not value)
+	var off := _button("Off", Vector2(1440, y + 4), Vector2(250, 54), p, not value)
 	off.pressed.connect(_choose.bind(apply, 0))
 
 
@@ -1649,11 +1655,28 @@ func _slide(v: float, apply: Callable) -> void:
 
 
 func _set_quality(i: int) -> void:
-	Settings.quality = i
+	# A preset: shadows, glow and render scale follow it.
+	Settings.apply_preset(i)
 	var vp := get_viewport()
 	vp.msaa_3d = Viewport.MSAA_4X if i >= 2 else Viewport.MSAA_DISABLED
 	vp.screen_space_aa = Viewport.SCREEN_SPACE_AA_DISABLED if i >= 2 else Viewport.SCREEN_SPACE_AA_FXAA
-	vp.scaling_3d_scale = 1.0 if i >= 1 else 0.75
+	Settings.apply_display(vp)
+	game.sun.shadow_enabled = Settings.shadows
+	game.environment.glow_enabled = Settings.bloom
+
+
+func _set_fps(i: int) -> void:
+	Settings.fps_cap = [30, 60, 0][i]
+	Settings.apply_display(get_viewport())
+
+
+func _set_scale(v: float) -> void:
+	Settings.render_scale = v
+	Settings.apply_display(get_viewport())
+
+
+func _set_show_fps(on: int) -> void:
+	Settings.show_fps = on == 1
 
 
 func _set_shadows(on: int) -> void:

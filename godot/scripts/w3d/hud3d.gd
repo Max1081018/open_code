@@ -319,6 +319,7 @@ func _draw_hp(c: Control) -> void:
 
 ## Experience toward the next level: a thin violet line under the health.
 var _xp_bar: Control
+var _fps: Label
 
 
 func _draw_xp(c: Control) -> void:
@@ -721,6 +722,17 @@ func _process(delta: float) -> void:
 	_hp_label.text = "%d / %d" % [ceili(p.health), int(p.max_health)]
 	_hp_bar.queue_redraw()
 	_level.text = "Lv. %d" % game.play.prog.level
+	if Settings.show_fps:
+		if _fps == null:
+			_fps = _label("", 18, Color(0.85, 1.0, 0.8), _num_font)
+			root.add_child(_fps)
+			_place(_fps, Vector2(0.5, 0), Vector2(-60, 8))
+			_fps.size = Vector2(120, 24)
+			_fps.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+		_fps.visible = true
+		_fps.text = "%d fps" % Engine.get_frames_per_second()
+	elif _fps:
+		_fps.visible = false
 	_stamina.queue_redraw()
 	_skills.queue_redraw()
 	_minimap.queue_redraw()
