@@ -15,19 +15,17 @@ const TEX_MAX := 256
 ## name -> {file, parts: [[node name filter, offset along the handle]],
 ## kind: tool|sword|torch|rod|shield, length (m), grip (fraction from the end)}
 const RECIPES := {
-	"pickaxe": {"file": "pickaxe", "kind": "tool", "length": 0.88, "grip": 0.1},
-	"axe": {"file": "toolpack", "parts": [["Axe_Handle", 0.0], ["Axe_003", 0.0]], "kind": "tool", "length": 0.8, "grip": 0.1},
-	"hammer": {"file": "toolpack", "parts": [["Hammer_Handle", 0.0], ["Hammer_003", 0.0]], "kind": "tool", "length": 0.7, "grip": 0.1},
-	"sword": {"file": "sword_iron", "kind": "sword", "length": 1.0, "grip": 0.08},
-	"sword_fine": {"file": "sword_fine", "kind": "sword", "length": 1.05, "grip": 0.08},
-	"torch": {"file": "torch", "kind": "torch", "length": 0.6, "grip": 0.18, "flip": true},
-	"rod": {"file": "rod", "parts": [["fishing_rod_0", 0.0]], "kind": "rod", "length": 1.7, "grip": 0.1, "flip": true},
+	"pickaxe": {"file": "f_pickaxe", "kind": "tool", "length": 0.88, "grip": 0.1},
+	"axe": {"file": "f_axe", "kind": "tool", "length": 0.8, "grip": 0.22},
+	"hammer": {"file": "f_hammer", "kind": "tool", "length": 0.7, "grip": 0.1},
+	"torch": {"file": "f_torch", "kind": "torch", "length": 0.6, "grip": 0.18},
+	"rod": {"file": "f_rod", "kind": "rod", "length": 1.7, "grip": 0.1, "flip": true},
 	"starlit": {"file": "sword_star", "kind": "sword", "length": 1.0, "grip": 0.1, "pca": true},
 	"autumn": {"file": "sword_autumn", "kind": "sword", "length": 1.05, "grip": 0.1},
 	"crystal": {"file": "sword_crystal", "kind": "sword", "length": 1.05, "grip": 0.1},
 	"jade": {"file": "sword_jade", "kind": "sword", "length": 1.05, "grip": 0.1},
-	"shield_iron": {"file": "shield_iron", "kind": "shield", "length": 0.62},
-	"shield_wood": {"file": "shield_wood", "kind": "shield", "length": 0.6},
+	"shield_iron": {"file": "f_shield_iron", "kind": "shield", "length": 0.66},
+	"shield_wood": {"file": "f_shield_wood", "kind": "shield", "length": 0.6},
 }
 
 var _images_only := false
@@ -134,7 +132,10 @@ func _frame(recipe: Dictionary, points: PackedVector3Array, box: AABB) -> Transf
 	if recipe.kind == "shield":
 		# Face (thin axis) toward +Z; scale the disc to the wanted size.
 		var k: float = recipe.length / sizes[order[0]]
-		var basis := Basis(long_axis, wide_axis, thin_axis).transposed()
+		# Long side up (+Y): a heater or tower shield stands upright.
+		var basis := Basis(wide_axis, long_axis, thin_axis).transposed()
+		if basis.determinant() < 0.0:
+			basis = Basis(-wide_axis, long_axis, thin_axis).transposed()
 		return Transform3D(basis.scaled(Vector3.ONE * k), -(basis * centre) * k)
 	var extent: float = sizes[order[0]]
 	var lo := long_axis.dot(box.position) if not recipe.get("pca", false) else long_axis.dot(centre) - extent * 0.5
@@ -231,6 +232,7 @@ func _textures(name: String, holder: Node3D) -> void:
 					else:
 						done[texture] = load(file) if ResourceLoader.exists(file) else null
 				copy.set(slot, done[texture])
+			_unlit_to_lit(copy)
 			# Onto the mesh itself, so the original embedded images are dropped.
 			mesh_instance.set_surface_override_material(s, copy)
 		if not _images_only:
@@ -239,6 +241,34 @@ func _textures(name: String, holder: Node3D) -> void:
 				own.surface_set_material(s, mesh_instance.get_surface_override_material(s))
 				mesh_instance.set_surface_override_material(s, null)
 			mesh_instance.mesh = own
+
+
+## Some hand-painted models are authored unlit: their colour lives in a
+## bright, full emission map (and the albedo is black or a copy). Make that
+## map the albedo and drop the glow, so the item takes light, shade and
+## tier tints. A dim emission map (runes, a gem) is real glow and stays.
+func _unlit_to_lit(m: BaseMaterial3D) -> void:
+	if not m.emission_enabled or m.emission_texture == null:
+		return
+	var image := m.emission_texture.get_image()
+	if image == null:
+		return
+	if image.is_compressed():
+		image.decompress()
+	var small := image.duplicate() as Image
+	small.resize(16, 16)
+	var sum := 0.0
+	for y in 16:
+		for x in 16:
+			var c := small.get_pixel(x, y)
+			sum += (c.r + c.g + c.b) / 3.0
+	if sum / 256.0 < 0.3:
+		return
+	if m.albedo_texture == null or m.albedo_color.v < 0.05:
+		m.albedo_texture = m.emission_texture
+		m.albedo_color = Color.WHITE
+	m.emission_enabled = false
+	m.emission_texture = null
 
 
 ## Main and second axes of a point cloud (power iteration on the covariance).

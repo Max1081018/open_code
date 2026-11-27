@@ -376,11 +376,22 @@ static func item_model(id: String) -> Node3D:
 		var handle: MeshInstance3D = null
 		var best := 0.0
 		for m in meshes:
-			var box: AABB = (m as MeshInstance3D).get_aabb()
+			# Measured in the item's frame (shaft along +Y), whatever the
+			# mesh's own axes.
+			var to_item := Transform3D.IDENTITY
+			var n: Node = m
+			while n != null and n != item:
+				to_item = (n as Node3D).transform * to_item
+				n = n.get_parent()
+			var box: AABB = to_item * (m as MeshInstance3D).get_aabb()
 			var ratio: float = box.size.y / maxf(maxf(box.size.x, box.size.z), 0.001)
-			if meshes.size() > 1 and ratio > best:
+			# Only a truly thin part is a bare handle (a blade cast in one
+			# piece with its haft is not).
+			if meshes.size() > 1 and ratio > best and ratio > 4.0:
 				best = ratio
 				handle = m
+		# With no separate handle the whole item takes a softer tint.
+		var tint: Color = spec[2] if handle else Color.WHITE.lerp(spec[2], 0.7)
 		for m in meshes:
 			if m == handle:
 				continue
@@ -388,7 +399,7 @@ static func item_model(id: String) -> Node3D:
 				var material := (m as MeshInstance3D).get_active_material(i) as BaseMaterial3D
 				if material:
 					var copy: BaseMaterial3D = material.duplicate()
-					copy.albedo_color = copy.albedo_color * spec[2]
+					copy.albedo_color = copy.albedo_color * tint
 					if id.begins_with("lumen"):
 						copy.emission_enabled = true
 						copy.emission = Color(0.35, 0.85, 1.0)

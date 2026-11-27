@@ -30,9 +30,11 @@ var _quest: Label
 var _quest_dist: Label
 var _stamina: Control
 var _skills: Control
-var _gadget_swap: HBoxContainer
-var _gadget_time := 0.0
 var _gadget_icon: TextureRect
+var _gadget_name: Label
+var _gadget_count: Label
+var _gadget_shown := ""
+var _gadget_name_time := 0.0
 var _crosshair: Control
 var touch := false
 var _stick_center := Vector2.ZERO
@@ -83,7 +85,7 @@ func setup(the_game: Node) -> void:
 	game.play.toast.connect(_toast)
 	game.play.inventory_changed.connect(_show_gadgets)
 	_show_gadgets()
-	_gadget_time = 0.0
+	_gadget_name_time = 0.0
 
 
 # ------------------------------------------------------------- helpers ---
@@ -231,7 +233,7 @@ func _draw_minimap(c: Control) -> void:
 # --------------------------------------------------------- menu icons ---
 
 func _build_menu_icons() -> void:
-	var icons := ["bag", "map", "book", "person", "gear"]
+	var icons := MENU_ICONS
 	for i in icons.size():
 		var kind: String = icons[i]
 		var c := _canvas(Vector2.ZERO, Vector2(64, 64), func(cv: Control): _draw_icon(cv, kind))
@@ -329,19 +331,28 @@ func _build_skills() -> void:
 	_gadget_icon.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
 	_gadget_icon.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
 	_gadget_icon.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	_gadget_icon.size = Vector2(64, 64)
+	_gadget_icon.size = Vector2(SLOT - 22, SLOT - 22)
+	_gadget_icon.pivot_offset = _gadget_icon.size * 0.5
 	root.add_child(_gadget_icon)
-	_place(_gadget_icon, Vector2(1, 1), SKILL_POS.gadget - Vector2(32, 32))
-	_gadget_swap = HBoxContainer.new()
-	_gadget_swap.add_theme_constant_override("separation", 10)
-	_gadget_swap.modulate.a = 0.0
-	root.add_child(_gadget_swap)
-	_place(_gadget_swap, Vector2(0.5, 1), Vector2(-300, -190))
+	_place(_gadget_icon, Vector2(1, 1), SKILL_POS.gadget - _gadget_icon.size * 0.5)
+	_gadget_count = _label("", 20, PALE, _num_font)
+	_gadget_count.size = Vector2(40, 24)
+	_gadget_count.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
+	root.add_child(_gadget_count)
+	_place(_gadget_count, Vector2(1, 1), SKILL_POS.gadget + Vector2(SLOT * 0.5 - 50, SLOT * 0.5 - 30))
+	# The item's name, shown for a moment when it changes.
+	_gadget_name = _label("", 20, GOLD, _ui_font)
+	_gadget_name.size = Vector2(260, 28)
+	_gadget_name.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	_gadget_name.modulate.a = 0.0
+	root.add_child(_gadget_name)
+	_place(_gadget_name, Vector2(1, 1), SKILL_POS.gadget + Vector2(-130, -SLOT * 0.5 - 40))
 
 
 ## Buttons' centres relative to the bottom-right corner.
+const SLOT := 104.0   ## the held-item slot's size (px)
 const SKILL_POS := {"attack": Vector2(-150, -150), "skill": Vector2(-300, -110), "burst": Vector2(-150, -310),
-	"jump": Vector2(-60, -280), "dash": Vector2(-300, -250), "gadget": Vector2(-420, -80),
+	"jump": Vector2(-60, -280), "dash": Vector2(-300, -250), "gadget": Vector2(-440, -86), "bag": Vector2(-570, -70),
 	"interact": Vector2(-430, -230)}
 
 
@@ -390,10 +401,91 @@ func _draw_skills(c: Control) -> void:
 		else:
 			for o in [-10, 4]:
 				c.draw_polyline(PackedVector2Array([p + Vector2(o, -12), p + Vector2(o + 10, 0), p + Vector2(o, 12)]), PALE, 4.0, true)
-	# Gadget: what's in hand.
-	var g: Vector2 = SKILL_POS.gadget
-	_ring(c, g, 44, Color(0.08, 0.09, 0.2, 0.55), GOLD, 2.0)
-	# (the item's icon is a TextureRect over this ring: _gadget_icon)
+	# The held item: a framed slot showing the item itself (its icon is a
+	# TextureRect over the frame: _gadget_icon). Tap: the next item.
+	_draw_slot(c, SKILL_POS.gadget)
+	# The backpack: opens the bag.
+	_draw_backpack_button(c, SKILL_POS.bag)
+
+
+func _draw_slot(c: Control, at: Vector2) -> void:
+	var r := Rect2(at - Vector2(SLOT, SLOT) * 0.5, Vector2(SLOT, SLOT))
+	var frame := StyleBoxFlat.new()
+	frame.bg_color = Color(0.06, 0.07, 0.17, 0.78)
+	frame.set_corner_radius_all(24)
+	frame.set_border_width_all(3)
+	frame.border_color = GOLD
+	frame.shadow_color = Color(0, 0, 0, 0.35)
+	frame.shadow_size = 6
+	frame.anti_aliasing = true
+	c.draw_style_box(frame, r)
+	# A soft glow behind the item and a fine inner line.
+	c.draw_circle(at, SLOT * 0.36, Color(0.45, 0.55, 1.0, 0.12))
+	var inner := StyleBoxFlat.new()
+	inner.draw_center = false
+	inner.set_corner_radius_all(18)
+	inner.set_border_width_all(1)
+	inner.border_color = Color(1, 1, 1, 0.22)
+	inner.anti_aliasing = true
+	c.draw_style_box(inner, r.grow(-7))
+	# Gems at the top and bottom of the frame; small arrows say "tap for next".
+	for y in [-SLOT * 0.5, SLOT * 0.5]:
+		var g := at + Vector2(0, y)
+		c.draw_colored_polygon(PackedVector2Array([g + Vector2(0, -7), g + Vector2(7, 0), g + Vector2(0, 7), g + Vector2(-7, 0)]), GOLD)
+		c.draw_colored_polygon(PackedVector2Array([g + Vector2(0, -3.5), g + Vector2(3.5, 0), g + Vector2(0, 3.5), g + Vector2(-3.5, 0)]), Color(0.55, 0.75, 1.0))
+	var ar := at + Vector2(SLOT * 0.5 + 10, 0)
+	c.draw_polyline(PackedVector2Array([ar + Vector2(-3, -7), ar + Vector2(3, 0), ar + Vector2(-3, 7)]), Color(GOLD, 0.8), 2.5, true)
+
+
+func _draw_backpack_button(c: Control, at: Vector2) -> void:
+	_ring(c, at, 42, Color(0.08, 0.09, 0.2, 0.6), Color(1, 1, 1, 0.55), 2.0)
+	draw_backpack(c, at, 1.0)
+
+
+## A leather backpack: rolled bedding on top, a flap with a brass buckle,
+## a side pocket and shoulder-strap loops.
+func draw_backpack(c: Control, at: Vector2, k: float) -> void:
+	var leather := Color(0.56, 0.36, 0.22)
+	var dark := Color(0.36, 0.22, 0.13)
+	var brass := Color(0.98, 0.8, 0.42)
+	# Strap loop over the top.
+	c.draw_arc(at + Vector2(0, -14) * k, 9 * k, PI, TAU, 16, dark, 3.5 * k, true)
+	# Body.
+	var body := StyleBoxFlat.new()
+	body.bg_color = leather
+	body.set_corner_radius_all(int(8 * k))
+	body.corner_radius_top_left = int(11 * k)
+	body.corner_radius_top_right = int(11 * k)
+	body.set_border_width_all(int(maxf(2.0 * k, 1.0)))
+	body.border_color = dark
+	body.anti_aliasing = true
+	c.draw_style_box(body, Rect2(at + Vector2(-16, -14) * k, Vector2(32, 34) * k))
+	# Bedroll on top.
+	var roll := StyleBoxFlat.new()
+	roll.bg_color = Color(0.36, 0.52, 0.78)
+	roll.set_corner_radius_all(int(5 * k))
+	roll.anti_aliasing = true
+	c.draw_style_box(roll, Rect2(at + Vector2(-19, -19) * k, Vector2(38, 10) * k))
+	c.draw_line(at + Vector2(-9, -19) * k, at + Vector2(-9, -9) * k, dark, 2.0 * k)
+	c.draw_line(at + Vector2(9, -19) * k, at + Vector2(9, -9) * k, dark, 2.0 * k)
+	# Flap and buckle.
+	var flap := PackedVector2Array([at + Vector2(-16, -8) * k, at + Vector2(16, -8) * k, at + Vector2(13, 6) * k,
+		at + Vector2(0, 10) * k, at + Vector2(-13, 6) * k])
+	c.draw_colored_polygon(flap, dark)
+	c.draw_rect(Rect2(at + Vector2(-4, 4) * k, Vector2(8, 7) * k), brass)
+	c.draw_rect(Rect2(at + Vector2(-2, 6) * k, Vector2(4, 3) * k), dark)
+	# Front pocket.
+	c.draw_rect(Rect2(at + Vector2(-10, 12) * k, Vector2(20, 6) * k), dark, false, 1.5 * k)
+
+
+## Tap on the slot: the next tool or weapon carried (empty slots skipped).
+func _next_item() -> void:
+	var inv: Inventory = game.play.inventory
+	for step in range(1, Inventory.HOTBAR_SIZE + 1):
+		var i: int = (game.play.hotbar_index + step) % Inventory.HOTBAR_SIZE
+		if inv.get_slot(i) != null:
+			game.play.select(i)
+			return
 
 
 func _star(c: Control, at: Vector2, r: float, col: Color) -> void:
@@ -404,33 +496,19 @@ func _star(c: Control, at: Vector2, r: float, col: Color) -> void:
 	c.draw_colored_polygon(pts, col)
 
 
-## The bag's tools and weapons in a row for a moment when switching.
+## The held item in its slot; its name shows for a moment when it changes.
 func _show_gadgets() -> void:
 	var held: String = game.play.held_id()
 	_gadget_icon.texture = icon_for(held) if held != "" else null
-	for ch in _gadget_swap.get_children():
-		ch.queue_free()
-	var inv: Inventory = game.play.inventory
-	for i in Inventory.HOTBAR_SIZE:
-		var stack = inv.get_slot(i)
-		if stack == null:
-			continue
-		var selected: bool = i == game.play.hotbar_index
-		var idx := i
-		var cell := Control.new()
-		cell.custom_minimum_size = Vector2(68, 68)
-		cell.draw.connect(func():
-			_ring(cell, Vector2(34, 34), 32, Color(0.08, 0.09, 0.2, 0.7), GOLD if selected else Color(1, 1, 1, 0.35), 3.0 if selected else 1.5)
-			var tex := icon_for(stack.id)
-			if tex:
-				cell.draw_texture_rect(tex, Rect2(Vector2(10, 10), Vector2(48, 48)), false)
-			if stack.count > 1:
-				cell.draw_string(_num_font, Vector2(40, 64), str(stack.count), HORIZONTAL_ALIGNMENT_LEFT, -1, 18, PALE))
-		cell.gui_input.connect(func(ev):
-			if (ev is InputEventMouseButton and ev.pressed) or (ev is InputEventScreenTouch and ev.pressed):
-				game.play.select(idx))
-		_gadget_swap.add_child(cell)
-	_gadget_time = 2.5
+	var stack = game.play.inventory.get_slot(game.play.hotbar_index)
+	_gadget_count.text = str(stack.count) if stack != null and stack.count > 1 else ""
+	if held != _gadget_shown:
+		_gadget_shown = held
+		_gadget_name.text = Items.item_name(held) if held != "" else "Empty hands"
+		_gadget_name_time = 2.0
+		# A little pop as the new item drops into the slot.
+		_gadget_icon.scale = Vector2.ONE * 0.6
+		create_tween().tween_property(_gadget_icon, "scale", Vector2.ONE, 0.22).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
 
 
 # ---------------------------------------------------------- feed, boss ---
@@ -521,7 +599,7 @@ func _show_prompt() -> void:
 
 var dialogue: DialogueBox3D
 var menu: GameMenu3D
-const MENU_ICONS := ["bag", "map", "book", "person", "gear"]
+const MENU_ICONS := ["map", "book", "person", "gear"]
 var _banner: Label
 var _banner_sub: Label
 var _banner_tween: Tween
@@ -602,8 +680,8 @@ func _process(delta: float) -> void:
 		_quest_dist.text = detail
 	if _boss:
 		_boss_bar.value = maxf(_boss.health, 0.0) / _boss.max_health * 100.0
-	_gadget_time -= delta
-	_gadget_swap.modulate.a = clampf(_gadget_time, 0.0, 1.0)
+	_gadget_name_time -= delta
+	_gadget_name.modulate.a = clampf(_gadget_name_time, 0.0, 1.0)
 	var b: int = game.world.biome_at(p.global_position)
 	if b != _last_biome:
 		_last_biome = b
@@ -646,13 +724,15 @@ func _input(event: InputEvent) -> void:
 		if pressed:
 			for k in SKILL_POS:
 				var centre: Vector2 = screen + SKILL_POS[k]
-				var radius := 70.0 if k == "attack" else 50.0
+				var radius := 70.0 if k == "attack" else (SLOT * 0.55 if k == "gadget" else 50.0)
 				if pos.distance_to(centre) < radius:
 					match k:
 						"attack":
 							game.input.touch_buttons["attack"] = true
 						"gadget":
-							game.play.select((game.play.hotbar_index + 1) % Inventory.HOTBAR_SIZE)
+							_next_item()
+						"bag":
+							menu.open("bag")
 						_:
 							game.input.touch_buttons[k] = true
 					get_viewport().set_input_as_handled()

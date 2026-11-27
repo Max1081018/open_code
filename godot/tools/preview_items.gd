@@ -5,7 +5,8 @@ extends SceneTree
 
 func _initialize() -> void:
 	await process_frame
-	var names := ["starlit", "autumn", "crystal", "jade"]
+	var args := OS.get_cmdline_user_args()
+	var names: Array = args.slice(1) if args.size() > 1 else ["starlit", "autumn", "crystal", "jade"]
 	var vp := SubViewport.new()
 	vp.size = Vector2i(220 * names.size(), 420)
 	vp.own_world_3d = true

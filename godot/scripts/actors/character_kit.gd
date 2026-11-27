@@ -76,7 +76,9 @@ const HEROES := {
 const HERO_STYLE := {
 	# Her own clips, but the even stride of the shared jog for running; her
 	# own bounding run, arms flying, becomes the sprint.
-	"player": {"height": 1.56, "library": "anim/heroine.res", "speed": 1.0, "clips": {"Jog_Fwd": "ual/Jog_Fwd"}},
+	"player": {"height": 1.56, "library": "anim/heroine.res", "speed": 1.0, "clips": {"Jog_Fwd": "ual/Jog_Fwd"},
+		# No wings: their root bones collapse to nothing (the rest follows).
+		"hide_bones": ["Wing02_"]},
 	"wren": {"height": 1.6, "clips": {"Idle": "Idle_Talking"}, "speed": 1.05},
 	# Mira's model is all pastel white; dye it a herbalist's sage coat and
 	# deeper rose hair so she reads at a distance (tints by texture file).
@@ -229,6 +231,12 @@ static func _build_hero(name: String) -> Node3D:
 	var foot_y := (_transform_to(skeleton, root) * skeleton.get_bone_global_rest(skeleton.find_bone("LeftFoot"))).origin.y
 	root.set_meta("ankle", foot_y)
 	root.set_meta("model_y", model.position.y)
+	for prefix in HERO_STYLE.get(name, {}).get("hide_bones", []):
+		for i in skeleton.get_bone_count():
+			if skeleton.get_bone_name(i).begins_with(prefix):
+				var rest := skeleton.get_bone_rest(i)
+				skeleton.set_bone_rest(i, Transform3D(rest.basis.scaled(Vector3.ONE * 0.001), rest.origin))
+				skeleton.set_bone_pose_scale(i, Vector3.ONE * 0.001)
 	if spec[1] != null:
 		for mesh in model.find_children("*", "MeshInstance3D", true, false):
 			_tint_all(mesh, spec[1])

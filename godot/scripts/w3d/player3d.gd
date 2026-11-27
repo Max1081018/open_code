@@ -496,20 +496,12 @@ func _ground_feet(delta: float) -> void:
 	inner.position.y = lerpf(inner.position.y, want, 1.0 - exp(-14.0 * delta))
 
 
-## Spread or fold her wings: the wing bones grow while gliding.
+## Glide: arms out, a slow fall (she has no wings: the float is magic).
 func _set_glide(on: bool) -> void:
 	gliding = on
 	if on:
 		velocity.y = maxf(velocity.y, -1.0)
 		_play("Jump", 0.6, true)
-	var t := create_tween().set_parallel()
-	for side in ["L", "R"]:
-		for i in skeleton.get_bone_count():
-			var bn := skeleton.get_bone_name(i)
-			if bn.begins_with("Wing02_" + side):
-				var from := skeleton.get_bone_pose_scale(i)
-				var to := Vector3.ONE * (3.2 if on else 1.0)
-				t.tween_method(func(v: Vector3): skeleton.set_bone_pose_scale(i, v), from, to, 0.25)
 
 
 func _start_action(heavy: bool) -> void:
@@ -640,6 +632,8 @@ func _build_tree() -> void:
 	tree.tree_root = bt
 	anim.get_parent().add_child(tree)
 	tree.anim_player = tree.get_path_to(anim)
+	# Track paths resolve from the same node as the player's.
+	tree.root_node = tree.get_path_to(anim.get_node(anim.root_node))
 	anim.stop()
 	anim.active = false
 	tree.active = true
