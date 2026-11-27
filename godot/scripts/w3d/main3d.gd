@@ -406,7 +406,7 @@ const REGION_MOOD := {
 	TerrainGen.Biome.SNOW: [Color(0.86, 0.92, 1.0, 0.5), 0.002],
 	TerrainGen.Biome.JUNGLE: [Color(0.55, 0.78, 0.6, 0.5), 0.0022],
 	TerrainGen.Biome.CRYSTAL: [Color(0.7, 0.92, 1.0, 0.35), 0.0008],
-	TerrainGen.Biome.DRY: [Color(1.0, 0.8, 0.55, 0.45), 0.0012],
+	TerrainGen.Biome.DRY: [Color(1.0, 0.86, 0.66, 0.28), 0.0004],
 }
 ## Each region's sky: [zenith, horizon]; blended in by the mood's weight.
 const REGION_SKY := {
@@ -416,7 +416,7 @@ const REGION_SKY := {
 	TerrainGen.Biome.SNOW: [Color(0.36, 0.56, 0.9), Color(0.9, 0.95, 1.0)],
 	TerrainGen.Biome.JUNGLE: [Color(0.2, 0.46, 0.7), Color(0.7, 0.88, 0.8)],
 	TerrainGen.Biome.CRYSTAL: [Color(0.1, 0.42, 0.88), Color(0.68, 0.92, 1.0)],
-	TerrainGen.Biome.DRY: [Color(0.28, 0.5, 0.86), Color(1.0, 0.86, 0.64)],
+	TerrainGen.Biome.DRY: [Color(0.1, 0.34, 0.82), Color(0.92, 0.88, 0.78)],
 }
 var _sky_top := Color(0.15, 0.36, 0.85)
 var _sky_hor := Color(0.74, 0.86, 0.99)
@@ -455,6 +455,9 @@ func _update_sun(_delta: float) -> void:
 	var fog_base := Color(0.7, 0.74, 0.78).lerp(Color(0.95, 0.66, 0.46), low).lerp(Color(0.08, 0.1, 0.18), 1.0 - day)
 	environment.fog_light_color = fog_base.lerp(Color(_mood_col.r, _mood_col.g, _mood_col.b) * lerpf(0.25, 1.0, day), _mood_col.a)
 	environment.fog_density = 0.0006 + _mood_fog
+	if region == TerrainGen.Biome.DRY:
+		# The Sunscar's sun: hard and bright.
+		sun.light_energy *= lerpf(1.0, 1.25, day)
 	if weather:
 		# The weather thickens and tints the air and dims the sun.
 		var wt := weather.fog_tint
