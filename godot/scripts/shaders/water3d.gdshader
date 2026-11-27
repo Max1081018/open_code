@@ -12,6 +12,9 @@ uniform vec4 deep : source_color = vec4(0.06, 0.3, 0.55, 1.0);
 uniform vec4 sky : source_color = vec4(0.74, 0.87, 0.98, 1.0);
 uniform float clarity = 2.6;   // metres until the bed fades out
 uniform float night = 0.0;
+// The Ashlands' lakes and rivers are lava: a mask over the island.
+uniform sampler2D lava_map : filter_linear;
+uniform float island_span = 3072.0;
 
 float wave(vec2 p, vec2 dir, float freq, float speed) {
 	return sin(dot(p, dir) * freq + TIME * speed);
@@ -69,9 +72,22 @@ void fragment() {
 	// Sparkles riding the ripples.
 	float sparkle = step(0.985, vnoise(p * 6.0 + vec2(TIME * 0.6, TIME * 0.4))) * (1.0 - murk * 0.3);
 	col *= mix(1.0, 0.35, night);
+	float lv = smoothstep(0.35, 0.6, texture(lava_map, p / island_span + 0.5).r);
+	vec3 emit = vec3(sparkle) * 0.6 * (1.0 - night);
+	if (lv > 0.0) {
+		vec2 q = p * 0.12 + vec2(TIME * 0.04, TIME * 0.025);
+		float n = vnoise(q) * 0.6 + vnoise(q * 2.7) * 0.3 + vnoise(q * 7.0) * 0.1;
+		float crust = smoothstep(0.4, 0.52, n);
+		vec3 hot = mix(vec3(0.95, 0.22, 0.03), vec3(1.0, 0.55, 0.12), vnoise(q * 4.0 + TIME * 0.2));
+		// Glowing seams where the crust plates part.
+		float seam = 1.0 - smoothstep(0.0, 0.035, abs(n - 0.47));
+		col = mix(col, vec3(0.06, 0.045, 0.04), lv);
+		emit = mix(emit, hot * max(1.0 - crust, seam * 0.8) * 1.5 + vec3(0.3, 0.05, 0.02) * crust * 0.2, lv);
+		NORMAL = mix(NORMAL, (VIEW_MATRIX * vec4(0.0, 1.0, 0.0, 0.0)).xyz, lv);
+	}
 	ALBEDO = col;
-	EMISSION = vec3(sparkle) * 0.6 * (1.0 - night);
-	ROUGHNESS = 0.05;
-	SPECULAR = 0.65;
+	EMISSION = emit;
+	ROUGHNESS = mix(0.05, 0.9, lv);
+	SPECULAR = mix(0.65, 0.1, lv);
 	ALPHA = 1.0;
 }

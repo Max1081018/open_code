@@ -95,6 +95,9 @@ func _ready() -> void:
 	quests = Quests3D.new()
 	add_child(quests)
 	quests.setup(self)
+	var ash := Ashlands.new()
+	add_child(ash)
+	ash.build(self)
 	features = WorldFeatures.new()
 	add_child(features)
 	features.build(self)
@@ -232,6 +235,16 @@ func _build_water() -> void:
 	water.mesh = plane
 	var mat := ShaderMaterial.new()
 	mat.shader = load("res://scripts/shaders/water3d.gdshader")
+	# Where the land is volcanic the water is lava (a mask over the island).
+	var n := 192
+	var img := Image.create(n, n, false, Image.FORMAT_L8)
+	var span := TerrainGen.HALF * 2.0
+	for j in n:
+		for i in n:
+			var v := world.gen.volcanic(-span * 0.5 + (i + 0.5) * span / n, -span * 0.5 + (j + 0.5) * span / n)
+			img.set_pixel(i, j, Color(v, v, v))
+	mat.set_shader_parameter("lava_map", ImageTexture.create_from_image(img))
+	mat.set_shader_parameter("island_span", span)
 	water.material_override = mat
 	water.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 	add_child(water)
@@ -327,7 +340,7 @@ func _breakdown() -> void:
 const REGION_MOOD := {
 	TerrainGen.Biome.CORRUPTED: [Color(0.66, 0.5, 0.86, 0.7), 0.0035],
 	TerrainGen.Biome.DARK_FOREST: [Color(0.42, 0.62, 0.62, 0.6), 0.0028],
-	TerrainGen.Biome.VOLCANIC: [Color(0.9, 0.56, 0.4, 0.65), 0.003],
+	TerrainGen.Biome.VOLCANIC: [Color(0.5, 0.46, 0.47, 0.45), 0.0011],
 	TerrainGen.Biome.SNOW: [Color(0.86, 0.92, 1.0, 0.5), 0.002],
 }
 var _mood_col := Color(0, 0, 0, 0)
@@ -357,7 +370,7 @@ func _update_sun(_delta: float) -> void:
 	var fog_base := Color(0.7, 0.74, 0.78).lerp(Color(0.95, 0.66, 0.46), low).lerp(Color(0.08, 0.1, 0.18), 1.0 - day)
 	environment.fog_light_color = fog_base.lerp(Color(_mood_col.r, _mood_col.g, _mood_col.b) * lerpf(0.25, 1.0, day), _mood_col.a)
 	environment.fog_density = 0.0006 + _mood_fog
-	sun.light_color = sun.light_color.lerp(sun.light_color * Color(_mood_col.r * 1.3, _mood_col.g * 1.3, _mood_col.b * 1.3), _mood_col.a * 0.35)
+	sun.light_color = sun.light_color.lerp(sun.light_color * Color(_mood_col.r * 1.3, _mood_col.g * 1.3, _mood_col.b * 1.3), _mood_col.a * 0.2)
 	var night := clampf(1.0 - day, 0.0, 1.0)
 	_sky_mat.set_shader_parameter("night", night)
 	if town:

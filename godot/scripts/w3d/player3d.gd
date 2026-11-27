@@ -7,6 +7,7 @@ extends CharacterBody3D
 ## is chest deep. Holds items in a grip on the right hand bone.
 
 signal swung(kind: String)
+signal burned   ## stepped into lava
 
 const WALK := 2.4
 const RUN := 5.2
@@ -341,6 +342,7 @@ func _physics_process(delta: float) -> void:
 	var wish := cam.right_flat() * input.move.x + cam.forward_flat() * input.move.y
 	var water_depth := TerrainGen.WATER - global_position.y
 	swimming = water_depth > 1.15
+	_lava_check(water_depth, delta)
 	_stamina_wait -= delta
 	if _stamina_wait <= 0.0:
 		stamina = minf(max_stamina, stamina + delta * 22.0)
@@ -585,6 +587,47 @@ func _play(clip: String, speed := 1.0, restart := false) -> void:
 	anim.speed_scale = speed
 	if restart:
 		anim.seek(0.0, true)
+
+
+## The Ashlands' lakes are lava: touching one burns and throws the heroine
+## back to the last firm ground she stood on.
+var _safe_pos := Vector3.ZERO
+var _burn_wait := 0.0
+
+
+func _lava_check(water_depth: float, delta: float) -> void:
+	_burn_wait -= delta
+	if world == null:
+		return
+	var lava := world.gen.volcanic(global_position.x, global_position.z) > 0.5
+	if water_depth < -0.3 and is_on_floor():
+		_safe_pos = global_position
+	if not lava or water_depth < 0.1 or _burn_wait > 0.0:
+		return
+	_burn_wait = 0.6
+	health = maxf(0.0, health - 18.0)
+	_play("Hit_Chest", 1.3, true)
+	_action = 0.35
+	if _safe_pos == Vector3.ZERO:
+		_safe_pos = _nearest_shore()
+	global_position = _safe_pos + Vector3(0, 0.5, 0)
+	velocity = Vector3(0, 4.0, 0)
+	burned.emit()
+
+
+## The closest dry ground, searched in widening rings.
+func _nearest_shore() -> Vector3:
+	var gen: TerrainGen = world.gen
+	for ring in range(1, 40):
+		var r := ring * 4.0
+		for k in 16:
+			var a := k * TAU / 16.0
+			var x := global_position.x + cos(a) * r
+			var z := global_position.z + sin(a) * r
+			var h := gen.height(x, z)
+			if h > TerrainGen.WATER + 0.6:
+				return Vector3(x, h, z)
+	return global_position + Vector3(0, 2, 0)
 
 
 func hurt(amount: float, from: Vector3) -> void:

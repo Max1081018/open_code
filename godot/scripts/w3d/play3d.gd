@@ -35,6 +35,10 @@ func setup(the_game: Node) -> void:
 		inventory.add(start[0], start[1])
 	inventory.changed.connect(func(): inventory_changed.emit())
 	game.player.swung.connect(_on_swing)
+	game.player.burned.connect(func():
+		_shake = maxf(_shake, 0.6)
+		Sfx.play("hit")
+		toast.emit("The lava burns!"))
 	select(0)
 	_debris_mesh = BoxMesh.new()
 	_debris_mesh.size = Vector3(0.12, 0.08, 0.1)

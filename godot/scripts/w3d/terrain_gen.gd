@@ -47,6 +47,9 @@ var _moisture := FastNoiseLite.new()
 var _detail := FastNoiseLite.new()
 var _forest := FastNoiseLite.new()
 var _meadow := FastNoiseLite.new()
+## The Ashlands' volcanoes, found once at creation: [centre Vector2, radius,
+## height]. Height reads this list only, so it stays cheap and thread-safe.
+var volcanoes: Array = []
 
 
 func _init(the_seed := 1337) -> void:
@@ -62,6 +65,7 @@ func _init(the_seed := 1337) -> void:
 	_setup(_detail, 8, 0.05, 2)
 	_setup(_forest, 9, 0.0045, 3)
 	_setup(_meadow, 10, 0.06, 2)
+	_find_volcanoes()
 
 
 func _setup(noise: FastNoiseLite, offset: int, frequency: float, octaves: int) -> void:
@@ -69,6 +73,29 @@ func _setup(noise: FastNoiseLite, offset: int, frequency: float, octaves: int) -
 	noise.noise_type = FastNoiseLite.TYPE_SIMPLEX_SMOOTH
 	noise.frequency = frequency
 	noise.fractal_octaves = octaves
+
+
+## The Ashlands: one designed region in the north-east around a great
+## volcano, its border warped by noise.
+const ASHLANDS := Vector2(820.0, -860.0)
+const ASH_R := 430.0
+
+
+## How volcanic the land is here, 0..1 (the Ashlands), independent of height.
+func volcanic(x: float, z: float) -> float:
+	var d := Vector2(x, z).distance_to(ASHLANDS)
+	var warp := _hills.get_noise_2d(x * 0.25, z * 0.25) * 130.0
+	return 1.0 - smoothstep(ASH_R - 90.0, ASH_R + 30.0, d + warp)
+
+
+## The great volcano and three lesser cones: [centre, radius, height].
+func _find_volcanoes() -> void:
+	volcanoes = [
+		[ASHLANDS + Vector2(40, -60), 175.0, 118.0],
+		[ASHLANDS + Vector2(-235, 120), 85.0, 48.0],
+		[ASHLANDS + Vector2(215, 175), 78.0, 42.0],
+		[ASHLANDS + Vector2(-130, -250), 70.0, 38.0],
+	]
 
 
 ## Ground height in metres.
@@ -89,6 +116,17 @@ func height(x: float, z: float) -> float:
 	var channel := 1.0 - smoothstep(0.015, 0.06, r)
 	channel *= 1.0 - mask * 0.85
 	h = lerpf(h, minf(h, WATER - 2.5), channel)
+	# Volcano cones with crater bowls at their summits.
+	for vo in volcanoes:
+		var vd := Vector2(x, z).distance_to(vo[0])
+		var vr: float = vo[1]
+		if vd < vr:
+			var vh: float = vo[2]
+			var cone := pow(1.0 - vd / vr, 1.35) * vh
+			var crater_r := vr * 0.24
+			if vd < crater_r:
+				cone -= pow(1.0 - vd / crater_r, 1.6) * vh * 0.32
+			h += cone
 	h = lerpf(-18.0, h, island)
 	h += _detail.get_noise_2d(x, z) * 0.35
 	# The village plateau, blended into the land around it.
@@ -131,17 +169,21 @@ func forest(x: float, z: float) -> float:
 
 
 func biome(x: float, z: float) -> int:
+	if volcanic(x, z) > 0.5:
+		return Biome.VOLCANIC
 	var h := height(x, z)
 	if h < WATER + 1.6:
 		return Biome.BEACH
 	var t := _temperature.get_noise_2d(x, z) - h * 0.004
 	var m := _moisture.get_noise_2d(x, z)
+	if volcanic(x, z) > 0.5:
+		return Biome.VOLCANIC
 	if h > 85.0 or t < -0.32:
 		return Biome.SNOW
 	if Vector2(x, z).distance_to(VILLAGE) < VILLAGE_RADIUS * 2.5:
 		return Biome.FOREST
 	if t > 0.3 and m < -0.05:
-		return Biome.VOLCANIC if _continent.get_noise_2d(z, x) > 0.1 else Biome.DRY
+		return Biome.DRY
 	if t > 0.18 and m < 0.1:
 		return Biome.DRY
 	if m > 0.28:
@@ -159,7 +201,7 @@ func splat(x: float, z: float, h: float, n: Vector3, b: int) -> Color:
 	if b == Biome.SNOW:
 		snow = clampf((h - 40.0) / 30.0, 0.35, 1.0) * (1.0 - rock * 0.6)
 	var sand := 0.0
-	if h < WATER + 2.2:
+	if h < WATER + 2.2 and b != Biome.VOLCANIC:
 		sand = 1.0 - smoothstep(WATER + 0.8, WATER + 2.2, h)
 	if b == Biome.DRY:
 		sand = maxf(sand, 0.75)

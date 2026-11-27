@@ -46,6 +46,11 @@ func setup(the_seed: int) -> void:
 	_material.set_shader_parameter("road_hw", widths)
 	_material.set_shader_parameter("road_count", roads.size())
 	_material.set_shader_parameter("plaza_radius", TerrainGen.PLAZA_RADIUS)
+	var great: Array = gen.volcanoes[0]
+	_material.set_shader_parameter("volcano_pos", great[0])
+	_material.set_shader_parameter("volcano_r", great[1])
+	_material.set_shader_parameter("flow_angles", PackedFloat32Array([0.3, 1.5, 2.6, 3.9, 5.2]))
+	_material.set_shader_parameter("flow_reach", PackedFloat32Array([0.6, 0.2, 0.9, 0.4, 0.7]))
 	match Settings.quality if "quality" in Settings else 2:
 		0:
 			rings = [1, 2, 3]
@@ -78,7 +83,7 @@ func _build_horizon() -> void:
 			st.set_color(gen.splat(x, z, h, nor, b))
 			var t := gen.tint(b)
 			st.set_uv(Vector2(x, z))
-			st.set_uv2(Vector2((t.r + t.g + t.b) / 3.0, t.a))
+			st.set_uv2(Vector2((t.r + t.g + t.b) / 3.0, maxf(0.0 if b == TerrainGen.Biome.VOLCANIC else t.a, gen.volcanic(x, z))))
 			st.add_vertex(Vector3(x, h - 0.6, z))
 	for j in n - 1:
 		for i in n - 1:

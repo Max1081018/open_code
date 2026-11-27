@@ -17,6 +17,11 @@ uniform float road_hw[16];
 uniform int road_count = 0;
 uniform float plaza_radius = 0.0;
 uniform float cloud_shade = 0.32;
+// The Ashlands' great volcano and its lava flows (angles in radians).
+uniform vec2 volcano_pos = vec2(860.0, -920.0);
+uniform float volcano_r = 175.0;
+uniform float flow_angles[5];
+uniform float flow_reach[5];
 // Horizon mesh: drawn only beyond this distance (near chunks cover the rest).
 uniform float cull_radius = 0.0;
 
@@ -87,17 +92,43 @@ void fragment() {
 	c = mix(c, c * vec3(0.86, 0.9, 0.98), w.b * 0.6);
 	// Biome tint (UV2.x: overall brightness of the tint) and ash (UV2.y).
 	c *= mix(1.0, UV2.x, 0.8);
-	c = mix(c, c * vec3(0.32, 0.3, 0.3), UV2.y * 0.8);
-	// The Ashlands: cracks of glowing lava through the dark ground, pulsing.
+	// The Ashlands: ash-grey ground with dark basalt fields, not a black plane.
+	float ash = UV2.y;
+	float basalt = smoothstep(0.45, 0.62, vnoise(world_pos.xz * 0.025) * 0.7 + vnoise(world_pos.xz * 0.09) * 0.3);
+	vec3 ash_col = mix(vec3(0.5, 0.47, 0.45), vec3(0.17, 0.15, 0.16), basalt) * (0.85 + vnoise(world_pos.xz * 0.6) * 0.25);
+	c = mix(c, mix(c * 0.4, ash_col, 0.9), ash);
 	float lava = 0.0;
-	if (UV2.y > 0.5) {
-		vec2 q = world_pos.xz * 0.16;
+	float heat = 0.0;
+	if (ash > 0.3) {
+		// Lava flows: streams leaving the great crater, wandering down the
+		// slopes in channels that widen across the plains.
+		vec2 dv = world_pos.xz - volcano_pos;
+		float rad = length(dv);
+		float ang = atan(dv.y, dv.x);
+		float flow = 0.0;
+		for (int i = 0; i < 5; i++) {
+			float a = flow_angles[i] + sin(rad * 0.022 + float(i) * 2.1) * 0.22 + (vnoise(vec2(rad * 0.02, float(i) * 7.0)) - 0.5) * 0.3;
+			float da = abs(mod(ang - a + PI, TAU) - PI) * rad;
+			float w = mix(3.0, 9.0, smoothstep(volcano_r * 0.3, volcano_r * 1.6, rad));
+			float reach = volcano_r * (1.35 + flow_reach[i]) + (vnoise(vec2(ang * 3.0, 5.0)) - 0.5) * 50.0;
+			float along = smoothstep(volcano_r * 0.2, volcano_r * 0.27, rad) * (1.0 - smoothstep(reach - 60.0, reach, rad));
+			flow = max(flow, (1.0 - smoothstep(w * 0.55, w, da)) * along);
+			heat = max(heat, (1.0 - smoothstep(w, w * 3.5, da)) * along);
+		}
+		// Thin fissures, dim, on the flatter ground only.
+		vec2 q = world_pos.xz * 0.12;
 		float n1 = vnoise(q) + 0.5 * vnoise(q * 2.3 + 7.0);
-		float crack = 1.0 - smoothstep(0.0, 0.045, abs(n1 - 0.75));
-		crack *= smoothstep(0.5, 0.8, UV2.y) * (1.0 - steep);
-		float pulse = 0.75 + 0.25 * sin(TIME * 1.3 + vnoise(q * 0.5) * 6.0);
-		lava = crack * pulse;
-		c = mix(c, vec3(0.08, 0.04, 0.03), crack * 0.6);
+		float crack = 0.0;
+		// Moving crust over the hot lava.
+		vec2 fq = world_pos.xz * 0.18 + normalize(dv + vec2(0.001)) * TIME * 0.35;
+		float crust = smoothstep(0.48, 0.66, vnoise(fq) * 0.65 + vnoise(fq * 2.6) * 0.35);
+		float pulse = 0.8 + 0.2 * sin(TIME * 1.6 + vnoise(q * 0.5) * 6.0);
+		lava = max(flow * (1.0 - crust * 0.85), crack) * pulse * smoothstep(0.3, 0.6, ash);
+		c = mix(c, vec3(0.09, 0.05, 0.04), max(flow, crack) * smoothstep(0.3, 0.6, ash));
+		// Ground just above the lava lakes is scorched and glows.
+		float shore = (1.0 - smoothstep(0.05, 1.4, world_pos.y)) * smoothstep(0.5, 0.8, ash);
+		heat = max(heat, shore);
+		c = mix(c, vec3(0.11, 0.08, 0.075), heat * 0.7);
 	}
 	// Cobbles of the town, with a band of darker border stones at the edge
 	// and a ragged rim where grass creeps over.
@@ -121,7 +152,7 @@ void fragment() {
 	cs = smoothstep(0.48, 0.62, cs * 0.75 + vnoise(world_pos.xz * 0.011 + vec2(TIME * 0.009, 0.0)) * 0.25);
 	c *= 1.0 - cs * cloud_shade;
 	ALBEDO = c;
-	EMISSION = vec3(1.0, 0.36, 0.06) * lava * 2.2;
+	EMISSION = vec3(1.0, 0.3, 0.05) * lava * 2.0 + vec3(0.9, 0.25, 0.05) * heat * 0.25 * smoothstep(0.3, 0.6, UV2.y);
 	ROUGHNESS = mix(mix(0.92, 0.55, w.b), 0.78, pave);
 	SPECULAR = 0.25;
 }

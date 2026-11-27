@@ -35,7 +35,7 @@ const FLORA := {
 	# The Ashlands: basalt pillars and cliffs, lava vents, ember-veined rock.
 	TerrainGen.Biome.VOLCANIC: [["DeadTree_2", 2], ["X:volcanic_7", 2], ["X:volcanic_8", 2], ["X:volcanic_10", 2],
 		["X:volcanic_14", 2], ["X:volcanic_0", 1], ["X:volcanic_3", 1], ["X:volcanic_18", 1], ["X:volcanic_19", 1],
-		["X:volcanic_24", 4], ["X:volcanic_28", 4], ["X:volcanic_16", 4], ["X:volcanic_22", 4], ["X:volcanic_25", 3]],
+		["X:volcanic_24", 4], ["X:volcanic_28", 4], ["X:volcanic_16", 4], ["X:volcanic_22", 4], ["X:volcanic_25", 12]],
 	# The Blight: twisted trees, dead wood, mushrooms, Void-veined rock.
 	TerrainGen.Biome.CORRUPTED: [["TwistedTree_4", 6], ["TwistedTree_5", 6], ["DeadTree_3", 3], ["DeadTree_4", 3],
 		["Mushroom_Laetiporus", 7], ["Mushroom_Common", 7], ["X:volcanic_27", 5], ["X:volcanic_12", 1], ["Plant_7", 6]],
@@ -73,7 +73,7 @@ static func build(gen: TerrainGen, coord: Vector2i, lod: int, with_grass: bool) 
 			colours.append(gen.splat(x, z, h, nor, b))
 			var t := gen.tint(b)
 			# Tint packed in UV2: x = hue darkening (green channel), y = ash.
-			tints.append(Vector2((t.r + t.g + t.b) / 3.0, t.a))
+			tints.append(Vector2((t.r + t.g + t.b) / 3.0, maxf(0.0 if b == TerrainGen.Biome.VOLCANIC else t.a, gen.volcanic(x, z))))
 			uv.append(Vector2(x, z))
 	var indices := PackedInt32Array()
 	for j in steps:
@@ -168,6 +168,9 @@ static func _flora(gen: TerrainGen, coord: Vector2i, origin: Vector2) -> Array:
 							if rng.randf() > 0.18:
 								break
 							sink = float(FoliageLib.spec_for(kind)[0]) * 0.08  # bedded into slopes
+						# The drawn mesh is coarser than the height field: on a slope
+						# it can sit below the true surface, so bed things deeper there.
+						sink += (1.0 - nor.y) * 3.0
 						placed.append({"kind": kind, "pos": Vector3(x, h - sink, z), "yaw": rng.randf() * TAU,
 							"scale": rng.randf_range(0.8, 1.25)})
 						break
@@ -197,7 +200,8 @@ static func _grass(gen: TerrainGen, coord: Vector2i, origin: Vector2) -> Diction
 		if not GRASS.has(b):
 			continue
 		var h := gen.height(x, z)
-		if h < TerrainGen.WATER + 0.5 or gen.normal(x, z).y < 0.8:
+		var ny := gen.normal(x, z).y
+		if h < TerrainGen.WATER + 0.5 or ny < 0.8:
 			continue
 		if gen.paved(x, z) > 0.2:
 			continue
@@ -205,5 +209,5 @@ static func _grass(gen: TerrainGen, coord: Vector2i, origin: Vector2) -> Diction
 		if not by_kind.has(kind):
 			by_kind[kind] = []
 		by_kind[kind].append(Transform3D(Basis(Vector3.UP, rng.randf() * TAU).scaled(Vector3.ONE * rng.randf_range(0.7, 1.3)),
-			Vector3(x, h - 0.05, z)))
+			Vector3(x, h - 0.05 - (1.0 - ny) * 2.0, z)))
 	return by_kind
