@@ -136,8 +136,9 @@ static func _flora(gen: TerrainGen, coord: Vector2i, origin: Vector2) -> Array:
 				var nor := gen.normal(x, z)
 				if nor.y < 0.78:
 					continue
-				if Vector2(x, z).distance_to(TerrainGen.VILLAGE) < TerrainGen.VILLAGE_RADIUS * 0.9:
-					continue  # the village square stays clear
+				var in_town := Vector2(x, z).distance_to(TerrainGen.VILLAGE) < TerrainGen.VILLAGE_RADIUS * 0.9
+				if in_town and (Vector2(x, z).length() < 20.0 or _near_building(x, z)):
+					continue  # the plaza and the buildings stay clear
 				if gen.paved(x, z) > 0.0 or gen.paved(x + 2.5, z) > 0.0 or gen.paved(x - 2.5, z) > 0.0:
 					continue  # and so do the roads
 				var b := gen.biome(x, z)
@@ -153,6 +154,9 @@ static func _flora(gen: TerrainGen, coord: Vector2i, origin: Vector2) -> Array:
 					pick -= e[1]
 					if pick < 0:
 						var kind: String = e[0]
+						# In town only garden plants grow (bushes, flowers, ferns).
+						if in_town and FoliageLib.category(kind) != "small":
+							break
 						# Trees gather in groves; open meadows get flowers instead.
 						if FoliageLib.category(kind) == "tree" and rng.randf() > gen.forest(x, z) * 0.75:
 							if b != TerrainGen.Biome.FOREST or rng.randf() < 0.5:
@@ -168,6 +172,18 @@ static func _flora(gen: TerrainGen, coord: Vector2i, origin: Vector2) -> Array:
 							"scale": rng.randf_range(0.8, 1.25)})
 						break
 	return placed
+
+
+## Within a town building's footprint (plus a garden margin).
+static func _near_building(x: float, z: float) -> bool:
+	for k in Town.KIT:
+		var o: Dictionary = k[3]
+		var r: float = maxf(float(o.get("w", 7.0)), float(o.get("d", 7.0))) * 0.75 + 2.5
+		if k[0] == "tower":
+			r = float(o.r) + 3.0
+		if Vector2(x - k[1], z - k[2]).length() < r:
+			return true
+	return false
 
 
 static func _grass(gen: TerrainGen, coord: Vector2i, origin: Vector2) -> Dictionary:

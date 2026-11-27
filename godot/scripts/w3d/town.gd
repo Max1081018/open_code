@@ -21,14 +21,7 @@ const DRAW := {"chest": [110.0, false], "chest_magic": [140.0, false], "flower_p
 const FRONT_OFFSET := {"bench": -PI * 0.5}
 ## [model, x, z, height m, solid] — fronts turned to the plaza.
 const TOWN := [
-	["fountain_small", 0.0, 0.0, 3.6, true],
-	["magic_tower", 0.0, -52.0, 22.0, true],
 	["statue", -7.5, -38.0, 3.8, true],
-	["house_blue", -24.0, -16.0, 11.0, true],
-	["house_med", 24.0, -18.0, 10.0, true],
-	["house_wood", -27.0, 14.0, 8.5, true],
-	["house_tower", 25.0, 17.0, 14.0, true],
-	["house_blue", -7.0, 45.0, 10.0, true],
 	["shrine_stone", 18.0, -5.0, 4.2, true],
 	["fountain", -16.5, -4.5, 3.2, true],
 	["market_stall", 5.8, -11.5, 3.6, true],
@@ -40,10 +33,33 @@ const TOWN := [
 	["bench", -8.3, 1.5, 1.0, false],
 	["bench", 7.4, -4.2, 1.0, false],
 ]
-## Shade trees between the houses: [kind, x, z].
-const TREES := [["CommonTree_3", -12.0, -27.0], ["CommonTree_1", 12.0, -30.0], ["CommonTree_2", 38.0, -4.0],
-	["CommonTree_4", -40.0, 6.0], ["CommonTree_5", 22.0, 40.0], ["CommonTree_1", -30.0, 36.0],
-	["CommonTree_3", 40.0, -30.0], ["CommonTree_2", -38.0, -34.0]]
+## Starfall Haven's own buildings (ArchKit): [kind, x, z, options]; houses
+## face the plaza unless options give a yaw. Kinds: house, tower, gate.
+const KIT := [
+	["house", -24.0, -16.0, {"w": 9.0, "d": 7.5, "floors": 2, "roof": "cobalt", "seed": 1, "tower": true}],
+	["house", 24.0, -18.0, {"w": 8.0, "d": 7.0, "floors": 2, "roof": "teal", "seed": 2, "roof_style": "gable"}],
+	["house", -27.0, 14.0, {"w": 8.5, "d": 7.0, "floors": 2, "roof": "violet", "seed": 3}],
+	["house", 25.0, 17.0, {"w": 10.0, "d": 8.0, "floors": 3, "roof": "cobalt", "seed": 4, "tower": true}],
+	["house", -7.0, 45.0, {"w": 8.0, "d": 7.0, "floors": 2, "roof": "rose", "seed": 5, "roof_style": "gable"}],
+	["house", 40.0, -9.5, {"w": 9.0, "d": 7.0, "floors": 2, "roof": "teal", "seed": 6, "yaw": 0.0}],
+	["house", 47.0, 18.5, {"w": 8.0, "d": 7.0, "floors": 2, "roof": "cobalt", "seed": 7, "yaw": PI, "roof_style": "gable"}],
+	["house", -42.0, -16.5, {"w": 8.0, "d": 7.0, "floors": 3, "roof": "rose", "seed": 8, "yaw": 0.0, "tower": true}],
+	["house", -47.0, 9.0, {"w": 9.0, "d": 7.0, "floors": 2, "roof": "violet", "seed": 9, "yaw": PI}],
+	["house", -22.0, -42.0, {"w": 8.0, "d": 7.0, "floors": 2, "roof": "teal", "seed": 10, "roof_style": "gable"}],
+	["house", 23.0, -44.0, {"w": 8.5, "d": 7.5, "floors": 2, "roof": "violet", "seed": 11, "tower": true}],
+	["house", -58.0, -30.0, {"w": 9.0, "d": 7.0, "floors": 2, "roof": "cobalt", "seed": 12}],
+	["house", 58.0, -28.0, {"w": 8.0, "d": 7.0, "floors": 2, "roof": "rose", "seed": 13, "roof_style": "gable"}],
+	["house", -30.0, 58.0, {"w": 9.0, "d": 7.5, "floors": 3, "roof": "teal", "seed": 14, "tower": true}],
+	["house", 34.0, 52.0, {"w": 8.0, "d": 7.0, "floors": 2, "roof": "cobalt", "seed": 15}],
+	["house", -60.0, 32.0, {"w": 8.0, "d": 7.0, "floors": 2, "roof": "rose", "seed": 16, "roof_style": "gable"}],
+	["house", 60.0, 40.0, {"w": 8.5, "d": 7.0, "floors": 2, "roof": "violet", "seed": 17}],
+	["tower", 0.0, -52.0, {"r": 3.6, "h": 17.0, "roof": "violet"}],
+	["gate", 8.7, 43.4, {"span": 6.6}],
+]
+## Shade trees between the houses: [kind, x, z] (sakura for colour).
+const TREES := [["X:sakura_0", -12.0, -27.0], ["CommonTree_1", 12.0, -30.0], ["X:sakura_0", 33.0, 2.0],
+	["CommonTree_4", -36.0, 26.0], ["X:sakura_0", 22.0, 40.0], ["CommonTree_1", -30.0, 36.0],
+	["CommonTree_3", 40.0, -30.0], ["X:sakura_0", -36.0, -34.0], ["X:sakura_0", -16.0, 30.0]]
 ## Isle props: [model, island index, height, offset from centre].
 const ISLES := [["ruin_arch", 1, 10.0, Vector2(0, 0)], ["ruin_arch", 6, 14.0, Vector2(6, 0)]]
 ## Free-floating mini isles: [model, x, z, altitude above ground, height].
@@ -63,12 +79,13 @@ func build(the_game: Node) -> void:
 		var yaw := atan2(-at.x, -at.z) if Vector2(at.x, at.z).length() > 1.0 else 0.0
 		yaw += FRONT_OFFSET.get(spec[0], 0.0)
 		place(spec[0], at, spec[3], yaw, "box" if spec[4] else "")
+	_build_kit(gen)
 	_garden_flowers(gen)
 	_banners(gen)
 	# A ring of flowers round the fountain.
 	for i in 8:
 		var a := TAU * (i + 0.5) / 8.0
-		var p := Vector2(cos(a), sin(a)) * 5.2
+		var p := Vector2(cos(a), sin(a)) * 6.3
 		place("flower_pot", Vector3(p.x, gen.height(p.x, p.y), p.y), 0.75, a)
 	_road_lanterns(gen)
 	for t in TREES:
@@ -106,6 +123,114 @@ func build(the_game: Node) -> void:
 		if h < TerrainGen.WATER + 0.6 or gen.normal(x, z).y < 0.85:
 			continue
 		_chest(Vector3(x, h, z), rng.randf() < 0.25)
+
+
+var crystal: Node3D
+
+
+## The town's buildings from ArchKit, each one mesh with a box collider
+## (the gate only on its pylons), and the plaza's star fountain.
+func _build_kit(gen: TerrainGen) -> void:
+	for spec in KIT:
+		var at := Vector3(spec[1], 0, spec[2])
+		var o: Dictionary = spec[3]
+		var mesh: ArrayMesh
+		match spec[0]:
+			"house":
+				mesh = ArchKit.house(o.w, o.d, o.floors, o.roof, o)
+			"tower":
+				mesh = ArchKit.tower(o.r, o.h, o.roof)
+			"gate":
+				mesh = ArchKit.gate(o.span)
+		# Seat on the lowest corner so no side floats on a slope.
+		var lo := INF
+		for c in [Vector2(-1, -1), Vector2(1, -1), Vector2(-1, 1), Vector2(1, 1), Vector2.ZERO]:
+			lo = minf(lo, gen.height(at.x + c.x * 4.0, at.z + c.y * 4.0))
+		at.y = lo
+		var yaw: float = o.get("yaw", atan2(-at.x, -at.z))
+		if spec[0] == "gate":
+			var road: Array = TerrainGen.ROADS[1]
+			var dir: Vector2 = (road[1] - road[0]).normalized()
+			yaw = atan2(dir.x, dir.y)
+		var holder := Node3D.new()
+		add_child(holder)
+		holder.position = at
+		holder.rotation.y = yaw
+		var mi := MeshInstance3D.new()
+		mi.mesh = mesh
+		mi.visibility_range_end = 1400.0
+		holder.add_child(mi)
+		var body := StaticBody3D.new()
+		holder.add_child(body)
+		var box := mesh.get_aabb()
+		if spec[0] == "gate":
+			for sx in [-1.0, 1.0]:
+				_box_shape(body, Vector3(sx * (o.span * 0.5 + 0.8), 3.5, 0), Vector3(2.0, 7.0, 2.0))
+		else:
+			_box_shape(body, box.get_center(), box.size * Vector3(0.96, 1.0, 0.96))
+	# The plaza's centrepiece: a tiered marble fountain with the star crystal
+	# turning above it.
+	var c := Vector3(0, gen.height(0, 0), 0)
+	var fountain := MeshInstance3D.new()
+	fountain.mesh = ArchKit.star_fountain()
+	add_child(fountain)
+	fountain.position = c
+	var fb := StaticBody3D.new()
+	fountain.add_child(fb)
+	var cyl := CylinderShape3D.new()
+	cyl.radius = 5.3
+	cyl.height = 1.2
+	var cs := CollisionShape3D.new()
+	cs.shape = cyl
+	cs.position.y = 0.5
+	fb.add_child(cs)
+	crystal = MeshInstance3D.new()
+	(crystal as MeshInstance3D).mesh = ArchKit.star_crystal()
+	add_child(crystal)
+	crystal.position = c + Vector3(0, 6.6, 0)
+	var glow := OmniLight3D.new()
+	glow.light_color = Color(0.5, 0.82, 1.0)
+	glow.light_energy = 1.6
+	glow.omni_range = 12.0
+	glow.distance_fade_enabled = true
+	glow.distance_fade_begin = 90.0
+	crystal.add_child(glow)
+	# Water sparkling up from the top basin.
+	var spray := CPUParticles3D.new()
+	var q := QuadMesh.new()
+	q.size = Vector2(0.14, 0.14)
+	spray.mesh = q
+	var sm := StandardMaterial3D.new()
+	sm.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	sm.billboard_mode = BaseMaterial3D.BILLBOARD_PARTICLES
+	sm.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+	sm.blend_mode = BaseMaterial3D.BLEND_MODE_ADD
+	sm.albedo_texture = Play3D._spark_texture()
+	sm.albedo_color = Color(0.75, 0.92, 1.0, 0.7)
+	spray.material_override = sm
+	spray.amount = 60
+	spray.lifetime = 1.4
+	spray.emission_shape = CPUParticles3D.EMISSION_SHAPE_RING
+	spray.emission_ring_axis = Vector3.UP
+	spray.emission_ring_radius = 0.6
+	spray.emission_ring_inner_radius = 0.4
+	spray.emission_ring_height = 0.1
+	spray.direction = Vector3.UP
+	spray.spread = 30
+	spray.initial_velocity_min = 2.5
+	spray.initial_velocity_max = 3.4
+	spray.gravity = Vector3(0, -6, 0)
+	add_child(spray)
+	spray.position = c + Vector3(0, 4.9, 0)
+
+
+func _box_shape(body: StaticBody3D, centre: Vector3, size: Vector3) -> void:
+	var cs := CollisionShape3D.new()
+	var shape := BoxShape3D.new()
+	shape.size = size
+	cs.shape = shape
+	cs.position = centre
+	body.add_child(cs)
 
 
 ## Put a model in the world, `height` metres tall, base on `at`. `collide`
@@ -290,6 +415,7 @@ func _glow(at: Vector3, colour: Color, size: float) -> MeshInstance3D:
 
 ## Lanterns come on as the light goes (0 day .. 1 night).
 func set_night(night: float) -> void:
+	ArchKit.set_night(night)
 	var on := night > 0.08
 	for lamp in lamps:
 		var l: OmniLight3D = lamp[0]
@@ -354,7 +480,10 @@ func restore_opened(ids: Array) -> void:
 			(chests[int(i)][0] as Node).queue_free()
 
 
-func _process(_delta: float) -> void:
+func _process(delta: float) -> void:
+	if crystal:
+		crystal.rotation.y += delta * 0.6
+		crystal.position.y = game.world.height_at(0, 0) + 6.6 + sin(Time.get_ticks_msec() / 900.0) * 0.25
 	if game == null or game.player == null:
 		return
 	var p: Player3D = game.player
