@@ -264,6 +264,10 @@ func _unhandled_input(event: InputEvent) -> void:
 
 func _process(delta: float) -> void:
 	_frames += 1
+	# Foliage between the camera and the heroine thins out (foliage3d).
+	if player and cam:
+		var d := cam.camera.global_position.distance_to(player.global_position + Vector3(0, 1.0, 0))
+		RenderingServer.global_shader_parameter_set("occlude_depth", d - 0.8 if d > 1.5 and d < 16.0 else 0.0)
 	if _args.has("shot"):
 		_script_input()
 		# --strip=N --every=K: N frames K apart ending at --frames, side by side.
@@ -338,11 +342,20 @@ func _breakdown() -> void:
 
 ## Region air: [fog tint (alpha = how strongly), extra fog density].
 const REGION_MOOD := {
-	TerrainGen.Biome.CORRUPTED: [Color(0.66, 0.5, 0.86, 0.7), 0.0035],
+	TerrainGen.Biome.CORRUPTED: [Color(0.42, 0.34, 0.56, 0.6), 0.0018],
 	TerrainGen.Biome.DARK_FOREST: [Color(0.42, 0.62, 0.62, 0.6), 0.0028],
 	TerrainGen.Biome.VOLCANIC: [Color(0.5, 0.46, 0.47, 0.45), 0.0011],
 	TerrainGen.Biome.SNOW: [Color(0.86, 0.92, 1.0, 0.5), 0.002],
 }
+## Each region's sky: [zenith, horizon]; blended in by the mood's weight.
+const REGION_SKY := {
+	TerrainGen.Biome.CORRUPTED: [Color(0.27, 0.24, 0.42), Color(0.7, 0.63, 0.78)],
+	TerrainGen.Biome.DARK_FOREST: [Color(0.2, 0.34, 0.44), Color(0.56, 0.7, 0.68)],
+	TerrainGen.Biome.VOLCANIC: [Color(0.3, 0.33, 0.46), Color(0.8, 0.68, 0.6)],
+	TerrainGen.Biome.SNOW: [Color(0.36, 0.56, 0.9), Color(0.9, 0.95, 1.0)],
+}
+var _sky_top := Color(0.15, 0.36, 0.85)
+var _sky_hor := Color(0.74, 0.86, 0.99)
 var _mood_col := Color(0, 0, 0, 0)
 var _mood_fog := 0.0
 var _mood_ready := false
@@ -362,11 +375,15 @@ func _update_sun(_delta: float) -> void:
 	environment.ambient_light_energy = lerpf(0.4, 0.55, day)
 	# Each region has its own air: the fog and light lean toward its colour,
 	# blended smoothly as the heroine crosses a border.
-	var mood: Array = REGION_MOOD.get(world.biome_at(player.global_position) if player else -1, [Color(0, 0, 0, 0), 0.0])
+	var region: int = world.biome_at(player.global_position) if player else -1
+	var mood: Array = REGION_MOOD.get(region, [Color(0, 0, 0, 0), 0.0])
+	var region_sky: Array = REGION_SKY.get(region, [Color(0.15, 0.36, 0.85), Color(0.74, 0.86, 0.99)])
 	var blend := minf(1.0, _delta * 0.8) if _mood_ready else 1.0
 	_mood_ready = player != null
 	_mood_col = _mood_col.lerp(mood[0], blend)
 	_mood_fog = lerpf(_mood_fog, float(mood[1]), blend)
+	_sky_top = _sky_top.lerp(region_sky[0], blend)
+	_sky_hor = _sky_hor.lerp(region_sky[1], blend)
 	var fog_base := Color(0.7, 0.74, 0.78).lerp(Color(0.95, 0.66, 0.46), low).lerp(Color(0.08, 0.1, 0.18), 1.0 - day)
 	environment.fog_light_color = fog_base.lerp(Color(_mood_col.r, _mood_col.g, _mood_col.b) * lerpf(0.25, 1.0, day), _mood_col.a)
 	environment.fog_density = 0.0006 + _mood_fog
@@ -380,8 +397,8 @@ func _update_sun(_delta: float) -> void:
 	if islands:
 		islands.set_night(night)
 	_sky_mat.set_shader_parameter("dusk", low)
-	_sky_mat.set_shader_parameter("top_color", Color(0.15, 0.36, 0.85).lerp(Color(0.35, 0.32, 0.6), low))
-	_sky_mat.set_shader_parameter("horizon_color", Color(0.74, 0.86, 0.99).lerp(Color(1.0, 0.66, 0.45), low))
+	_sky_mat.set_shader_parameter("top_color", _sky_top.lerp(Color(0.35, 0.32, 0.6), low))
+	_sky_mat.set_shader_parameter("horizon_color", _sky_hor.lerp(Color(1.0, 0.66, 0.45), low))
 	_sky_mat.set_shader_parameter("cloud_shade", Color(0.7, 0.74, 0.92).lerp(Color(0.75, 0.55, 0.7), low))
 
 

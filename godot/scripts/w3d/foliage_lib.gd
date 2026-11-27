@@ -78,6 +78,18 @@ static func parts(kind: String) -> Array:
 static func release() -> void:
 	_cache.clear()
 	_wind = null
+	_white_tex = null
+
+
+static var _white_tex: Texture2D
+
+
+static func _white() -> Texture2D:
+	if _white_tex == null:
+		var img := Image.create(1, 1, false, Image.FORMAT_RGBA8)
+		img.fill(Color.WHITE)
+		_white_tex = ImageTexture.create_from_image(img)
+	return _white_tex
 
 
 static func _tinted(mesh: Mesh, colour: Color) -> Mesh:
@@ -156,6 +168,11 @@ static func _to_root(node: Node, root: Node) -> Transform3D:
 	return t
 
 
+## The pines are deep blue-green conifers, not the pack's lime.
+static func _shade(kind_hint: String) -> Color:
+	return Color(0.58, 0.7, 0.66) if kind_hint.begins_with("pines") else Color(1, 1, 1)
+
+
 ## A copy of the mesh whose leafy (alpha-tested) surfaces sway in the wind.
 static func _windy(mesh: Mesh, cat: String, kind_hint := "") -> Mesh:
 	if cat == "rock":
@@ -175,6 +192,21 @@ static func _windy(mesh: Mesh, cat: String, kind_hint := "") -> Mesh:
 			continue
 		var leafy := material.transparency != BaseMaterial3D.TRANSPARENCY_DISABLED or cat == "grass"
 		if not leafy:
+			if cat == "tree":
+				# Trunks and solid boughs share the leaf shader (no cut-out, no
+				# sway) so they too thin out near the camera and in front of
+				# the heroine.
+				if _wind == null:
+					_wind = load("res://scripts/shaders/foliage3d.gdshader")
+				var solid := ShaderMaterial.new()
+				solid.shader = _wind
+				solid.set_shader_parameter("albedo_tex", material.albedo_texture if material.albedo_texture else _white())
+				solid.set_shader_parameter("albedo", material.albedo_color * _shade(kind_hint) * Color(0.86, 0.86, 0.86))
+				solid.set_shader_parameter("saturation", 0.82)
+				solid.set_shader_parameter("alpha_cut", -1.0)
+				solid.set_shader_parameter("sway", 0.0)
+				solid.set_shader_parameter("near_fade", 5.5)
+				copy.surface_set_material(s, solid)
 			continue
 		if _wind == null:
 			_wind = load("res://scripts/shaders/foliage3d.gdshader")
@@ -187,7 +219,7 @@ static func _windy(mesh: Mesh, cat: String, kind_hint := "") -> Mesh:
 			tex = load(DIR + "Leaves_NormalTree_C.png")
 		sm.set_shader_parameter("albedo_tex", tex)
 		# The kit's greens are candy-bright; grass is muted toward meadow.
-		var colour := material.albedo_color
+		var colour := material.albedo_color * _shade(kind_hint)
 		var saturation := 0.85
 		if cat == "grass":
 			colour = colour * Color(0.62, 0.72, 0.5)
@@ -201,5 +233,6 @@ static func _windy(mesh: Mesh, cat: String, kind_hint := "") -> Mesh:
 		sm.set_shader_parameter("albedo", colour)
 		sm.set_shader_parameter("saturation", saturation)
 		sm.set_shader_parameter("sway", 0.06 if cat == "tree" else 0.12)
+		sm.set_shader_parameter("near_fade", 5.5 if cat == "tree" else 0.0)
 		copy.surface_set_material(s, sm)
 	return copy

@@ -81,8 +81,8 @@ func _build_horizon() -> void:
 			var b := gen.biome(x, z)
 			st.set_normal(nor)
 			st.set_color(gen.splat(x, z, h, nor, b))
-			var t := gen.tint(b)
-			st.set_uv(Vector2(x, z))
+			var t := gen.blended_tint(x, z, b)
+			st.set_uv(Vector2(t.r, t.b) / maxf((t.r + t.g + t.b) / 3.0, 0.01))
 			st.set_uv2(Vector2((t.r + t.g + t.b) / 3.0, maxf(0.0 if b == TerrainGen.Biome.VOLCANIC else t.a, gen.volcanic(x, z))))
 			st.add_vertex(Vector3(x, h - 0.6, z))
 	for j in n - 1:

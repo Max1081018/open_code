@@ -31,7 +31,7 @@ const FLORA := {
 		["X:rocks_4", 3], ["X:rocks_2", 3], ["X:rocks_7", 1], ["DeadTree_4", 1]],
 	# The Sunscar: red sandstone stacks and arches, dry trees, wispy tufts.
 	TerrainGen.Biome.DRY: [["DeadTree_1", 2], ["DeadTree_5", 2], ["X:sandstone_0", 1], ["X:sandstone_2", 2],
-		["X:sandstone_4", 2], ["X:sandstone_1", 2], ["X:sandstone_3", 2], ["Plant_7", 4], ["Grass_Wispy_Tall", 12]],
+		["X:sandstone_4", 2], ["X:sandstone_1", 2], ["X:sandstone_3", 2], ["DeadTree_3", 1], ["Grass_Wispy_Tall", 12]],
 	# The Ashlands: basalt pillars and cliffs, lava vents, ember-veined rock.
 	TerrainGen.Biome.VOLCANIC: [["DeadTree_2", 2], ["X:volcanic_7", 2], ["X:volcanic_8", 2], ["X:volcanic_10", 2],
 		["X:volcanic_14", 2], ["X:volcanic_0", 1], ["X:volcanic_3", 1], ["X:volcanic_18", 1], ["X:volcanic_19", 1],
@@ -71,10 +71,12 @@ static func build(gen: TerrainGen, coord: Vector2i, lod: int, with_grass: bool) 
 			verts.append(Vector3(i * spacing, h, j * spacing))
 			normals.append(nor)
 			colours.append(gen.splat(x, z, h, nor, b))
-			var t := gen.tint(b)
+			var t := gen.blended_tint(x, z, b)
 			# Tint packed in UV2: x = hue darkening (green channel), y = ash.
 			tints.append(Vector2((t.r + t.g + t.b) / 3.0, maxf(0.0 if b == TerrainGen.Biome.VOLCANIC else t.a, gen.volcanic(x, z))))
-			uv.append(Vector2(x, z))
+			# UV: the tint's hue (red and blue share of its brightness).
+			var avg := maxf((t.r + t.g + t.b) / 3.0, 0.01)
+			uv.append(Vector2(t.r / avg, t.b / avg))
 	var indices := PackedInt32Array()
 	for j in steps:
 		for i in steps:
@@ -158,7 +160,7 @@ static func _flora(gen: TerrainGen, coord: Vector2i, origin: Vector2) -> Array:
 						if in_town and FoliageLib.category(kind) != "small":
 							break
 						# Trees gather in groves; open meadows get flowers instead.
-						if FoliageLib.category(kind) == "tree" and rng.randf() > gen.forest(x, z) * 0.75:
+						if FoliageLib.category(kind) == "tree" and b != TerrainGen.Biome.DARK_FOREST and rng.randf() > gen.forest(x, z) * 0.75:
 							if b != TerrainGen.Biome.FOREST or rng.randf() < 0.5:
 								break
 							kind = ["Flower_3_Group", "Flower_4_Group", "Bush_Common_Flowers"][rng.randi() % 3]

@@ -217,13 +217,22 @@ func splat(x: float, z: float, h: float, n: Vector3, b: int) -> Color:
 	return Color(clampf(grass, 0, 1), rock, snow, sand)
 
 
+## The tint averaged over a small neighbourhood, so one region's ground
+## colour fades into the next over ~30 m instead of switching at a line.
+func blended_tint(x: float, z: float, b: int) -> Color:
+	var t := tint(b) * 2.0
+	for o in [Vector2(15, 0), Vector2(-15, 0), Vector2(0, 15), Vector2(0, -15)]:
+		t += tint(biome(x + o.x, z + o.y))
+	return t / 6.0
+
+
 ## A per-biome tint and darkening carried to the shader (r,g,b tint, a ash).
 func tint(b: int) -> Color:
 	match b:
 		Biome.DARK_FOREST:
-			return Color(0.72, 0.8, 0.74, 0.0)
+			return Color(0.5, 0.68, 0.64, 0.0)
 		Biome.CORRUPTED:
-			return Color(0.82, 0.68, 0.9, 0.25)
+			return Color(0.66, 0.5, 0.78, 0.15)
 		Biome.VOLCANIC:
 			return Color(0.6, 0.55, 0.52, 0.8)
 		Biome.DRY:
