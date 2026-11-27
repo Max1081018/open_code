@@ -233,6 +233,8 @@ static func _build_hero(name: String) -> Node3D:
 	var foot_y := (_transform_to(skeleton, root) * skeleton.get_bone_global_rest(skeleton.find_bone("LeftFoot"))).origin.y
 	root.set_meta("ankle", foot_y)
 	root.set_meta("model_y", model.position.y)
+	hide_covered_skin(root, float(HERO_STYLE.get(name, {}).get("height", 1.8)))
+	_add_leg_collider(root, model, skeleton, float(HERO_STYLE.get(name, {}).get("height", 1.8)))
 	for prefix in HERO_STYLE.get(name, {}).get("hide_bones", []):
 		for i in skeleton.get_bone_count():
 			if skeleton.get_bone_name(i).begins_with(prefix):
@@ -261,6 +263,56 @@ static func _build_hero(name: String) -> Node3D:
 		_toon(mesh as MeshInstance3D, tints)
 	SecondaryMotion.setup(skeleton)
 	return root
+
+
+## Thighs as capsules that clothing is pushed out of (LegCollider; the
+## toon shaders' leg_collide). Radii measured from the skin around them.
+static func _add_leg_collider(root: Node3D, model: Node3D, skeleton: Skeleton3D, height: float) -> void:
+	var ids := []
+	for pair in [["LeftUpperLeg", "LeftLowerLeg"], ["RightUpperLeg", "RightLowerLeg"]]:
+		var u := skeleton.find_bone(pair[0])
+		var l := skeleton.find_bone(pair[1])
+		if u < 0 or l < 0:
+			return
+		ids.append([u, l])
+	var to_root := _transform_to(skeleton, root)
+	var a: Vector3 = to_root * skeleton.get_bone_global_rest(ids[0][0]).origin
+	var b: Vector3 = to_root * skeleton.get_bone_global_rest(ids[0][1]).origin
+	# Thigh radius near the hip and the knee from the skin around the bone.
+	var near_hip := []
+	var near_knee := []
+	var cloth: Array = []
+	for m in model.find_children("*", "MeshInstance3D", true, false):
+		var mi := m as MeshInstance3D
+		if mi.mesh == null:
+			continue
+		var base := mi.mesh.surface_get_material(0) as BaseMaterial3D
+		var skin := base != null and _looks_like_skin(base.albedo_texture)
+		if not skin:
+			cloth.append(mi)
+			continue
+		for si in mi.mesh.get_surface_count():
+			for p: Vector3 in _rest_points(mi, si, root)[0]:
+				var ab := b - a
+				var t: float = (p - a).dot(ab) / ab.length_squared()
+				if t < 0.3 or t > 0.92:
+					continue
+				var d: float = (p - (a + ab * t)).length()
+				if d > height * 0.09:
+					continue
+				(near_hip if t < 0.55 else near_knee).append(d)
+	if near_hip.size() < 8 or near_knee.size() < 8 or cloth.is_empty():
+		return
+	near_hip.sort()
+	near_knee.sort()
+	var r := Vector2(near_hip[int(near_hip.size() * 0.9)], near_knee[int(near_knee.size() * 0.9)]) + Vector2.ONE * height * 0.004
+	var lc := LegCollider.new()
+	lc.name = "LegCollider"
+	lc.skeleton = skeleton
+	lc.bones = ids
+	lc.radius = r
+	lc.meshes = cloth
+	root.add_child(lc)
 
 
 ## The lowest point of a mesh in rest pose, in `root`'s space: skinned
@@ -315,6 +367,165 @@ static func _looks_like_skin(tex: Texture2D) -> bool:
 		return false
 	sum /= n
 	return sum.r > 0.6 and sum.r > sum.g * 1.08 and sum.g > sum.b * 0.9 and sum.r - sum.b < 0.35
+
+
+## Skin hidden under clothing: the body's triangles that some clothing
+## covers (lies just outside along the skin's normal) are dropped, so legs
+## and arms cannot poke through skirts and sleeves as they move. Faces,
+## necks and hands are never touched. Cached per mesh.
+static var _culled := {}
+
+
+static func hide_covered_skin(root: Node3D, height: float) -> void:
+	var meshes: Array = root.find_children("*", "MeshInstance3D", true, false)
+	var skin: Array = []
+	var cloth: Array = []
+	for m in meshes:
+		var mi := m as MeshInstance3D
+		if mi.mesh == null or mi.mesh.get_surface_count() == 0:
+			continue
+		var base := mi.mesh.surface_get_material(0) as BaseMaterial3D
+		var name := (String(mi.name) + " " + (String(base.resource_name) if base else "")).to_lower()
+		if name.contains("eye") or name.contains("hair") or name.contains("lash") or name.contains("brow"):
+			continue
+		var is_skin := name.contains("body") or name.contains("skin") or (base != null and _looks_like_skin(base.albedo_texture))
+		(skin if is_skin else cloth).append(mi)
+	if skin.is_empty() or cloth.is_empty():
+		return
+	var sk_nodes := root.find_children("*", "Skeleton3D", true, false)
+	var head_y := INF
+	if not sk_nodes.is_empty():
+		var sk := sk_nodes[0] as Skeleton3D
+		var hb := sk.find_bone("Neck")
+		if hb < 0:
+			hb = sk.find_bone("Head")
+		if hb >= 0:
+			head_y = (_transform_to(sk, root) * sk.get_bone_global_rest(hb).origin).y
+	var hip_y := -INF
+	var knee_y := -INF
+	if not sk_nodes.is_empty():
+		var sk := sk_nodes[0] as Skeleton3D
+		var to_root := _transform_to(sk, root)
+		for pair in [["LeftUpperLeg", "LeftLowerLeg"], ["RightUpperLeg", "RightLowerLeg"]]:
+			var u := sk.find_bone(pair[0])
+			var l := sk.find_bone(pair[1])
+			if u >= 0 and l >= 0:
+				hip_y = maxf(hip_y, (to_root * sk.get_bone_global_rest(u).origin).y + height * 0.04)
+				knee_y = maxf(knee_y, (to_root * sk.get_bone_global_rest(l).origin).y)
+	# Only skin under clothing that hugs it is hidden (sleeves, bodice,
+	# socks, boots): loose skirts are handled by leg collision instead, so
+	# the thighs are never cut.
+	var reach := height * 0.05
+	# Clothing vertices hashed in a grid of `reach`-sized cells.
+	var grid := {}
+	for c in cloth:
+		var mi := c as MeshInstance3D
+		for si in mi.mesh.get_surface_count():
+			for w in _rest_points(mi, si, root)[0]:
+				var key := Vector3i((w / reach).floor())
+				if not grid.has(key):
+					grid[key] = PackedVector3Array()
+				grid[key].append(w)
+	for sm in skin:
+		var mi := sm as MeshInstance3D
+		if _culled.has(mi.mesh):
+			mi.mesh = _culled[mi.mesh]
+			continue
+		if mi.mesh.get_blend_shape_count() > 0:
+			continue  # faces with expressions are left whole
+		var out := ArrayMesh.new()
+		var dropped := 0
+		for si in mi.mesh.get_surface_count():
+			var arrays: Array = mi.mesh.surface_get_arrays(si)
+			var rest := _rest_points(mi, si, root)
+			var verts: PackedVector3Array = rest[0]
+			var norms: PackedVector3Array = rest[1]
+			var covered := PackedByteArray()
+			covered.resize(verts.size())
+			for i in verts.size():
+				var w: Vector3 = verts[i]
+				if w.y > head_y - height * 0.02 or norms.is_empty():
+					continue
+				if w.y < hip_y and w.y > knee_y - height * 0.03:
+					continue   # the thighs
+				var lim := reach if w.y >= hip_y else reach * 0.6
+				var n: Vector3 = norms[i]
+				var cell := Vector3i((w / reach).floor())
+				var hit := false
+				for dx in range(-1, 2):
+					for dy in range(-1, 2):
+						for dz in range(-1, 2):
+							var bucket = grid.get(cell + Vector3i(dx, dy, dz))
+							if bucket == null:
+								continue
+							for cpos in bucket:
+								var d: Vector3 = cpos - w
+								var len := d.length()
+								if len < lim and len > 0.0005 and d.dot(n) > len * 0.35:
+									hit = true
+									break
+							if hit:
+								break
+						if hit:
+							break
+					if hit:
+						break
+				covered[i] = 1 if hit else 0
+			var idx: PackedInt32Array = arrays[Mesh.ARRAY_INDEX]
+			if idx.is_empty():
+				out.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, arrays)
+			else:
+				var keep := PackedInt32Array()
+				for k in range(0, idx.size(), 3):
+					if covered[idx[k]] and covered[idx[k + 1]] and covered[idx[k + 2]]:
+						dropped += 1
+						continue
+					keep.append(idx[k])
+					keep.append(idx[k + 1])
+					keep.append(idx[k + 2])
+				arrays[Mesh.ARRAY_INDEX] = keep
+				out.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, arrays)
+			out.surface_set_material(si, mi.mesh.surface_get_material(si))
+		_culled[mi.mesh] = out
+		mi.mesh = out
+
+
+## A surface's vertices and normals in `root`'s space in rest pose: each
+## carried through its first bone's bind pose and rest (whatever space the
+## mesh data is in: some rigs store centimetres lying on their back).
+static func _rest_points(mi: MeshInstance3D, si: int, root: Node3D) -> Array:
+	var arrays: Array = mi.mesh.surface_get_arrays(si)
+	var verts: PackedVector3Array = arrays[Mesh.ARRAY_VERTEX]
+	var norms: PackedVector3Array = arrays[Mesh.ARRAY_NORMAL]
+	var out_v := PackedVector3Array()
+	var out_n := PackedVector3Array()
+	out_v.resize(verts.size())
+	out_n.resize(verts.size())
+	var skel: Skeleton3D = mi.get_node_or_null(mi.skeleton) as Skeleton3D
+	var bones: PackedInt32Array = arrays[Mesh.ARRAY_BONES] if arrays[Mesh.ARRAY_BONES] != null else PackedInt32Array()
+	var plain := _transform_to(mi, root)
+	if mi.skin == null or skel == null or bones.is_empty():
+		for i in verts.size():
+			out_v[i] = plain * verts[i]
+			out_n[i] = (plain.basis * norms[i]).normalized() if not norms.is_empty() else Vector3.UP
+		return [out_v, out_n]
+	var to_root := _transform_to(skel, root)
+	var per := bones.size() / verts.size()
+	var cache := {}
+	for i in verts.size():
+		var bind := bones[i * per]
+		var t: Transform3D
+		if cache.has(bind):
+			t = cache[bind]
+		else:
+			var bone := mi.skin.get_bind_bone(bind)
+			if bone < 0:
+				bone = skel.find_bone(mi.skin.get_bind_name(bind))
+			t = to_root * skel.get_bone_global_rest(bone) * mi.skin.get_bind_pose(bind) if bone >= 0 else plain
+			cache[bind] = t
+		out_v[i] = t * verts[i]
+		out_n[i] = (t.basis * norms[i]).normalized() if not norms.is_empty() else Vector3.UP
+	return [out_v, out_n]
 
 
 static var _toon_shader: Shader

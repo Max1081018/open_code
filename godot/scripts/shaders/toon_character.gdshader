@@ -26,6 +26,12 @@ uniform float fill = 0.22;
 uniform float hair_ring = 0.0;
 uniform vec4 ring_color : source_color = vec4(1.0, 0.96, 1.0, 1.0);
 
+#include "res://scripts/shaders/leg_collide.gdshaderinc"
+
+void vertex() {
+	VERTEX = leg_collide(VERTEX);
+}
+
 void fragment() {
 	vec4 t = texture(albedo_tex, UV) * albedo;
 	if (alpha_cut > 0.0 && t.a < alpha_cut) {
