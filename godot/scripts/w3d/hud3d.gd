@@ -554,6 +554,24 @@ func banner(title: String, sub: String) -> void:
 	_banner_tween.parallel().tween_property(_banner_sub, "modulate:a", 0.0, 0.7)
 
 
+## Fade the whole screen to black (1) or back (0) over `time` seconds.
+var _veil: ColorRect
+
+
+func veil(to: float, time: float) -> Tween:
+	if _veil == null:
+		_veil = ColorRect.new()
+		_veil.color = Color(0.02, 0.02, 0.05)
+		_veil.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		_veil.set_anchors_preset(Control.PRESET_FULL_RECT)
+		_veil.modulate.a = 0.0
+		add_child(_veil)
+		move_child(_veil, 0)
+	var t := create_tween()
+	t.tween_property(_veil, "modulate:a", to, time)
+	return t
+
+
 func boss_bar(e: Enemy3D) -> void:
 	_boss = e
 	_boss_box.visible = e != null

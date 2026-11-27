@@ -39,10 +39,25 @@ func setup(the_game: Node) -> void:
 		_shake = maxf(_shake, 0.6)
 		Sfx.play("hit")
 		toast.emit("The lava burns!"))
+	game.player.died.connect(_on_player_died)
 	select(0)
 	_debris_mesh = BoxMesh.new()
 	_debris_mesh.size = Vector3(0.12, 0.08, 0.1)
 	boss_site = _find_boss_site()
+
+
+## She falls: the screen dims, and she wakes at the town gate.
+func _on_player_died() -> void:
+	Sfx.play("hit")
+	await get_tree().create_timer(1.8).timeout
+	await game.hud.veil(1.0, 1.0).finished
+	var home := Vector3(10, 0, 14)
+	home.y = game.world.height_at(home.x, home.z) + 0.2
+	game.player.revive(home)
+	game.cam.global_position = home + Vector3(0, 2, 4)
+	await get_tree().create_timer(0.4).timeout
+	game.hud.veil(0.0, 1.2)
+	game.hud.banner("Fallen", "The light carried you home")
 
 
 func select(index: int) -> void:

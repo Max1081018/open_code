@@ -8,6 +8,7 @@ extends CharacterBody3D
 
 signal swung(kind: String)
 signal burned   ## stepped into lava
+signal died     ## health ran out; the game revives her (revive())
 
 const WALK := 2.4
 const RUN := 5.2
@@ -47,6 +48,8 @@ var _action := 0.0         ## seconds left of an attack/use animation
 var _action_name := ""
 var _air_time := 0.0
 var _landing := 0.0
+var _glided := false   ## glided since leaving the ground (lands softly)
+var _lean := 0.0
 var _clip := ""
 var invulnerable := false
 var _head_meshes: Array = []
@@ -329,6 +332,19 @@ func _sparkle(at: Vector3) -> void:
 func _physics_process(delta: float) -> void:
 	if input == null or cam == null:
 		return
+	_grace -= delta
+	if dead:
+		# Fallen: no control; she settles where she fell.
+		velocity.x = move_toward(velocity.x, 0.0, delta * 20.0)
+		velocity.z = move_toward(velocity.z, 0.0, delta * 20.0)
+		velocity.y -= GRAVITY * delta
+		move_and_slide()
+		input.move = Vector2.ZERO
+		input.jump = false
+		input.attack = false
+		input.heavy = false
+		input.dodge = false
+		return
 	if _summoned > 0.0 and not busy():
 		_summoned -= delta
 		if _summoned <= 0.0:
@@ -417,15 +433,23 @@ func _physics_process(delta: float) -> void:
 		if gliding:
 			_set_glide(false)
 	if is_on_floor():
-		if was_air and _air_time > 0.35:
+		if was_air and _air_time > 1.3 and not _glided:
+			# A long drop: a crouching hard landing that costs a moment.
+			_landing = 0.55
+			_play("NinjaJump_Land", 1.3, true)
+			_puff(global_position, _surface(), 24, 2.4)
+		elif was_air and _air_time > 0.35:
 			_landing = 0.25
 			_play("Jump_Land", 1.6, true)
 			var surf := _surface()
 			_puff(global_position, surf, 16, 1.6)
 			Sfx.play("land", -4.0)
 		_air_time = 0.0
+		_glided = false
 	else:
 		_air_time += delta
+		if gliding:
+			_glided = true
 	_landing -= delta
 	_footfall(delta, Vector2(velocity.x, velocity.z).length())
 	_update_look(delta)
@@ -436,9 +460,18 @@ func _physics_process(delta: float) -> void:
 		face = cam.forward_flat()
 	elif horizontal.length() > 0.4:
 		face = horizontal.normalized()
+	var turn := 0.0
 	if face != Vector3.ZERO:
 		var want := atan2(face.x, face.z)
+		var before := model.rotation.y
 		model.rotation.y = lerp_angle(model.rotation.y, want, 1.0 - exp(-12.0 * delta))
+		turn = angle_difference(before, model.rotation.y) / maxf(delta, 0.001)
+	# Lean into turns at speed (a banked run), never while acting or swimming.
+	var lean_want := 0.0
+	if is_on_floor() and _action <= 0.0 and not swimming:
+		lean_want = clampf(-turn * horizontal.length() * 0.012, -0.22, 0.22)
+	_lean = lerpf(_lean, lean_want, 1.0 - exp(-8.0 * delta))
+	model.rotation.z = _lean
 	_animate(horizontal.length())
 	_ground_feet(delta)
 
@@ -664,10 +697,13 @@ func _lava_check(water_depth: float, delta: float) -> void:
 	var lava := world.gen.volcanic(global_position.x, global_position.z) > 0.5
 	if water_depth < -0.3 and is_on_floor():
 		_safe_pos = global_position
-	if not lava or water_depth < 0.1 or _burn_wait > 0.0:
+	if not lava or water_depth < 0.1 or _burn_wait > 0.0 or dead:
 		return
 	_burn_wait = 0.6
 	health = maxf(0.0, health - 18.0)
+	if health <= 0.0:
+		_die()
+		return
 	_play("Hit_Chest", 1.3, true)
 	_action = 0.35
 	if _safe_pos == Vector3.ZERO:
@@ -692,14 +728,53 @@ func _nearest_shore() -> Vector3:
 	return global_position + Vector3(0, 2, 0)
 
 
+var dead := false
+var _hits := 0
+var _grace := 0.0   ## seconds of mercy after reviving
+
+
+func _die() -> void:
+	dead = true
+	if gliding:
+		_set_glide(false)
+	_action = 0.0
+	_dodge = 0.0
+	_play("Death01", 1.0, true)
+	died.emit()
+
+
+## Back on her feet at `at`: full health and stamina, getting up from the
+## ground, briefly untouchable.
+func revive(at: Vector3) -> void:
+	dead = false
+	health = max_health
+	stamina = max_stamina
+	global_position = at
+	velocity = Vector3.ZERO
+	_safe_pos = at
+	_grace = 3.0
+	_action = 1.6
+	_play("LayToIdle", 1.0, true)
+
+
 func hurt(amount: float, from: Vector3) -> void:
-	if invulnerable:
+	if invulnerable or dead or _grace > 0.0:
 		return
 	if input.block and _spend(amount * 0.8):
 		amount *= 0.2
 	health = maxf(0.0, health - amount)
+	if health <= 0.0:
+		_die()
+		return
 	var push := (global_position - from)
 	push.y = 0
-	velocity += push.normalized() * 6.0 + Vector3(0, 2.5, 0)
-	_play("Hit_Chest", 1.3, true)
-	_action = 0.35
+	if amount >= 25.0:
+		# A heavy blow throws her back.
+		velocity += push.normalized() * 10.0 + Vector3(0, 3.5, 0)
+		_play("Hit_Knockback", 1.2, true)
+		_action = 0.8
+	else:
+		velocity += push.normalized() * 6.0 + Vector3(0, 2.5, 0)
+		_hits += 1
+		_play("Hit_Head" if _hits % 2 == 0 else "Hit_Chest", 1.3, true)
+		_action = 0.35

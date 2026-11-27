@@ -425,6 +425,9 @@ func _script_input() -> void:
 		"sprint":
 			input.move = Vector2(0, 1) if f > 20 else Vector2.ZERO
 			input.sprint = true
+		"die":
+			if f == 30:
+				player.hurt(999.0, player.global_position + Vector3(0, 0, -1))
 		"stop":
 			# Run, then let go: the stop.
 			input.move = Vector2(0, 1) if f > 20 and f < 70 else Vector2.ZERO

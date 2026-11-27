@@ -23,7 +23,9 @@ func _measure():
 	var anim: AnimationPlayer = model.find_child("AnimationPlayer", true, false)
 	var sk: Skeleton3D = model.find_children("*", "Skeleton3D", true, false)[0]
 	var style: Dictionary = model.get_meta("style", {})
-	for name in ["Walk", "Jog_Fwd", "Sprint", "Walk_Formal"]:
+	for c in ["NinjaJump_Land", "Hit_Knockback", "Hit_Head", "LayToIdle", "Death01"]:
+		print(c, " ", anim.has_animation(style.get("clips", {}).get(c, c)))
+	for name in ["Walk", "Jog_Fwd", "Sprint"]:
 		var clip: String = style.get("clips", {}).get(name, name)
 		if not anim.has_animation(clip):
 			print(name, " missing"); continue
