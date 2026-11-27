@@ -425,6 +425,9 @@ func _script_input() -> void:
 		"sprint":
 			input.move = Vector2(0, 1) if f > 20 else Vector2.ZERO
 			input.sprint = true
+		"stop":
+			# Run, then let go: the stop.
+			input.move = Vector2(0, 1) if f > 20 and f < 70 else Vector2.ZERO
 		"jump":
 			input.move = Vector2(0, 1) if f > 20 else Vector2.ZERO
 			input.jump = f == 40
@@ -473,3 +476,6 @@ func _script_input() -> void:
 			input.move = Vector2(0.15, 1)
 			input.sprint = true
 			input.look = Vector2(0.002, 0)
+	# --side: the same moves, but across the view (to film the gait side-on).
+	if _args.has("side"):
+		input.move = Vector2(input.move.y, 0)

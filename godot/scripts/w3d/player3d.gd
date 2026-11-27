@@ -86,7 +86,8 @@ func _ready() -> void:
 	skeleton.add_child(head)
 	head_anchor = head
 	_find_head_meshes()
-	_play("Idle")
+	_build_tree()
+	_gait(0.0)
 
 
 ## Meshes of the head and hood: hidden from the first-person camera (layer 2).
@@ -550,27 +551,86 @@ func _animate(speed: float) -> void:
 	else:
 		_idle_time = 0.0
 		_idle_break = 0.0
-	var clip := "Idle"
 	if swimming:
-		clip = "Swim_Fwd" if speed > 0.5 else "Swim_Idle"
-	elif gliding:
-		clip = "Jump"
-	elif not is_on_floor() and _air_time > 0.15:
-		clip = "Jump"
+		_play("Swim_Fwd" if speed > 0.5 else "Swim_Idle")
+	elif gliding or (not is_on_floor() and _air_time > 0.15):
+		_play("Jump")
 	elif input.block:
-		clip = "Sword_Block"
-	elif speed > 6.5:
-		clip = "Sprint"
-	elif speed > 3.2:
-		clip = "Jog_Fwd"
-	elif speed > 0.3:
-		clip = "Walk"
-	var scale := 1.0
-	if clip == "Walk":
-		scale = speed / 1.6
-	elif clip == "Jog_Fwd":
-		scale = speed / 4.6
-	_play(clip, clampf(scale, 0.6, 1.6))
+		_play("Sword_Block")
+	else:
+		_gait(speed)
+
+
+## The heroine's AnimationTree. Two inputs feed a crossfading Transition:
+## "gait", a 1D blend space of idle, walk, jog and sprint placed along her
+## speed (so starting and stopping blend through the walk instead of
+## popping), played at the rate that keeps a planted foot still on the
+## ground; and two clip slots ("a", "b") taking turns for every other move,
+## so one action can crossfade into the next, even into itself.
+## Measured ground speeds of the clips (tools/measure_gait.gd), m/s.
+const GAIT_SPEED := {"Walk": 2.35, "Jog_Fwd": 5.4, "Sprint": 4.9}
+var tree: AnimationTree
+var _slot := "b"
+var _mode := ""
+
+
+func _build_tree() -> void:
+	var style: Dictionary = model.get_meta("style", {})
+	var clips: Dictionary = style.get("clips", {})
+	var gait := AnimationNodeBlendSpace1D.new()
+	gait.min_space = 0.0
+	gait.max_space = 10.0
+	gait.sync = true
+	# Points: idle at rest; walk alone up to 3 m/s; jog 3.8-6; sprint beyond 7.2.
+	for p in [["Idle", 0.0], ["Walk", 1.2], ["Walk", 3.0], ["Jog_Fwd", 3.8], ["Jog_Fwd", 6.0], ["Sprint", 7.2]]:
+		var a := AnimationNodeAnimation.new()
+		a.animation = clips.get(p[0], p[0])
+		gait.add_blend_point(a, p[1])
+	var bt := AnimationNodeBlendTree.new()
+	bt.add_node("gait", gait, Vector2(0, 0))
+	bt.add_node("gait_rate", AnimationNodeTimeScale.new(), Vector2(200, 0))
+	bt.connect_node("gait_rate", 0, "gait")
+	var mix := AnimationNodeTransition.new()
+	mix.xfade_time = 0.15
+	for input in ["gait", "a", "b"]:
+		mix.add_input(input)
+	bt.add_node("mix", mix, Vector2(600, 0))
+	bt.connect_node("mix", 0, "gait_rate")
+	for slot in ["a", "b"]:
+		bt.add_node(slot, AnimationNodeAnimation.new(), Vector2(0, 200))
+		bt.add_node(slot + "_rate", AnimationNodeTimeScale.new(), Vector2(200, 200))
+		bt.connect_node(slot + "_rate", 0, slot)
+		bt.connect_node("mix", 1 if slot == "a" else 2, slot + "_rate")
+	bt.connect_node("output", 0, "mix")
+	tree = AnimationTree.new()
+	tree.name = "AnimationTree"
+	tree.tree_root = bt
+	anim.get_parent().add_child(tree)
+	tree.anim_player = tree.get_path_to(anim)
+	anim.stop()
+	anim.active = false
+	tree.active = true
+
+
+## Drive the gait at `speed` m/s.
+func _gait(speed: float) -> void:
+	var rate := 1.0
+	if speed > 1.2:
+		# The clip speed at this point of the blend, and the rate that matches it.
+		var natural: float = GAIT_SPEED["Walk"]
+		if speed > 3.0:
+			natural = lerpf(GAIT_SPEED["Walk"], GAIT_SPEED["Jog_Fwd"], clampf((speed - 3.0) / 0.8, 0.0, 1.0))
+		if speed > 6.0:
+			natural = lerpf(GAIT_SPEED["Jog_Fwd"], GAIT_SPEED["Sprint"], clampf((speed - 6.0) / 1.2, 0.0, 1.0))
+		rate = clampf(speed / natural, 0.5, 1.55)
+	else:
+		rate = lerpf(1.0, 1.2 / GAIT_SPEED["Walk"], speed / 1.2)
+	tree.set("parameters/gait/blend_position", speed)
+	tree.set("parameters/gait_rate/scale", rate * float(model.get_meta("style", {}).get("speed", 1.0)))
+	if _mode != "gait":
+		_mode = "gait"
+		_clip = ""
+		tree.set("parameters/mix/transition_request", "gait")
 
 
 func _play(clip: String, speed := 1.0, restart := false) -> void:
@@ -580,13 +640,15 @@ func _play(clip: String, speed := 1.0, restart := false) -> void:
 	if not anim.has_animation(clip):
 		return
 	if clip == _clip and not restart:
-		anim.speed_scale = speed
+		tree.set("parameters/%s_rate/scale" % _slot, speed)
 		return
 	_clip = clip
-	anim.play(clip, 0.15)
-	anim.speed_scale = speed
-	if restart:
-		anim.seek(0.0, true)
+	_mode = "clip"
+	_slot = "a" if _slot == "b" else "b"
+	var bt := tree.tree_root as AnimationNodeBlendTree
+	(bt.get_node(_slot) as AnimationNodeAnimation).animation = clip
+	tree.set("parameters/%s_rate/scale" % _slot, speed)
+	tree.set("parameters/mix/transition_request", _slot)
 
 
 ## The Ashlands' lakes are lava: touching one burns and throws the heroine
