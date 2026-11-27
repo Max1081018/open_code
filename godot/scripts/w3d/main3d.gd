@@ -470,6 +470,10 @@ func _script_input() -> void:
 				play.energy = Play3D.BURST_COST
 			input.skill = f == 30
 			input.burst = f == 80
+		"defend":
+			# A foe walks up and swings: its blows are telegraphed on the ground.
+			if f == 2:
+				play.spawn_enemy(_args.get("enemy", "zombie"), player.global_position + Vector3(0, 0, -4))
 		"fight":
 			if f == 2:
 				play.spawn_enemy(_args.get("enemy", "zombie"), player.global_position + Vector3(0, 0, -5))

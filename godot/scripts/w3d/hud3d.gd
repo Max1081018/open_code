@@ -388,6 +388,10 @@ func _draw_skills(c: Control) -> void:
 	c.draw_line(a + Vector2(-26, 26), a + Vector2(24, -24), PALE, 7.0, true)
 	c.draw_line(a + Vector2(-30, 14), a + Vector2(-14, 30), PALE, 5.0, true)
 	c.draw_line(a + Vector2(-34, 34), a + Vector2(-26, 26), PALE, 6.0, true)
+	# Holding attack charges a heavy stroke: a ring fills, gold when ready.
+	var ch: float = game.input.charge
+	if ch > 0.0:
+		c.draw_arc(a, 78, -PI * 0.5, -PI * 0.5 + TAU * ch, 64, GOLD if ch >= 1.0 else Color(0.85, 0.7, 1.0), 6.0, true)
 	# Skill (E): a star slash, with a cooldown sweep.
 	var s: Vector2 = SKILL_POS.skill
 	_ring(c, s, 50, Color(0.18, 0.14, 0.34, 0.75), GOLD, 3.0)

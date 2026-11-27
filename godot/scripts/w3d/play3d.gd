@@ -234,6 +234,9 @@ func _weapon_strike(id: String, heavy: bool, at: Vector3, forward: Vector3) -> v
 	var damage: float = (float(Items.def(id).get("damage", 4)) if id != "" else 4.0) * prog.damage_bonus()
 	if heavy:
 		damage *= 2.2
+	else:
+		# The combo's finisher hits hardest.
+		damage *= [1.0, 1.1, 1.45][game.player.combo_step]
 	var struck := 0
 	for e in get_tree().get_nodes_in_group("enemies"):
 		var enemy := e as Enemy3D

@@ -170,6 +170,26 @@ func hold(id: String) -> void:
 			_held.visible = false
 
 
+## While a heavy stroke charges, the Moonblade's light swells; a chime and
+## a burst of motes say it is ready.
+var _charged := false
+
+
+func _charge_glow() -> void:
+	var ch: float = input.charge
+	if _held != null:
+		for l in _held.get_children():
+			if l is OmniLight3D:
+				(l as OmniLight3D).light_energy = 0.7 + ch * 2.2
+	if ch >= 1.0 and not _charged:
+		_charged = true
+		Sfx.play("magic_slash", -8.0, 0.0, 1.4)
+		if _held != null:
+			Arcana.sparks(get_parent(), _held.global_position + Vector3(0, 0.4, 0), Color(0.85, 0.6, 1.0), 18, 3.0, 0.08)
+	elif ch < 1.0:
+		_charged = false
+
+
 ## Violet arcana around the Moonblade: motes drifting up off the blade and
 ## a soft light on her hand.
 func _moonblade_aura(blade: Node3D) -> void:
@@ -405,6 +425,7 @@ func _physics_process(delta: float) -> void:
 	var water_depth := TerrainGen.WATER - global_position.y
 	swimming = water_depth > 1.15
 	_lava_check(water_depth, delta)
+	_charge_glow()
 	_stamina_wait -= delta
 	if _stamina_wait <= 0.0:
 		stamina = minf(max_stamina, stamina + delta * 22.0)
@@ -419,8 +440,15 @@ func _physics_process(delta: float) -> void:
 		_dodge = DODGE_TIME
 		_dodge_dir = wish.normalized() if wish.length() > 0.1 else -model.global_transform.basis.z
 		_play("Roll", 1.25, true)
-	if (input.attack or input.heavy) and _action <= 0.0 and _dodge <= 0.0 and not swimming:
-		_start_action(input.heavy)
+	# A tap during a swing is kept for a moment and becomes the next blow.
+	_buffer -= delta
+	_since_blow += delta
+	if input.attack or input.heavy:
+		_buffer = 0.4
+		_buffer_heavy = input.heavy
+	if _buffer > 0.0 and _action <= 0.0 and _dodge <= 0.0 and not swimming:
+		_buffer = 0.0
+		_start_action(_buffer_heavy)
 
 	var speed := RUN
 	if input.move.length() < 0.55:
@@ -549,6 +577,14 @@ func _set_glide(on: bool) -> void:
 		_play("Jump", 0.6, true)
 
 
+## The sword combo: A, B, then C (a finisher), if each blow follows the
+## last quickly; a pause starts it again.
+var combo_step := 0
+var _since_blow := 9.0
+var _buffer := 0.0
+var _buffer_heavy := false
+
+
 func _start_action(heavy: bool) -> void:
 	var kind := "attack"
 	var held_kind := Items.kind(held_id) if held_id != "" else -1
@@ -572,9 +608,13 @@ func _start_action(heavy: bool) -> void:
 			if heavy:
 				clip = "Sword_Heavy_Combo"
 				time = 1.1
+				combo_step = 0
 			else:
-				clip = ["Sword_Regular_A", "Sword_Regular_B", "Sword_Regular_C"][int(Time.get_ticks_msec() / 600) % 3]
+				combo_step = (combo_step + 1) % 3 if _since_blow < 0.75 else 0
+				clip = ["Sword_Regular_A", "Sword_Regular_B", "Sword_Regular_C"][combo_step]
+				time = [0.48, 0.5, 0.68][combo_step]
 	_action = time
+	_since_blow = -time   # counts from when this blow ends
 	_action_name = kind
 	summon()
 	_play(clip, 1.2, true)

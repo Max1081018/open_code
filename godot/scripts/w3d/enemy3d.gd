@@ -134,8 +134,11 @@ func _physics_process(delta: float) -> void:
 		# Winding up: face the player, then the blow lands.
 		_attack_timer -= delta
 		_face(to_player, delta, 6.0)
+		if _tele:
+			(_tele.material_override as ShaderMaterial).set_shader_parameter("fill", 1.0 - _attack_timer / float(spec.windup))
 		if _attack_timer <= 0.0:
 			_land_blow(player)
+			_end_telegraph(true)
 	elif _charge > 0.0:
 		_charge -= delta
 		wish = -model.global_transform.basis.z
@@ -197,6 +200,7 @@ func _begin_attack() -> void:
 	_attack_timer = spec.windup
 	_cooldown = spec.windup + randf_range(0.9, 1.6) / (1.0 + (phase - 1) * 0.35)
 	_play(clip, 1.0, true)
+	_show_telegraph()
 
 
 func _land_blow(player: Player3D) -> void:
@@ -209,6 +213,44 @@ func _land_blow(player: Player3D) -> void:
 		game.on_player_hit(spec.damage)
 	if is_boss and phase >= 3:
 		game.boss_slam(self)
+
+
+## The wedge on the ground that shows a coming blow (reach and arc).
+var _tele: MeshInstance3D
+static var _tele_shader: Shader
+
+
+func _show_telegraph() -> void:
+	_end_telegraph(false)
+	if _tele_shader == null:
+		_tele_shader = load("res://scripts/shaders/telegraph.gdshader")
+	var reach: float = float(spec.reach) * 1.15
+	_tele = MeshInstance3D.new()
+	var plane := PlaneMesh.new()
+	plane.size = Vector2(reach * 2.0, reach * 2.0)
+	_tele.mesh = plane
+	var m := ShaderMaterial.new()
+	m.shader = _tele_shader
+	m.set_shader_parameter("half_span", acos(0.35))
+	_tele.material_override = m
+	_tele.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	model.add_child(_tele)
+	_tele.scale = Vector3.ONE / maxf(model.scale.x, 0.01)   # the reach is in metres
+	_tele.position = Vector3(0, 0.06, 0) / maxf(model.scale.x, 0.01)
+
+
+func _end_telegraph(landed: bool) -> void:
+	if _tele == null:
+		return
+	var t := _tele
+	_tele = null
+	if landed:
+		var m := t.material_override as ShaderMaterial
+		var tw := t.create_tween()
+		tw.tween_method(func(v: float): m.set_shader_parameter("flash", v), 1.0, 0.0, 0.2)
+		tw.tween_callback(t.queue_free)
+	else:
+		t.queue_free()
 
 
 ## Hit by the player. Returns true if it died.
@@ -224,6 +266,7 @@ func take_hit(amount: float, from: Vector3, heavy: bool) -> bool:
 	if not is_boss or heavy:
 		_stagger = 0.45 if heavy else 0.25
 		_attack_timer = 0.0
+		_end_telegraph(false)
 		_play("Hit_Chest", 1.2, true)
 	if is_boss:
 		var ratio := health / max_health
@@ -238,6 +281,7 @@ func take_hit(amount: float, from: Vector3, heavy: bool) -> bool:
 
 
 func _die() -> void:
+	_end_telegraph(false)
 	dead = true
 	collision_layer = 0
 	_play("Death01", 1.0, true)

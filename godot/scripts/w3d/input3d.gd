@@ -10,6 +10,11 @@ var sprint := false
 var dodge := false
 var attack := false             ## light attack / use tool
 var heavy := false
+## Holding attack charges a heavy stroke: 0..1, released at 1 = heavy.
+var charge := 0.0
+var _held := 0.0
+const CHARGE_START := 0.22
+const CHARGE_TIME := 0.38
 var block := false
 var interact := false
 var toggle_view := false
@@ -60,6 +65,7 @@ func _unhandled_input(event: InputEvent) -> void:
 func _process(_delta: float) -> void:
 	if scripted:
 		return
+	var delta := _delta
 	var keys := Vector2(Input.get_axis("w_left", "w_right"), Input.get_axis("w_back", "w_forward"))
 	move = (keys + touch_move).limit_length(1.0)
 	look = _mouse + touch_look
@@ -69,8 +75,20 @@ func _process(_delta: float) -> void:
 	jump = Input.is_action_just_pressed("w_jump") or touch_buttons.get("jump", false)
 	sprint = Input.is_action_pressed("w_sprint") or touch_buttons.get("sprint", false)
 	dodge = Input.is_action_just_pressed("w_dodge") or touch_buttons.get("dodge", false)
-	attack = (captured and Input.is_mouse_button_pressed(MOUSE_BUTTON_LEFT)) or touch_buttons.get("attack", false)
+	# Attack: a tap strikes (each tap the next blow of the combo); holding
+	# charges, and letting go when charged releases a heavy stroke.
+	var down: bool = (captured and Input.is_mouse_button_pressed(MOUSE_BUTTON_LEFT)) or touch_buttons.get("attack", false)
+	attack = false
 	heavy = Input.is_action_just_pressed("w_heavy") or touch_buttons.get("heavy", false)
+	if down:
+		attack = _held == 0.0
+		_held += delta
+		charge = clampf((_held - CHARGE_START) / CHARGE_TIME, 0.0, 1.0)
+	else:
+		if charge >= 1.0:
+			heavy = true
+		_held = 0.0
+		charge = 0.0
 	block = (captured and Input.is_mouse_button_pressed(MOUSE_BUTTON_RIGHT)) or touch_buttons.get("block", false)
 	interact = Input.is_action_just_pressed("w_interact") or touch_buttons.get("interact", false)
 	toggle_view = Input.is_action_just_pressed("w_view") or touch_buttons.get("view", false)
