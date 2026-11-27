@@ -218,6 +218,10 @@ By Kay Lousberg (www.kaylousberg.com), CC0 1.0. Licences kept beside the files
 
 (The KayKit character models were the cast before the Quaternius one; they are no longer shipped.)
 
+## HUD glyphs
+
+The touch-control and menu glyphs (`assets/ui/hud/*.png`: sword, comet, starfall, jump, dash, hand, backpack, map, book, heroine, gear) were generated for this game with Higgsfield (GPT Image 2.6), trimmed and resized.
+
 ## Key art
 
 Main-menu key art (`assets/ui/menu/keyart.jpg`) generated with Higgsfield (GPT Image 2.6) from a reference of the heroine model, then edited the same way to remove her wings.
