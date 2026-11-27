@@ -950,6 +950,7 @@ const MAP_SPAN := (TerrainGen.HALF + 120.0) * 2.0
 func _build_map() -> void:
 	if _map_tex == null:
 		_map_tex = ImageTexture.create_from_image(_bake_map())
+		_regions = _find_regions()
 	var frame := _panel(Vector2(84, 6), Vector2(900, 900), Color(0.05, 0.06, 0.15, 0.9), 22)
 	var img := TextureRect.new()
 	img.texture = _map_tex
@@ -1066,6 +1067,43 @@ func _biome_colour(b: int, h: float) -> Color:
 	return col.lightened(clampf((h - 20.0) / 160.0, 0.0, 0.35))
 
 
+## Each region's heartland: the sample with the most same-region
+## neighbours (one label per region, set where it is unmistakable).
+var _regions: Array = []
+
+
+func _find_regions() -> Array:
+	var gen: TerrainGen = game.world.gen
+	var n := 36
+	var cell := MAP_SPAN / n
+	var grid := []
+	for j in n:
+		for i in n:
+			var x := -MAP_SPAN * 0.5 + (i + 0.5) * cell
+			var z := -MAP_SPAN * 0.5 + (j + 0.5) * cell
+			grid.append(gen.biome(x, z) if gen.height(x, z) > TerrainGen.WATER else -1)
+	var best := {}
+	for j in range(1, n - 1):
+		for i in range(1, n - 1):
+			var b: int = grid[j * n + i]
+			if b < 0 or b == TerrainGen.Biome.BEACH:
+				continue
+			var score := 0
+			for dj in range(-2, 3):
+				for di in range(-2, 3):
+					var jj := clampi(j + dj, 0, n - 1)
+					var ii := clampi(i + di, 0, n - 1)
+					if grid[jj * n + ii] == b:
+						score += 1
+			if not best.has(b) or score > best[b][0]:
+				best[b] = [score, Vector3(-MAP_SPAN * 0.5 + (i + 0.5) * cell, 0, -MAP_SPAN * 0.5 + (j + 0.5) * cell)]
+	var out := []
+	for b in best:
+		if b != TerrainGen.Biome.FOREST:  # Greenwood is the town's own label
+			out.append([gen.biome_name(b), best[b][1]])
+	return out
+
+
 func _map_point(w: Vector3) -> Vector2:
 	return (Vector2(w.x, w.z) / MAP_SPAN + Vector2(0.5, 0.5)) * _map_marks.size
 
@@ -1082,6 +1120,13 @@ func _draw_map_marks() -> void:
 			hud.draw_star(c, at, 16.0, Color(0.85, 0.95, 1.0))
 		else:
 			c.draw_arc(at, maxf(r, 6.0), 0, TAU, 28, Color(0.9, 0.95, 1.0, 0.9), 2.5, true)
+	# Region names, in small caps with a dark halo.
+	for r in _regions:
+		var at := _map_point(r[1])
+		var txt: String = String(r[0]).to_upper()
+		for o in [Vector2(-1, -1), Vector2(1, -1), Vector2(-1, 1), Vector2(1, 1)]:
+			c.draw_string(_ui_font, at + o * 1.5 + Vector2(-100, 6), txt, HORIZONTAL_ALIGNMENT_CENTER, 200, 18, Color(0.05, 0.04, 0.1, 0.75))
+		c.draw_string(_ui_font, at + Vector2(-100, 6), txt, HORIZONTAL_ALIGNMENT_CENTER, 200, 18, Color(1.0, 0.96, 0.86, 0.95))
 	# The town.
 	var town := _map_point(Vector3.ZERO)
 	c.draw_circle(town, 11, Color(1.0, 0.95, 0.85))

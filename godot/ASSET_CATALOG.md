@@ -220,7 +220,7 @@ By Kay Lousberg (www.kaylousberg.com), CC0 1.0. Licences kept beside the files
 
 ## Key art
 
-Main-menu key art (`assets/ui/menu/keyart.jpg`) generated with Higgsfield (GPT Image 2.6) from a reference of the heroine model.
+Main-menu key art (`assets/ui/menu/keyart.jpg`) generated with Higgsfield (GPT Image 2.6) from a reference of the heroine model, then edited the same way to remove her wings.
 
 ## Fonts (OFL)
 
