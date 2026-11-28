@@ -121,6 +121,7 @@ end to end by new tests.
 | **Collision**: guardian runestones, rune-shrine stones, crystal veins, starlit and world chests, crates, benches, flower pots, road lanterns, sky-bridge rails and the trees and crystals on the floating isles could all be walked through | All solid (`Solid` helper; regression `test_solid_props`). Bushes, ferns and flowers stay passable on purpose |
 | **Death always woke her in the town square**, 1–2 km from any starting island | She wakes at the nearest safe place she knows (her island's landing, a discovered landmark or the town), its ground streamed in first |
 | **A fall from a sky isle stranded her**: a glider drifted out of the updraft within a second and sank back down | Updrafts catch a glider well beyond the visible column and draw her round it; every Skybound column now climbs above its isle in 9–18 s (tested) |
+| **Boulders on the Crystal Coast, the beach, the snow and round the sky isles drew as flat glowing white blobs** (traced with the harness: real geometry, not an effect; the rock pack's texture is twice the ground's brightness and full sun clipped it) | Each rock piece toned to weathered grey from its measured brightness; filmed before and after |
 | The sky and coast chapters and two of the three guardians had no end-to-end test | `test_island_journeys` (sky and coast chapters, falls on every island, updrafts) and `test_guardian_fights` (every move of every phase, defeat recorded and saved) |
 
 Still printed by the test run, and why: "Parameter material is null"
