@@ -2,7 +2,8 @@ class_name IslandBosses
 extends Node3D
 ## The guardian of each starting island, waiting in its arena:
 ##   Great Jungle  — the Thornmother, on the World Tree's mesa
-##   Skybound Isle — the Stormwing, over the Aerie
+##   Skybound Isle — the Stormwing, on the isle west of the Aerie, over its
+##                   own bridge (never on the Aerie, where a journey starts)
 ##   Crystal Coast — the Tidewarden, on the open ground by the grotto
 ## A ring of standing runes marks each arena from afar. Walking in wakes the
 ## guardian (its name and title, the boss bar); it fights in three phases
@@ -12,7 +13,7 @@ extends Node3D
 
 const ARENAS := {
 	"jungle": {"kind": "thornmother", "near": "world_tree", "dist": 42.0, "flat": true},
-	"sky": {"kind": "stormwing", "near": "aerie", "dist": 0.0, "flat": false},
+	"sky": {"kind": "stormwing", "isle": 3, "flat": false},
 	"coast": {"kind": "tidewarden", "near": "grotto", "dist": 36.0, "flat": true},
 }
 const WAKE_R := 26.0
@@ -31,9 +32,12 @@ func build(the_game: Node) -> void:
 	for id in ARENAS:
 		var a: Dictionary = ARENAS[id]
 		var c: Vector3
-		if id == "sky":
-			# The Aerie's own walkable top (where a Skybound journey starts).
-			c = Realms.spawn_point(game.world.gen, "sky")
+		if a.has("isle"):
+			# A floating isle of its own, on its grassy crown.
+			c = (Realms.sky_isles(game.world.gen)[int(a.isle)] as Array)[0]
+			var top := _crown(c.x, c.z)
+			if not is_nan(top):
+				c.y = top
 		elif lm.has(a.near):
 			c = lm[a.near].pos
 		else:
@@ -74,40 +78,124 @@ func _near_water(x: float, z: float) -> bool:
 	return false
 
 
-## Eight standing runestones round the arena, glowing in the guardian's colour.
+## Eight standing runestones round the arena, each with a rune cut into its
+## face that glows in the guardian's colour.
 func _ring(at: Vector3, colour: Color) -> void:
 	var root := Node3D.new()
 	add_child(root)
 	root.global_position = at
 	var stone_mat := StandardMaterial3D.new()
-	stone_mat.albedo_color = Color(0.5, 0.5, 0.56)
-	stone_mat.roughness = 0.85
-	var glow := StandardMaterial3D.new()
-	glow.albedo_color = colour
-	glow.emission_enabled = true
-	glow.emission = colour
-	glow.emission_energy_multiplier = 1.6
+	stone_mat.albedo_texture = load("res://assets/textures/terrain/rock.jpg")
+	stone_mat.albedo_color = Color(0.66, 0.66, 0.72)
+	stone_mat.uv1_triplanar = true
+	stone_mat.uv1_scale = Vector3.ONE * 0.7
+	stone_mat.roughness = 0.92
+	if _rune_shader == null:
+		_rune_shader = load("res://scripts/shaders/rune_glyph.gdshader")
 	for k in 8:
 		var a := k * TAU / 8.0
-		var p := Vector3(cos(a), 0, sin(a)) * RING_R
-		var ground: float = game.world.height_at(at.x + p.x, at.z + p.z)
-		if absf(ground - at.y) > 6.0:
-			ground = at.y   # over a sky isle's edge: keep to its height
+		var ground := NAN
+		var p := Vector3.ZERO
+		if not is_nan(_crown(at.x, at.z)):
+			# On a floating isle: each stone stands on the crown, drawn in
+			# from the ragged rim so none hangs over the drop.
+			for rr: float in [RING_R, 16.0, 14.0, 12.0, 10.0]:
+				p = Vector3(cos(a), 0, sin(a)) * rr
+				ground = _crown(at.x + p.x, at.z + p.z, 0.15)
+				if not is_nan(ground):
+					break
+			if is_nan(ground):
+				continue
+		else:
+			p = Vector3(cos(a), 0, sin(a)) * RING_R
+			ground = game.world.height_at(at.x + p.x, at.z + p.z)
+		var h := 3.0 + 0.5 * sin(k * 2.9 + at.x)
 		var stone := MeshInstance3D.new()
-		var box := BoxMesh.new()
-		box.size = Vector3(0.9, 3.4, 0.6)
-		stone.mesh = box
+		stone.mesh = _menhir(h, k + int(absf(at.x)))
 		stone.material_override = stone_mat
 		root.add_child(stone)
-		stone.global_position = Vector3(at.x + p.x, ground + 1.5, at.z + p.z)
-		stone.rotation = Vector3(0.05 * sin(k * 1.7), -a, 0.04 * cos(k * 2.3))
+		# Sunk a little into the ground, facing the arena's centre, leaning.
+		stone.global_position = Vector3(at.x + p.x, ground - 0.25, at.z + p.z)
+		stone.rotation = Vector3(0.06 * sin(k * 1.7), PI * 0.5 - a, 0.05 * cos(k * 2.3))
 		var rune := MeshInstance3D.new()
-		var q := BoxMesh.new()
-		q.size = Vector3(0.3, 0.9, 0.05)
+		var q := QuadMesh.new()
+		q.size = Vector2(0.34, 1.1)
 		rune.mesh = q
-		rune.material_override = glow
+		var rm := ShaderMaterial.new()
+		rm.shader = _rune_shader
+		rm.set_shader_parameter("tint", colour)
+		rm.set_shader_parameter("seed", float(k))
+		rune.material_override = rm
+		rune.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 		stone.add_child(rune)
-		rune.position = Vector3(0, 0.5, 0.31)
+		# On the face toward the centre (the stone's +Z), just proud of it.
+		rune.position = Vector3(0, h * 0.5, _face_z(h * 0.5) + 0.02)
+
+
+static var _rune_shader: Shader
+const _MENHIR_DEPTH := 0.34   ## half-thickness of the slab at its foot
+
+
+## A rough standing stone `h` tall: a flat slab of seven sides tapering and
+## twisting a little as it rises, its top broken at a slant. Flat-shaded.
+static func _menhir(h: float, seed_i: int) -> ArrayMesh:
+	var noise := FastNoiseLite.new()
+	noise.seed = 300 + seed_i
+	noise.frequency = 1.4
+	var sides := 7
+	var rings := 5
+	var rows := []
+	for r in rings + 1:
+		var t := float(r) / rings
+		var y := t * h
+		var width := lerpf(0.55, 0.36, t)
+		var depth := lerpf(_MENHIR_DEPTH, 0.22, t)
+		var twist := t * 0.18
+		var row := []
+		for s in sides:
+			var a := TAU * s / sides + twist
+			var j := 1.0 + noise.get_noise_2d(s * 3.1, y * 2.0) * 0.16
+			var v := Vector3(cos(a) * width * j, y, sin(a) * depth * j)
+			if r == rings:
+				# The broken top: higher on one side.
+				v.y -= (0.5 + 0.5 * cos(a + seed_i)) * 0.45
+			row.append(v)
+		rows.append(row)
+	var st := SurfaceTool.new()
+	st.begin(Mesh.PRIMITIVE_TRIANGLES)
+	st.set_smooth_group(-1)
+	for r in rings:
+		for s in sides:
+			var s2 := (s + 1) % sides
+			var a0: Vector3 = rows[r][s]
+			var a1: Vector3 = rows[r][s2]
+			var b0: Vector3 = rows[r + 1][s]
+			var b1: Vector3 = rows[r + 1][s2]
+			for v in [a0, b0, a1, a1, b0, b1]:
+				st.add_vertex(v)
+	var top: Array = rows[rings]
+	var c := Vector3.ZERO
+	for v: Vector3 in top:
+		c += v
+	c /= top.size()
+	for s in sides:
+		st.add_vertex(c)
+		st.add_vertex(top[(s + 1) % sides])
+		st.add_vertex(top[s])
+	st.generate_normals()
+	return st.commit()
+
+
+## How far the stone's face stands out (+Z) at height y (for the rune).
+static func _face_z(_y: float) -> float:
+	return _MENHIR_DEPTH * 0.86
+
+
+## A sky isle's crown height here (NAN where there is none).
+func _crown(x: float, z: float, inset := 0.0) -> float:
+	if game.islands == null:
+		return NAN
+	return (game.islands as SkyIslands).crown_y(x, z, inset)
 
 
 func _process(delta: float) -> void:
@@ -129,15 +217,15 @@ func _process(delta: float) -> void:
 ## The guardian rises in its arena.
 func wake(id: String) -> Enemy3D:
 	var at: Vector3 = arenas[id]
-	if id == "sky":
-		# On the isle's real crown, not inside it.
+	if ARENAS[id].has("isle"):
+		# On the isle's real (collision) crown, not inside it.
 		var y = game.surface_y(at)
 		if y != null:
 			at.y = float(y)
 			arenas[id] = at
 	var kind: String = ARENAS[id].kind
 	var colour: Color = Enemy3D.BOSS_SPECS[kind].element
-	Arcana.pillar(game, at, 2.0, 18.0, colour, 1.2)
+	Arcana.pillar(game, at, 1.6, 18.0, colour, 0.7)
 	Arcana.circle(game, at, 6.0, colour, 1.5, 1.0)
 	var e: Enemy3D = game.play.spawn_enemy(kind, at + Vector3(0, 0.2, 0))
 	_live[id] = e

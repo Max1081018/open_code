@@ -813,8 +813,9 @@ func hurt_flash(strength: float) -> void:
 uniform float amount = 0.0;
 void fragment() {
 	vec2 d = UV - 0.5;
-	float edge = smoothstep(0.25, 0.75, length(d * vec2(1.0, 1.3)));
-	COLOR = vec4(0.75, 0.05, 0.08, edge * amount * 0.7);
+	// Only the rim of the screen: the fight in the middle stays clear.
+	float edge = smoothstep(0.42, 0.85, length(d * vec2(1.0, 1.3)));
+	COLOR = vec4(0.62, 0.02, 0.06, edge * amount * 0.55);
 }"""
 		m.shader = sh
 		_hurt.material = m

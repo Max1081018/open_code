@@ -60,3 +60,6 @@ func test_sky_start_stands_on_the_isle() -> void:
 	check(main.player.global_position.y > start_y - 3.0, "after 1.5 s she is still on the isle (y %.1f from %.1f)" % [main.player.global_position.y, start_y])
 	main.queue_free()
 	await tree.process_frame
+	# Leave the guest's choice as it was (later runs must not start in the sky).
+	Account.set_start_island("")
+	Account.sign_out()

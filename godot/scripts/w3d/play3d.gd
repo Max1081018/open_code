@@ -300,6 +300,7 @@ func use_skill() -> void:
 	orb.burst = _comet_burst
 	orb.speed = 14.0
 	orb.charge = 0.3
+	orb.size = 1.4
 	game.add_child(orb)
 	var tip := p.global_position + Vector3(0, 1.35, 0) + fwd * 0.9
 	orb.global_position = tip

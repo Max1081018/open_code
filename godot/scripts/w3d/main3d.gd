@@ -676,6 +676,12 @@ func _update_sun(_delta: float) -> void:
 	_sky_mat.set_shader_parameter("cloud_shade", shade)
 
 
+## Solid ground under a point near her (a sky isle's crown or the terrain).
+func _ground_under(at: Vector3) -> float:
+	var y = surface_y(Vector3(at.x, player.global_position.y, at.z))
+	return float(y) if y != null else world.height_at(at.x, at.z)
+
+
 ## The capture harness's scripted inputs.
 func _script_input() -> void:
 	var f := _frames
@@ -707,7 +713,7 @@ func _script_input() -> void:
 			player.model.rotation.y = atan2(fwd.x, fwd.z)
 			for k in 3:
 				var at := player.global_position + fwd * (4.5 + k * 0.8) + cam.right_flat() * (k - 1) * 1.6
-				at.y = world.height_at(at.x, at.z)
+				at.y = _ground_under(at)
 				var e: Enemy3D = play.spawn_enemy(String(_args.get("foe", "zombie")), at)
 				if String(_args.art) != "kill":
 					e.max_health = 9999.0
@@ -756,7 +762,7 @@ func _script_input() -> void:
 		var right := cam.right_flat()
 		for i in kinds.size():
 			var at := player.global_position + fwd * 7.0 + right * (float(i) - (kinds.size() - 1) * 0.5) * 4.5
-			at.y = world.height_at(at.x, at.z)
+			at.y = _ground_under(at)
 			var e: Enemy3D = play.spawn_enemy(kinds[i], at)
 			e.spec = e.spec.duplicate()
 			e.spec.sight = 0.5   # stand still for the picture

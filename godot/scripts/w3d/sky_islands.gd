@@ -22,6 +22,7 @@ const ISLANDS := [
 
 var gen: TerrainGen
 var tops: Array = []   ## [centre Vector3, radius] for gameplay (updrafts, landing)
+var _crowns: Array = []   ## [centre, radius, rim radii, noise] per isle (crown_y)
 var _material: ShaderMaterial
 var _fall_mat: ShaderMaterial
 var _crystal_mat: StandardMaterial3D
@@ -89,6 +90,28 @@ func _build_all() -> void:
 		_cloud(p, rng.randf_range(60.0, 130.0), rng.randf_range(22.0, 40.0))
 
 
+## The height of an isle's grassy crown at (x, z), from the same formula the
+## mesh is built with (within a few cm between its rings); NAN off every crown.
+## `inset` (0..1) also returns NAN that close to the ragged rim.
+func crown_y(x: float, z: float, inset := 0.0) -> float:
+	for c in _crowns:
+		var centre: Vector3 = c[0]
+		var dx := x - centre.x
+		var dz := z - centre.z
+		var d := sqrt(dx * dx + dz * dz)
+		var rim: PackedFloat32Array = c[2]
+		var segs := rim.size()
+		var f := fposmod(atan2(dz, dx), TAU) / TAU * segs
+		var s0 := int(f) % segs
+		var r := lerpf(rim[s0], rim[(s0 + 1) % segs], f - floorf(f))
+		if d > r * (1.0 - inset):
+			continue
+		var t := d / r
+		var radius: float = c[1]
+		return centre.y + (1.0 - t * t) * radius * 0.07 + (c[3] as FastNoiseLite).get_noise_2d(dx * 1.3, dz * 1.3) * 1.1
+	return NAN
+
+
 ## One island: a noisy disc crown and a long jagged cone of rock beneath.
 func _island(centre: Vector3, radius: float, seed_i: int, spire: bool) -> void:
 	var noise := FastNoiseLite.new()
@@ -105,6 +128,7 @@ func _island(centre: Vector3, radius: float, seed_i: int, spire: bool) -> void:
 	for s in segs:
 		var a := TAU * s / segs
 		rim.append(radius * (1.0 + noise.get_noise_1d(a * 9.0) * 0.18 + sin(a * lobes + phase) * 0.14))
+	_crowns.append([centre, radius, rim, noise])
 	var st := SurfaceTool.new()
 	st.begin(Mesh.PRIMITIVE_TRIANGLES)
 	# Profile rings: [kind, t]: crown rings run centre -> rim, then a grassy

@@ -129,7 +129,7 @@ const BOSS_SPECS := {
 		"phase_lines": ["", "", "The roots wake beneath you!", "The First Root calls her children!"],
 		"loot": [["heart_crystal", 1.0, 1], ["lumen_core", 1.0, 1], ["gold_coin", 1.0, 40]], "sight": 34.0},
 	"stormwing": {"model": "stormwing", "health": 1100.0, "speed": 4.0, "damage": 16.0, "reach": 16.0, "windup": 0.8,
-		"scale": 1.6, "boss": "The Stormwing", "title": "Last Sentinel of the Aerie", "element": Color(0.6, 0.9, 1.0),
+		"scale": 1.6, "boss": "The Stormwing", "title": "Last Sentinel of the Aerie", "element": Color(0.3, 0.62, 1.0),
 		"defense": 15.0, "resist": {"arcane": 0.1}, "style": "ranged", "fly": 2.8,
 		"idle": "Spell_Simple_Idle", "walk": "Walk", "run": "Jog_Fwd", "attack": ["Spell_Simple_Shoot"],
 		"patterns": [["volley"], ["volley", "dive"], ["volley", "dive", "ring", "summon"]], "adds": "wisp_caller",
@@ -547,6 +547,7 @@ func _cast_bolt(player: Player3D, colour: Color, yaw_offset := 0.0) -> void:
 	var aim := (player.global_position + Vector3(0, 1.0, 0) + lead - from).normalized().rotated(Vector3.UP, yaw_offset)
 	var bolt := Arcana.Orb.new()
 	bolt.tint = colour
+	bolt.size = 0.7
 	bolt.speed = 15.0
 	bolt.life = 1.6
 	bolt.heading = aim

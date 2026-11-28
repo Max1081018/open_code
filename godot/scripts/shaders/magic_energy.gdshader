@@ -10,6 +10,7 @@ uniform float energy = 0.4;
 uniform float flow = 1.6;
 uniform float rim_only = 1.0;   // 1: fresnel rim (spheres); 0: strand across UV.x
 uniform float seed = 0.0;
+uniform float fill = 0.0;       // a solid body of light under the rim (lances)
 
 float h(vec2 p) {
 	return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453);
@@ -26,7 +27,7 @@ void fragment() {
 	float shape;
 	if (rim_only > 0.5) {
 		float f = 1.0 - abs(dot(normalize(NORMAL), normalize(VIEW)));
-		shape = pow(f, 1.6) * 0.9 + 0.12;
+		shape = max(pow(f, 1.6) * 0.9 + 0.12, fill);
 	} else {
 		float x = abs(UV.x - 0.5) * 2.0;
 		shape = (1.0 - smoothstep(0.0, 1.0, x));

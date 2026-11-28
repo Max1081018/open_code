@@ -83,6 +83,20 @@ func test_guardians() -> void:
 	check(gb != null, "the island guardians exist")
 	for id in ["jungle", "sky", "coast"]:
 		check(gb.arenas.has(id), "%s has an arena" % id)
+	# No journey starts inside a guardian's arena (the Stormwing once woke on
+	# top of every Skybound start).
+	for start in Realms.START_ORDER:
+		var s := Realms.spawn_point(main.world.gen, start)
+		for id in gb.arenas:
+			var at: Vector3 = gb.arenas[id]
+			var d := Vector2(at.x - s.x, at.z - s.z).length()
+			check(d > IslandBosses.WAKE_R + 25.0, "the %s start is clear of the %s arena (%.0f m)" % [start, id, d])
+	# The sky arena sits on its isle's real crown.
+	var sky: Vector3 = gb.arenas.sky
+	await tree.physics_frame
+	await tree.physics_frame
+	var y = main.surface_y(sky)
+	check(y != null and absf(float(y) - sky.y) < 0.6, "the sky arena is on its isle's crown (%s vs %.2f)" % [str(y), sky.y])
 	var boss: Enemy3D = gb.wake("jungle")
 	await tree.process_frame
 	check(boss.is_boss and boss.spec.has("patterns"), "the Thornmother is a guardian with moves")
