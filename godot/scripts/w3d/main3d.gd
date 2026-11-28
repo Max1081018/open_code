@@ -717,6 +717,35 @@ func _pick(at: String) -> void:
 		return
 	var point: Vector3 = hit.position
 	print("PICK hit %s at %s (%.1f m)" % [(hit.collider as Node).get_path(), point, from.distance_to(point)])
+	# Everything drawn along the ray before that point, nearest first.
+	var along := []
+	var dir := (point - from).normalized()
+	var reach := from.distance_to(point)
+	for g in find_children("*", "GeometryInstance3D", true, false):
+		var gi := g as GeometryInstance3D
+		if not gi.is_visible_in_tree():
+			continue
+		var boxes := []
+		var desc := ""
+		if gi is MeshInstance3D and (gi as MeshInstance3D).mesh:
+			boxes.append(gi.global_transform * (gi as MeshInstance3D).mesh.get_aabb())
+			desc = "%s %s" % [(gi as MeshInstance3D).mesh.resource_name, _mat_desc((gi as MeshInstance3D).get_active_material(0))]
+		elif gi is MultiMeshInstance3D and (gi as MultiMeshInstance3D).multimesh and (gi as MultiMeshInstance3D).multimesh.mesh:
+			var mm2 := (gi as MultiMeshInstance3D).multimesh
+			for k in mm2.instance_count:
+				boxes.append(gi.global_transform * mm2.get_instance_transform(k) * mm2.mesh.get_aabb())
+			desc = "mm %s %s" % [mm2.mesh.resource_name, _mat_desc(gi.material_override if gi.material_override else mm2.mesh.surface_get_material(0))]
+		elif gi is CPUParticles3D:
+			boxes.append(AABB(gi.global_position - Vector3.ONE * 2.0, Vector3.ONE * 4.0))
+			desc = "particles"
+		for b: AABB in boxes:
+			var seg = b.intersects_segment(from, from + dir * (reach - 0.5))
+			if seg != null:
+				along.append([from.distance_to(seg), String(gi.get_path()).right(70), desc, b.size])
+				break
+	along.sort_custom(func(x, y): return x[0] < y[0])
+	for a2 in along.slice(0, 12):
+		print("PICK   along %.1f m  %s  %s  size %s" % a2)
 	for g in find_children("*", "GeometryInstance3D", true, false):
 		var gi := g as GeometryInstance3D
 		if not gi.is_visible_in_tree():
