@@ -81,9 +81,9 @@ const HEROES := {
 	"void_shade": ["skeleton", Color(0.58, 0.42, 0.9)],   # Blight
 	"void_caller": ["skeleton", Color(0.7, 0.45, 1.0)],
 	# The starting islands' guardians.
-	"thornmother": ["knight", Color(0.46, 0.78, 0.4)],   # Great Jungle
+	"thornmother": ["knight", null],     # Great Jungle (costumed: HERO_STYLE)
 	"stormwing": ["skeleton", Color(0.78, 0.92, 1.2)],   # Skybound Isle
-	"tidewarden": ["knight", Color(0.45, 0.82, 1.05)],   # Crystal Coast
+	"tidewarden": ["knight", null],      # Crystal Coast (costumed: HERO_STYLE)
 	# The islands' own creatures.
 	"vine_stalker": ["skeleton", Color(0.42, 0.7, 0.32)],
 	"root_guardian": ["knight", Color(0.62, 0.72, 0.42)],
@@ -122,9 +122,20 @@ const HERO_STYLE := {
 	"dune_raider": {"height": 1.85, "speed": 1.1},
 	"sand_thrower": {"height": 1.7, "speed": 1.0},
 	"cinder_knight": {"height": 2.1, "speed": 0.8},
-	"thornmother": {"height": 2.0, "speed": 0.85},
+	# Guardians are costumed part by part (one tint over everything turned
+	# the Thornmother into a lime mannequin): weathered bark-bronze plate
+	# over moss cloth; the Tidewarden in steel-blue plate over sea teal.
+	"thornmother": {"height": 2.0, "speed": 0.85, "tex_tints": {
+		"albedo_0": Color(0.58, 0.52, 0.38), "albedo_30": Color(0.52, 0.47, 0.33),
+		"albedo_15": Color(0.46, 0.5, 0.38), "albedo_18": Color(0.4, 0.6, 0.3),
+		"albedo_33": Color(0.38, 0.54, 0.28), "albedo_36": Color(0.34, 0.42, 0.24),
+		"albedo_3": Color(0.55, 0.42, 0.3), "albedo_27": Color(0.5, 0.4, 0.3), "albedo_12": Color(0.45, 0.36, 0.27)}},
 	"stormwing": {"height": 1.8, "speed": 1.1},
-	"tidewarden": {"height": 2.05, "speed": 0.8},
+	"tidewarden": {"height": 2.05, "speed": 0.8, "tex_tints": {
+		"albedo_0": Color(0.48, 0.6, 0.76), "albedo_30": Color(0.46, 0.58, 0.74),
+		"albedo_15": Color(0.46, 0.56, 0.68), "albedo_18": Color(0.28, 0.55, 0.62),
+		"albedo_33": Color(0.3, 0.55, 0.62), "albedo_36": Color(0.24, 0.36, 0.5),
+		"albedo_3": Color(0.44, 0.44, 0.5), "albedo_27": Color(0.42, 0.42, 0.48), "albedo_12": Color(0.38, 0.38, 0.44)}},
 	"vine_stalker": {"height": 1.6, "speed": 1.35},
 	"root_guardian": {"height": 2.0, "speed": 0.8},
 	"gale_sprite": {"height": 1.5, "speed": 1.2},

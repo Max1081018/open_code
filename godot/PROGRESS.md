@@ -90,6 +90,8 @@ fixed where they looked wrong:
 | Arena runestones were grey boxes | Rough leaning menhirs with a glowing rune cut in each face |
 | A flying guardian stayed above the top of the screen all fight | The camera pulls back and tilts to keep the guardian in frame (an offset on the player's own look) |
 | One bolt hit tinted the whole screen red-pink | The hurt vignette stays at the screen's rim |
+| The Thornmother and Tidewarden were the knight model flooded with one colour (a lime-green mannequin) | Costumed part by part: bark-bronze plate over moss cloth; steel-blue plate over sea teal |
+| The Stormwing's dive slid down in its idle pose | It turns to its mark, stoops nose-down with a wind streak and levels out after the strike |
 | Flat translucent root-line bars | Glowing danger lanes that fill as the blow winds up, chevrons, a flash when it lands |
 | Plain white damage numbers, torso-sized log drops | Title-font numbers (lilac, gold crits) that pop and drift; small hovering loot with a rarity glint |
 
