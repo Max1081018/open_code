@@ -47,6 +47,13 @@ vibrates and the VIBRATE permission was missing. Fixed in build 4.)
 
 ## The remaining implementation (next task once credentials exist)
 
+Candidate plugin found (not installed yet): **NiqueWrld/GodotGoogleSignIn**
+(github.com/NiqueWrld/GodotGoogleSignIn, MIT, "Native Android Google Sign-In
+plugin for Godot 4.2+ using Credential Manager API", last updated
+2026-01-19, small project: review its code and pin a release before use).
+Its API would be wrapped to the `GodotGoogleSignIn.sign_in()` contract above.
+Writing our own (below) is the fallback.
+
 - A small Godot Android plugin (Kotlin, Godot v2 plugin AAR) named
   `GodotGoogleSignIn` using `androidx.credentials` +
   `com.google.android.libraries.identity.googleid` (`GetGoogleIdOption` with
