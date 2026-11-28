@@ -121,11 +121,11 @@ static func _ext_parts(kind: String) -> Array:
 	var m: Mesh = _windy(mesh, spec[1], piece) if spec[1] == "tree" else mesh
 	# The rock pack's stone is pale (0.56-0.64 where its UVs land, twice the
 	# ground's brightness): in full sun the exposure and grade clipped every
-	# boulder to a flat white blob. Toned down to weathered grey stone, a
+	# boulder to a flat white blob. Toned down to weathered grey stone (0.26), a
 	# shade warmer on the lighter pieces.
 	if piece.begins_with("rocks_"):
 		var lum: float = ROCK_LUM.get(piece, 0.55)
-		var tone := clampf(0.33 / lum, 0.5, 0.95)
+		var tone := clampf(0.26 / lum, 0.4, 0.9)
 		m = _tinted(m, Color(tone * 1.02, tone, tone * 0.96))
 	# Lava vents and veined rocks glow.
 	if piece in ["volcanic_18", "volcanic_19", "volcanic_24", "volcanic_26", "volcanic_27", "volcanic_28", "volcanic_29"]:
