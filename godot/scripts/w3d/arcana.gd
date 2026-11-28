@@ -141,7 +141,7 @@ static func lance(host: Node, at: Vector3, delay: float, landed: Callable, tint 
 	prism.top_radius = 0.0
 	prism.bottom_radius = 0.3
 	prism.height = 4.2
-	prism.radial_segments = 4
+	prism.radial_segments = 6
 	prism.rings = 1
 	shard.mesh = prism
 	# A crystal of light: a glowing rim (energy shader) round a bright core.
@@ -164,7 +164,8 @@ static func lance(host: Node, at: Vector3, delay: float, landed: Callable, tint 
 	shard.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 	host.add_child(shard)
 	# Point first, tilted a little, from high above and to the side.
-	shard.global_position = at + Vector3(randf_range(-3, 3), 22.0, randf_range(-3, 3))
+	# Straight down onto its mark (a slanting fall could cross the lens).
+	shard.global_position = at + Vector3(randf_range(-0.6, 0.6), 22.0, randf_range(-0.6, 0.6))
 	shard.look_at(at, Vector3.FORWARD if absf((at - shard.global_position).normalized().y) > 0.99 else Vector3.UP)
 	shard.rotate_object_local(Vector3.RIGHT, -PI * 0.5)
 	shard.visible = false

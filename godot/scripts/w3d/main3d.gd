@@ -707,15 +707,21 @@ func _script_input() -> void:
 			for k in 3:
 				var at := player.global_position + fwd * (4.5 + k * 0.8) + cam.right_flat() * (k - 1) * 1.6
 				at.y = world.height_at(at.x, at.z)
-				var e: Enemy3D = play.spawn_enemy("zombie", at)
-				e.max_health = 9999.0
-				e.health = 9999.0
+				var e: Enemy3D = play.spawn_enemy(String(_args.get("foe", "zombie")), at)
+				if String(_args.art) != "kill":
+					e.max_health = 9999.0
+					e.health = 9999.0
 		if f > 2 and f < 30:
 			var fwd2 := cam.forward_flat()
 			player.model.rotation.y = atan2(fwd2.x, fwd2.z)
 		match String(_args.art):
 			"combo":
 				input.attack = f in [30, 52, 74]
+			"kill":
+				if f == 30:
+					play.prog.level = 20
+					play.energy = Play3D.BURST_COST
+				input.burst = f == 32
 			"crescent":
 				input.heavy = f == 30
 			"comet":

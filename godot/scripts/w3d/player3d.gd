@@ -96,7 +96,7 @@ func _ready() -> void:
 	add_child(model)
 	anim = model.find_child("AnimationPlayer", true, false)
 	skeleton = model.find_children("*", "Skeleton3D", true, false)[0]
-	for clip in ["Idle_FoldArms", "Idle_Talking", "Idle", "ual/Idle", "Walk", "Walk_Formal", "Jog_Fwd", "Sprint", "Swim_Fwd", "Swim_Idle", "Jump", "Sword_Block", "Sword_Idle", "ual/Jog_Fwd", "ual/Sprint"]:
+	for clip in ["Idle_FoldArms", "Idle_Talking", "Idle", "ual/Idle", "Spell_Simple_Idle", "Walk", "Walk_Formal", "Jog_Fwd", "Sprint", "Swim_Fwd", "Swim_Idle", "Jump", "Sword_Block", "Sword_Idle", "ual/Jog_Fwd", "ual/Sprint"]:
 		if anim.has_animation(clip):
 			anim.get_animation(clip).loop_mode = Animation.LOOP_LINEAR
 	for m in model.find_children("*", "MeshInstance3D", true, false):
@@ -496,7 +496,15 @@ func _physics_process(delta: float) -> void:
 	if dodge_now and _dodge <= 0.0 and is_on_floor() and _spend(22.0):
 		_dodge = DODGE_TIME
 		_dodge_dir = wish.normalized() if wish.length() > 0.1 else -model.global_transform.basis.z
-		_play("Roll", 1.25, true)
+		# A magic dash, upright and light, not a tumble: a burst of her
+		# sprint, leaning into it, violet afterimages left behind her.
+		_play("Sprint", 1.9, true)
+		model.rotation.y = atan2(_dodge_dir.x, _dodge_dir.z)
+		var main := get_parent()
+		if main and main.get("play") and main.play.has_method("trail_ghosts"):
+			main.play.trail_ghosts(self, 3, 0.07)
+		Arcana.sparks(get_parent(), global_position + Vector3(0, 0.9, 0), Color(0.75, 0.5, 1.0), 16, 3.0, 0.08)
+		Sfx.play("magic_slash", -12.0, 0.1, 1.5)
 	# A tap during a swing is kept for a moment and becomes the next blow.
 	_buffer -= delta
 	_since_blow += delta
@@ -629,6 +637,8 @@ func _update_motion(delta: float, hspeed: float) -> void:
 	var lean_want := 0.0
 	if grounded and _action <= 0.0 and _dodge <= 0.0:
 		lean_want = clampf((hspeed - RUN) / (SPRINT - RUN), 0.0, 1.0)
+	elif _dodge > 0.0:
+		lean_want = 1.0   # the dash: leaning hard into it
 	var fall_want := 0.0
 	if not grounded and not gliding and not swimming and _air_time > 0.2 and velocity.y < -1.0:
 		fall_want = clampf(-velocity.y / 6.0, 0.0, 1.0)
@@ -908,7 +918,9 @@ func _update_guard(dt: float) -> void:
 		_on_guard = near
 		var gait := (tree.tree_root as AnimationNodeBlendTree).get_node("gait") as AnimationNodeBlendSpace1D
 		var style: Dictionary = model.get_meta("style", {})
-		var idle: String = "Sword_Idle" if near else String(style.get("clips", {}).get("Idle", "Idle"))
+		# Near foes she keeps her own easy stance (never a knight's sword
+		# guard): her blade floats ready at her side under her magic.
+		var idle: String = String(style.get("clips", {}).get("Idle", "Idle"))
 		(gait.get_blend_point_node(0) as AnimationNodeAnimation).animation = idle
 
 
@@ -1022,7 +1034,7 @@ func _gait(speed: float) -> void:
 			natural = lerpf(GAIT_SPEED["Walk"], GAIT_SPEED["Jog_Fwd"], clampf((speed - 3.0) / 0.8, 0.0, 1.0))
 		if speed > 6.0:
 			natural = lerpf(GAIT_SPEED["Jog_Fwd"], GAIT_SPEED["Sprint"], clampf((speed - 6.0) / 1.2, 0.0, 1.0))
-		rate = clampf(speed / natural, 0.5, 1.55)
+		rate = clampf(speed / natural, 0.5, 1.75)   # full sprint 8.2 m/s on a 4.9 m/s clip: no sliding
 	else:
 		rate = lerpf(1.0, 1.2 / GAIT_SPEED["Walk"], speed / 1.2)
 	tree.set("parameters/gait/blend_position", speed)

@@ -913,9 +913,18 @@ func use_phase() -> void:
 					energy = minf(BURST_COST, energy + 5.0))
 
 
+## Ghosts left behind her as she moves: one now and one every `every`
+## seconds, each in the pose she had at that moment (the dash).
+func trail_ghosts(p: Player3D, count: int, every: float) -> void:
+	for k in count:
+		get_tree().create_timer(k * every).timeout.connect(func():
+			if is_instance_valid(p):
+				_afterimages(p, p.global_position, p.global_position, 1))
+
+
 ## Violet ghosts of her, posed as she was, strung along the blink and
 ## fading one after another (the skinned meshes baked in their pose).
-func _afterimages(p: Player3D, from: Vector3, to: Vector3) -> void:
+func _afterimages(p: Player3D, from: Vector3, to: Vector3, count := 3) -> void:
 	var meshes: Array = []
 	for m in p.model.find_children("*", "MeshInstance3D", true, false):
 		var mi := m as MeshInstance3D
@@ -928,8 +937,8 @@ func _afterimages(p: Player3D, from: Vector3, to: Vector3) -> void:
 		_afterimage(p, from)
 		return
 	var shader: Shader = load("res://scripts/shaders/magic_energy.gdshader")
-	for k in 3:
-		var t := (k + 1) / 4.0
+	for k in count:
+		var t := (k + 1) / float(count + 1) if count > 1 else 0.0
 		var ghost := Node3D.new()
 		game.add_child(ghost)
 		ghost.global_transform = Transform3D(p.model.global_transform.basis, from.lerp(to, t) + (p.model.global_position - p.global_position))
@@ -937,6 +946,8 @@ func _afterimages(p: Player3D, from: Vector3, to: Vector3) -> void:
 		m.shader = shader
 		m.set_shader_parameter("energy", 0.0)
 		m.set_shader_parameter("seed", float(k))
+		m.set_shader_parameter("core", Color(0.78, 0.6, 1.0))
+		m.set_shader_parameter("edge", Color(0.5, 0.25, 1.0))
 		for e in meshes:
 			var mi := MeshInstance3D.new()
 			mi.mesh = e[0]
@@ -946,7 +957,7 @@ func _afterimages(p: Player3D, from: Vector3, to: Vector3) -> void:
 			ghost.add_child(mi)
 		var tw := ghost.create_tween()
 		tw.tween_interval(k * 0.05)
-		tw.tween_method(func(v: float): m.set_shader_parameter("energy", v), 1.4, 0.0, 0.55).set_ease(Tween.EASE_IN)
+		tw.tween_method(func(v: float): m.set_shader_parameter("energy", v), 0.85, 0.0, 0.5).set_ease(Tween.EASE_IN)
 		tw.tween_callback(ghost.queue_free)
 
 

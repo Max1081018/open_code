@@ -20,6 +20,9 @@ const MODELS := {
 }
 
 
+var _glint: Sprite3D
+
+
 func setup(the_id: String, the_count: int, the_game: Node, impulse: Vector3) -> void:
 	id = the_id
 	count = the_count
@@ -36,7 +39,7 @@ func _ready() -> void:
 		for part in FoliageLib.parts(MODELS[id]):
 			var mi := MeshInstance3D.new()
 			mi.mesh = part[0]
-			mi.transform = part[1].scaled(Vector3.ONE * 1.6)
+			mi.transform = part[1].scaled(Vector3.ONE * 0.9)
 			if id != "stone":
 				var tint := StandardMaterial3D.new()
 				tint.albedo_color = {"coal": Color(0.12, 0.12, 0.13), "iron_ore": Color(0.62, 0.5, 0.45),
@@ -50,7 +53,7 @@ func _ready() -> void:
 		var item := Body3D.item_model(id)
 		if item:
 			_visual = item
-			item.scale = Vector3.ONE * 0.8
+			item.scale = Vector3.ONE * 0.55
 		else:
 			var card := Sprite3D.new()
 			card.texture = Items.icon(id)
@@ -59,13 +62,23 @@ func _ready() -> void:
 			card.alpha_cut = SpriteBase3D.ALPHA_CUT_DISCARD
 			_visual = card
 	add_child(_visual)
+	# A soft glint marks it from afar (its rarity's colour).
+	var glint := Sprite3D.new()
+	glint.texture = Play3D._spark_texture()
+	glint.pixel_size = 0.5 / 64.0
+	glint.billboard = BaseMaterial3D.BILLBOARD_ENABLED
+	glint.modulate = [Color(0.9, 0.95, 1.0, 0.55), Color(0.55, 0.9, 0.6, 0.6), Color(0.45, 0.7, 1.0, 0.65), Color(0.8, 0.5, 1.0, 0.7), Color(1.0, 0.8, 0.35, 0.75)][clampi(Items.rarity(id), 0, 4)]
+	glint.shaded = false
+	glint.no_depth_test = false
+	add_child(glint)
+	_glint = glint
 
 
 func _log() -> Node3D:
 	var mesh := CylinderMesh.new()
-	mesh.top_radius = 0.16
-	mesh.bottom_radius = 0.18
-	mesh.height = 0.9
+	mesh.top_radius = 0.075
+	mesh.bottom_radius = 0.085
+	mesh.height = 0.42
 	var bark := StandardMaterial3D.new()
 	bark.albedo_texture = load("res://assets/models/nature3d/Bark_NormalTree.png")
 	bark.uv1_scale = Vector3(1, 1.5, 1)
@@ -99,7 +112,9 @@ func _physics_process(delta: float) -> void:
 			if absf(_velocity.y) < 1.0:
 				_resting = true
 	else:
-		global_position.y = ground + 0.12 + sin(_age * 3.0) * 0.06
-		_visual.rotation.y += delta * 1.4
+		global_position.y = ground + 0.25 + sin(_age * 3.0) * 0.07
+		_visual.rotation.y += delta * 1.6
+	if _glint:
+		_glint.scale = Vector3.ONE * (0.8 + 0.2 * sin(_age * 5.0))
 	if _age > 180.0:
 		queue_free()

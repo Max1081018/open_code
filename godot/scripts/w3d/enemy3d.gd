@@ -681,7 +681,7 @@ func _die() -> void:
 		Arcana.sparks(game, at, colour, 40 if not is_boss else 120, 3.5, 0.12, 1.5)
 		Arcana.flash(game, at, colour, 1.5, 4.0, 0.4))
 	t.tween_method(func(v: float): _flash.albedo_color = Color(colour.lerp(Color.WHITE, 0.5), v), 0.0, 0.85, 0.25)
-	t.parallel().tween_property(model, "scale", model.scale * Vector3(1.05, 0.02, 1.05), 0.45).set_delay(0.1).set_ease(Tween.EASE_IN)
+	t.parallel().tween_property(model, "scale", model.scale * 0.04, 0.4).set_delay(0.1).set_ease(Tween.EASE_IN).set_trans(Tween.TRANS_QUAD)
 	t.tween_callback(queue_free)
 
 

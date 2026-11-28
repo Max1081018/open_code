@@ -36,5 +36,7 @@ void fragment() {
 	float bands = n(vec2(UV.x * 3.0 + seed, UV.y * 6.0 - t)) * 0.65 + n(vec2(UV.x * 9.0, UV.y * 14.0 - t * 1.7)) * 0.35;
 	float glow = shape * (0.45 + bands * 0.9);
 	vec3 c = mix(edge, core, smoothstep(0.55, 1.0, glow));
-	ALBEDO = c * glow * energy;
+	// Never a slab of colour across the lens: fade out close to the camera.
+	float near_fade = smoothstep(0.6, 2.8, -VERTEX.z);
+	ALBEDO = c * glow * energy * near_fade;
 }
