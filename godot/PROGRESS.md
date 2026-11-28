@@ -101,6 +101,32 @@ fixed where they looked wrong:
 - The jungle is heavy for the software renderer used in captures; on-device frame rate is unmeasured.
 - Google/Apple sign-in need their platform plugins and app credentials; until then those buttons explain that and do nothing.
 
+## Full QA pass (island by island)
+
+Every island was run with the real renderer and its full log read; the
+whole suite was read for every engine and script error; an automated
+collision audit (`tests/audit_collision.gd`) aimed rays at every
+solid-looking thing near each start and guardian arena; each island's
+first chapter, every guardian, death and the sky updrafts were played
+end to end by new tests.
+
+| Found | Fixed |
+|---|---|
+| ~80 engine errors on every launch: the animation libraries were stored compressed (Godot 4.4 logs one per clip), and compression made bones snap at page seams (a finger 0.9 rad, the hips 0.5 m in one frame) | Libraries rewritten uncompressed, every key copied exactly and checked against its source (`tools/decompress_anims.gd`) |
+| 384 shader-compiler errors per run: samplers passed into functions (terrain, 2D light map) | Macro and taps/mix split |
+| Skipping the arrival left its camera sweep running on a freed camera (an error every frame) | The arrival's tween is stopped on skip |
+| A foe's bolt called back into its dead caster (script error) | Orphaned bolts fizzle; foe move timers are tied to the foe |
+| Truncated save files raised an engine error on load; a profile could be written with no account | Both refused cleanly |
+| Arch glass used Godot 3's `specular` (did nothing) | `metallic_specular` |
+| **Collision**: guardian runestones, rune-shrine stones, crystal veins, starlit and world chests, crates, benches, flower pots, road lanterns, sky-bridge rails and the trees and crystals on the floating isles could all be walked through | All solid (`Solid` helper; regression `test_solid_props`). Bushes, ferns and flowers stay passable on purpose |
+| **Death always woke her in the town square**, 1–2 km from any starting island | She wakes at the nearest safe place she knows (her island's landing, a discovered landmark or the town), its ground streamed in first |
+| **A fall from a sky isle stranded her**: a glider drifted out of the updraft within a second and sank back down | Updrafts catch a glider well beyond the visible column and draw her round it; every Skybound column now climbs above its isle in 9–18 s (tested) |
+| The sky and coast chapters and two of the three guardians had no end-to-end test | `test_island_journeys` (sky and coast chapters, falls on every island, updrafts) and `test_guardian_fights` (every move of every phase, defeat recorded and saved) |
+
+Still printed by the test run, and why: "Parameter material is null"
+comes only from the headless dummy renderer (absent with a real one); the
+container has no audio device or vsync control.
+
 ## Measured performance (software renderer, High preset, 1280x720)
 
 | Scene | Draw calls | Triangles | Lights |
@@ -130,9 +156,8 @@ measured** here.
    jungle and town on Medium and High (AO and sun shafts on and off), and
    check the floating blade and touch layout by hand. Nothing here has run on
    a phone yet.
-2. Guardian arenas: give the Tidewarden's arena a flatter, more open site
-   (the flat-ground search picked a slope by the grotto) and build each arena
-   a proper floor (a ruined plaza) rather than a runestone ring alone.
+2. Guardian arenas: build each arena a proper floor (a ruined plaza) rather
+   than a runestone ring alone (the Tidewarden's site is now level ground).
 3. Animation: a dedicated falling clip and a sprint clip whose natural speed
    matches 8.2 m/s (the shared sprint still slides a little at full speed).
 

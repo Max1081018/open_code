@@ -474,6 +474,8 @@ func _process(delta: float) -> void:
 					get_tree().root.find_children("*", "Light3D", true, false).size()])
 			if _frames == last and _args.has("stats"):
 				_breakdown()
+			if _frames == last and _args.has("pick"):
+				_pick(String(_args.pick))
 			if _frames == last:
 				var w := img.get_width()
 				var out := Image.create(w * _strip.size(), img.get_height(), false, img.get_format())
@@ -697,6 +699,52 @@ func _update_sun(_delta: float) -> void:
 		# Rain clouds hang grey and heavy.
 		shade = shade.lerp(Color(0.42, 0.45, 0.52), clampf(weather.cloud_cover - 0.42, 0.0, 0.55) * 1.6)
 	_sky_mat.set_shader_parameter("cloud_shade", shade)
+
+
+## --pick=x,y: what is drawn at that pixel. A ray through it, the collider
+## it strikes, and every mesh whose bounds hold the point, with its material.
+func _pick(at: String) -> void:
+	var xy := at.split(",")
+	var px := Vector2(float(xy[0]), float(xy[1]))
+	var c := get_viewport().get_camera_3d()
+	var from := c.project_ray_origin(px)
+	var to := from + c.project_ray_normal(px) * 300.0
+	var q := PhysicsRayQueryParameters3D.create(from, to)
+	q.exclude = [player.get_rid()]
+	var hit := get_world_3d().direct_space_state.intersect_ray(q)
+	if hit.is_empty():
+		print("PICK nothing")
+		return
+	var point: Vector3 = hit.position
+	print("PICK hit %s at %s (%.1f m)" % [(hit.collider as Node).get_path(), point, from.distance_to(point)])
+	for g in find_children("*", "GeometryInstance3D", true, false):
+		var gi := g as GeometryInstance3D
+		if not gi.is_visible_in_tree():
+			continue
+		var boxes := []
+		var mat_info := ""
+		if gi is MeshInstance3D and (gi as MeshInstance3D).mesh:
+			var mi := gi as MeshInstance3D
+			boxes.append(mi.global_transform * mi.mesh.get_aabb())
+			mat_info = "%s %s" % [mi.mesh.resource_name, _mat_desc(mi.get_active_material(0))]
+		elif gi is MultiMeshInstance3D and (gi as MultiMeshInstance3D).multimesh and (gi as MultiMeshInstance3D).multimesh.mesh:
+			var mm := (gi as MultiMeshInstance3D).multimesh
+			for k in mm.instance_count:
+				boxes.append(gi.global_transform * mm.get_instance_transform(k) * mm.mesh.get_aabb())
+			mat_info = "mm %s %s" % [mm.mesh.resource_name, _mat_desc(gi.material_override if gi.material_override else mm.mesh.surface_get_material(0))]
+		for b: AABB in boxes:
+			if b.grow(0.3).has_point(point):
+				print("PICK   mesh %s  %s" % [String(gi.get_path()).right(80), mat_info])
+				break
+
+
+func _mat_desc(m: Material) -> String:
+	if m is BaseMaterial3D:
+		var b := m as BaseMaterial3D
+		return "Base albedo=%s tex=%s shading=%d emis=%s %s x%.1f transp=%d" % [b.albedo_color, b.albedo_texture.resource_path.get_file() if b.albedo_texture else "-", b.shading_mode, b.emission_enabled, b.emission, b.emission_energy_multiplier, b.transparency]
+	if m is ShaderMaterial:
+		return "Shader %s" % ((m as ShaderMaterial).shader.resource_path if (m as ShaderMaterial).shader else "?")
+	return str(m)
 
 
 ## Solid ground under a point near her (a sky isle's crown or the terrain).
