@@ -50,20 +50,40 @@ func build(the_game: Node) -> void:
 	game.play.enemy_killed.connect(_on_killed)
 
 
-## Open level ground about `dist` from `c` (the first found going round).
+## Open level ground about `dist` from `c`: the flattest arena floor found
+## going round in widening rings (judged over the whole floor, not one
+## point), dry and clear of falls and oases.
 func _flat_near(c: Vector3, dist: float) -> Vector3:
 	var gen: TerrainGen = game.world.gen
-	for r: float in [dist, dist * 0.7, dist * 1.3, dist * 0.45]:
-		for k in 16:
-			var a := k * TAU / 16.0 + 0.3
+	var best := Vector3(c.x + dist, gen.height(c.x + dist, c.z), c.z)
+	var best_score := -1.0
+	for r: float in [dist, dist * 0.7, dist * 1.3, dist * 0.45, dist * 1.8, dist * 2.4, dist * 3.2]:
+		for k in 24:
+			var a := k * TAU / 24.0 + 0.3
 			var x := c.x + cos(a) * r
 			var z := c.z + sin(a) * r
 			var h := gen.height(x, z)
-			if h > TerrainGen.WATER + 1.5 and gen.normal(x, z, 5.0).y > 0.94 and gen.normal(x + 7.0, z, 5.0).y > 0.9 \
-					and not _near_water(x, z):
-				return Vector3(x, h, z)
-	var y := gen.height(c.x + dist, c.z)
-	return Vector3(c.x + dist, y, c.z)
+			if h < TerrainGen.WATER + 1.5 or _near_water(x, z):
+				continue
+			var score := _floor_flatness(gen, x, z, h)
+			if score > best_score:
+				best_score = score
+				best = Vector3(x, h, z)
+		if best_score > 0.95:
+			break   # flat enough this close in: no need to wander further
+	return best
+
+
+## How level the floor of an arena centred here is: the least upright ground
+## normal under it, less any drop or rise across it.
+func _floor_flatness(gen: TerrainGen, x: float, z: float, h: float) -> float:
+	var worst := gen.normal(x, z, 5.0).y
+	for k in 8:
+		var a := k * TAU / 8.0
+		var px := x + cos(a) * 11.0
+		var pz := z + sin(a) * 11.0
+		worst = minf(worst, gen.normal(px, pz, 5.0).y - absf(gen.height(px, pz) - h) * 0.02)
+	return worst
 
 
 ## Waterfall pools and oases sit above sea level: keep arenas out of them.

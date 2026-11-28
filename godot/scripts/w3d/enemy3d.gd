@@ -908,9 +908,18 @@ func _move_dive(player: Player3D, colour: Color) -> void:
 		if dead:
 			return
 		_dive = 0.6
+		# Stooping like a hawk: face the mark, pitch nose-down, a wind streak
+		# behind; level out again once it has struck.
+		var to := target - global_position
+		model.rotation.y = atan2(to.x, to.z)
+		_play(spec.attack[0], 1.5, true)
+		Arcana.ribbon(self, colour.lerp(Color.WHITE, 0.3), 0.55, 0.3, 0.4)
+		var lean := create_tween()
+		lean.tween_property(model, "rotation:x", 0.6, 0.14).set_ease(Tween.EASE_OUT)
 		var t := create_tween()
 		t.tween_property(self, "global_position", target + Vector3(0, 0.2, 0), 0.32).set_ease(Tween.EASE_IN)
 		t.tween_callback(func():
+			create_tween().tween_property(model, "rotation:x", 0.0, 0.3).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
 			game.ring_burst(target, 2.6, colour)
 			var p: Player3D = game.player
 			if p.global_position.distance_to(target) < 2.6 and not p.dead:

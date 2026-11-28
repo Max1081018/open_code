@@ -568,6 +568,29 @@ func _breakdown() -> void:
 		groups[key] = e
 	for k in groups:
 		print("BREAKDOWN %s nodes=%d surfaces=%d shadow_surfaces=%d" % [k, groups[k][0], groups[k][1], groups[k][2]])
+	# The heaviest single meshes in view (triangles x instances).
+	var heavy := []
+	for g in find_children("*", "GeometryInstance3D", true, false):
+		var gi := g as GeometryInstance3D
+		if not gi.is_visible_in_tree() or gi.global_position.distance_to(cam_pos) > 120.0:
+			continue
+		var tris := 0
+		if gi is MeshInstance3D and (gi as MeshInstance3D).mesh:
+			var m: Mesh = (gi as MeshInstance3D).mesh
+			for k in m.get_surface_count():
+				var arr := m.surface_get_arrays(k)
+				var idx = arr[Mesh.ARRAY_INDEX]
+				tris += (idx.size() if idx != null else (arr[Mesh.ARRAY_VERTEX] as PackedVector3Array).size()) / 3
+		elif gi is MultiMeshInstance3D and (gi as MultiMeshInstance3D).multimesh:
+			var mm := (gi as MultiMeshInstance3D).multimesh
+			if mm.mesh:
+				var arr2 := mm.mesh.surface_get_arrays(0)
+				var idx2 = arr2[Mesh.ARRAY_INDEX]
+				tris = (idx2.size() if idx2 != null else (arr2[Mesh.ARRAY_VERTEX] as PackedVector3Array).size()) / 3 * mm.visible_instance_count if mm.visible_instance_count >= 0 else 0
+		heavy.append([tris, String(gi.get_path()).right(70)])
+	heavy.sort_custom(func(a, b): return a[0] > b[0])
+	for i in mini(12, heavy.size()):
+		print("HEAVY %8d %s" % heavy[i])
 
 
 const BASE_FOG := 0.0002
@@ -773,13 +796,17 @@ func _script_input() -> void:
 		if f == 2:
 			player.global_position = arena + Vector3(0, 1.0, 5.0)
 			player.velocity = Vector3.ZERO
-		var wake_at := int(_args.get("wake", "40"))
-		if f == wake_at - 10:
-			# The terrain has streamed in by now: set her on it.
-			var y = surface_y(arena + Vector3(0, 0, 5))
-			if y != null:
+			world.focus = arena
+		if not _args.has("_placed"):
+			# Hold her there until the ground has streamed in, then set her on
+			# it; the guardian wakes --wake frames after that (default 30).
+			player.global_position = arena + Vector3(0, 1.0, 5.0)
+			player.velocity = Vector3.ZERO
+			var y = surface_y(arena + Vector3(0, 0, 5)) if f > 4 else null
+			if y != null and absf(float(y) - arena.y) < 6.0:
 				player.global_position = Vector3(arena.x, float(y) + 0.2, arena.z + 5.0)
-				player.velocity = Vector3.ZERO
+				_args["_placed"] = str(f)
+		var wake_at := int(_args.get("_placed", "100000")) + int(_args.get("wake", "30"))
 		if f == wake_at:
 			bosses.wake(_args.boss)
 		if f > wake_at + 20 and f % 30 == 0:

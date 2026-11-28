@@ -155,6 +155,7 @@ static func _make_arc() -> ArrayMesh:
 
 
 func _process(delta: float) -> void:
+	_frame_guardian()
 	skill_cooldown = maxf(0.0, skill_cooldown - delta)
 	for a in cooldowns:
 		cooldowns[a] = maxf(0.0, float(cooldowns[a]) - delta)
@@ -759,6 +760,16 @@ func _on_enemy_died(e: Enemy3D) -> void:
 			boss = null
 		toast.emit("%s falls!" % String(e.spec.get("boss", "The guardian")))
 		game.hud.boss_bar(null)
+
+
+## The camera keeps the guardian she is fighting (the one on the boss bar)
+## in the frame.
+func _frame_guardian() -> void:
+	var g: Enemy3D = game.hud._boss
+	var engaged := g != null and is_instance_valid(g) and not g.dead
+	game.cam.focus = g if engaged else null
+	if engaged:
+		game.cam.focus_height = 1.2 * float(g.spec.get("scale", 1.0))
 
 
 ## A flat open spot a few hundred metres out for the Warden's ruined arena.

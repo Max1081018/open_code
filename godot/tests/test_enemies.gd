@@ -91,6 +91,13 @@ func test_guardians() -> void:
 			var at: Vector3 = gb.arenas[id]
 			var d := Vector2(at.x - s.x, at.z - s.z).length()
 			check(d > IslandBosses.WAKE_R + 25.0, "the %s start is clear of the %s arena (%.0f m)" % [start, id, d])
+	# Ground arenas are level floors (the coast's once fell back to a 40-degree
+	# hillside when no flat spot was found close to the grotto).
+	for id in ["jungle", "coast"]:
+		var at: Vector3 = gb.arenas[id]
+		var flat := gb._floor_flatness(main.world.gen, at.x, at.z, at.y)
+		check(flat > 0.85, "the %s arena is level ground (%.3f)" % [id, flat])
+		check(at.y > TerrainGen.WATER + 1.0, "and dry")
 	# The sky arena sits on its isle's real crown.
 	var sky: Vector3 = gb.arenas.sky
 	await tree.physics_frame

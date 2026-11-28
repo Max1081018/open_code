@@ -18,6 +18,13 @@ var pitch_target := -0.16
 var arm: SpringArm3D
 var camera: Camera3D
 var _blend := 0.0           ## 0 third person, 1 first person (eased)
+## A great foe to keep in the frame during its fight: the view pulls back
+## and, when it is up in the air, tilts up to hold it below the top edge. An
+## offset on the player's own look, eased in and out, never a takeover.
+var focus: Node3D
+var focus_height := 1.5     ## where on the focus to frame (its chest)
+var _frame := 0.0           ## 0..1 eased
+var _lift := 0.0            ## extra pitch to hold the focus in view
 
 
 func _ready() -> void:
@@ -70,8 +77,21 @@ func _physics_process(delta: float) -> void:
 	# Ease the pivot toward its target (smooth follow), snapping in first person.
 	var follow := 1.0 - exp(-delta * (24.0 if _blend > 0.5 else 10.0))
 	global_position = global_position.lerp(pivot, follow) if global_position.distance_to(pivot) < 6.0 else pivot
-	rotation = Vector3(pitch, yaw, 0)
-	arm.spring_length = lerpf(distance, 0.0, _blend)
+	var want := 0.0
+	var lift := 0.0
+	if focus != null and is_instance_valid(focus) and focus.is_inside_tree():
+		var to := focus.global_position + Vector3(0, focus_height, 0) - pivot_tp
+		var flat := Vector2(to.x, to.z).length()
+		if flat < 40.0:
+			want = 1.0
+			# Its elevation seen from her; keep it within ~0.25 rad of the
+			# view's centre line (the half-height of the frame is ~0.5).
+			lift = clampf(atan2(to.y, maxf(flat, 1.0)) - 0.25 - pitch, 0.0, 0.38)
+	_frame = move_toward(_frame, want, delta * 1.2)
+	_lift = lerpf(_lift, lift, 1.0 - exp(-delta * 3.0))
+	var shown := 1.0 - _blend   # never in first person
+	rotation = Vector3(minf(pitch + _lift * _frame * shown, 0.6), yaw, 0)
+	arm.spring_length = lerpf(distance + 1.3 * _frame, 0.0, _blend)
 	camera.fov = lerpf(58.0, 72.0, _blend)
 
 

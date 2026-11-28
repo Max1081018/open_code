@@ -81,6 +81,15 @@ fixed where they looked wrong:
 | Falling pose crumpled | Tuck ~40% gentler |
 | Pink skeletons, red hit tint, sinking corpses, squashed flat corpses | Ashen-violet Risen with glowing eyes (element colour on every skeleton foe), crisp white hit flash, the dead shrink into motes of light |
 | Foes the camera passes through walled off the view | They dither away within 2.6 m of the camera (toon and outline passes) |
+| **The Stormwing's arena was the Skybound start itself**: every sky journey woke the guardian on top of her (82 damage in the first second) | It waits on its own isle over its own bridge, on the crown's real height; a test checks no start is inside any arena |
+| The Crystal Coast arena fell back to a ~40° hillside | The site search scores the whole arena floor and widens its rings; tested level and dry |
+| Foe bolts: see-through bubbles, then grey grid-lined balls (the depth AO shading an opaque core) | Drawn as light: glow sprites with a white-hot core |
+| Trails behind fast bolts were rows of beads | Ribbon trails (a camera-facing strip through recent positions) |
+| Star lances read as frosted-glass panels, and squashed into a white cone on impact | Slim violet crystals of light that drain away where they struck |
+| The Stormwing's near-white colour turned everything of it white under bloom | Electric blue |
+| Arena runestones were grey boxes | Rough leaning menhirs with a glowing rune cut in each face |
+| A flying guardian stayed above the top of the screen all fight | The camera pulls back and tilts to keep the guardian in frame (an offset on the player's own look) |
+| One bolt hit tinted the whole screen red-pink | The hurt vignette stays at the screen's rim |
 | Flat translucent root-line bars | Glowing danger lanes that fill as the blow winds up, chevrons, a flash when it lands |
 | Plain white damage numbers, torso-sized log drops | Title-font numbers (lilac, gold crits) that pop and drift; small hovering loot with a rarity glint |
 

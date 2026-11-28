@@ -357,6 +357,7 @@ class Ribbon:
 	var width := 0.3
 	var span := 0.22         ## seconds of history it keeps
 	var tint := Arcana.VIOLET
+	var follow_for := INF    ## seconds to follow before letting go
 	var _pts: Array = []     ## [position, age], oldest first
 	var _im := ImmediateMesh.new()
 	static var _tex: Texture2D
@@ -396,6 +397,9 @@ class Ribbon:
 		extra_cull_margin = 16384.0   # its AABB is rebuilt every frame
 
 	func _process(delta: float) -> void:
+		follow_for -= delta
+		if follow_for <= 0.0:
+			follow = null
 		for p in _pts:
 			p[1] += delta
 		while not _pts.is_empty() and _pts[0][1] > span:
@@ -441,9 +445,10 @@ class Ribbon:
 
 
 ## Start a ribbon behind `node` (added beside it, so it survives the node).
-static func ribbon(node: Node3D, tint: Color, width := 0.3, span := 0.22) -> void:
+static func ribbon(node: Node3D, tint: Color, width := 0.3, span := 0.22, follow_for := INF) -> void:
 	var r := Ribbon.new()
 	r.follow = node
+	r.follow_for = follow_for
 	r.tint = tint
 	r.width = width
 	r.span = span
