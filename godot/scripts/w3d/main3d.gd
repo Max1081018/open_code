@@ -665,6 +665,17 @@ func _script_input() -> void:
 		hud.menu.open(_args.menu)
 	if _args.has("hold") and f == 2:
 		player.hold(_args.hold)
+	if _args.has("spawn") and f == 2:
+		# --spawn=kind,kind,...: foes in a row ahead of the camera, idle.
+		var kinds: PackedStringArray = String(_args.spawn).split(",")
+		var fwd := cam.forward_flat()
+		var right := cam.right_flat()
+		for i in kinds.size():
+			var at := player.global_position + fwd * 7.0 + right * (float(i) - (kinds.size() - 1) * 0.5) * 4.5
+			at.y = world.height_at(at.x, at.z)
+			var e: Enemy3D = play.spawn_enemy(kinds[i], at)
+			e.spec = e.spec.duplicate()
+			e.spec.sight = 0.5   # stand still for the picture
 	if _args.has("boss") and bosses:
 		# --boss=jungle|sky|coast: stand in the guardian's arena as it wakes.
 		var arena: Vector3 = bosses.arenas.get(_args.boss, player.global_position)

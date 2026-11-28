@@ -265,6 +265,8 @@ func _ready() -> void:
 		Arcana.circle(game, global_position, 1.2, Color(1.0, 0.82, 0.35), 2.0, 1.0)
 	if spec.has("ambush"):
 		_hide()
+	if spec.has("boss") and BOSS_SPECS.has(kind):
+		_dress_guardian()
 	if spec.has("element"):
 		# A faint glow of its element on it.
 		var l := OmniLight3D.new()
@@ -949,3 +951,129 @@ func make_elite() -> void:
 	spec.loot = loot
 	max_health = spec.health
 	health = max_health
+
+
+# ----------------------------------------------- guardians' silhouettes ---
+
+## Each guardian wears its island: thorns and spores, wings and wind, a
+## crest of crystal; attached to its bones so they move with it.
+func _dress_guardian() -> void:
+	var sk: Skeleton3D = model.find_children("*", "Skeleton3D", true, false)[0]
+	var colour: Color = spec.element
+	var glow := StandardMaterial3D.new()
+	glow.albedo_color = colour.darkened(0.2)
+	glow.emission_enabled = true
+	glow.emission = colour
+	glow.emission_energy_multiplier = 1.4
+	glow.roughness = 0.4
+	var head := _bone_mount(sk, "Head")
+	var chest := _bone_mount(sk, "Chest")
+	match kind:
+		"thornmother":
+			var bark := StandardMaterial3D.new()
+			bark.albedo_color = Color(0.25, 0.32, 0.16)
+			bark.roughness = 0.9
+			# A crown of thorns.
+			for k in 9:
+				var a := TAU * k / 9.0
+				_spike(head, Vector3(cos(a) * 0.13, 0.17, sin(a) * 0.13), Vector3(cos(a) * 0.5, 1.0, sin(a) * 0.5), 0.22 + 0.08 * (k % 2), 0.035, glow if k % 3 == 0 else bark)
+			# Thorns on the shoulders and back.
+			for side in [-1.0, 1.0]:
+				for k in 3:
+					_spike(chest, Vector3(side * (0.22 + k * 0.05), 0.12 + k * 0.03, -0.08), Vector3(side * 0.8, 0.7, -0.4), 0.3 - k * 0.05, 0.05, bark)
+			_motes(chest, colour, 24, 0.6)
+		"stormwing":
+			var feather := StandardMaterial3D.new()
+			feather.albedo_color = Color(0.92, 0.95, 1.0, 0.92)
+			feather.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+			feather.cull_mode = BaseMaterial3D.CULL_DISABLED
+			feather.emission_enabled = true
+			feather.emission = colour * 0.4
+			for side in [-1.0, 1.0]:
+				var wing := Node3D.new()
+				chest.add_child(wing)
+				wing.position = Vector3(side * 0.12, 0.1, -0.14)
+				wing.rotation = Vector3(0.1, side * -0.35, side * 0.25)
+				for k in 6:
+					var f := MeshInstance3D.new()
+					var q := PrismMesh.new()
+					q.size = Vector3(0.18, 0.9 - k * 0.08, 0.02)
+					f.mesh = q
+					f.material_override = feather
+					wing.add_child(f)
+					f.position = Vector3(side * (0.15 + k * 0.17), 0.25 - k * 0.07, 0)
+					f.rotation.z = side * (0.5 + k * 0.18)
+				var t := wing.create_tween().set_loops()
+				t.tween_property(wing, "rotation:z", side * 0.55, 0.6).set_trans(Tween.TRANS_SINE)
+				t.tween_property(wing, "rotation:z", side * 0.15, 0.6).set_trans(Tween.TRANS_SINE)
+			_motes(chest, colour, 30, 1.0)
+		"tidewarden":
+			for k in 5:
+				for part in FoliageLib.parts("P:crystal"):
+					var mi := MeshInstance3D.new()
+					mi.mesh = part[0]
+					mi.material_override = glow
+					chest.add_child(mi)
+					var a := (k - 2) * 0.35
+					mi.transform = Transform3D(Basis.from_euler(Vector3(-0.5, 0, a)).scaled(Vector3.ONE * (0.18 - absf(k - 2) * 0.03)), Vector3(sin(a) * 0.15, 0.25, -0.18)) * (part[1] as Transform3D)
+			_motes(chest, colour, 20, 0.7)
+	var light := OmniLight3D.new()
+	light.light_color = colour
+	light.light_energy = 1.0
+	light.omni_range = 5.0
+	light.shadow_enabled = false
+	chest.add_child(light)
+
+
+func _bone_mount(sk: Skeleton3D, bone: String) -> Node3D:
+	var at := BoneAttachment3D.new()
+	at.bone_name = bone
+	sk.add_child(at)
+	# Undo the rig's own scale so ornaments are sized in metres.
+	var holder := Node3D.new()
+	at.add_child(holder)
+	var b := sk.find_bone(bone)
+	if b >= 0:
+		var rig: Vector3 = (sk.global_transform * sk.get_bone_global_rest(b)).basis.get_scale()
+		var want: Vector3 = model.global_transform.basis.get_scale()
+		holder.scale = Vector3(want.x / maxf(rig.x, 1e-4), want.y / maxf(rig.y, 1e-4), want.z / maxf(rig.z, 1e-4))
+	return holder
+
+
+func _spike(parent: Node3D, at: Vector3, dir: Vector3, length: float, radius: float, mat: Material) -> void:
+	var mi := MeshInstance3D.new()
+	var c := CylinderMesh.new()
+	c.top_radius = 0.0
+	c.bottom_radius = radius
+	c.height = length
+	c.radial_segments = 5
+	mi.mesh = c
+	mi.material_override = mat
+	parent.add_child(mi)
+	var up := dir.normalized()
+	var x := up.cross(Vector3.FORWARD if absf(up.z) < 0.9 else Vector3.RIGHT).normalized()
+	mi.transform = Transform3D(Basis(x, up, x.cross(up)), at + up * length * 0.5)
+
+
+func _motes(parent: Node3D, colour: Color, amount: int, spread: float) -> void:
+	var p := CPUParticles3D.new()
+	var q := QuadMesh.new()
+	q.size = Vector2(0.08, 0.08)
+	p.mesh = q
+	var m := StandardMaterial3D.new()
+	m.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	m.billboard_mode = BaseMaterial3D.BILLBOARD_PARTICLES
+	m.blend_mode = BaseMaterial3D.BLEND_MODE_ADD
+	m.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+	m.albedo_texture = Play3D._spark_texture()
+	m.albedo_color = colour
+	p.material_override = m
+	p.amount = amount
+	p.lifetime = 1.8
+	p.local_coords = false
+	p.emission_shape = CPUParticles3D.EMISSION_SHAPE_SPHERE
+	p.emission_sphere_radius = spread
+	p.gravity = Vector3(0, 0.4, 0)
+	p.initial_velocity_min = 0.1
+	p.initial_velocity_max = 0.5
+	parent.add_child(p)
