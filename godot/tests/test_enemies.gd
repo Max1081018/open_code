@@ -186,9 +186,17 @@ func test_island_creatures() -> void:
 	var h1 := knight.health
 	var d_back := play.hit(knight, 1.0, back, false, "arcane")
 	check_eq(h1 - knight.health, float(d_back), "a hit from behind takes what it shows")
-	check(d_back > d_front * 2, "from behind it is far more telling (%d vs %d)" % [d_back, d_front])
+	# Compare the guard itself with the crit roll and variance pinned: a random
+	# crit on the guarded blow (or rounding at single digits) must not decide it.
+	var atk := play.attacker_stats()
+	var g_front: int = DamageCalc.compute(atk, knight.combat_stats(front, false), 4.0, "arcane", 0.99, 0.5).amount
+	var g_back: int = DamageCalc.compute(atk, knight.combat_stats(back, false), 4.0, "arcane", 0.99, 0.5).amount
+	var g_heavy: int = DamageCalc.compute(atk, knight.combat_stats(front, true), 4.0, "arcane", 0.99, 0.5).amount
+	check(g_back > g_front * 2, "from behind it is far more telling (%d vs %d)" % [g_back, g_front])
+	check(g_heavy > g_front * 2, "a heavy blow breaks through the guard (%d vs %d)" % [g_heavy, g_front])
+	var h2 := knight.health
 	var d_heavy := play.hit(knight, 1.0, front, true, "arcane")
-	check(d_heavy > d_front * 2, "a heavy blow breaks through the guard")
+	check_eq(h2 - knight.health, float(d_heavy), "a heavy blow takes what it shows")
 	# Elites.
 	var plain: Enemy3D = play.spawn_enemy("thornling", p.global_position + Vector3(-6, 0, 0))
 	var elite: Enemy3D = play.spawn_enemy("thornling", p.global_position + Vector3(-8, 0, 0), true)
