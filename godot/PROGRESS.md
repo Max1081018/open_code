@@ -124,9 +124,33 @@ end to end by new tests.
 | **Boulders on the Crystal Coast, the beach, the snow and round the sky isles drew as flat glowing white blobs** (traced with the harness: real geometry, not an effect; the rock pack's texture is twice the ground's brightness and full sun clipped it) | Each rock piece toned to weathered grey from its measured brightness; filmed before and after |
 | The sky and coast chapters and two of the three guardians had no end-to-end test | `test_island_journeys` (sky and coast chapters, falls on every island, updrafts) and `test_guardian_fights` (every move of every phase, defeat recorded and saved) |
 
-Still printed by the test run, and why: "Parameter material is null"
-comes only from the headless dummy renderer (absent with a real one); the
-container has no audio device or vsync control.
+Still printed by the test run, and why: the container has no audio device
+or vsync control. ("Parameter material is null" was not harmless noise as
+first thought: the real renderer printed it too. Fixed in the mobile pass;
+two lines remain, from `test_discovery` freeing the older 2D level at once
+with `free()`, a test-only path.)
+
+## Mobile pass (performance, collision, lighting, shaders, APK)
+
+Download: **https://github.com/Max1081018/open_code/releases** (each push
+that touches `godot/` builds a signed APK in GitHub Actions,
+`.github/workflows/lanternbound-apk.yml`, and publishes it as a release).
+
+| Change | Effect |
+|---|---|
+| 495 model and terrain textures import VRAM-compressed (ETC2 on Android, checked inside the built APK: 305 `.etc2.ctex`) | 4 to 8 bits a pixel on the GPU instead of 32; the APK stays ~245 MB because lossless WebP was already small on disk |
+| Every packed character carries mesh LODs (`tools/lod_characters.gd`) | the 118k-triangle knight and 130k Warden drop detail with screen size |
+| Rocks and solid scenery parts get mesh LODs; leaf cards thin out past 22 m in the vertex shader (never in the shadow pass) | canopies stay full up close, far trees cost less |
+| Grass clumps: two lighter clumps for the far rings | grass 350k -> 213k triangles in the town view |
+| Sun shafts: 12 jittered samples instead of 20 | same streaks, 40% fewer reads on a full-screen pass |
+| Phones pick a preset by core count; mesh LOD threshold 2 px on mobile | |
+| Enemy hit flash laid over the body only while it shows; a foe hands back its faded material copies before it is freed | an extra transparent pass per foe mesh is gone, and the renderer errors foes caused when freed ("material is null", 107 lines a test run) are gone |
+| Collision: the Root Stair gates, the Sun Gate and the Shrine of the First Root were walk-through | solid (`Solid.gate`, `Solid.fountain`); audit on all four starts now reports only bushes, ferns and flowers (passable on purpose) and the floating starstone crystal |
+| Lighting: low steep banks (river cuts, coast drops) smeared the grass texture down the face and read as blue streaks in shade | side-projected earthy rock; ambient takes a little more ground bounce so shaded faces are not sky-blue |
+| Water shader | drifting caustics on the bed, per-channel absorption (red goes first), fine chop, the real sky gradient reflected and a sun glint that follows the sun |
+
+Town view after the pass: about 1,030 draw calls and 1.85 M primitives by day
+(1,078 at night with every lamp lit), down from 1,376 and 2.21 M.
 
 ## Measured performance (software renderer, High preset, 1280x720)
 
@@ -153,7 +177,7 @@ measured** here.
    triangles. Start with shadow casters (exclude grass and small props from
    the shadow pass), MultiMesh-batch the remaining per-prop meshes, and use
    visibility ranges on far foliage. Then measure Medium and Low.
-1. On a real Android phone: install a build and measure frame rate in the
+1. On a real Android phone: install the release APK and measure frame rate in the
    jungle and town on Medium and High (AO and sun shafts on and off), and
    check the floating blade and touch layout by hand. Nothing here has run on
    a phone yet.

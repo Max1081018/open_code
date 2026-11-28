@@ -29,6 +29,18 @@ static func cylinder(parent: Node3D, radius: float, height: float, at := Vector3
 	return _body(parent, shape, Transform3D(Basis.IDENTITY, at + Vector3(0, height * 0.5, 0)))
 
 
+## ArchKit.gate(span): its two pylons, walk-through between them.
+static func gate(mi: MeshInstance3D, span: float) -> void:
+	for sx in [-1.0, 1.0]:
+		box(mi, Vector3(2.0, 7.0, 2.0), Vector3(sx * (span * 0.5 + 0.8), 3.5, 0))
+
+
+## ArchKit.star_fountain(): the basin rim and the central column.
+static func fountain(mi: MeshInstance3D) -> void:
+	cylinder(mi, 5.3, 1.35, Vector3(0, -0.3, 0))
+	cylinder(mi, 0.9, 4.9)
+
+
 static func _body(parent: Node3D, shape: Shape3D, local: Transform3D) -> StaticBody3D:
 	var body := StaticBody3D.new()
 	body.collision_layer = 1

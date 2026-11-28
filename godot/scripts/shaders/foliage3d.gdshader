@@ -35,7 +35,8 @@ void vertex() {
 		vec3 cen = CUSTOM0.xyz;
 		float d = distance((MODEL_MATRIX * vec4(cen, 1.0)).xyz, CAMERA_POSITION_WORLD);
 		float far_k = smoothstep(thin_near, thin_far, d);
-		float keep = clamp((CUSTOM0.w - 0.5 * far_k) / 0.08, 0.0, 1.0);
+		// Up close every card stays whole; only beyond thin_near do some go.
+		float keep = clamp((CUSTOM0.w - 0.5 * far_k) / 0.08 + (1.0 - far_k), 0.0, 1.0);
 		VERTEX = cen + (VERTEX - cen) * keep * (1.0 + 0.4 * far_k);
 	}
 	float phase = world.x * 0.21 + world.z * 0.17;

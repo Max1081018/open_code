@@ -166,6 +166,31 @@ var _stagger := 0.0
 var _clip := ""
 var _flash: StandardMaterial3D
 var _flash_time := 0.0
+## The flash is laid over the body only while it shows: an overlay is a
+## whole extra transparent pass per mesh, and one left on a foe as it is
+## freed trips the renderer ("material is null").
+var _flash_meshes: Array[MeshInstance3D] = []
+var _flash_on := false
+
+
+func _set_flash(on: bool) -> void:
+	if on == _flash_on:
+		return
+	_flash_on = on
+	for mi in _flash_meshes:
+		if is_instance_valid(mi):
+			mi.material_overlay = _flash if on else null
+
+
+func _exit_tree() -> void:
+	_set_flash(false)
+	# Hand the shared materials back before the copies (and their outline
+	# passes) are freed with the foe, or the renderer trips on them.
+	for slot in _fade_slots:
+		if is_instance_valid(slot[0]):
+			(slot[0] as MeshInstance3D).set_surface_override_material(slot[1], null)
+	_fade_slots.clear()
+	_faded = false
 var _strafe := 1.0
 var _charge := 0.0
 var _style := "melee"
@@ -257,7 +282,7 @@ func _ready() -> void:
 	_flash.albedo_color = Color(1.0, 0.95, 0.92, 0.0)   # a crisp white hit flash
 	_flash.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
 	for m in model.find_children("*", "MeshInstance3D", true, false):
-		(m as MeshInstance3D).material_overlay = _flash
+		_flash_meshes.append(m)
 		(m as MeshInstance3D).extra_cull_margin = 2.0
 	_home = global_position
 	_wander_target = _home
@@ -327,6 +352,7 @@ func _physics_process(delta: float) -> void:
 			_bar_fill.position.x = 0.0
 	if not dead:
 		_flash.albedo_color.a = clampf(_flash_time * 6.0, 0.0, 0.6)
+		_set_flash(_flash.albedo_color.a > 0.0)
 	_occlusion_fade(delta)
 	if dead:
 		velocity.y -= 22.0 * delta
@@ -712,8 +738,10 @@ func _die() -> void:
 		var at := global_position + Vector3(0, 0.8 * float(spec.get("scale", 1.0)), 0)
 		Arcana.sparks(game, at, colour, 40 if not is_boss else 120, 3.5, 0.12, 1.5)
 		Arcana.flash(game, at, colour, 1.5, 4.0, 0.4))
+	_set_flash(true)
 	t.tween_method(func(v: float): _flash.albedo_color = Color(colour.lerp(Color.WHITE, 0.5), v), 0.0, 0.85, 0.25)
 	t.parallel().tween_property(model, "scale", model.scale * 0.04, 0.4).set_delay(0.1).set_ease(Tween.EASE_IN).set_trans(Tween.TRANS_QUAD)
+	t.tween_callback(_set_flash.bind(false))
 	t.tween_callback(queue_free)
 
 
@@ -1202,12 +1230,15 @@ func _occlusion_fade(_delta: float) -> void:
 					line.set_shader_parameter("near_fade", 2.6)
 					own.next_pass = line
 				mi.set_surface_override_material(k, own)
+				_fade_slots.append([mi, k])
 			elif mat is BaseMaterial3D and (mat as BaseMaterial3D).distance_fade_mode == BaseMaterial3D.DISTANCE_FADE_DISABLED:
 				var bm := (mat as BaseMaterial3D).duplicate() as BaseMaterial3D
 				bm.distance_fade_mode = BaseMaterial3D.DISTANCE_FADE_PIXEL_DITHER
 				bm.distance_fade_min_distance = 1.3
 				bm.distance_fade_max_distance = 2.6
 				mi.set_surface_override_material(k, bm)
+				_fade_slots.append([mi, k])
 
 
 var _faded := false
+var _fade_slots: Array = []   ## [MeshInstance3D, surface] given own copies

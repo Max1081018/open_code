@@ -92,6 +92,7 @@ func _jungle() -> void:
 		gate.position = Vector3(p.x, _ground(p.x, p.y) - 0.3, p.y)
 		gate.rotation.y = atan2(rd.x, rd.y)
 		root.add_child(gate)
+		Solid.gate(gate, 9.0)
 	_mark("root_ramp", "The Root Stair", Vector3((c + rd * (Realms.MESA_R + 140.0)).x, 0, (c + rd * (Realms.MESA_R + 140.0)).y))
 	# Crystal shards round the tree and a shrine at its foot.
 	for k in 6:
@@ -103,6 +104,7 @@ func _jungle() -> void:
 	shrine.mesh = ArchKit.star_fountain()
 	shrine.position = Vector3(shrine_at.x, _ground(shrine_at.x, shrine_at.y) - 0.2, shrine_at.y)
 	root.add_child(shrine)
+	Solid.fountain(shrine)
 	_mark("jungle_shrine", "Shrine of the First Root", shrine.position)
 
 
@@ -120,6 +122,7 @@ func _desert() -> void:
 	gate.position = Vector3(g.x, _ground(g.x, g.y) - 1.0, g.y)
 	gate.rotation.y = 0.35
 	root.add_child(gate)
+	Solid.gate(gate, 16.0)
 	_sun_tint(gate)
 	_mark("sun_gate", "The Sun Gate", gate.position)
 	# The Colonnade of Kings: a ring of colossal pillars, some fallen short.
