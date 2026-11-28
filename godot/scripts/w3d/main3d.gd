@@ -166,6 +166,10 @@ func _ready() -> void:
 		bosses = IslandBosses.new()
 		add_child(bosses)
 		bosses.build(self)
+	# Draw budget: props fade out by their size and small ones cast no shadow.
+	for n in [realms, islands, secrets, bosses]:
+		if n:
+			budget(n)
 	# The first adventure on the chosen starting island.
 	if Realms.STARTS.has(start_island):
 		adventure = Adventure.new()
@@ -505,6 +509,33 @@ func _soundscape(delta: float) -> void:
 	var under: bool = player.global_position.y < world.height_at(player.global_position.x, player.global_position.z) - 3.0
 	var bed := "cave" if under else ("forest" if b in [TerrainGen.Biome.FOREST, TerrainGen.Biome.JUNGLE, TerrainGen.Biome.DARK_FOREST] else "")
 	Sfx.play_ambience(bed, -8.0 if time_of_day > 0.25 and time_of_day < 0.78 else -12.0)
+
+
+## A draw budget for static scenery under `root`: each prop is drawn only
+## within a distance that suits its size (a flower 60 m, a house 400 m, a
+## landmark always), and anything smaller than ~1.5 m casts no shadow.
+static func budget(root: Node) -> void:
+	for g in root.find_children("*", "GeometryInstance3D", true, false):
+		var gi := g as GeometryInstance3D
+		if gi is CPUParticles3D or gi.visibility_range_end > 0.0:
+			continue
+		var box := AABB()
+		if gi is MeshInstance3D and (gi as MeshInstance3D).mesh:
+			box = (gi as MeshInstance3D).mesh.get_aabb()
+		elif gi is MultiMeshInstance3D and (gi as MultiMeshInstance3D).multimesh:
+			box = (gi as MultiMeshInstance3D).multimesh.get_aabb()
+		else:
+			continue
+		var size := box.size.length() * gi.global_transform.basis.get_scale().x
+		if gi is MultiMeshInstance3D:
+			# A batch spread over an isle or field: judge by its parts.
+			size = minf(size, 12.0)
+		if size < 25.0:
+			gi.visibility_range_end = clampf(size * 45.0, 60.0, 420.0)
+			gi.visibility_range_end_margin = 12.0
+			gi.visibility_range_fade_mode = GeometryInstance3D.VISIBILITY_RANGE_FADE_SELF
+		if size < 1.5:
+			gi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 
 
 ## Draw items by system, for the --stats capture: [nodes, surfaces, shadow casters].

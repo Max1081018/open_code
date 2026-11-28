@@ -70,8 +70,14 @@ Tests: **142 pass** (`godot/tests/run.sh`; it also fails on any SCRIPT ERROR).
 
 | Scene | Draw calls | Triangles | Lights |
 |---|---|---|---|
-| Greenwood town | 1,660 | 2.39 M | 45 |
-| Great Jungle start | 1,646 | 2.69 M | 45 |
+| Greenwood town (before) | 1,660 | 2.39 M | 45 |
+| Great Jungle start (before) | 1,646 | 2.69 M | 45 |
+| Greenwood town (after the scenery budget) | 1,342 | 2.15 M | 45 |
+| Great Jungle start (after the scenery budget) | 1,146 | 2.33 M | 45 |
+
+The scenery budget (`Main3D.budget`) draws each realm, sky-isle, secret and
+arena prop only within a distance that suits its size, and small props cast
+no shadow.
 
 These are above a comfortable budget for mid-range Android (roughly under 800
 draw calls and 1 M triangles). The shadow pass (two splits) roughly doubles
