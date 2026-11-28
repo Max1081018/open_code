@@ -543,7 +543,10 @@ static func budget(root: Node) -> void:
 
 ## Draw items by system, for the --stats capture: [nodes, surfaces, shadow casters].
 func _breakdown() -> void:
+	# Per system (nearest scripted ancestor): nodes, draw surfaces, triangles,
+	# and how many of those also go through the shadow pass.
 	var groups := {}
+	var tri_cache := {}
 	var cam_pos: Vector3 = get_viewport().get_camera_3d().global_position
 	for g in find_children("*", "GeometryInstance3D", true, false):
 		var gi := g as GeometryInstance3D
@@ -552,47 +555,46 @@ func _breakdown() -> void:
 		if gi.visibility_range_end > 0.0 and gi.global_position.distance_to(cam_pos) > gi.visibility_range_end + 64.0:
 			continue
 		var key := "other"
-		var n: Node = gi
+		var n: Node = gi.get_parent()
 		while n != null and n != self:
-			if n is OpenWorld or n is SkyIslands or n is Town or n is WorldFeatures or n is Npc3D or n is Player3D or n is Enemy3D:
-				key = n.get_class() + ":" + String(n.get_script().get_global_name())
+			if n.get_script():
+				key = String((n.get_script() as Script).get_global_name())
+				if key == "":
+					key = (n.get_script() as Script).resource_path.get_file()
 				break
 			n = n.get_parent()
-		var surf := 1
-		if gi is MeshInstance3D and (gi as MeshInstance3D).mesh:
-			surf = (gi as MeshInstance3D).mesh.get_surface_count()
-		elif gi is MultiMeshInstance3D and (gi as MultiMeshInstance3D).multimesh and (gi as MultiMeshInstance3D).multimesh.mesh:
-			surf = (gi as MultiMeshInstance3D).multimesh.mesh.get_surface_count()
-		var e: Array = groups.get(key, [0, 0, 0])
+		var mesh: Mesh = null
+		var count := 1
+		if gi is MeshInstance3D:
+			mesh = (gi as MeshInstance3D).mesh
+		elif gi is MultiMeshInstance3D and (gi as MultiMeshInstance3D).multimesh:
+			mesh = (gi as MultiMeshInstance3D).multimesh.mesh
+			var mm := (gi as MultiMeshInstance3D).multimesh
+			count = mm.visible_instance_count if mm.visible_instance_count >= 0 else mm.instance_count
+		if mesh == null:
+			continue
+		if not tri_cache.has(mesh):
+			var t := 0
+			for k in mesh.get_surface_count():
+				var arr := mesh.surface_get_arrays(k)
+				var idx = arr[Mesh.ARRAY_INDEX]
+				t += (idx.size() if idx != null and (idx as PackedInt32Array).size() > 0 else (arr[Mesh.ARRAY_VERTEX] as PackedVector3Array).size()) / 3
+			tri_cache[mesh] = t
+		var tris: int = tri_cache[mesh] * count
+		var surf := mesh.get_surface_count()
+		var shadow := gi.cast_shadow != GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+		var e: Array = groups.get(key, [0, 0, 0, 0, 0])
 		e[0] += 1
 		e[1] += surf
-		e[2] += surf if gi.cast_shadow != GeometryInstance3D.SHADOW_CASTING_SETTING_OFF else 0
+		e[2] += surf if shadow else 0
+		e[3] += tris
+		e[4] += tris if shadow else 0
 		groups[key] = e
-	for k in groups:
-		print("BREAKDOWN %s nodes=%d surfaces=%d shadow_surfaces=%d" % [k, groups[k][0], groups[k][1], groups[k][2]])
-	# The heaviest single meshes in view (triangles x instances).
-	var heavy := []
-	for g in find_children("*", "GeometryInstance3D", true, false):
-		var gi := g as GeometryInstance3D
-		if not gi.is_visible_in_tree() or gi.global_position.distance_to(cam_pos) > 120.0:
-			continue
-		var tris := 0
-		if gi is MeshInstance3D and (gi as MeshInstance3D).mesh:
-			var m: Mesh = (gi as MeshInstance3D).mesh
-			for k in m.get_surface_count():
-				var arr := m.surface_get_arrays(k)
-				var idx = arr[Mesh.ARRAY_INDEX]
-				tris += (idx.size() if idx != null else (arr[Mesh.ARRAY_VERTEX] as PackedVector3Array).size()) / 3
-		elif gi is MultiMeshInstance3D and (gi as MultiMeshInstance3D).multimesh:
-			var mm := (gi as MultiMeshInstance3D).multimesh
-			if mm.mesh:
-				var arr2 := mm.mesh.surface_get_arrays(0)
-				var idx2 = arr2[Mesh.ARRAY_INDEX]
-				tris = (idx2.size() if idx2 != null else (arr2[Mesh.ARRAY_VERTEX] as PackedVector3Array).size()) / 3 * mm.visible_instance_count if mm.visible_instance_count >= 0 else 0
-		heavy.append([tris, String(gi.get_path()).right(70)])
-	heavy.sort_custom(func(a, b): return a[0] > b[0])
-	for i in mini(12, heavy.size()):
-		print("HEAVY %8d %s" % heavy[i])
+	var keys := groups.keys()
+	keys.sort_custom(func(a, b): return groups[a][3] > groups[b][3])
+	for k in keys:
+		var e: Array = groups[k]
+		print("BREAKDOWN %-18s nodes=%4d surfaces=%4d shadow_surf=%4d tris=%8d shadow_tris=%8d" % [k, e[0], e[1], e[2], e[3], e[4]])
 
 
 const BASE_FOG := 0.0002
