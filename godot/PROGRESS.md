@@ -66,8 +66,25 @@ Tests: **142 pass** (`godot/tests/run.sh`; it also fails on any SCRIPT ERROR).
 - The jungle is heavy for the software renderer used in captures; on-device frame rate is unmeasured.
 - Google/Apple sign-in need their platform plugins and app credentials; until then those buttons explain that and do nothing.
 
+## Measured performance (software renderer, High preset, 1280x720)
+
+| Scene | Draw calls | Triangles | Lights |
+|---|---|---|---|
+| Greenwood town | 1,660 | 2.39 M | 45 |
+| Great Jungle start | 1,646 | 2.69 M | 45 |
+
+These are above a comfortable budget for mid-range Android (roughly under 800
+draw calls and 1 M triangles). The shadow pass (two splits) roughly doubles
+the casters' draw calls, and grass blades and foliage carry most triangles.
+Medium and Low presets cut view distance, grass and effects but were **not
+measured** here.
+
 ## Next exact step
 
+0. **Performance pass first**: bring High under ~800 draw calls and ~1 M
+   triangles. Start with shadow casters (exclude grass and small props from
+   the shadow pass), MultiMesh-batch the remaining per-prop meshes, and use
+   visibility ranges on far foliage. Then measure Medium and Low.
 1. On a real Android phone: install a build and measure frame rate in the
    jungle and town on Medium and High (AO and sun shafts on and off), and
    check the floating blade and touch layout by hand. Nothing here has run on
