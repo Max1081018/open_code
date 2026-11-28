@@ -208,8 +208,9 @@ static func with_lods(mesh: Mesh) -> Mesh:
 	im.generate_lods(25.0, 60.0, [])
 	var out := im.get_mesh()
 	out.resource_name = am.resource_name
-	# Keep the chain short and never let a part collapse to a sliver.
-	return LodUtil.trimmed(out)
+	# Solid scenery (rocks, stumps) simplifies gracefully, so it may go
+	# lower than characters; the chain still never collapses to a sliver.
+	return LodUtil.trimmed(out, 0.06, 4)
 
 
 ## Drop the cached meshes and materials. Call before the engine shuts down:

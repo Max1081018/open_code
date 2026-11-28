@@ -1,6 +1,7 @@
 extends SceneTree
-## Trims the characters' LOD chains (LodUtil): at most three levels, none
-## below 15% of the triangles, none on small parts.
+## Trims the characters' LOD chains (LodUtil): at most four levels, none
+## below 5% of the triangles, none on small parts (the slivers that made
+## straps, eyes and trims vanish at a distance).
 ##   godot --headless --path . -s res://tools/trim_lods.gd
 
 const DIR := "res://assets/models/heroes/"
@@ -14,7 +15,7 @@ func _initialize() -> void:
 		var n := 0
 		for mi: MeshInstance3D in root.find_children("*", "MeshInstance3D", true, false):
 			if mi.mesh is ArrayMesh:
-				var t := LodUtil.trimmed(mi.mesh as ArrayMesh)
+				var t := LodUtil.trimmed(mi.mesh as ArrayMesh, 0.05, 4)
 				if t != mi.mesh:
 					mi.mesh = t
 					n += 1

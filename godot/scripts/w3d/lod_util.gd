@@ -10,6 +10,8 @@ extends RefCounted
 const MIN_RATIO := 0.15
 const MAX_LEVELS := 3
 const MIN_TRIS := 400
+## No level goes below this many triangles (a strap or trim stays a shape).
+const MIN_LEVEL_TRIS := 120
 
 
 ## A copy of `mesh` with every surface's LOD chain trimmed (or the mesh itself
@@ -28,7 +30,7 @@ static func trimmed(mesh: ArrayMesh, min_ratio := MIN_RATIO, max_levels := MAX_L
 		if full / 3 >= MIN_TRIS:
 			for i in range(0, flat.size(), 2):
 				var n := (flat[i + 1] as PackedByteArray).size() / (4 if wide else 2)
-				if float(n) / full < min_ratio or keep.size() >= max_levels * 2:
+				if float(n) / full < min_ratio or n / 3 < MIN_LEVEL_TRIS or keep.size() >= max_levels * 2:
 					break
 				keep.append(flat[i])
 				keep.append(flat[i + 1])
