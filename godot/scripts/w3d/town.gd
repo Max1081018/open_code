@@ -26,12 +26,12 @@ const TOWN := [
 	["fountain", -16.5, -4.5, 3.2, true],
 	["market_stall", 5.8, -11.5, 3.6, true],
 	["market_stall", -5.8, -11.5, 3.6, true],
-	["crates", 9.0, -14.5, 1.1, false],
-	["crates", -9.5, -14.0, 1.1, false],
-	["bench", 8.0, 2.9, 1.0, false],
-	["bench", -1.2, 8.4, 1.0, false],
-	["bench", -8.3, 1.5, 1.0, false],
-	["bench", 7.4, -4.2, 1.0, false],
+	["crates", 9.0, -14.5, 1.1, true],
+	["crates", -9.5, -14.0, 1.1, true],
+	["bench", 8.0, 2.9, 1.0, true],
+	["bench", -1.2, 8.4, 1.0, true],
+	["bench", -8.3, 1.5, 1.0, true],
+	["bench", 7.4, -4.2, 1.0, true],
 ]
 ## Starfall Haven's own buildings (ArchKit): [kind, x, z, options]; houses
 ## face the plaza unless options give a yaw. Kinds: house, tower, gate.
@@ -86,7 +86,7 @@ func build(the_game: Node) -> void:
 	for i in 8:
 		var a := TAU * (i + 0.5) / 8.0
 		var p := Vector2(cos(a), sin(a)) * 6.3
-		place("flower_pot", Vector3(p.x, gen.height(p.x, p.y), p.y), 0.75, a)
+		place("flower_pot", Vector3(p.x, gen.height(p.x, p.y), p.y), 0.75, a, "box")
 	_road_lanterns(gen)
 	for t in TREES:
 		_tree(t[0], Vector3(t[1], gen.height(t[1], t[2]), t[2]))
@@ -314,7 +314,7 @@ func _garden_flowers(gen: TerrainGen) -> void:
 		var at := a + (b - a) * 0.62
 		for s in [-1.0, 1.0]:
 			var p: Vector2 = at + side * s * (float(r[2]) + 0.9)
-			place("flower_pot", Vector3(p.x, gen.height(p.x, p.y), p.y), 0.75, randf() * TAU)
+			place("flower_pot", Vector3(p.x, gen.height(p.x, p.y), p.y), 0.75, randf() * TAU, "box")
 
 
 ## Lanterns along the roads, alternating sides, every 14 m from the plaza.
@@ -333,7 +333,7 @@ func _road_lanterns(gen: TerrainGen) -> void:
 			var s := 1.0 if n % 2 == 0 else -1.0
 			var p := a + dir * d + side * s * (float(r[2]) + 1.3)
 			var at := Vector3(p.x, gen.height(p.x, p.y), p.y)
-			place("lantern", at, 3.6, atan2(-side.x * s, -side.y * s))
+			place("lantern", at, 3.6, atan2(-side.x * s, -side.y * s), "box")
 			var l := OmniLight3D.new()
 			l.light_color = Color(1.0, 0.74, 0.42)
 			l.light_energy = 0.0
@@ -464,7 +464,7 @@ func _tree(kind: String, at: Vector3) -> void:
 
 
 func _chest(at: Vector3, magic: bool) -> void:
-	var c := place("chest_magic" if magic else "chest", at, 1.4 if magic else 0.8, randf() * TAU)
+	var c := place("chest_magic" if magic else "chest", at, 1.4 if magic else 0.8, randf() * TAU, "box")
 	# A soft glow over the lid (a sprite, not a light: lights are scarce).
 	var halo := _glow(Vector3.ZERO, Color(0.55, 0.85, 1.0) if magic else Color(1.0, 0.82, 0.45), 1.3 if magic else 1.0)
 	halo.position = Vector3(0, 1.1 if magic else 0.75, 0)

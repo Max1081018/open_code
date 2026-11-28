@@ -58,15 +58,51 @@ func setup(the_game: Node) -> void:
 ## She falls: the screen dims, and she wakes at the town gate.
 func _on_player_died() -> void:
 	Sfx.play("hit")
+	var fell_at: Vector3 = game.player.global_position
 	await get_tree().create_timer(1.8).timeout
 	await game.hud.veil(1.0, 1.0).finished
-	var home := Vector3(10, 0, 14)
-	home.y = game.world.height_at(home.x, home.z) + 0.2
+	# While the screen is dark: the nearest safe place she knows, its ground
+	# streamed in under her before she wakes.
+	var home := respawn_point(fell_at)
+	game.world.warm(home)
+	await get_tree().physics_frame
+	await get_tree().physics_frame
+	var y = game.surface_y(home + Vector3(0, 2.0, 0))
+	if y != null:
+		home.y = float(y) + 0.2
 	game.player.revive(home)
 	game.cam.global_position = home + Vector3(0, 2, 4)
 	await get_tree().create_timer(0.4).timeout
 	game.hud.veil(0.0, 1.2)
 	game.hud.banner("Fallen", "The light carried you home")
+
+
+## Where she wakes after falling: the nearest safe place she knows, by
+## ground distance from where she fell. The town square, her island's
+## landing, or a landmark she has discovered (on its isle, for the sky).
+## (It was always the town: a fall on a starting island, 1-2 km away, sent
+## her across the world, away from her chapter.)
+func respawn_point(fell_at: Vector3) -> Vector3:
+	var town := Vector3(10, 0, 14)
+	town.y = game.world.height_at(town.x, town.z) + 0.2
+	var options: Array = [town]
+	if String(game.start_island) != "":
+		options.append(Realms.spawn_point(game.world.gen, game.start_island))
+	if game.get("secrets") and game.get("realms"):
+		for id in game.secrets.discovered:
+			if game.realms.landmarks.has(id):
+				var at: Vector3 = game.realms.landmarks[id].pos
+				# Somewhere dry to stand, not the middle of a pool.
+				if game.world.height_at(at.x, at.z) > TerrainGen.WATER + 0.8 or at.y > 60.0:
+					options.append(at)
+	var best: Vector3 = options[0]
+	var best_d := INF
+	for o: Vector3 in options:
+		var d := Vector2(o.x - fell_at.x, o.z - fell_at.z).length()
+		if d < best_d:
+			best_d = d
+			best = o
+	return best
 
 
 func select(index: int) -> void:
@@ -765,6 +801,8 @@ func _on_enemy_died(e: Enemy3D) -> void:
 ## The camera keeps the guardian she is fighting (the one on the boss bar)
 ## in the frame.
 func _frame_guardian() -> void:
+	if game.hud == null or game.cam == null:
+		return
 	var g: Enemy3D = game.hud._boss
 	var engaged := g != null and is_instance_valid(g) and not g.dead
 	game.cam.focus = g if engaged else null
@@ -942,7 +980,13 @@ func _afterimages(p: Player3D, from: Vector3, to: Vector3, count := 3) -> void:
 		var mi := m as MeshInstance3D
 		if not mi.is_visible_in_tree() or mi.mesh == null:
 			continue
-		var baked: Mesh = mi.bake_mesh_from_current_skeleton_pose() if mi.skin != null else mi.mesh
+		# Only a mesh bound to a live skeleton can be baked in its pose (hand
+		# capsules and held items ride bone attachments: use them as they are).
+		# (and only when the renderer has registered its skin: headless runs
+		# never do, and baking then fails with an engine error).
+		var ref := mi.get_skin_reference() if mi.skin != null else null
+		var skinned := ref != null and ref.get_skeleton().is_valid() and mi.get_node_or_null(mi.skeleton) is Skeleton3D
+		var baked: Mesh = mi.bake_mesh_from_current_skeleton_pose() if skinned else mi.mesh
 		if baked:
 			meshes.append([baked, p.model.global_transform.affine_inverse() * mi.global_transform])
 	if meshes.is_empty():

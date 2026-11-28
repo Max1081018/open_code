@@ -333,6 +333,11 @@ func _bridge(from: Vector3, to: Vector3) -> void:
 			post.material_override = _wood
 			post.position = Vector3(sx, 0.55, -length * 0.5 + k * length / maxf(posts, 1))
 			holder.add_child(post)
+	# The rails hold: an invisible rail-high wall each side, so a step off
+	# the edge of a bridge over open sky is never an accident (jumping over
+	# is still a choice, to glide).
+	for sx in [-1.3, 1.3]:
+		Solid.box(holder, Vector3(0.12, 1.15, length), Vector3(sx, 0.575, 0))
 	for sx in [-1.25, 1.25]:
 		var rope := MeshInstance3D.new()
 		var rc := BoxMesh.new()

@@ -10,7 +10,10 @@ render_mode blend_add;
 
 uniform float strength = 0.55;
 void fragment() {
-	vec3 light = bicubic(TEXTURE, UV, TEXTURE_PIXEL_SIZE).rgb;
+	vec4 o;
+	vec2 w;
+	bicubic_taps(UV, TEXTURE_PIXEL_SIZE, o, w);
+	vec3 light = bicubic_mix(texture(TEXTURE, o.xz), texture(TEXTURE, o.yz), texture(TEXTURE, o.xw), texture(TEXTURE, o.yw), w).rgb;
 	float hi = max(light.r, max(light.g, light.b));
 	float lo = min(light.r, min(light.g, light.b));
 	float colour = hi - lo;

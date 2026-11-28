@@ -65,28 +65,28 @@ float paved_dist(vec2 p) {
 	return d;
 }
 
-vec3 two_scale(sampler2D t, vec2 p) {
-	return mix(texture(t, p * scale).rgb, texture(t, p * scale * 0.23).rgb, 0.35);
-}
+// A texture at two scales, blended (a macro: the Compatibility renderer's
+// compiler cannot pass a sampler into a function cleanly).
+#define TWO_SCALE(t, p) mix(texture(t, (p) * scale).rgb, texture(t, (p) * scale * 0.23).rgb, 0.35)
 
 void fragment() {
 	if (cull_radius > 0.0 && distance(world_pos.xz, CAMERA_POSITION_WORLD.xz) < cull_radius) {
 		discard;
 	}
 	vec2 p = world_pos.xz;
-	vec3 grass = two_scale(grass_tex, p) * vec3(0.8, 0.76, 0.6);
+	vec3 grass = TWO_SCALE(grass_tex, p) * vec3(0.8, 0.76, 0.6);
 	// Meadows are never one flat green: broad patches of lush deep grass and
 	// sun-dried lighter grass, broken up again at a smaller scale.
 	float meadow = vnoise(p * 0.011) * 0.6 + vnoise(p * 0.047 + 3.1) * 0.4;
 	grass *= mix(vec3(0.8, 0.9, 0.76), vec3(1.12, 1.06, 0.86), smoothstep(0.2, 0.8, meadow));
-	vec3 soil = two_scale(soil_tex, p);
-	vec3 snow = two_scale(snow_tex, p);
-	vec3 sand = two_scale(sand_tex, p);
+	vec3 soil = TWO_SCALE(soil_tex, p);
+	vec3 snow = TWO_SCALE(snow_tex, p);
+	vec3 sand = TWO_SCALE(sand_tex, p);
 	// Rock: triplanar-ish, from the side on steep faces.
 	vec3 n = abs(world_normal);
-	vec3 rock_top = two_scale(rock_tex, p);
-	vec3 rock_x = two_scale(rock_tex, world_pos.zy);
-	vec3 rock_z = two_scale(rock_tex, world_pos.xy);
+	vec3 rock_top = TWO_SCALE(rock_tex, p);
+	vec3 rock_x = TWO_SCALE(rock_tex, world_pos.zy);
+	vec3 rock_z = TWO_SCALE(rock_tex, world_pos.xy);
 	vec3 rock = (rock_top * n.y + rock_x * n.x + rock_z * n.z) / (n.x + n.y + n.z);
 	vec4 w = COLOR;
 	float soil_w = max(0.0, 1.0 - w.r - w.g - w.b - w.a);

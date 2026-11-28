@@ -94,7 +94,7 @@ static func material(name: String) -> Material:
 				s.albedo_color = Color(0.07, 0.1, 0.17)
 				s.metallic = 0.75
 				s.roughness = 0.06
-				s.specular = 0.8
+				s.metallic_specular = 0.8   # (Godot 4 name; "specular" did nothing)
 				s.emission_enabled = true
 				s.emission = Color(1.0, 0.74, 0.42)
 				s.emission_energy_multiplier = 0.0

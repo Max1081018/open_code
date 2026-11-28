@@ -577,6 +577,7 @@ func _cast_bolt(player: Player3D, colour: Color, yaw_offset := 0.0) -> void:
 	var bolt := Arcana.Orb.new()
 	bolt.tint = colour
 	bolt.size = 0.7
+	bolt.caster_id = get_instance_id()
 	bolt.speed = 15.0
 	bolt.life = 1.6
 	bolt.heading = aim
@@ -806,7 +807,7 @@ func _boss_move(player: Player3D, dist: float) -> bool:
 			_move_left = float(spec.windup)
 			_play(spec.attack[0], 1.0, true)
 			Arcana.circle(game, global_position, 1.6, colour, float(spec.windup), 1.5)
-			get_tree().create_timer(float(spec.windup)).timeout.connect(func():
+			_after(float(spec.windup), func():
 				if dead or not is_instance_valid(player):
 					return
 				for k in 5:
@@ -844,7 +845,7 @@ func _move_lines(player: Player3D, colour: Color) -> void:
 	for k in 3:
 		var dir := base.rotated(Vector3.UP, (k - 1) * 0.38)
 		marks.append([dir, _line_mark(origin, dir, 15.0, colour, windup)])
-	get_tree().create_timer(windup).timeout.connect(func():
+	_after(windup, func():
 		if dead:
 			return
 		for m in marks:
@@ -891,7 +892,7 @@ func _move_ring(colour: Color) -> void:
 	_move_left = windup + 0.2
 	_play(spec.get("heavy", spec.attack[0]), 0.9, true)
 	Arcana.circle(game, global_position, radius, colour, windup, 0.6)
-	get_tree().create_timer(windup).timeout.connect(func():
+	_after(windup, func():
 		if dead:
 			return
 		game.ring_burst(global_position, radius, colour)
@@ -915,7 +916,7 @@ func _move_rain(player: Player3D, colour: Color) -> void:
 		var g: Vector3 = at
 		g.y = _ground_at(g.x, g.z)
 		Arcana.circle(game, g, 1.7, colour, windup, 1.8)
-		get_tree().create_timer(windup).timeout.connect(func():
+		_after(windup, func():
 			if dead:
 				return
 			Arcana.pillar(game, g, 0.6, 7.0, colour, 0.5)
@@ -933,7 +934,7 @@ func _move_dive(player: Player3D, colour: Color) -> void:
 	target.y = _ground_at(target.x, target.z)
 	_move_left = windup + 0.6
 	Arcana.circle(game, target, 2.6, colour, windup, 2.5)
-	get_tree().create_timer(windup).timeout.connect(func():
+	_after(windup, func():
 		if dead:
 			return
 		_dive = 0.6
@@ -956,6 +957,14 @@ func _move_dive(player: Player3D, colour: Color) -> void:
 				game.on_player_hit(float(spec.damage) * 1.2))
 		t.tween_interval(0.3)
 		t.tween_callback(func(): _dive = 0.0))
+
+
+## Run `f` after `seconds`, tied to this foe: a scene timer outlived a foe
+## that despawned mid-windup and then called into the freed instance.
+func _after(seconds: float, f: Callable) -> void:
+	var t := create_tween()
+	t.tween_interval(seconds)
+	t.tween_callback(f)
 
 
 # ------------------------------------------------------- ambush, elite ---

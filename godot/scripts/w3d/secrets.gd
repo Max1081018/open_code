@@ -93,7 +93,7 @@ func _near(lm: Dictionary, id: String, dist: float, angle: float) -> Vector3:
 # ------------------------------------------------------------- chests ---
 
 func _make_chest(id: String, at: Vector3, loot: Array) -> void:
-	var node: Node3D = game.town.place("chest_magic", at, 1.3, randf() * TAU)
+	var node: Node3D = game.town.place("chest_magic", at, 1.3, randf() * TAU, "box")
 	# The clue: a slow drift of motes over the lid, seen from afar.
 	var motes := _motes(Color(0.75, 0.9, 1.0), 14, 1.2)
 	motes.position = Vector3(0, 1.4, 0)
@@ -148,6 +148,7 @@ func _make_shrine(id: String, centre: Vector3, reward: Array) -> void:
 		stone.material_override = m
 		stone.position.y = 1.1
 		root.add_child(stone)
+		Solid.hull(stone)
 		# Glyph rings: how many marks this stone carries (its place in order).
 		var marks: int = order.find(i) + 1
 		for r in marks:
@@ -239,6 +240,7 @@ func _make_vein(id: String, at: Vector3) -> void:
 		m.emission = Color(0.7, 0.85, 1.0)
 		mi.material_override = m
 		root.add_child(mi)
+		Solid.hull(mi)
 	var motes := _motes(Color(0.85, 0.95, 1.0), 8, 0.6)
 	motes.position.y = 0.8
 	root.add_child(motes)

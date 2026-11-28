@@ -33,7 +33,9 @@ func _initialize() -> void:
 				for t in range(clip.get_track_count() - 1, -1, -1):
 					if String(clip.track_get_path(t)).ends_with(":root") or String(clip.track_get_path(t)).ends_with(":Root"):
 						clip.remove_track(t)
-				clip.compress()
+				# Not compressed: Godot 4.4 logs an error for every compressed
+				# clip it loads, and compression pages made bones snap at
+				# their seams (tools/decompress_anims.gd).
 				library.add_animation(name, clip)
 		scene.free()
 	var missing := []

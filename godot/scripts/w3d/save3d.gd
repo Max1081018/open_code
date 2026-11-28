@@ -27,6 +27,12 @@ static func read() -> Dictionary:
 	var f := FileAccess.open(path(), FileAccess.READ)
 	if f == null:
 		return {}
+	# store_var writes a 32-bit length first: refuse a damaged or foreign
+	# file before decoding it (a truncated read raises an engine error).
+	var declared := f.get_32() if f.get_length() >= 8 else 0
+	if declared == 0 or declared > f.get_length() - 4:
+		return {}
+	f.seek(0)
 	var data = f.get_var(false)
 	if typeof(data) != TYPE_DICTIONARY or int(data.get("version", 0)) > VERSION:
 		return {}

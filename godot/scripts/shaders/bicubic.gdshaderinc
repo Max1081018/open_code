@@ -9,7 +9,13 @@ vec4 cubic(float v) {
 	return vec4(x, y, z, w) * (1.0 / 6.0);
 }
 
-vec4 bicubic(sampler2D tex, vec2 uv, vec2 texel) {
+// Where to take the four bilinear taps and how to weigh them. The caller
+// samples the texture itself (passing a sampler, above all a built-in one
+// such as TEXTURE, into a function breaks the Compatibility compiler):
+//   vec4 o; vec2 w; bicubic_taps(UV, TEXTURE_PIXEL_SIZE, o, w);
+//   vec4 c = bicubic_mix(texture(TEXTURE, o.xz), texture(TEXTURE, o.yz),
+//                        texture(TEXTURE, o.xw), texture(TEXTURE, o.yw), w);
+void bicubic_taps(vec2 uv, vec2 texel, out vec4 offset, out vec2 weight) {
 	vec2 size = 1.0 / texel;
 	vec2 coord = uv * size - 0.5;
 	vec2 f = fract(coord);
@@ -18,12 +24,10 @@ vec4 bicubic(sampler2D tex, vec2 uv, vec2 texel) {
 	vec4 yc = cubic(f.y);
 	vec4 c = coord.xxyy + vec2(-0.5, 1.5).xyxy;
 	vec4 s = vec4(xc.xz + xc.yw, yc.xz + yc.yw);
-	vec4 offset = (c + vec4(xc.yw, yc.yw) / s) * texel.xxyy;
-	vec4 s0 = texture(tex, offset.xz);
-	vec4 s1 = texture(tex, offset.yz);
-	vec4 s2 = texture(tex, offset.xw);
-	vec4 s3 = texture(tex, offset.yw);
-	float sx = s.x / (s.x + s.y);
-	float sy = s.z / (s.z + s.w);
-	return mix(mix(s3, s2, sx), mix(s1, s0, sx), sy);
+	offset = (c + vec4(xc.yw, yc.yw) / s) * texel.xxyy;
+	weight = vec2(s.x / (s.x + s.y), s.z / (s.z + s.w));
+}
+
+vec4 bicubic_mix(vec4 s0, vec4 s1, vec4 s2, vec4 s3, vec2 weight) {
+	return mix(mix(s3, s2, weight.x), mix(s1, s0, weight.x), weight.y);
 }

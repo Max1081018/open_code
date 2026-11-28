@@ -65,6 +65,12 @@ func load_game() -> Dictionary:
 	var file := FileAccess.open(SAVE_PATH, FileAccess.READ)
 	if file == null:
 		return {}
+	# store_var writes a 32-bit length first: refuse a damaged or foreign
+	# file before decoding it (a truncated read raises an engine error).
+	var declared := file.get_32() if file.get_length() >= 8 else 0
+	if declared == 0 or declared > file.get_length() - 4:
+		return {}
+	file.seek(0)
 	var data = file.get_var(false)
 	if typeof(data) != TYPE_DICTIONARY or int(data.get("version", 0)) > SAVE_VERSION:
 		return {}

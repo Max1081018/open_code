@@ -137,6 +137,7 @@ func _ring(at: Vector3, colour: Color) -> void:
 		# Sunk a little into the ground, facing the arena's centre, leaning.
 		stone.global_position = Vector3(at.x + p.x, ground - 0.25, at.z + p.z)
 		stone.rotation = Vector3(0.06 * sin(k * 1.7), PI * 0.5 - a, 0.05 * cos(k * 2.3))
+		Solid.hull(stone)
 		var rune := MeshInstance3D.new()
 		var q := QuadMesh.new()
 		q.size = Vector2(0.34, 1.1)

@@ -190,6 +190,8 @@ func set_character(id: String) -> bool:
 
 
 func set_start_island(id: String) -> void:
+	if not signed_in():
+		return   # no profile to keep it in (writing one made a broken profile)
 	profile.start_island = id
 	_store_profile()
 
@@ -243,7 +245,7 @@ func _resume_session() -> void:
 
 
 func _store_profile() -> void:
-	if not profile.is_empty():
+	if profile.has("account_id"):
 		_write_json("%s/%s.json" % [PROFILE_DIR, String(profile.account_id)], profile)
 
 

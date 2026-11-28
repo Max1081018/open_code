@@ -181,14 +181,24 @@ func _process(delta: float) -> void:
 		return
 	var p: Player3D = game.player
 	var t := Time.get_ticks_msec() / 1000.0
-	# Updrafts lift whoever glides (or falls) inside them.
+	# Updrafts lift whoever glides (or falls, or swims) inside them. A glider
+	# is caught well beyond the visible column (lift fading toward the edge
+	# of the catch) and drawn round its axis (Player3D.updraft_axis).
 	var lift := 0.0
+	var axis := Vector3.INF
 	for u in updrafts:
 		var base: Vector3 = u[0]
 		var flat := Vector2(p.global_position.x - base.x, p.global_position.z - base.z).length()
-		if flat < u[1] * 1.4 and p.global_position.y < base.y + u[2]:
-			lift = 9.0 if p.gliding else 3.0
+		if p.global_position.y > base.y + u[2] or p.global_position.y < base.y - 3.0:
+			continue
+		var core: float = u[1] * 1.4
+		var catch: float = u[1] * 2.6 if p.gliding else core
+		if flat < catch:
+			var f := 1.0 - smoothstep(core, catch, flat)
+			lift = maxf(lift, (12.0 if p.gliding else 3.0) * f)
+			axis = base
 	p.updraft = lift
+	p.updraft_axis = axis
 	for i in range(shards.size() - 1, -1, -1):
 		var s: Node3D = shards[i]
 		s.get_child(0).rotation.y = t * 1.6

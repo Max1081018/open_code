@@ -196,9 +196,13 @@ func _arrive() -> void:
 	t.tween_method(sweep, 0.0, 1.0, 5.0).set_delay(0.6)
 	t.tween_callback(_end_arrival.bind(layer, cam))
 	_skip_cb = _end_arrival.bind(layer, cam)
+	_arrival_tween = t
 
 
 var _skip_cb: Callable
+## The arrival's tween: stopped when the arrival ends, so a skip does not
+## leave its camera sweep running on a freed camera (an error every frame).
+var _arrival_tween: Tween
 
 
 func _unhandled_input(event: InputEvent) -> void:
@@ -212,6 +216,8 @@ func _end_arrival(layer: CanvasLayer, cam: Camera3D) -> void:
 	if not _cine:
 		return
 	_cine = false
+	if _arrival_tween and _arrival_tween.is_valid():
+		_arrival_tween.kill()
 	if is_instance_valid(game.cam.camera):
 		game.cam.camera.make_current()
 	game.input.blocked = false

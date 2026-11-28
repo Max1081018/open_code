@@ -27,6 +27,9 @@ func setup(the_world: OpenWorld) -> void:
 	world = the_world
 	region = NavigationRegion3D.new()
 	add_child(region)
+	# Rebaked tiles meet at slightly different heights; merge their edges on
+	# a finer grid (the engine's own advice for its edge-merge error).
+	NavigationServer3D.map_set_merge_rasterizer_cell_scale(get_world_3d().navigation_map, 0.001)
 
 
 func _process(_delta: float) -> void:

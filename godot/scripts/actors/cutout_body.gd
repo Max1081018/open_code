@@ -102,7 +102,8 @@ func _tex(name: String) -> Texture2D:
 		var path := "res://assets/characters/%s/parts/%s.png" % [character, name]
 		if not ResourceLoader.exists(path) and name == "headSide":
 			path = "res://assets/characters/%s/parts/head.png" % character
-		_textures[name] = load(path)
+		# A character without cut-out art (one drawn only in 3D) gets none.
+		_textures[name] = load(path) if ResourceLoader.exists(path) else null
 	return _textures[name]
 
 

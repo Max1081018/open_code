@@ -56,6 +56,9 @@ var swimming := false
 var gliding := false
 ## Upward wind from an updraft this frame (set by WorldFeatures).
 var updraft := 0.0
+## The axis of the updraft she is in (INF when none): a glider with no
+## steering is drawn into a spiral round it instead of flying out of it.
+var updraft_axis := Vector3.INF
 const GLIDE_SPEED := 9.0
 const GLIDE_SINK := 2.2
 var _dodge := 0.0
@@ -539,6 +542,15 @@ func _physics_process(delta: float) -> void:
 	var accel := 14.0 if is_on_floor() or swimming else (2.5 if gliding else 4.0)
 	if gliding and wish.length() < 0.1:
 		target = model.global_transform.basis.z * GLIDE_SPEED * 0.7  # keep flying forward
+		if updraft_axis != Vector3.INF:
+			# Caught by the wind: circle in toward the column's axis while it
+			# lifts her (flying straight on, she left it within a second).
+			var to := Vector3(updraft_axis.x - global_position.x, 0, updraft_axis.z - global_position.z)
+			var d := to.length()
+			if d > 0.05:
+				var round := Vector3(-to.z, 0, to.x) / d
+				target = to / d * minf(d * 1.1, GLIDE_SPEED * 0.6) + round * 2.6
+				accel = 3.5
 	horizontal = horizontal.lerp(target, 1.0 - exp(-accel * delta))
 	velocity.x = horizontal.x
 	velocity.z = horizontal.z
@@ -547,6 +559,9 @@ func _physics_process(delta: float) -> void:
 		# Float with the chest at the surface; jump swims upward.
 		var float_y := TerrainGen.WATER - 1.2
 		velocity.y = lerpf(velocity.y, (float_y - global_position.y) * 3.0 + (3.0 if input.jump else 0.0), 1.0 - exp(-4.0 * delta))
+		if updraft > 0.0:
+			# An updraft over the water lifts her out of it, wings ready.
+			velocity.y = JUMP * 1.3
 	elif gliding:
 		# Wings out: a slow sink, lifted by updrafts; stamina drains.
 		var sink := -GLIDE_SINK + updraft

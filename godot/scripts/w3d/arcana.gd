@@ -248,6 +248,10 @@ class Orb:
 	var tint := Arcana.VIOLET
 	## 1 for her comet; a foe's bolt is smaller (0.7).
 	var size := 1.0
+	## The instance id of the foe that cast it, if any (0 for none): its bolt
+	## fizzles once it is gone. (An id, because a freed object compares
+	## equal to null and so cannot be told from "no caster".)
+	var caster_id := 0
 	var _done := false
 
 	func _ready() -> void:
@@ -341,7 +345,13 @@ class Orb:
 
 	func _pop() -> void:
 		_done = true
-		if burst.is_valid():
+		# A foe's bolt bursts through a lambda bound to its caster. If the
+		# caster died while it flew, the bolt fizzles out (calling a lambda
+		# whose instance is gone was a script error; is_valid() cannot tell).
+		if caster_id != 0 and not is_instance_id_valid(caster_id):
+			if is_inside_tree():
+				Arcana.sparks(get_parent(), global_position, tint, 10, 2.5, 0.08)
+		elif burst.is_valid():
 			burst.call(global_position)
 		queue_free()
 

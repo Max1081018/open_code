@@ -219,13 +219,19 @@ func _island(centre: Vector3, radius: float, seed_i: int, spire: bool) -> void:
 		if FoliageLib.category(kind) == "tree" and rng.randf() < 0.5:
 			kind = "Flower_4_Group"
 		var at := Vector3(cos(a) * rr, (1.0 - rr / radius) * radius * 0.08, sin(a) * rr)
-		var t := Transform3D(Basis(Vector3.UP, rng.randf() * TAU).scaled(Vector3.ONE * rng.randf_range(0.7, 1.1)), at)
+		var sc := rng.randf_range(0.7, 1.1)
+		var t := Transform3D(Basis(Vector3.UP, rng.randf() * TAU).scaled(Vector3.ONE * sc), at)
 		for part in FoliageLib.parts(kind):
 			_batch(batches, part[0], t * part[1])
+		if FoliageLib.category(kind) == "tree":
+			# A trunk to bump into, as on the ground (open_world.gd).
+			_trunk(body, at, FoliageLib.solid_radius(kind) * sc, 6.0)
 	# Crystal clusters on the rim.
 	for k in 3 + seed_i % 3:
 		var a := rng.randf() * TAU
-		_crystals(batches, Vector3(cos(a) * radius * 0.7, 0.5, sin(a) * radius * 0.7), rng, 1.0)
+		var cat := Vector3(cos(a) * radius * 0.7, 0.5, sin(a) * radius * 0.7)
+		_crystals(batches, cat, rng, 1.0)
+		_trunk(body, cat - Vector3(0, 0.5, 0), 1.3, 2.6)   # the cluster stands solid
 	# Vines hanging over the rim, and rocks drifting round the isle.
 	if _vine == null:
 		_vine = _make_vine()
@@ -368,6 +374,17 @@ func _batch(batches: Dictionary, mesh: Mesh, t: Transform3D) -> void:
 
 
 ## A cluster of crystal prisms, batched with the isle's other plants.
+## An upright cylinder collider standing at `base` on the isle's crown body.
+func _trunk(body: StaticBody3D, base: Vector3, radius: float, height: float) -> void:
+	var cs := CollisionShape3D.new()
+	var cyl := CylinderShape3D.new()
+	cyl.radius = radius
+	cyl.height = height
+	cs.shape = cyl
+	cs.position = base + Vector3(0, height * 0.5, 0)
+	body.add_child(cs)
+
+
 func _crystals(batches: Dictionary, at: Vector3, rng: RandomNumberGenerator, scale: float) -> void:
 	if _prism == null:
 		_prism = PrismMesh.new()
