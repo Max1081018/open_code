@@ -55,10 +55,23 @@ func _flat_near(c: Vector3, dist: float) -> Vector3:
 			var x := c.x + cos(a) * r
 			var z := c.z + sin(a) * r
 			var h := gen.height(x, z)
-			if h > TerrainGen.WATER + 1.5 and gen.normal(x, z, 5.0).y > 0.94 and gen.normal(x + 7.0, z, 5.0).y > 0.9:
+			if h > TerrainGen.WATER + 1.5 and gen.normal(x, z, 5.0).y > 0.94 and gen.normal(x + 7.0, z, 5.0).y > 0.9 \
+					and not _near_water(x, z):
 				return Vector3(x, h, z)
 	var y := gen.height(c.x + dist, c.z)
 	return Vector3(c.x + dist, y, c.z)
+
+
+## Waterfall pools and oases sit above sea level: keep arenas out of them.
+func _near_water(x: float, z: float) -> bool:
+	var lm: Dictionary = game.realms.landmarks
+	for id in lm:
+		var s := String(id)
+		if s.begins_with("falls_") or s.begins_with("oasis"):
+			var p: Vector3 = lm[id].pos
+			if Vector2(p.x - x, p.z - z).length() < 34.0:
+				return true
+	return false
 
 
 ## Eight standing runestones round the arena, glowing in the guardian's colour.

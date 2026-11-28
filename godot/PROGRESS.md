@@ -4,7 +4,7 @@ Branch `ccr-60ac94c6-dyqxhw`. Godot 4.4.1, GL Compatibility renderer, Android-fi
 Main scene: `scenes/main3d.tscn` (the 3D open world). The art direction is in
 **ART_BIBLE.md**; every third-party asset and its licence is in **ASSET_CATALOG.md**.
 
-Tests: **141 pass** (`godot/tests/run.sh`; it also fails on any SCRIPT ERROR).
+Tests: **142 pass** (`godot/tests/run.sh`; it also fails on any SCRIPT ERROR).
 
 ## Stages (from the overhaul brief)
 
@@ -54,6 +54,7 @@ Tests: **141 pass** (`godot/tests/run.sh`; it also fails on any SCRIPT ERROR).
 | Combat maths | done | `DamageCalc`: one documented formula for every blow, both ways (level, weapon, skill multiplier, armour, resistances, crits, Mark, guard, variance; clamped, never NaN, negative or overflowing). The number shown is the health taken. Foes have armour by style, plus resistances and weaknesses | `test_combat.gd` (formula cases, NaN/INF, overflow, one cut per swing per foe) |
 | Five arts + ranks | done | Combo, Crescent Wave (heavy), Arcane Comet, **Phase Step** (new: a blink through foes that cuts and Marks them), Violet Starfall (ultimate), and **Blade Orbit** (new: the floating blade circles her, at most one cut per foe every 0.45 s). Unlock levels, cooldowns, ranks 1–3 bought with skill points (one per level), an Arts page with Rank-up buttons, saved; over-spent saves are clamped. New painted icons (Higgsfield) | `test_combat.gd` |
 | Thinking foes | done | Line-of-sight sight, hearing, search where she was last seen, return home and rest, skirmishers retreat when badly hurt; state field. **Fixed**: every foe's home post was the world origin | `test_enemies.gd` |
+| Island creatures | done | Each island has its own foes beyond the shared ones. Jungle: Vine Stalkers (ambush from the ground) and Root Guardians (shields). Sky: Gale Sprites (fliers, ranged) and Aerie Sentinels (shields, slams). Coast: Crystal Husks (ambush), Tide Callers (ranged) and Coral Knights (shields). A shield turns aside light blows from the front, so strike from behind or with a heavy blow; the number shown is still the health taken. About one foe in twelve is an Elite: golden aura, 2.5x health, 1.3x damage, double loot. On sky isles, foes now spawn on the isle itself (they used to spawn on the land far below) | `test_enemies.gd::test_island_creatures` |
 | Island guardians | done | Thornmother (jungle: root lines, ring, summons, charge), Stormwing (sky, flies: volleys, dives, ring, summons), Tidewarden (coast: crystal rain, ring, charge, summons). Each has a runestone arena, an intro banner, phases at 60% and 30% with telegraphs (the ring can be jumped), boss bar, boss music, loot, XP and saved defeat; the tracker points to it after the chapter | `test_enemies.gd`; fight captures |
 | Secrets | done | Discovery of named places, eight starlit chests with mote clues, three rune shrines (strike the stones in the order of their marks), starsilver veins, the Colossus of Kings at night; all saved. Starsilver forges the **Astral Edge** | `test_enemies.gd::test_secrets` |
 | Relics | done | They were rewards that did nothing in 3D. Now worn in three slots (Wear/Remove in the backpack) with real effects (less harm, speed, air jump, power, luck, stamina, swimming, farther-seen secrets); saved | `test_relics.gd` |

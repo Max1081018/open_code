@@ -155,3 +155,45 @@ func test_secrets() -> void:
 	copy.free()
 	main.queue_free()
 	await tree.process_frame
+
+
+func test_island_creatures() -> void:
+	var tree := Engine.get_main_loop() as SceneTree
+	var main: Node = await _main()
+	var p: Player3D = main.player
+	var play: Play3D = main.play
+	p.hold("moonblade")
+	# An ambusher waits unseen, then springs when she is close.
+	var lurk: Enemy3D = play.spawn_enemy("vine_stalker", p.global_position + Vector3(0, 0, -12))
+	await tree.physics_frame
+	await tree.physics_frame
+	check(not lurk.model.visible and not lurk._aggro, "a vine stalker lies hidden")
+	p.global_position = lurk.global_position + Vector3(0, 0, 4)
+	await tree.physics_frame
+	await tree.physics_frame
+	check(lurk._emerged and lurk.model.visible and lurk._aggro, "close by, it springs out")
+	# A shield turns aside light blows from the front, and the number shown is
+	# still exactly the health taken.
+	var knight: Enemy3D = play.spawn_enemy("coral_knight", p.global_position + Vector3(4, 0, 0))
+	knight.max_health = 5000.0
+	knight.health = 5000.0
+	await tree.process_frame
+	var front := knight.global_position + knight.model.global_transform.basis.z * 2.0
+	var back := knight.global_position - knight.model.global_transform.basis.z * 2.0
+	var h0 := knight.health
+	var d_front := play.hit(knight, 1.0, front, false, "arcane")
+	check_eq(h0 - knight.health, float(d_front), "a guarded hit takes what it shows")
+	var h1 := knight.health
+	var d_back := play.hit(knight, 1.0, back, false, "arcane")
+	check_eq(h1 - knight.health, float(d_back), "a hit from behind takes what it shows")
+	check(d_back > d_front * 2, "from behind it is far more telling (%d vs %d)" % [d_back, d_front])
+	var d_heavy := play.hit(knight, 1.0, front, true, "arcane")
+	check(d_heavy > d_front * 2, "a heavy blow breaks through the guard")
+	# Elites.
+	var plain: Enemy3D = play.spawn_enemy("thornling", p.global_position + Vector3(-6, 0, 0))
+	var elite: Enemy3D = play.spawn_enemy("thornling", p.global_position + Vector3(-8, 0, 0), true)
+	await tree.process_frame
+	check(elite.elite and elite.max_health > plain.max_health * 2.0, "an elite is far tougher")
+	check(String(elite.spec.name).begins_with("Elite"), "and named so")
+	main.queue_free()
+	await tree.process_frame

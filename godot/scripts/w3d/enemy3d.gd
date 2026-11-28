@@ -73,6 +73,45 @@ const ZONE_SPECS := {
 		"loot": [["glowshard", 0.8, 3], ["gold_coin", 0.5, 4]], "sight": 26.0},
 }
 
+## The starting islands' own creatures (beyond the shared region foes):
+##   ambush — lies hidden in the ground until she is close, then springs
+##   guard  — a shield: light blows from the front are mostly turned aside
+##            (strike from behind, or with a heavy blow)
+##   fly    — keeps to the air at that height
+const ISLAND_SPECS := {
+	"vine_stalker": {"model": "vine_stalker", "health": 70.0, "speed": 5.0, "damage": 13.0, "reach": 1.9, "windup": 0.35,
+		"style": "charge", "ambush": true, "element": Color(0.45, 0.9, 0.35), "name": "Vine Stalker",
+		"idle": "Zombie_Idle", "walk": "Walk", "run": "Jog_Fwd", "attack": ["Zombie_Scratch", "Punch_Jab"],
+		"loot": [["wood", 0.6, 3], ["emerald", 0.15, 1]], "sight": 18.0},
+	"root_guardian": {"model": "root_guardian", "health": 180.0, "speed": 2.4, "damage": 20.0, "reach": 2.6, "windup": 0.75,
+		"guard": 0.7, "defense": 25.0, "element": Color(0.6, 0.85, 0.4), "name": "Root Guardian",
+		"idle": "Sword_Idle", "walk": "Walk", "run": "Jog_Fwd", "attack": ["Sword_Regular_A", "Sword_Heavy_Combo"],
+		"weapon": "iron_hammer", "shield": "wood_shield",
+		"loot": [["wood", 0.8, 5], ["gold_coin", 0.7, 5], ["lumen_core", 0.1, 1]], "sight": 20.0},
+	"gale_sprite": {"model": "gale_sprite", "health": 45.0, "speed": 4.6, "damage": 10.0, "reach": 12.0, "windup": 0.6,
+		"style": "ranged", "fly": 2.4, "element": Color(0.75, 0.95, 1.0), "name": "Gale Sprite",
+		"idle": "Spell_Simple_Idle", "walk": "Walk", "run": "Jog_Fwd", "attack": ["Spell_Simple_Shoot"],
+		"loot": [["glowshard", 0.6, 2], ["gold_coin", 0.4, 3]], "sight": 26.0},
+	"aerie_sentinel": {"model": "aerie_sentinel", "health": 170.0, "speed": 2.6, "damage": 19.0, "reach": 2.8, "windup": 0.8,
+		"style": "slam", "guard": 0.7, "defense": 30.0, "element": Color(0.8, 0.9, 1.0), "name": "Aerie Sentinel",
+		"idle": "Sword_Idle", "walk": "Walk", "run": "Jog_Fwd", "attack": ["Sword_Heavy_Combo"],
+		"weapon": "silver_sword", "shield": "iron_shield",
+		"loot": [["silver_ore", 0.7, 3], ["gold_coin", 0.7, 5]], "sight": 22.0},
+	"crystal_husk": {"model": "crystal_husk", "health": 80.0, "speed": 4.2, "damage": 14.0, "reach": 1.9, "windup": 0.4,
+		"style": "charge", "ambush": true, "element": Color(0.5, 0.95, 1.0), "name": "Crystal Husk",
+		"idle": "Zombie_Idle", "walk": "Walk", "run": "Jog_Fwd", "attack": ["Zombie_Scratch"],
+		"loot": [["glowshard", 0.8, 3], ["starsilver", 0.08, 1]], "sight": 18.0},
+	"tide_caller": {"model": "tide_caller", "health": 55.0, "speed": 3.0, "damage": 12.0, "reach": 12.0, "windup": 0.7,
+		"style": "ranged", "element": Color(0.35, 0.8, 1.0), "name": "Tide Caller",
+		"idle": "Spell_Simple_Idle", "walk": "Walk", "run": "Jog_Fwd", "attack": ["Spell_Simple_Shoot"],
+		"loot": [["glowshard", 0.6, 2], ["gold_coin", 0.5, 3]], "sight": 24.0},
+	"coral_knight": {"model": "coral_knight", "health": 190.0, "speed": 2.5, "damage": 21.0, "reach": 2.8, "windup": 0.8,
+		"guard": 0.7, "defense": 30.0, "element": Color(0.4, 0.9, 1.0), "name": "Coral Knight",
+		"idle": "Sword_Idle", "walk": "Walk", "run": "Jog_Fwd", "attack": ["Sword_Regular_A", "Sword_Regular_B"],
+		"weapon": "gold_sword", "shield": "iron_shield",
+		"loot": [["gold_coin", 0.8, 6], ["emerald", 0.2, 1]], "sight": 20.0},
+}
+
 ## The three starting islands' guardians. Each fights in phases (health
 ## 60% and 30%) drawing on its own moves (see _boss_move):
 ##   lines  — roots erupt along three telegraphed lines toward her
@@ -145,6 +184,8 @@ var _returning := false
 var _retreat := 0.0
 var _retreated := false
 var _move_left := 0.0       ## a boss move's own wind-up: it holds still
+var _emerged := false
+var elite := false
 var _adds: Array = []
 ## Seconds left of an Arcane Mark (Phase Step): takes 20% more harm.
 var mark := 0.0
@@ -156,7 +197,14 @@ const STYLE_DEFENSE := {"melee": 8.0, "charge": 10.0, "ranged": 0.0, "slam": 35.
 func setup(the_kind: String, the_game: Node) -> void:
 	kind = the_kind
 	game = the_game
-	spec = SPECS[kind] if SPECS.has(kind) else (ZONE_SPECS[kind] if ZONE_SPECS.has(kind) else BOSS_SPECS[kind])
+	if SPECS.has(kind):
+		spec = SPECS[kind]
+	elif ZONE_SPECS.has(kind):
+		spec = ZONE_SPECS[kind]
+	elif ISLAND_SPECS.has(kind):
+		spec = ISLAND_SPECS[kind]
+	else:
+		spec = BOSS_SPECS[kind]
 	_style = spec.get("style", "melee")
 	max_health = spec.health
 	health = max_health
@@ -205,6 +253,18 @@ func _ready() -> void:
 	_play(spec.idle)
 	if not is_boss:
 		_build_bar()
+	if elite:
+		# A golden aura marks an elite.
+		var aura := OmniLight3D.new()
+		aura.light_color = Color(1.0, 0.82, 0.35)
+		aura.light_energy = 1.2
+		aura.omni_range = 3.5
+		aura.shadow_enabled = false
+		aura.position = Vector3(0, 1.4, 0)
+		add_child(aura)
+		Arcana.circle(game, global_position, 1.2, Color(1.0, 0.82, 0.35), 2.0, 1.0)
+	if spec.has("ambush"):
+		_hide()
 	if spec.has("element"):
 		# A faint glow of its element on it.
 		var l := OmniLight3D.new()
@@ -262,6 +322,13 @@ func _physics_process(delta: float) -> void:
 	var to_player := player.global_position - global_position
 	to_player.y = 0
 	var dist := to_player.length()
+	if spec.has("ambush") and not _emerged:
+		# Hidden in the ground until she is close.
+		if dist < 6.5 and player.health > 0.0:
+			_emerge()
+		else:
+			velocity = Vector3.ZERO
+			return
 	var sight: float = spec.sight
 	# Senses: sight needs a clear line (four times a second); she is heard
 	# when close, and a boss always knows its arena.
@@ -541,11 +608,24 @@ func _end_telegraph(landed: bool) -> void:
 
 ## Hit by the player. Returns true if it died.
 ## What DamageCalc needs from this foe: armour, resistances, debuffs.
-func combat_stats() -> Dictionary:
+func combat_stats(from := Vector3.INF, heavy := false) -> Dictionary:
 	var defense: float = float(spec.get("defense", STYLE_DEFENSE.get(_style, 8.0)))
 	if is_boss:
 		defense = maxf(defense, 30.0)
-	return {"defense": defense, "resist": spec.get("resist", {}), "vulnerable": MARK_VULN if mark > 0.0 else 0.0}
+	# A shield turns aside light blows from the front.
+	var reduction := 0.0
+	if spec.has("guard") and not heavy and from != Vector3.INF and model:
+		var to := from - global_position
+		to.y = 0.0
+		if to.length() > 0.01 and model.global_transform.basis.z.dot(to.normalized()) > 0.3:
+			reduction = float(spec.guard)
+	return {"defense": defense, "resist": spec.get("resist", {}), "vulnerable": MARK_VULN if mark > 0.0 else 0.0,
+		"reduction": reduction}
+
+
+## Was a blow from `from` taken on its shield? (for the clang and sparks)
+func guards_against(from: Vector3, heavy: bool) -> bool:
+	return float(combat_stats(from, heavy).reduction) > 0.0
 
 
 func take_hit(amount: float, from: Vector3, heavy: bool) -> bool:
@@ -553,6 +633,8 @@ func take_hit(amount: float, from: Vector3, heavy: bool) -> bool:
 		return false
 	if is_nan(amount) or is_inf(amount) or amount < 0.0:
 		amount = 0.0
+	if spec.has("ambush") and not _emerged:
+		_emerge()   # struck while hidden: it springs out
 	health = maxf(0.0, health - amount)
 	_flash_time = 0.25
 	_bar_time = 4.0
@@ -823,3 +905,47 @@ func _move_dive(player: Player3D, colour: Color) -> void:
 				game.on_player_hit(float(spec.damage) * 1.2))
 		t.tween_interval(0.3)
 		t.tween_callback(func(): _dive = 0.0))
+
+
+# ------------------------------------------------------- ambush, elite ---
+
+## Sinks out of sight (an ambusher before it springs).
+func _hide() -> void:
+	model.visible = false
+	model.position.y -= 1.6
+	collision_layer = 0
+	if _bar:
+		_bar.visible = false
+
+
+func _emerge() -> void:
+	_emerged = true
+	model.visible = true
+	collision_layer = 4
+	var t := create_tween()
+	t.tween_property(model, "position:y", model.position.y + 1.6, 0.35).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
+	var colour: Color = spec.get("element", Color(0.6, 0.9, 0.4))
+	Arcana.sparks(game, global_position + Vector3(0, 0.4, 0), colour, 30, 6.0, 0.12)
+	game.debris(global_position + Vector3(0, 0.3, 0), Color(0.35, 0.3, 0.22), 14)
+	_aggro = true
+	_attack_timer = 0.0
+	_cooldown = 0.2
+	Sfx.play("growl", -4.0, 0.15)
+
+
+## A stronger, golden-aura'd one of its kind: tougher, harder-hitting,
+## richer spoils. Called before it enters the tree.
+func make_elite() -> void:
+	elite = true
+	spec = spec.duplicate(true)
+	spec.health = float(spec.health) * 2.5
+	spec.damage = float(spec.damage) * 1.3
+	spec.scale = float(spec.get("scale", 1.0)) * 1.2
+	spec.name = "Elite " + String(spec.get("name", kind.capitalize()))
+	var loot: Array = []
+	for d in spec.get("loot", []):
+		loot.append([d[0], minf(1.0, float(d[1]) * 2.0), int(d[2]) * 2])
+	loot.append(["heart_crystal", 0.15, 1])
+	spec.loot = loot
+	max_health = spec.health
+	health = max_health

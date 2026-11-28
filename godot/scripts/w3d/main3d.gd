@@ -672,6 +672,12 @@ func _script_input() -> void:
 			player.global_position = arena + Vector3(0, 1.0, 5.0)
 			player.velocity = Vector3.ZERO
 		var wake_at := int(_args.get("wake", "40"))
+		if f == wake_at - 10:
+			# The terrain has streamed in by now: set her on it.
+			var y = surface_y(arena + Vector3(0, 0, 5))
+			if y != null:
+				player.global_position = Vector3(arena.x, float(y) + 0.2, arena.z + 5.0)
+				player.velocity = Vector3.ZERO
 		if f == wake_at:
 			bosses.wake(_args.boss)
 		if f > wake_at + 20 and f % 30 == 0:

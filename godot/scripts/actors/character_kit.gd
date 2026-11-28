@@ -84,6 +84,14 @@ const HEROES := {
 	"thornmother": ["knight", Color(0.46, 0.78, 0.4)],   # Great Jungle
 	"stormwing": ["skeleton", Color(0.78, 0.92, 1.2)],   # Skybound Isle
 	"tidewarden": ["knight", Color(0.45, 0.82, 1.05)],   # Crystal Coast
+	# The islands' own creatures.
+	"vine_stalker": ["skeleton", Color(0.42, 0.7, 0.32)],
+	"root_guardian": ["knight", Color(0.62, 0.72, 0.42)],
+	"gale_sprite": ["skeleton", Color(0.85, 0.95, 1.2)],
+	"aerie_sentinel": ["knight", Color(0.9, 0.95, 1.1)],
+	"crystal_husk": ["skeleton", Color(0.55, 0.9, 1.1)],
+	"tide_caller": ["skeleton", Color(0.4, 0.7, 1.05)],
+	"coral_knight": ["knight", Color(0.95, 0.62, 0.6)],
 }
 ## Per-character presence: height in metres and their own way of moving
 ## (clip overrides on the shared library, playback speed). Anime heroines
@@ -117,6 +125,13 @@ const HERO_STYLE := {
 	"thornmother": {"height": 2.0, "speed": 0.85},
 	"stormwing": {"height": 1.8, "speed": 1.1},
 	"tidewarden": {"height": 2.05, "speed": 0.8},
+	"vine_stalker": {"height": 1.6, "speed": 1.35},
+	"root_guardian": {"height": 2.0, "speed": 0.8},
+	"gale_sprite": {"height": 1.5, "speed": 1.2},
+	"aerie_sentinel": {"height": 2.0, "speed": 0.85},
+	"crystal_husk": {"height": 1.65, "speed": 1.25},
+	"tide_caller": {"height": 1.75, "speed": 1.0},
+	"coral_knight": {"height": 2.0, "speed": 0.85},
 	"ember_caller": {"height": 1.75, "speed": 1.0},
 	"void_shade": {"height": 1.8, "speed": 1.25},
 	"void_caller": {"height": 1.8, "speed": 1.0},

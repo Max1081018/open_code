@@ -670,19 +670,28 @@ func _spawn_enemies() -> void:
 	var angle := randf() * TAU
 	var at := player.global_position + Vector3(cos(angle), 0, sin(angle)) * randf_range(32.0, 50.0)
 	at.y = game.world.height_at(at.x, at.z)
+	var aloft: bool = player.global_position.y > game.world.height_at(player.global_position.x, player.global_position.z) + 12.0
+	if aloft:
+		# On a sky isle: foes come out on the isle itself, never the land below.
+		at = player.global_position + Vector3(cos(angle), 0, sin(angle)) * randf_range(14.0, 26.0)
+		var y = game.surface_y(Vector3(at.x, player.global_position.y + 10.0, at.z))
+		if y == null or absf(float(y) - player.global_position.y) > 12.0:
+			return
+		at.y = float(y)
 	if at.y < TerrainGen.WATER + 0.5 or Vector2(at.x, at.z).distance_to(TerrainGen.VILLAGE) < TerrainGen.VILLAGE_RADIUS * 1.6:
 		return
-	var b: int = game.world.biome_at(at)
+	var b: int = TerrainGen.Biome.SKY if aloft else game.world.biome_at(at)
 	var kinds: Array = ZONE_FOES.get(b, ["zombie"])
 	if b == TerrainGen.Biome.FOREST and night:
 		kinds = ["zombie", "zombie", "robot"]
 	if not night and b == TerrainGen.Biome.FOREST and randf() < 0.6:
 		return  # the green woods are mostly safe by day
-	spawn_enemy(kinds.pick_random(), at)
+	# About one in twelve is an elite of its kind.
+	spawn_enemy(kinds.pick_random(), at, randf() < ELITE_CHANCE)
 	# Away from the meadows foes come in small bands.
 	if b != TerrainGen.Biome.FOREST and randf() < 0.45:
 		var p2 := at + Vector3(randf_range(-4, 4), 0, randf_range(-4, 4))
-		p2.y = game.world.height_at(p2.x, p2.z)
+		p2.y = at.y if aloft else game.world.height_at(p2.x, p2.z)
 		spawn_enemy(kinds.pick_random(), p2)
 
 
@@ -695,14 +704,20 @@ const ZONE_FOES := {
 	TerrainGen.Biome.VOLCANIC: ["cinder_knight", "ember_caller", "ember_caller"],
 	TerrainGen.Biome.CORRUPTED: ["void_shade", "void_shade", "void_caller"],
 	TerrainGen.Biome.BEACH: ["zombie"],
-	TerrainGen.Biome.JUNGLE: ["thornling", "thornling", "wisp_caller"],
-	TerrainGen.Biome.CRYSTAL: ["rime_shade", "wisp_caller", "thornling"],
+	TerrainGen.Biome.JUNGLE: ["thornling", "vine_stalker", "wisp_caller", "root_guardian", "vine_stalker"],
+	TerrainGen.Biome.CRYSTAL: ["crystal_husk", "tide_caller", "coral_knight", "crystal_husk", "rime_shade"],
+	TerrainGen.Biome.SKY: ["gale_sprite", "gale_sprite", "aerie_sentinel", "wisp_caller"],
 }
 
 
-func spawn_enemy(kind: String, at: Vector3) -> Enemy3D:
+const ELITE_CHANCE := 0.08
+
+
+func spawn_enemy(kind: String, at: Vector3, elite := false) -> Enemy3D:
 	var e := Enemy3D.new()
 	e.setup(kind, self)
+	if elite:
+		e.make_elite()
 	# Placed before it enters the tree: its home post (_ready) is where it
 	# stands, not the world's origin.
 	e.position = at + Vector3(0, 0.3, 0)
@@ -804,8 +819,13 @@ func attacker_stats() -> Dictionary:
 func hit(enemy: Enemy3D, mult: float, from: Vector3, heavy: bool, element := "") -> int:
 	if enemy == null or enemy.dead:
 		return 0
-	var r: Dictionary = DamageCalc.compute(attacker_stats(), enemy.combat_stats(), mult, element)
+	var stats: Dictionary = enemy.combat_stats(from, heavy)
+	var r: Dictionary = DamageCalc.compute(attacker_stats(), stats, mult, element)
 	var amount: int = r.amount
+	if float(stats.get("reduction", 0.0)) > 0.0:
+		# Turned aside on its shield: a clang and blue sparks.
+		Arcana.sparks(game, enemy.global_position + Vector3(0, 1.2, 0), Color(0.7, 0.85, 1.0), 12, 4.0, 0.06)
+		Sfx.play("anvil", -10.0, 0.1, 1.4)
 	enemy.take_hit(float(amount), from, heavy)
 	damage_number(enemy.global_position + Vector3(0, 2.0 * (1.5 if enemy.is_boss else 1.0), 0), amount, r.crit)
 	return amount
