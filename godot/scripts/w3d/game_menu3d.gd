@@ -1713,6 +1713,7 @@ func _build_settings() -> void:
 		["choice", "View distance", ["Near", "Medium", "Far", "Farthest"], Settings.view_distance, _set_view],
 		["slider", "Render scale", Settings.render_scale, 0.5, 1.0, _set_scale],
 		["choice", "Frame rate", ["30", "60", "Unlimited"], [30, 60, 0].find(Settings.fps_cap), _set_fps],
+		["toggle", "Adaptive resolution", Settings.adaptive_res, _set_adaptive],
 		["toggle", "Show FPS", Settings.show_fps, _set_show_fps],
 		["toggle", "Screen shake", Settings.screen_shake, _set_shake],
 		["slider", "Camera sensitivity", Settings.look_sensitivity, 0.4, 2.0, _set_sens],
@@ -1810,9 +1811,18 @@ func _set_quality(i: int) -> void:
 	# A preset: shadows, glow and render scale follow it.
 	Settings.apply_preset(i)
 	Settings.apply_display(get_viewport())
-	game.sun.shadow_enabled = Settings.shadows
+	Settings.apply_sun(game.sun)
 	game.environment.glow_enabled = Settings.bloom
 	game.refresh_depth_fx()
+	# Draw distances follow the preset from the next scenery streamed in;
+	# say so rather than pretend it is instant.
+	game.play.toast.emit("Draw distance changes as new land streams in")
+
+
+func _set_adaptive(on: int) -> void:
+	Settings.adaptive_res = on == 1
+	if not Settings.adaptive_res:
+		Settings.apply_display(get_viewport())   # back to the chosen scale
 
 
 func _set_fps(i: int) -> void:
@@ -1831,7 +1841,7 @@ func _set_show_fps(on: int) -> void:
 
 func _set_shadows(on: int) -> void:
 	Settings.shadows = on == 1
-	game.sun.shadow_enabled = Settings.shadows
+	Settings.apply_sun(game.sun)
 
 
 func _set_bloom(on: int) -> void:

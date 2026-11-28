@@ -137,11 +137,16 @@ func coord_of(p: Vector3) -> Vector2i:
 
 
 ## Build everything around `at` now, blocking (start of the game, tests).
-func warm(at: Vector3) -> void:
+## Build the land round `at` at once. `ring` < 0: everything up to the
+## second ring (headless tests); otherwise only that many chunks out (the
+## nearest, with colliders) and the rest streams on worker threads while the
+## warm-up veil shows (busy() tells when they have all landed).
+func warm(at: Vector3, ring := -1) -> void:
 	focus = at
 	var centre := coord_of(at)
-	for dz in range(-rings[1], rings[1] + 1):
-		for dx in range(-rings[1], rings[1] + 1):
+	var r: int = rings[1] if ring < 0 else ring
+	for dz in range(-r, r + 1):
+		for dx in range(-r, r + 1):
 			var c := centre + Vector2i(dx, dz)
 			var lod := _lod_for(c, centre)
 			_apply(ChunkBuilder.build(gen, c, lod, lod == 0 and clump_grass))
@@ -168,6 +173,14 @@ func _process(delta: float) -> void:
 			break
 		_pending.erase(r.coord)
 		_apply(r)
+
+
+## Chunks still being built or waiting to be swapped in.
+func busy() -> bool:
+	_mutex.lock()
+	var waiting := not _results.is_empty()
+	_mutex.unlock()
+	return waiting or not _pending.is_empty()
 
 
 func _lod_for(c: Vector2i, centre: Vector2i) -> int:
@@ -217,6 +230,7 @@ func _exit_tree() -> void:
 		WorkerThreadPool.wait_for_task_completion(t)
 	_tasks.clear()
 	FoliageLib.release()
+	CharacterKit.release()
 
 
 func _reap_tasks() -> void:
@@ -335,12 +349,12 @@ func _multimesh(node: Node3D, kind: String, transforms: Array, flora: bool, lod 
 			mmi.set_meta("flora", true)
 		# Grass and small plants fade out with distance on weak settings.
 		if not flora or FoliageLib.category(kind) == "small":
-			mmi.visibility_range_end = 70.0
+			mmi.visibility_range_end = Settings.draw(70.0)
 			mmi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 		else:
 			if FoliageLib.category(kind) == "rock":
 				# Boulders are specks beyond this; trees and landmarks stay.
-				mmi.visibility_range_end = 160.0
+				mmi.visibility_range_end = Settings.draw(160.0)
 			if lod >= 1:
 				# Beyond the near ring the sun's shadow map barely reaches.
 				mmi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF

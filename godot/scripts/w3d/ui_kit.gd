@@ -102,7 +102,7 @@ static func divider(width := 560.0) -> TextureRect:
 	return d
 
 
-## The Lanternbound logo (painted), scaled to `width`.
+## The Ethereal Tales logo (painted), scaled to `width`.
 static func logo(width := 900.0) -> TextureRect:
 	var l := TextureRect.new()
 	l.texture = tex("logo")

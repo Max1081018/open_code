@@ -44,6 +44,8 @@ var _strip: Array[Image] = []
 
 
 func _ready() -> void:
+	_t0 = Time.get_ticks_usec()
+	_tmark = _t0
 	for a in OS.get_cmdline_user_args():
 		if a.begins_with("--"):
 			var kv := a.substr(2).split("=", true, 1)
@@ -81,7 +83,8 @@ func _ready() -> void:
 		spawn.y = start_spot.y + 0.3  # Skybound starts on a floating isle
 	if saved.has("pos"):
 		spawn.y = maxf(spawn.y, (saved.pos as Vector3).y + 0.2)  # saved on an isle
-	world.warm(spawn)
+	world.warm(spawn, 1 if WarmUp.wanted(_args) else -1)
+	_mark("world")
 	nav = NavField.new()
 	add_child(nav)
 	nav.setup(world)
@@ -90,9 +93,11 @@ func _ready() -> void:
 		add_child(grass)
 		grass.setup(world.gen, Settings.quality)
 		grass.warm(spawn)
+		_mark("grass")
 	islands = SkyIslands.new()
 	add_child(islands)
 	islands.build(world.gen)
+	_mark("sky_islands")
 	input = Input3D.new()
 	add_child(input)
 	cam = CameraRig.new()
@@ -102,6 +107,7 @@ func _ready() -> void:
 	player.cam = cam
 	player.world = world
 	add_child(player)
+	_mark("player")
 	player.global_position = spawn
 	cam.target = player
 	cam.head = player.head_anchor
@@ -111,9 +117,11 @@ func _ready() -> void:
 	cam.set_view(float(_args.get("yaw", "0")), float(_args.get("pitch", "-0.16")))
 	_build_depth_fx()
 	_build_water()
+	_mark("depth_fx_water")
 	play = Play3D.new()
 	add_child(play)
 	play.setup(self)
+	_mark("play")
 	if _args.has("level"):
 		play.prog.level = clampi(int(_args.level), 1, Progression.MAX_LEVEL)
 		player.max_health = Progression.max_health_at(play.prog.level)
@@ -128,33 +136,41 @@ func _ready() -> void:
 	quests = Quests3D.new()
 	add_child(quests)
 	quests.setup(self)
+	_mark("quests")
 	var ash := Ashlands.new()
 	add_child(ash)
 	ash.build(self)
+	_mark("ashlands")
 	features = WorldFeatures.new()
 	add_child(features)
 	features.build(self)
+	_mark("world_features")
 	realms = RealmFeatures.new()
 	add_child(realms)
 	realms.build(self)
+	_mark("realms")
 	footprints = Footprints.new()
 	add_child(footprints)
 	hud = Hud3D.new()
 	add_child(hud)
 	hud.setup(self)
+	_mark("hud")
 	town = Town.new()
 	add_child(town)
 	town.build(self)
 	_place_townsfolk()
+	_mark("town")
 	starstones = Starstones.new()
 	add_child(starstones)
 	starstones.build(self)
+	_mark("starstones")
 	var life := AmbientLife.new()
 	add_child(life)
 	life.setup(self)
 	weather = Weather3D.new()
 	add_child(weather)
 	weather.setup(self)
+	_mark("life_weather")
 	if _args.has("weather"):
 		weather.force(Weather3D.NAMES.map(func(n: String) -> String: return n.to_lower().replace(" ", "")).find(String(_args.weather).to_lower()))
 	# What the world hides (discoveries, chests, rune shrines, veins, the
@@ -166,6 +182,7 @@ func _ready() -> void:
 		bosses = IslandBosses.new()
 		add_child(bosses)
 		bosses.build(self)
+		_mark("secrets_bosses")
 	# Draw budget: props fade out by their size and small ones cast no shadow.
 	for n in [realms, islands, secrets, bosses]:
 		if n:
@@ -196,6 +213,28 @@ func _ready() -> void:
 		input.scripted = true
 		Engine.max_fps = 0
 		process_mode = Node.PROCESS_MODE_ALWAYS  # keep capturing while a menu pauses
+	_mark("rest")
+	# Bake scenery, load this island's foes and compile their shaders behind
+	# a veil now, rather than hitching the first time each appears in play.
+	if WarmUp.wanted(_args):
+		var w := WarmUp.new()
+		add_child(w)
+		w.start.call_deferred(self)
+	var ready_ms := (Time.get_ticks_usec() - _t0) / 1000.0
+	if Bench.attach(self, "world:" + (start_island if start_island != "" else "town"), ready_ms):
+		print("READY_STAGES ", JSON.stringify(_stages))
+
+
+## Load-time profile of _ready, stage by stage (printed with --bench).
+var _t0 := 0
+var _tmark := 0
+var _stages := {}
+
+
+func _mark(stage: String) -> void:
+	var now := Time.get_ticks_usec()
+	_stages[stage] = snappedf((now - _tmark) / 1000.0, 0.1)
+	_tmark = now
 
 
 ## Wren by the fountain, Mira at her herb corner by the wall fountain, Tobin
@@ -281,10 +320,9 @@ func _build_environment() -> void:
 	we.environment = environment
 	add_child(we)
 	sun = DirectionalLight3D.new()
-	sun.shadow_enabled = Settings.shadows and _args.get("shadows", "1") != "0"
-	sun.directional_shadow_mode = DirectionalLight3D.SHADOW_PARALLEL_2_SPLITS
-	sun.directional_shadow_max_distance = 90.0
-	sun.directional_shadow_split_1 = 0.18
+	Settings.apply_sun(sun)
+	if _args.get("shadows", "1") == "0":
+		sun.shadow_enabled = false
 	sun.shadow_blur = 1.0
 	sun.light_angular_distance = 0.5
 	sun.shadow_bias = 0.04
@@ -446,7 +484,33 @@ func surface_y(at: Vector3):
 	return hit.position.y if not hit.is_empty() else null
 
 
+## Adaptive resolution (Settings.adaptive_res): the 3D view's scale steps
+## down while frames run long and back up toward the player's setting when
+## there is headroom. The UI is never scaled.
+var _frame_avg := 0.0
+var _res_hold := 0.0
+
+
+func _adapt_resolution(delta: float) -> void:
+	if not Settings.adaptive_res or _args.has("shot") or _args.has("bench") or get_tree().paused:
+		return
+	var target := 1.0 / float(Engine.max_fps if Engine.max_fps > 0 else 60)
+	_frame_avg = lerpf(_frame_avg if _frame_avg > 0.0 else delta, delta, 0.05)
+	_res_hold -= delta
+	if _res_hold > 0.0:
+		return
+	var vp := get_viewport()
+	var top := clampf(Settings.render_scale, 0.5, 1.0)
+	if _frame_avg > target * 1.15 and vp.scaling_3d_scale > 0.55:
+		vp.scaling_3d_scale = maxf(0.5, vp.scaling_3d_scale - 0.05)
+		_res_hold = 2.0
+	elif _frame_avg < target * 0.92 and vp.scaling_3d_scale < top:
+		vp.scaling_3d_scale = minf(top, vp.scaling_3d_scale + 0.05)
+		_res_hold = 4.0
+
+
 func _process(delta: float) -> void:
+	_adapt_resolution(delta)
 	_frames += 1
 	# Foliage between the camera and the heroine thins out (foliage3d).
 	if player and cam:
@@ -534,7 +598,7 @@ static func budget(root: Node) -> void:
 			# A batch spread over an isle or field: judge by its parts.
 			size = minf(size, 12.0)
 		if size < 25.0:
-			gi.visibility_range_end = clampf(size * 45.0, 60.0, 420.0)
+			gi.visibility_range_end = Settings.draw(clampf(size * 45.0, 60.0, 420.0))
 			gi.visibility_range_end_margin = 12.0
 			gi.visibility_range_fade_mode = GeometryInstance3D.VISIBILITY_RANGE_FADE_SELF
 		if size < 1.5:
@@ -872,8 +936,9 @@ func _script_input() -> void:
 			var at := player.global_position + fwd * 7.0 + right * (float(i) - (kinds.size() - 1) * 0.5) * 4.5
 			at.y = _ground_under(at)
 			var e: Enemy3D = play.spawn_enemy(kinds[i], at)
-			e.spec = e.spec.duplicate()
-			e.spec.sight = 0.5   # stand still for the picture
+			if not _args.has("bench"):
+				e.spec = e.spec.duplicate()
+				e.spec.sight = 0.5   # stand still for the picture
 			_spawned.append(e)
 	if _args.has("boss") and bosses:
 		# --boss=jungle|sky|coast: stand in the guardian's arena as it wakes.

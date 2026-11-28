@@ -1,4 +1,4 @@
-name: Lanternbound APK
+name: Ethereal Tales APK
 
 # Builds the Godot game (godot/) into a signed Android APK and publishes it
 # as a GitHub release, so each build has a direct download link.
@@ -75,8 +75,20 @@ jobs:
           path: .signing
           key: lanternbound-signing-keystore-v1
 
+      # The durable home of the key is a repository secret (the cache is
+      # evicted after 7 unused days, and a new key would stop updates from
+      # installing and change the Google sign-in fingerprint):
+      #   base64 -w0 lanternbound.jks  ->  secret ANDROID_KEYSTORE_B64
+      - name: Use the signing key from repository secrets
+        env:
+          KEYSTORE_B64: ${{ secrets.ANDROID_KEYSTORE_B64 }}
+        if: env.KEYSTORE_B64 != ''
+        run: |
+          mkdir -p .signing
+          echo "$KEYSTORE_B64" | base64 -d > "$KEYSTORE"
+
       - name: Create signing keystore if missing
-        if: steps.keystore.outputs.cache-hit != 'true'
+        if: steps.keystore.outputs.cache-hit != 'true' && hashFiles('.signing/lanternbound.jks') == ''
         run: |
           mkdir -p .signing
           keytool -genkeypair -v -keystore "$KEYSTORE" -storetype PKCS12 \
@@ -130,32 +142,37 @@ jobs:
         run: |
           mkdir -p out
           cd godot
-          godot --headless --path . --export-release "Android" "$GITHUB_WORKSPACE/out/Lanternbound.apk" 2>&1 | tail -40
+          # Every build gets its own version code, so a phone installs it as
+          # an update of the last one.
+          sed -i "s/^version\/code=.*/version\/code=${{ github.run_number }}/" export_presets.cfg
+          sed -i "s/^version\/name=.*/version\/name=\"0.5.${{ github.run_number }}\"/" export_presets.cfg
+          grep -E "^version/" export_presets.cfg
+          godot --headless --path . --export-release "Android" "$GITHUB_WORKSPACE/out/EtherealTales.apk" 2>&1 | tail -40
           ls -la "$GITHUB_WORKSPACE/out"
-          test -s "$GITHUB_WORKSPACE/out/Lanternbound.apk"
+          test -s "$GITHUB_WORKSPACE/out/EtherealTales.apk"
 
       - name: Verify the APK signature
         run: |
           SDK="${ANDROID_HOME:-${ANDROID_SDK_ROOT:-/usr/local/lib/android/sdk}}"
           APKSIGNER="$(ls -d "$SDK"/build-tools/* | sort -V | tail -1)/apksigner"
-          "$APKSIGNER" verify --print-certs out/Lanternbound.apk | head -5
+          "$APKSIGNER" verify --print-certs out/EtherealTales.apk | head -5
 
       - name: Upload the APK
         uses: actions/upload-artifact@v4
         with:
-          name: Lanternbound-apk
-          path: out/Lanternbound.apk
+          name: EtherealTales-apk
+          path: out/EtherealTales.apk
           if-no-files-found: error
 
       - name: Publish as a release (direct download link)
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: lanternbound-build-${{ github.run_number }}
-          name: Lanternbound build ${{ github.run_number }}
+          tag_name: ethereal-tales-build-${{ github.run_number }}
+          name: Ethereal Tales build ${{ github.run_number }}
           target_commitish: ${{ github.sha }}
           prerelease: true
           body: |
-            Lanternbound, Android (arm64). Built from ${{ github.sha }} on ${{ github.ref_name }}.
-            Install: download Lanternbound.apk on the phone and open it (allow installs from this source).
+            Ethereal Tales, Android (arm64). Built from ${{ github.sha }} on ${{ github.ref_name }}.
+            Install: download EtherealTales.apk on the phone and open it (allow installs from this source).
             Later builds are signed with the same key, so they install over this one.
-          files: out/Lanternbound.apk
+          files: out/EtherealTales.apk

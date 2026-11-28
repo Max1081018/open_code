@@ -22,7 +22,6 @@ var orbit := 0.0           ## kept for callers; adds to `turn`
 var _vp: SubViewport
 var _t := 0.0
 var _seat := Vector3.ZERO
-var _lantern: Node3D
 var _glow: TextureRect
 var _sit: SitPose
 var _skel: Skeleton3D
@@ -31,6 +30,13 @@ var _shadow: TextureRect
 ## pixels; scaled to cover any screen (a 20:9 phone crops a little of the
 ## sky rather than showing a black strip).
 var _canvas: Control
+## The painting and its 2D life render once into this layer at a fixed size
+## (1920x1080, less on low settings) and are scaled to the screen: a phone's
+## 3200x1440 panel never runs the vista shader at native resolution.
+var _paint: SubViewport
+var _paint_root: Control
+var _view: SubViewportContainer
+var _wisp: Node2D
 ## How the crop sits on a screen wider than 16:9: 0 keeps the top, 1 the
 ## bottom. The title keeps the World Tree and the isles (crops the terrace
 ## floor); the hero screen keeps her feet on the terrace.
@@ -47,6 +53,25 @@ func _ready() -> void:
 	_canvas.size = Vector2(1920, 1080)
 	_canvas.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	add_child(_canvas)
+	# The painted layer.
+	var res: Vector2i = [Vector2i(1280, 720), Vector2i(1600, 900), Vector2i(1920, 1080), Vector2i(1920, 1080)][clampi(Settings.quality, 0, 3)]
+	_paint = SubViewport.new()
+	_paint.size = res
+	_paint.disable_3d = true
+	_paint.transparent_bg = false
+	_paint.render_target_update_mode = SubViewport.UPDATE_ALWAYS
+	add_child(_paint)
+	_paint_root = Control.new()
+	_paint_root.size = Vector2(1920, 1080)
+	_paint_root.scale = Vector2(res) / Vector2(1920, 1080)
+	_paint.add_child(_paint_root)
+	var shown := TextureRect.new()
+	shown.texture = _paint.get_texture()
+	shown.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+	shown.stretch_mode = TextureRect.STRETCH_SCALE
+	shown.size = Vector2(1920, 1080)
+	shown.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_canvas.add_child(shown)
 	var art := TextureRect.new()
 	art.texture = load(BG)
 	art.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
@@ -56,43 +81,95 @@ func _ready() -> void:
 	# The painting moves: isles bob, the tree stirs, falls run, mist drifts.
 	var vista := ShaderMaterial.new()
 	vista.shader = load("res://scripts/shaders/menu_vista.gdshader")
+	vista.set_shader_parameter("noise_tex", _noise_texture())
 	art.material = vista
 	_put(art)
 	_put(_sea_glints())
+	_glow = _soft_glow(Vector2(1824, 512), 90.0, Color(1.0, 0.78, 0.45, 0.55))
+	_put(_glow)
+	_wisp = _build_wisp(Vector2(1272, 566))
+	_put(_wisp)
+	_put(_fireflies())
 	# Her contact shadow on the terrace (shown with her on the hero screen).
 	_shadow = _soft_glow(FEET_PX, 110.0, Color(0, 0, 0, 0.5))
 	_shadow.material = null
 	_shadow.scale = Vector2(1.0, 0.18)
 	_shadow.pivot_offset = Vector2(110, 110)
 	_shadow.visible = false
-	_put(_shadow)
-	_glow = _soft_glow(Vector2(1824, 512), 90.0, Color(1.0, 0.78, 0.45, 0.55))
-	_put(_glow)
-	var view := SubViewportContainer.new()
-	view.stretch = true
-	view.size = Vector2(1920, 1080)
-	view.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	_put(view)
+	_canvas.add_child(_shadow)
+	# The 3D view: only the character screen draws anything in it, so it
+	# renders only while she is shown.
+	_view = SubViewportContainer.new()
+	_view.stretch = true
+	_view.size = Vector2(1920, 1080)
+	_view.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_view.visible = false
+	_canvas.add_child(_view)
 	_vp = SubViewport.new()
 	_vp.size = Vector2i(1920, 1080)
-	_vp.msaa_3d = Viewport.MSAA_4X
+	_vp.msaa_3d = Viewport.MSAA_2X if OS.has_feature("mobile") or Settings.quality < 2 else Viewport.MSAA_4X
 	_vp.transparent_bg = true
-	view.add_child(_vp)
+	_vp.render_target_update_mode = SubViewport.UPDATE_DISABLED
+	_view.add_child(_vp)
 	_environment()
 	cam = Camera3D.new()
 	cam.fov = 30.0
 	_vp.add_child(cam)
 	cam.look_at_from_position(Vector3(0, 0, 0), Vector3(0, 0, -1), Vector3.UP)
 	_seat = _project(SEAT_PX, DEPTH)
-	_build_vfx()
-	_put(_fireflies())
 	_fit()
 	get_viewport().size_changed.connect(_fit)
 
 
+## Smooth value noise in a small tiling texture: the vista shader samples it
+## instead of evaluating sine hashes per pixel (far cheaper on a phone GPU).
+static func _noise_texture() -> ImageTexture:
+	var n := 128
+	var img := Image.create(n, n, false, Image.FORMAT_L8)
+	var rng := RandomNumberGenerator.new()
+	rng.seed = 7
+	for y in n:
+		for x in n:
+			var v := rng.randf()
+			img.set_pixel(x, y, Color(v, v, v))
+	return ImageTexture.create_from_image(img)
+
+
+## Her magic at rest on the parapet: a soft violet wisp with motes rising.
+func _build_wisp(at: Vector2) -> Node2D:
+	var root := Node2D.new()
+	root.position = at
+	var halo := _soft_glow(Vector2.ZERO, 30.0, Color(0.78, 0.6, 1.0, 0.4))
+	root.add_child(halo)
+	var core := _soft_glow(Vector2.ZERO, 8.0, Color(1.0, 0.94, 1.0, 0.85))
+	root.add_child(core)
+	var motes := CPUParticles2D.new()
+	motes.amount = 14
+	motes.lifetime = 3.0
+	motes.preprocess = 3.0
+	motes.emission_shape = CPUParticles2D.EMISSION_SHAPE_SPHERE
+	motes.emission_sphere_radius = 18.0
+	motes.direction = Vector2(0, -1)
+	motes.spread = 40.0
+	motes.gravity = Vector2(0, -8)
+	motes.initial_velocity_min = 3.0
+	motes.initial_velocity_max = 12.0
+	motes.scale_amount_min = 1.5
+	motes.scale_amount_max = 3.0
+	var ramp := Gradient.new()
+	ramp.colors = PackedColorArray([Color(0.85, 0.72, 1.0, 0.0), Color(0.9, 0.8, 1.0, 0.9), Color(0.85, 0.72, 1.0, 0.0)])
+	ramp.offsets = PackedFloat32Array([0.0, 0.3, 1.0])
+	motes.color_ramp = ramp
+	var mat := CanvasItemMaterial.new()
+	mat.blend_mode = CanvasItemMaterial.BLEND_MODE_ADD
+	motes.material = mat
+	root.add_child(motes)
+	return root
+
+
 ## Everything the stage builds goes onto the painting's canvas.
 func _put(node: Node) -> void:
-	_canvas.add_child(node)
+	_paint_root.add_child(node)
 
 
 ## Cover the screen with the painting, whatever its shape, plus a very slow
@@ -143,54 +220,6 @@ func _environment() -> void:
 	sky.light_energy = 0.75
 	sky.rotation = Vector3(-0.5, -0.35, 0)
 	_vp.add_child(sky)
-
-
-func _build_vfx() -> void:
-	# A small star-lantern on the stone at her side.
-	_lantern = Node3D.new()
-	_vp.add_child(_lantern)
-	_lantern.position = _seat + Vector3(-0.2, 0.25, 0.0)
-	# A wisp: a soft bright core with a halo (her own magic, at rest).
-	var wisp := MeshInstance3D.new()
-	var quad := QuadMesh.new()
-	quad.size = Vector2(0.32, 0.32)
-	wisp.mesh = quad
-	var wm := StandardMaterial3D.new()
-	wm.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
-	wm.billboard_mode = BaseMaterial3D.BILLBOARD_ENABLED
-	wm.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
-	wm.blend_mode = BaseMaterial3D.BLEND_MODE_ADD
-	wm.albedo_texture = Play3D._spark_texture()
-	wm.albedo_color = Color(0.9, 0.78, 1.0)
-	wisp.material_override = wm
-	_lantern.add_child(wisp)
-	var light := OmniLight3D.new()
-	light.light_color = Color(0.86, 0.7, 1.0)
-	light.light_energy = 1.4
-	light.omni_range = 2.5
-	_lantern.add_child(light)
-	var motes := CPUParticles3D.new()
-	var q := QuadMesh.new()
-	q.size = Vector2(0.025, 0.025)
-	motes.mesh = q
-	var m := StandardMaterial3D.new()
-	m.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
-	m.billboard_mode = BaseMaterial3D.BILLBOARD_PARTICLES
-	m.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
-	m.blend_mode = BaseMaterial3D.BLEND_MODE_ADD
-	m.albedo_texture = Play3D._spark_texture()
-	m.albedo_color = Color(0.85, 0.72, 1.0)
-	motes.material_override = m
-	motes.emission_shape = CPUParticles3D.EMISSION_SHAPE_SPHERE
-	motes.emission_sphere_radius = 0.25
-	motes.amount = 18
-	motes.lifetime = 3.0
-	motes.preprocess = 3.0
-	motes.gravity = Vector3(0, 0.12, 0)
-	motes.initial_velocity_min = 0.03
-	motes.initial_velocity_max = 0.12
-	motes.spread = 180.0
-	_lantern.add_child(motes)
 
 
 ## Fireflies drifting across the front of the scene.
@@ -274,6 +303,8 @@ func focus(_mode: String) -> void:
 ## Show (or hide) Lyra standing on the terrace in her idle: the character
 ## screen's preview. The title screen itself shows only the vista.
 func show_hero(on: bool) -> void:
+	_view.visible = on
+	_vp.render_target_update_mode = SubViewport.UPDATE_ALWAYS if on else SubViewport.UPDATE_DISABLED
 	if on and model == null:
 		model = CharacterKit.build(Account.character_kit() if Account.signed_in() else "player")
 		_vp.add_child(model)
@@ -299,10 +330,9 @@ func _process(delta: float) -> void:
 	if model:
 		var want := 0.35 + clampf(turn + orbit, -1.2, 1.2)
 		model.rotation.y = lerpf(model.rotation.y, want, 1.0 - exp(-6.0 * delta))
-	if _lantern:
-		var c := _lantern.get_child(0) as Node3D
-		c.rotation.y += delta * 0.8
-		c.position.y = sin(_t * 1.6) * 0.03
+	if _wisp:
+		_wisp.position.y = 566.0 + sin(_t * 1.6) * 6.0
+		_wisp.modulate.a = 0.85 + sin(_t * 2.3) * 0.15
 	if _glow:
 		# The painted lantern flickers like a flame.
 		_glow.modulate.a = 0.65 + sin(_t * 7.0) * 0.12 + sin(_t * 13.0) * 0.08

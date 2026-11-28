@@ -55,6 +55,9 @@ var screen_shake := true
 var show_fps := false
 ## Frames per second cap: 30 saves battery and heat on phones, 0 = none.
 var fps_cap := 60
+## Adaptive resolution: when frames run long for a few seconds the 3D view
+## renders a little smaller (down to half), and grows back with headroom.
+var adaptive_res := true
 ## 3D resolution scale (0.5 .. 1.0): the world renders smaller and is
 ## stretched to the screen; the UI stays sharp.
 var render_scale := 1.0
@@ -71,14 +74,69 @@ const PRESET_SHAFTS := [false, false, true, true]
 const PRESET_VIEW := [0, 1, 2, 3]
 const PRESET_AA := [1, 1, 3, 3]
 const PRESET_SCALE := [0.6, 0.75, 0.9, 1.0]
+## Per preset: how far scenery, flora and props draw (a multiplier on each
+## object's own range; landmarks keep their long ranges), the sun's shadow
+## reach / cascades / map size / softness, and how eagerly meshes step down
+## a level of detail (pixels of error allowed).
+const PRESET_DRAW := [0.65, 0.85, 1.0, 1.3]
+const PRESET_SHADOW_DIST := [0.0, 50.0, 90.0, 140.0]
+const PRESET_SHADOW_SPLITS := [1, 1, 2, 2]
+const PRESET_SHADOW_MAP := [1024, 1024, 2048, 4096]
+const PRESET_SHADOW_SOFT := [0, 0, 1, 2]
+const PRESET_LOD := [4.0, 2.5, 1.5, 1.0]
+
+
+## Draw distance for something whose full-detail range is `metres`.
+func draw(metres: float) -> float:
+	return metres * PRESET_DRAW[clampi(quality, 0, 3)]
+
+
+## The sun's shadows for the current preset (shadows off: Low, or the toggle).
+func apply_sun(sun: DirectionalLight3D) -> void:
+	var q := clampi(quality, 0, 3)
+	sun.shadow_enabled = shadows and PRESET_SHADOW_DIST[q] > 0.0
+	sun.directional_shadow_max_distance = maxf(PRESET_SHADOW_DIST[q], 40.0)
+	sun.directional_shadow_mode = DirectionalLight3D.SHADOW_PARALLEL_2_SPLITS if PRESET_SHADOW_SPLITS[q] == 2 else DirectionalLight3D.SHADOW_ORTHOGONAL
+	sun.directional_shadow_split_1 = 0.18
+	RenderingServer.directional_shadow_atlas_set_size(PRESET_SHADOW_MAP[q], true)
+	RenderingServer.directional_soft_shadow_filter_set_quality([
+		RenderingServer.SHADOW_QUALITY_HARD, RenderingServer.SHADOW_QUALITY_SOFT_VERY_LOW,
+		RenderingServer.SHADOW_QUALITY_SOFT_LOW][PRESET_SHADOW_SOFT[q]])
 var debug_collision := false
 ## Per-control offsets set in the layout editor: name -> Vector2 (fraction of screen).
 var control_offsets := {}
 
 
 func _ready() -> void:
+	_migrate_user_dir()
 	load_settings()
 	_apply_audio()
+
+
+## The game was renamed (Lanternbound -> Ethereal Tales). On Android the
+## save folder belongs to the package id, which did not change. On desktop
+## the folder is named after the game, so the old one's settings, accounts
+## and journeys are copied over once (never overwriting newer files).
+static func _migrate_user_dir() -> void:
+	if OS.has_feature("mobile") or OS.has_feature("web"):
+		return
+	var now := OS.get_user_data_dir()
+	var old := now.get_base_dir().path_join("Lanternbound")
+	if old == now or not DirAccess.dir_exists_absolute(old) or FileAccess.file_exists(now.path_join(".migrated")):
+		return
+	_copy_tree(old, now)
+	var f := FileAccess.open(now.path_join(".migrated"), FileAccess.WRITE)
+	if f:
+		f.store_string("from " + old)
+
+
+static func _copy_tree(from: String, to: String) -> void:
+	DirAccess.make_dir_recursive_absolute(to)
+	for file in DirAccess.get_files_at(from):
+		if not FileAccess.file_exists(to.path_join(file)):
+			DirAccess.copy_absolute(from.path_join(file), to.path_join(file))
+	for sub in DirAccess.get_directories_at(from):
+		_copy_tree(from.path_join(sub), to.path_join(sub))
 
 
 ## Apply a preset to every graphics control.
@@ -97,6 +155,8 @@ func apply_preset(preset: int) -> void:
 	sun_shafts = PRESET_SHAFTS[quality]
 	view_distance = PRESET_VIEW[quality]
 	antialiasing = PRESET_AA[quality]
+	# Low: a steady 30 beats a ragged 60 on a phone that cannot hold it.
+	fps_cap = 30 if quality == Quality.LOW else 60
 
 
 func load_settings() -> void:
@@ -117,6 +177,7 @@ func load_settings() -> void:
 	screen_shake = config.get_value("graphics", "screen_shake", screen_shake)
 	show_fps = config.get_value("graphics", "show_fps", show_fps)
 	fps_cap = config.get_value("graphics", "fps_cap", fps_cap)
+	adaptive_res = config.get_value("graphics", "adaptive_res", adaptive_res)
 	render_scale = config.get_value("graphics", "render_scale", render_scale)
 	ao = config.get_value("graphics", "ao", ao)
 	sun_shafts = config.get_value("graphics", "sun_shafts", sun_shafts)
@@ -143,7 +204,8 @@ func apply_display(vp: Viewport) -> void:
 	vp.screen_space_aa = Viewport.SCREEN_SPACE_AA_FXAA if antialiasing == 1 else Viewport.SCREEN_SPACE_AA_DISABLED
 	# A mesh steps down a level of detail when the change would move it by
 	# less than this many pixels: 2 is invisible on a phone's dense screen.
-	vp.mesh_lod_threshold = 2.0 if OS.has_feature("mobile") else 1.0
+	var lod: float = PRESET_LOD[clampi(quality, 0, 3)]
+	vp.mesh_lod_threshold = maxf(lod, 2.0) if OS.has_feature("mobile") and quality < 3 else lod
 
 
 func save_settings() -> void:
@@ -160,6 +222,7 @@ func save_settings() -> void:
 	config.set_value("graphics", "screen_shake", screen_shake)
 	config.set_value("graphics", "show_fps", show_fps)
 	config.set_value("graphics", "fps_cap", fps_cap)
+	config.set_value("graphics", "adaptive_res", adaptive_res)
 	config.set_value("graphics", "render_scale", render_scale)
 	config.set_value("graphics", "ao", ao)
 	config.set_value("graphics", "sun_shafts", sun_shafts)

@@ -91,7 +91,7 @@ func _build_buttons() -> void:
 	column.position = Vector2(150, 140)
 	add_child(column)
 
-	var title := UITheme.title("Lanternbound", 150, UITheme.PAPER)
+	var title := UITheme.title("Ethereal Tales", 150, UITheme.PAPER)
 	title.horizontal_alignment = HORIZONTAL_ALIGNMENT_LEFT
 	column.add_child(title)
 	var subtitle := UITheme.text("Carry the only light there is.", 40, Color(1.0, 0.86, 0.66))

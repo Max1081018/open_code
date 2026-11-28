@@ -9,6 +9,7 @@ var id := ""
 var game: Node
 var model: Node3D
 var anim: AnimationPlayer
+var _anim_lod := {}
 var talking := false
 var home_yaw := 0.0
 ## [[clip, seconds], ...] played in turn while idle.
@@ -141,6 +142,7 @@ func _process(delta: float) -> void:
 	var to: Vector3 = game.player.global_position - global_position
 	to.y = 0.0
 	var near := to.length() < 6.0
+	AnimLod.step(anim, to.length() > 45.0 and not talking, delta, _anim_lod)
 	if _look:
 		_look_target.global_position = game.player.global_position + Vector3(0, 1.35, 0)
 		_look.influence = move_toward(_look.influence, 1.0 if (near or talking) else 0.0, delta * 2.0)

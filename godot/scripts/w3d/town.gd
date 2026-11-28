@@ -281,7 +281,7 @@ func place(model: String, at: Vector3, height: float, yaw: float, collide := "")
 	var draw: Array = DRAW.get(model, [900.0, true])
 	for m in meshes:
 		var mi := m as MeshInstance3D
-		mi.visibility_range_end = draw[0]
+		mi.visibility_range_end = Settings.draw(draw[0])
 		mi.visibility_range_end_margin = 12.0
 		mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_ON if draw[1] else GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 	holder.global_position = at
@@ -423,7 +423,7 @@ func _glow(at: Vector3, colour: Color, size: float) -> MeshInstance3D:
 	mi.mesh = q
 	mi.material_override = _glow_mats[key]
 	mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
-	mi.visibility_range_end = 160.0
+	mi.visibility_range_end = Settings.draw(160.0)
 	add_child(mi)
 	mi.global_position = at
 	return mi
@@ -450,7 +450,7 @@ func _tree(kind: String, at: Vector3) -> void:
 		var mi := MeshInstance3D.new()
 		mi.mesh = part[0]
 		mi.transform = part[1]
-		mi.visibility_range_end = 500.0
+		mi.visibility_range_end = Settings.draw(500.0)
 		holder.add_child(mi)
 	var body := StaticBody3D.new()
 	var cs := CollisionShape3D.new()

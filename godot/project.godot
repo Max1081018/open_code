@@ -10,13 +10,16 @@ config_version=5
 
 [application]
 
-config/name="Lanternbound"
+config/name="Ethereal Tales"
 config/description="Dig, build and fight your way down into the dark, carrying the only light there is."
 config/version="0.1.0"
 run/main_scene="res://scenes/loading.tscn"
 config/features=PackedStringArray("4.4", "GL Compatibility")
-boot_splash/bg_color=Color(0.105, 0.098, 0.141, 1)
-boot_splash/show_image=false
+boot_splash/bg_color=Color(0.059, 0.043, 0.118, 1)
+boot_splash/image="res://assets/brand/splash.png"
+boot_splash/fullsize=false
+boot_splash/use_filter=true
+boot_splash/show_image=true
 config/icon="res://icon.png"
 
 [autoload]

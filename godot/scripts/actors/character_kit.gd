@@ -184,10 +184,19 @@ static func library() -> AnimationLibrary:
 ## A ready character: Node3D root with Armature/Skeleton3D and an
 ## AnimationPlayer holding the shared clips.
 static func build(name: String) -> Node3D:
+	var root := _build(name)
+	# Skinned parts are culled by their rest pose's bounds: a raised arm, a
+	# swinging cloak or a lunge would blink out at the screen's edge.
+	for m in root.find_children("*", "MeshInstance3D", true, false):
+		(m as MeshInstance3D).extra_cull_margin = maxf((m as MeshInstance3D).extra_cull_margin, 1.5)
+	return root
+
+
+static func _build(name: String) -> Node3D:
 	if HEROES.has(name) and ResourceLoader.exists(HERO_DIR + String(HEROES[name][0]) + ".scn"):
 		return _build_hero(name)
 	var recipe: Dictionary = RECIPES[name]
-	var root: Node3D = load(Q + BODIES[recipe.body]).instantiate()
+	var root: Node3D = _res(Q + BODIES[recipe.body]).instantiate()
 	root.name = name
 	var skeleton: Skeleton3D = root.get_node("Armature/Skeleton3D")
 	var parts: Array = []
@@ -203,7 +212,7 @@ static func build(name: String) -> Node3D:
 		if brows:
 			brows.queue_free()
 	for path in parts:
-		var scene: Node = load(Q + path).instantiate()
+		var scene: Node = _res(Q + path).instantiate()
 		for mesh in scene.find_children("*", "MeshInstance3D", true, false):
 			mesh.owner = null
 			mesh.get_parent().remove_child(mesh)
@@ -232,7 +241,7 @@ static func _dress(mesh: MeshInstance3D, recipe: Dictionary) -> void:
 		var copy: BaseMaterial3D = material.duplicate()
 		var key := String(material.resource_name)
 		if textures.has(key):
-			copy.albedo_texture = load(Q + String(textures[key]))
+			copy.albedo_texture = _res(Q + String(textures[key]))
 		if key == "MI_Eyes" and recipe.has("eyes"):
 			copy.emission_enabled = true
 			copy.emission = recipe.eyes
@@ -259,7 +268,7 @@ static func _tint(mesh: MeshInstance3D, colour: Color) -> void:
 ## at the origin, and an AnimationPlayer with the shared retargeted clips.
 static func _build_hero(name: String) -> Node3D:
 	var spec: Array = HEROES[name]
-	var model: Node3D = load(HERO_DIR + String(spec[0]) + ".scn").instantiate()
+	var model: Node3D = _res(HERO_DIR + String(spec[0]) + ".scn").instantiate()
 	var root := Node3D.new()
 	root.name = name
 	root.add_child(model)
@@ -649,6 +658,24 @@ static func _rest_points(mi: MeshInstance3D, si: int, root: Node3D) -> Array:
 		out_v[i] = t * verts[i]
 		out_n[i] = (t.basis * norms[i]).normalized() if not norms.is_empty() else Vector3.UP
 	return [out_v, out_n]
+
+
+## Load a model's file. (Holding them for the session was tried: reusing
+## the hero scenes' shared materials across rebuilds tripped the renderer,
+## so each build loads afresh; the warm-up still compiles their shaders.)
+static func _res(path: String) -> Resource:
+	return load(path)
+
+
+## Kept for callers (nothing is held now).
+static func release() -> void:
+	pass
+
+
+## Load (and keep) what `name` needs, without building it: for warm-up.
+static func preload_kit(name: String) -> void:
+	var m := build(name)
+	m.free()
 
 
 static var _toon_shader: Shader

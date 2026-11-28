@@ -151,6 +151,11 @@ var health := 1.0
 var max_health := 1.0
 var model: Node3D
 var anim: AnimationPlayer
+## Beyond this (and unaware of her) a foe thinks at a quarter rate.
+const FAR_THINK := 55.0
+var _skipped := 0.0
+var _tick := 0
+var _anim_lod := {}
 var phase := 1
 var is_boss := false
 var dead := false
@@ -364,6 +369,22 @@ func _physics_process(delta: float) -> void:
 	var to_player := player.global_position - global_position
 	to_player.y = 0
 	var dist := to_player.length()
+	# Distance tiers: a foe far off and unaware thinks every 4th tick (with
+	# the time it skipped, so timers stay true) while still moving every tick
+	# as it last decided, and its skeleton updates at a third of the rate
+	# (AnimLod); close, fighting, or a
+	# guardian, it runs in full every tick.
+	var far := not is_boss and not _aggro and _search <= 0.0 and not _returning and dist > FAR_THINK
+	AnimLod.step(anim, far, delta, _anim_lod)
+	if far:
+		_skipped += delta
+		_tick += 1
+		if _tick % 4 != 0:
+			# It keeps moving as it last decided; only the thinking waits.
+			move_and_slide()
+			return
+		delta = _skipped
+	_skipped = 0.0
 	if spec.has("ambush") and not _emerged:
 		# Hidden in the ground until she is close.
 		if dist < 6.5 and player.health > 0.0:

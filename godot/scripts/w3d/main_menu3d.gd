@@ -1,7 +1,7 @@
 extends Control
 ## The title screen. The painted vista of the Starfall (World Tree, dune sea,
 ## sky isles, crystal coast) drifts slowly under a violet veil, petals fall,
-## the Lanternbound logo glows top-left. Signed out, the sign-in panel shows
+## the Ethereal Tales logo glows top-left. Signed out, the sign-in panel shows
 ## (LoginPanel); signed in, a column of gem-plate buttons:
 ##   Continue (if this account has a journey), New Journey (→ character →
 ##   starting island → loading → world), Settings, Credits, Sign Out, Quit.
@@ -47,7 +47,7 @@ void fragment() { COLOR = vec4(0.01, 0.01, 0.03, (1.0 - smoothstep(0.0, 0.5, UV.
 	_tag.position = Vector2(110, 960)
 	add_child(_tag)
 	# Bottom-right of the real screen (phones are wider than 16:9).
-	_version = UiKit.label("v0.4  ·  development build", 18, Color(1, 1, 1, 0.45))
+	_version = UiKit.label("v0.5  ·  development build", 18, Color(1, 1, 1, 0.45))
 	_version.set_anchors_and_offsets_preset(Control.PRESET_BOTTOM_RIGHT)
 	_version.grow_horizontal = Control.GROW_DIRECTION_BEGIN
 	_version.grow_vertical = Control.GROW_DIRECTION_BEGIN
@@ -70,6 +70,7 @@ void fragment() { COLOR = vec4(0.01, 0.01, 0.03, (1.0 - smoothstep(0.0, 0.5, UV.
 	_chip.add_child(_who)
 	_build()
 	Sfx.play_music("title")
+	Bench.attach(self, "menu")
 	for a in OS.get_cmdline_user_args():
 		if a.begins_with("--front="):
 			var what := a.substr(8)
@@ -401,3 +402,9 @@ func _process(delta: float) -> void:
 func _unhandled_input(event: InputEvent) -> void:
 	if event.is_action_pressed("ui_cancel") and _overlay:
 		_close_overlay()
+
+
+func _exit_tree() -> void:
+	# The menu's character models are not needed in the world; let go of
+	# them before a quit can outlive the servers (see FoliageLib.release).
+	CharacterKit.release()

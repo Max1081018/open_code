@@ -8,17 +8,17 @@ shader_type canvas_item;
 
 const vec2 RES = vec2(1920.0, 1080.0);
 
+uniform sampler2D noise_tex : filter_linear, repeat_enable;
+
 float hash(vec2 p) { return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453); }
 
+// Value noise from a small tiling texture (one fetch, not four sine hashes).
 float vnoise(vec2 p) {
-	vec2 i = floor(p);
-	vec2 f = fract(p);
-	f = f * f * (3.0 - 2.0 * f);
-	return mix(mix(hash(i), hash(i + vec2(1, 0)), f.x), mix(hash(i + vec2(0, 1)), hash(i + vec2(1, 1)), f.x), f.y);
+	return texture(noise_tex, (p + 0.5) / 128.0).r;
 }
 
 float fbm(vec2 p) {
-	return vnoise(p) * 0.55 + vnoise(p * 2.03 + 5.1) * 0.3 + vnoise(p * 4.1 + 9.7) * 0.15;
+	return vnoise(p) * 0.6 + vnoise(p * 2.03 + 5.1) * 0.4;
 }
 
 // A soft ellipse: 1 inside, fading to 0 by `soft` times its radius.
@@ -56,15 +56,20 @@ void fragment() {
 	// its ruins, or the hills).
 	float mesa = box(p, vec2(600, 270), vec2(1470, 720), 40.0);
 	float sky = (1.0 - smoothstep(330.0, 400.0, p.y)) * (1.0 - crown) * (1.0 - mesa);
-	vec2 q = p * vec2(0.004, 0.012);
-	off.x += sky * (fbm(q + vec2(t * 0.02, 0.0)) - 0.5) * 3.0;
-	off.y += sky * (fbm(q + vec2(3.7, t * 0.015)) - 0.5) * 1.2;
+	// (Each effect only runs inside its own part of the painting.)
+	if (sky > 0.001) {
+		vec2 q = p * vec2(0.004, 0.012);
+		off.x += sky * (fbm(q + vec2(t * 0.02, 0.0)) - 0.5) * 3.0;
+		off.y += sky * (fbm(q + vec2(3.7, t * 0.015)) - 0.5) * 1.2;
+	}
 
 	// The sea: fine ripples, larger nearer the shore below.
 	float sea = box(p, vec2(1250, 448), vec2(1940, 628), 10.0) * smoothstep(1180.0, 1320.0, p.x + (p.y - 440.0) * 1.2);
-	float near_k = smoothstep(440.0, 620.0, p.y);
-	off.x += sea * sin(p.y * 0.85 + t * 1.6 + vnoise(p * 0.05 + t * 0.3) * 6.0) * mix(0.4, 1.6, near_k);
-	off.y += sea * sin(p.x * 0.05 + p.y * 0.4 - t * 1.1) * 0.35 * near_k;
+	if (sea > 0.001) {
+		float near_k = smoothstep(440.0, 620.0, p.y);
+		off.x += sea * sin(p.y * 0.85 + t * 1.6 + vnoise(p * 0.05 + t * 0.3) * 6.0) * mix(0.4, 1.6, near_k);
+		off.y += sea * sin(p.x * 0.05 + p.y * 0.4 - t * 1.1) * 0.35 * near_k;
+	}
 
 	// Flowers and leaves in the near left corner sway (rooted at the bottom).
 	float plants = box(p, vec2(-20, 680), vec2(400, 1100), 40.0) * smoothstep(1080.0, 720.0, p.y);
@@ -77,6 +82,7 @@ void fragment() {
 	float lum = dot(col.rgb, vec3(0.3, 0.55, 0.15));
 
 	// Waterfalls run: bright streaks falling through the pale water only.
+	if (p.x > 840.0 && p.x < 1360.0 && p.y > 320.0 && p.y < 620.0) {
 	float falls = blob(p, vec2(1068, 450), vec2(30, 75), 1.3)
 		+ blob(p, vec2(881, 400), vec2(6, 32), 1.6)
 		+ blob(p, vec2(1098, 368), vec2(10, 16), 1.6)
@@ -90,14 +96,17 @@ void fragment() {
 	// Spray where the main fall lands.
 	float spray = blob(p, vec2(1070, 525), vec2(55, 18), 1.6);
 	col.rgb += vec3(0.75, 0.78, 0.9) * spray * fbm(p * 0.05 + vec2(0.0, t * 0.6)) * 0.12;
+	}
 
 	// Mist drifts: along the foot of the cliffs and down the valley.
 	float band1 = box(p, vec2(480, 460), vec2(1380, 590), 40.0);
 	float band2 = box(p, vec2(60, 560), vec2(880, 820), 60.0);
-	float m1 = smoothstep(0.45, 0.85, fbm(p * vec2(0.006, 0.02) + vec2(t * 0.035, 0.0)));
-	float m2 = smoothstep(0.45, 0.85, fbm(p * vec2(0.005, 0.016) + vec2(-t * 0.025, 4.0)));
-	vec3 mist = vec3(0.6, 0.6, 0.76);
-	col.rgb = mix(col.rgb, mist, m1 * band1 * 0.16 + m2 * band2 * 0.12);
+	if (band1 + band2 > 0.001) {
+		float m1 = smoothstep(0.45, 0.85, fbm(p * vec2(0.006, 0.02) + vec2(t * 0.035, 0.0)));
+		float m2 = smoothstep(0.45, 0.85, fbm(p * vec2(0.005, 0.016) + vec2(-t * 0.025, 4.0)));
+		vec3 mist = vec3(0.6, 0.6, 0.76);
+		col.rgb = mix(col.rgb, mist, m1 * band1 * 0.16 + m2 * band2 * 0.12);
+	}
 
 	// Stars twinkle in the dark upper sky: points brighter than the sky
 	// round them (not lit ruins or cloud edges).

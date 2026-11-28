@@ -1,7 +1,7 @@
 class_name LoadingScreen
 extends Control
 ## The loading screen between every major scene: the night-violet key art
-## drifting under a veil, motes of light rising, the Lanternbound emblem and
+## drifting under a veil, motes of light rising, the Ethereal Tales emblem and
 ## title, a gold progress line with a glowing head and a rotating tip.
 ##
 ## Progress is real: the target scene and the heavy assets it will need
