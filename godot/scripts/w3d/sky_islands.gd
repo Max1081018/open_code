@@ -174,7 +174,11 @@ func _island(centre: Vector3, radius: float, seed_i: int, spire: bool) -> void:
 	var body := StaticBody3D.new()
 	body.collision_layer = 1
 	var shape := CollisionShape3D.new()
-	shape.shape = mesh.create_trimesh_shape()
+	var tri := mesh.create_trimesh_shape()
+	# Solid from both sides: the crown's triangles wind downward, and a
+	# one-sided shape let her fall straight through the isle.
+	tri.backface_collision = true
+	shape.shape = tri
 	body.add_child(shape)
 	mi.add_child(body)
 	# Trees and flowers on top.

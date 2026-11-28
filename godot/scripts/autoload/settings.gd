@@ -67,7 +67,7 @@ var view_distance := 2
 ## Anti-aliasing: 0 off, 1 FXAA, 2 MSAA 2x, 3 MSAA 4x.
 var antialiasing := 3
 const PRESET_AO := [false, false, true, true]
-const PRESET_SHAFTS := [false, true, true, true]
+const PRESET_SHAFTS := [false, false, true, true]
 const PRESET_VIEW := [0, 1, 2, 3]
 const PRESET_AA := [1, 1, 3, 3]
 const PRESET_SCALE := [0.6, 0.75, 0.9, 1.0]

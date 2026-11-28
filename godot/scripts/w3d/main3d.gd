@@ -417,6 +417,30 @@ func _unhandled_input(event: InputEvent) -> void:
 			play.select((play.hotbar_index + Inventory.HOTBAR_SIZE - 1) % Inventory.HOTBAR_SIZE)
 
 
+## On the first physics step, set her on the real surface under her spawn
+## (a sky isle's crown bulges above its nominal height, and spawning inside
+## it dropped her through the island).
+var _snap_pending := true
+
+
+func _physics_process(_delta: float) -> void:
+	if _snap_pending and player:
+		_snap_pending = false
+		var y = surface_y(player.global_position)
+		if y != null and absf(float(y) - player.global_position.y) < 12.0:
+			player.global_position.y = float(y) + 0.1
+			player.velocity = Vector3.ZERO
+
+
+## The highest solid surface under `at` (from 30 m above), or null.
+func surface_y(at: Vector3):
+	var q := PhysicsRayQueryParameters3D.create(at + Vector3(0, 30, 0), at - Vector3(0, 40, 0), 1)
+	q.exclude = [player.get_rid()]
+	q.hit_back_faces = false
+	var hit := get_world_3d().direct_space_state.intersect_ray(q)
+	return hit.position.y if not hit.is_empty() else null
+
+
 func _process(delta: float) -> void:
 	_frames += 1
 	# Foliage between the camera and the heroine thins out (foliage3d).
@@ -636,9 +660,22 @@ func _script_input() -> void:
 	input.skill3 = false
 	input.burst = false
 	if _args.has("menu") and f == 30:
+		if _args.has("page"):
+			hud.menu._char_page = _args.page
 		hud.menu.open(_args.menu)
 	if _args.has("hold") and f == 2:
 		player.hold(_args.hold)
+	if _args.has("boss") and bosses:
+		# --boss=jungle|sky|coast: stand in the guardian's arena as it wakes.
+		var arena: Vector3 = bosses.arenas.get(_args.boss, player.global_position)
+		if f == 2:
+			player.global_position = arena + Vector3(0, 1.0, 5.0)
+			player.velocity = Vector3.ZERO
+		var wake_at := int(_args.get("wake", "40"))
+		if f == wake_at:
+			bosses.wake(_args.boss)
+		if f > wake_at + 20 and f % 30 == 0:
+			input.attack = true
 	match _args.get("action", "idle"):
 		"walk":
 			input.move = Vector2(0, 0.45) if f > 20 else Vector2.ZERO

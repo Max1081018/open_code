@@ -4,7 +4,7 @@ Branch `ccr-60ac94c6-dyqxhw`. Godot 4.4.1, GL Compatibility renderer, Android-fi
 Main scene: `scenes/main3d.tscn` (the 3D open world). The art direction is in
 **ART_BIBLE.md**; every third-party asset and its licence is in **ASSET_CATALOG.md**.
 
-Tests: **131 pass** (`godot/tests/run.sh`; it also fails on any SCRIPT ERROR).
+Tests: **141 pass** (`godot/tests/run.sh`; it also fails on any SCRIPT ERROR).
 
 ## Stages (from the overhaul brief)
 
@@ -40,7 +40,25 @@ Tests: **131 pass** (`godot/tests/run.sh`; it also fails on any SCRIPT ERROR).
 | P4 Sunscar Sea | done | Large designed desert with crescent dunes, crossing ripples, wide flats, oases, colonnade, Sun Gate; sand shader (Higgsfield 1k seamless sand, ripple normals, crest/slip shading, pinpoint glints); footprints, sinking, slower/uphill-slower walking, slip-face sliding, kicked sand, heat shimmer, clear blue sky and hard sun | desert captures |
 | Character fixes | done | SkirtSolver (skirt chains collide with thigh and shin capsules every frame after the pose, gravity drape, no tunnelling); hands on the rig's finger bones, cuffs shortened; camera 3.5 m; floating idle after 1.6 s | live jog/sprint strips, hand close-ups |
 | P5 First adventure | done | Arrival flyover with letterbox and chapter title (skippable), Lumi the star-wisp, ten-step teaching chain per island with tips, tracker, rewards, relic, saved progress | `test_adventure.gd` plays the jungle chain through |
-| P6 Secrets, combat, presentation, audio, optimisation, QC | next | — | — |
+| P6 Secrets, combat, presentation, audio, optimisation, QC | largely done (see overnight pass) | — | — |
+
+## Overnight autonomous pass (latest)
+
+| Area | Status | What was done | How it was checked |
+|---|---|---|---|
+| Washed-out graphics | done | The milky haze was height fog (a 10% veil on everything under 30 m) plus heavy region fog; replaced by thin distance haze with aerial perspective and valley mist. ACES tone mapping, stronger sun, ambient driven each frame from the sky colours (the sky radiance map lit far too weakly in this renderer). Foliage: canopy-shaped normals, crown self-shadow, translucency, per-tree hue; fixed stippled tree shadows. Natural grass colour, meadow variation, texture relief; jungle undergrowth grass; deep-coloured crystals | Before/after captures; shade pixels measured (sky ambient vs colour ambient vs AO on/off) |
+| "Ray tracing" | honest | Godot 4.4 has **no ray tracing** on any renderer, and the game uses GL Compatibility for Android reach (SSAO/SSR/SDFGI/volumetric fog exist only in Forward+, which would cost most phones their frame rate). Instead, screen-space effects built on the depth buffer: **ambient occlusion** and **sun shafts**, each a toggle in Settings | Depth shaders compile in every variant (checked in logs); AO/no-AO captures |
+| Floating magic weapon | done | `MagicHold`: swords and tools float under her magic, not in her fist. At rest the blade hovers upright beside her right hand (tilted out, bobbing, streaming back at speed, following her body so it never lags). A strike snaps it to the palm's line and follows the clip's swing arc; a cast raises and spins it; Blade Orbit sends it circling. Purple magic, faint at rest, bright in a strike, brightest in a cast, with pulses on sudden moves: palm glow, hilt ring, palm-to-hilt energy strand, wisps and a soft light. Torches and shields stay gripped | `test_magic_hold.gd`; front, side and attack captures |
+| Movement feel | done | MotionPose layer: an anime sprint lean (body forward, chin level, arms back) and a falling tuck; violet streams off her hands at full sprint. Idle/walk/jog/sprint blend space, jump start/air/land and idle breaks were already in place and play | Sprint and jump filmstrips |
+| Touch controls | done | Jump is the **same size as attack** (radius 60) and sits apart from it in the thumb corner (46 px gap); dash, three arts and the ultimate arc above. Button size, opacity and camera sensitivity now take effect (sensitivity used to be mouse-only and unsaved) | `test_controls.gd`: equal size, no overlaps, all on screen at 16:9 and 20:9 at max size, taps reach each, settings apply |
+| Combat maths | done | `DamageCalc`: one documented formula for every blow, both ways (level, weapon, skill multiplier, armour, resistances, crits, Mark, guard, variance; clamped, never NaN, negative or overflowing). The number shown is the health taken. Foes have armour by style, plus resistances and weaknesses | `test_combat.gd` (formula cases, NaN/INF, overflow, one cut per swing per foe) |
+| Five arts + ranks | done | Combo, Crescent Wave (heavy), Arcane Comet, **Phase Step** (new: a blink through foes that cuts and Marks them), Violet Starfall (ultimate), and **Blade Orbit** (new: the floating blade circles her, at most one cut per foe every 0.45 s). Unlock levels, cooldowns, ranks 1–3 bought with skill points (one per level), an Arts page with Rank-up buttons, saved; over-spent saves are clamped. New painted icons (Higgsfield) | `test_combat.gd` |
+| Thinking foes | done | Line-of-sight sight, hearing, search where she was last seen, return home and rest, skirmishers retreat when badly hurt; state field. **Fixed**: every foe's home post was the world origin | `test_enemies.gd` |
+| Island guardians | done | Thornmother (jungle: root lines, ring, summons, charge), Stormwing (sky, flies: volleys, dives, ring, summons), Tidewarden (coast: crystal rain, ring, charge, summons). Each has a runestone arena, an intro banner, phases at 60% and 30% with telegraphs (the ring can be jumped), boss bar, boss music, loot, XP and saved defeat; the tracker points to it after the chapter | `test_enemies.gd`; fight captures |
+| Secrets | done | Discovery of named places, eight starlit chests with mote clues, three rune shrines (strike the stones in the order of their marks), starsilver veins, the Colossus of Kings at night; all saved. Starsilver forges the **Astral Edge** | `test_enemies.gd::test_secrets` |
+| Relics | done | They were rewards that did nothing in 3D. Now worn in three slots (Wear/Remove in the backpack) with real effects (less harm, speed, air jump, power, luck, stamina, swimming, farther-seen secrets); saved | `test_relics.gd` |
+| Audio | done | The open world had **no music**: exploration and boss tracks now play, plus forest/cave ambience on a new Ambient bus. Master and Ambience volume sliders added | Manual code path; not listenable headless |
+| Settings | done | Scrolling page: presets Low/Medium/High/**Ultra**; shadows, bloom, ambient occlusion, sun shafts, anti-aliasing (off/FXAA/MSAA 2x/4x), view distance (near → farthest), render scale, frame rate, FPS, shake, sensitivity, button size/opacity, five volumes | `test_controls.gd`, `test_menus3d.gd` |
 
 ### Honest notes
 - 2048 px terrain textures, mipmaps and VRAM compression are set in the import files; memory on a real phone is unmeasured.
@@ -49,38 +67,28 @@ Tests: **131 pass** (`godot/tests/run.sh`; it also fails on any SCRIPT ERROR).
 
 ## Next exact step
 
-Stage 7 combat polish (charged heavy attack, enemy telegraphs and stagger), then
-S10-12: quality presets (FPS cap, resolution scale) and a draw-call budget pass.
+1. On a real Android phone: install a build and measure frame rate in the
+   jungle and town on Medium and High (AO and sun shafts on and off), and
+   check the floating blade and touch layout by hand. Nothing here has run on
+   a phone yet.
+2. Guardian arenas: give the Tidewarden's arena a flatter, more open site
+   (the flat-ground search picked a slope by the grotto) and build each arena
+   a proper floor (a ruined plaza) rather than a runestone ring alone.
+3. Animation: a dedicated falling clip and a sprint clip whose natural speed
+   matches 8.2 m/s (the shared sprint still slides a little at full speed).
 
 ## Known issues
 
+- **Not tested on a phone**: everything was verified headless (140+ tests)
+  and with software-rendered captures. Real-device frame rate, memory, touch
+  feel and audio are unmeasured.
+- The software renderer used for captures is slow in the jungle (several
+  minutes per frame); performance numbers from it say nothing about phones.
 - Foot sliding was fixed by measurement and stills; it has not been judged in motion
   (video) — the gait rates may need a small visual tune.
 - Sprint clip's natural speed (4.9 m/s) is far below sprint speed (8.2): played at the
   1.55× cap it still slides a little at full sprint.
-
-- Dense forests: the low-poly pine boughs are large; the camera can sit among them
-  (they thin out, but the view is busy).
-- The ground plain at the lava lakes' shores is flat; it could use more relief.
-- Smoke columns are particle billboards; from inside a column they would fill the view
-  (distance fade keeps it readable at the tested angles).
-
-## Not verified
-
-- **No phone has run this build.** Everything was checked in the Linux runtime with
-  software OpenGL under Xvfb (captures, headless tests). Frame rate, memory and thermal
-  behaviour on Android are unmeasured.
-- **Audio is unheard** (no sound device in the container).
-- Touch controls are drawn and wired but not exercised with real touches.
-
-## How to check things
-
-- Tests: `cd godot && tests/run.sh [filter]`. After adding a `class_name`, run
-  `godot --headless --path . --import` once.
-- Captures: `xvfb-run -a -s "-screen 0 1920x1080x24" godot --path . --rendering-driver opengl3
-  --resolution 1920x1080 --fixed-fps 60 res://scenes/main3d.tscn -- --shot=OUT.png --frames=50`
-  plus `--at=x,z --yaw= --pitch= --dist= --time=0..1`, `--cam=x,y,z --look=x,y,z` (free camera),
-  `--action=walk|run|sprint|jump|attack|fight|skills|glide|talk`, `--menu=bag|map|book|person|gear`,
-  `--strip=N --every=K` (filmstrip), `--stats` (draw calls).
-- Region heartlands are the Starstones (`Starstones.heartlands`); Greenwood is at (0,0), the Ashlands centre at (1250,-1300).
-- `--weather=rain|thunderstorm|mist|snow|blizzard|sandstorm|ashfall|voidmotes|clear` pins the weather; `--float` makes her float at once.
+- Fixed this pass (were live bugs): a Skybound start dropped her through the
+  isle (spawned inside its crown); every foe's home post was the world origin;
+  character meshes rebuilt with custom vertex channels silently failed to
+  build; tree shadows were stippled; the arrival HUD could show.

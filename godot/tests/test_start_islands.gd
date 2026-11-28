@@ -42,3 +42,21 @@ func test_game_spawns_at_the_chosen_island() -> void:
 	await tree.process_frame
 	Account.set_start_island("")
 	Account.sign_out()
+
+
+## Regression: a Skybound start used to drop her through the isle (she
+## spawned inside the crown's bulge). She must stay up on it.
+func test_sky_start_stands_on_the_isle() -> void:
+	var tree := Engine.get_main_loop() as SceneTree
+	Account.sign_out()
+	Account.sign_in_guest()
+	Account.set_start_island("sky")
+	Save3D.load_on_start = false
+	var main: Node = load("res://scenes/main3d.tscn").instantiate()
+	tree.root.add_child(main)
+	await tree.process_frame
+	var start_y: float = main.player.global_position.y
+	await tree.create_timer(1.5).timeout
+	check(main.player.global_position.y > start_y - 3.0, "after 1.5 s she is still on the isle (y %.1f from %.1f)" % [main.player.global_position.y, start_y])
+	main.queue_free()
+	await tree.process_frame

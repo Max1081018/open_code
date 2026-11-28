@@ -30,9 +30,14 @@ func build(the_game: Node) -> void:
 	var lm: Dictionary = game.realms.landmarks
 	for id in ARENAS:
 		var a: Dictionary = ARENAS[id]
-		if not lm.has(a.near):
+		var c: Vector3
+		if id == "sky":
+			# The Aerie's own walkable top (where a Skybound journey starts).
+			c = Realms.spawn_point(game.world.gen, "sky")
+		elif lm.has(a.near):
+			c = lm[a.near].pos
+		else:
 			continue
-		var c: Vector3 = lm[a.near].pos
 		var at := c
 		if a.flat:
 			at = _flat_near(c, float(a.dist))
@@ -111,6 +116,12 @@ func _process(delta: float) -> void:
 ## The guardian rises in its arena.
 func wake(id: String) -> Enemy3D:
 	var at: Vector3 = arenas[id]
+	if id == "sky":
+		# On the isle's real crown, not inside it.
+		var y = game.surface_y(at)
+		if y != null:
+			at.y = float(y)
+			arenas[id] = at
 	var kind: String = ARENAS[id].kind
 	var colour: Color = Enemy3D.BOSS_SPECS[kind].element
 	Arcana.pillar(game, at, 2.0, 18.0, colour, 1.2)

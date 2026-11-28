@@ -406,7 +406,7 @@ static func _mask_arms(mi: MeshInstance3D, skeleton: Skeleton3D) -> void:
 			var m := clampf(1.0 - arm * 1.5, 0.0, 1.0)
 			cols[i] = Color(m, m, m, 1.0)
 		arrays[Mesh.ARRAY_COLOR] = cols
-		out.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, arrays)
+		out.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, _plain(arrays))
 		out.surface_set_material(si, mi.mesh.surface_get_material(si))
 	_masked[mi.mesh] = out
 	mi.mesh = out
@@ -570,7 +570,7 @@ static func hide_covered_skin(root: Node3D, height: float) -> void:
 				covered[i] = 1 if hit else 0
 			var idx: PackedInt32Array = arrays[Mesh.ARRAY_INDEX]
 			if idx.is_empty():
-				out.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, arrays)
+				out.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, _plain(arrays))
 			else:
 				var keep := PackedInt32Array()
 				for k in range(0, idx.size(), 3):
@@ -581,7 +581,7 @@ static func hide_covered_skin(root: Node3D, height: float) -> void:
 					keep.append(idx[k + 1])
 					keep.append(idx[k + 2])
 				arrays[Mesh.ARRAY_INDEX] = keep
-				out.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, arrays)
+				out.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, _plain(arrays))
 			out.surface_set_material(si, mi.mesh.surface_get_material(si))
 		_culled[mi.mesh] = out
 		mi.mesh = out
@@ -862,10 +862,20 @@ static func _open_sleeves(mi: MeshInstance3D, skeleton: Skeleton3D, root: Node3D
 				changed = true
 				break
 		arrays[Mesh.ARRAY_VERTEX] = verts
-		out.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, arrays)
+		out.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, _plain(arrays))
 		out.surface_set_material(si, mi.mesh.surface_get_material(si))
 	if not changed:
 		_opened[mi.mesh] = mi.mesh
 		return
 	_opened[mi.mesh] = out
 	mi.mesh = out
+
+
+## Surface arrays without the custom channels: read back from an imported
+## mesh they come unpacked, and handing them over again without their
+## packing flags makes the whole surface fail to build (it vanishes).
+static func _plain(arrays: Array) -> Array:
+	for c in [Mesh.ARRAY_CUSTOM0, Mesh.ARRAY_CUSTOM1, Mesh.ARRAY_CUSTOM2, Mesh.ARRAY_CUSTOM3]:
+		if c < arrays.size():
+			arrays[c] = null
+	return arrays
