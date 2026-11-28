@@ -46,7 +46,7 @@ func test_providers_refuse_without_configuration() -> void:
 	for which in ["google", "apple"]:
 		check(not Account.provider_available(which), "%s is not configured in this build" % which)
 		var r := Account.provider_sign_in(which)
-		check(not r.ok and String(r.error).contains("not configured"), "%s sign-in explains why it cannot sign in" % which)
+		check(not r.ok and String(r.error).contains("not available"), "%s sign-in explains why it cannot sign in" % which)
 		check(not Account.signed_in(), "and nobody is signed in by it")
 
 

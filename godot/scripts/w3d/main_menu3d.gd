@@ -17,6 +17,8 @@ var _overlay: Control
 var _who: Label
 var _chip: PanelContainer
 var _frames := 0
+var _tag: Label
+var _version: Label
 
 
 func _ready() -> void:
@@ -41,12 +43,16 @@ void fragment() { COLOR = vec4(0.01, 0.01, 0.03, (1.0 - smoothstep(0.0, 0.5, UV.
 	_menu.position = Vector2(110, 420)
 	_menu.add_theme_constant_override("separation", 14)
 	add_child(_menu)
-	var tag := UiKit.label("A journey beyond the stars…", 30, Color(0.88, 0.86, 0.92, 0.8), "italic")
-	tag.position = Vector2(110, 960)
-	add_child(tag)
-	var version := UiKit.label("v0.4  ·  development build", 18, Color(1, 1, 1, 0.45))
-	version.position = Vector2(102, 1022)
-	add_child(version)
+	_tag = UiKit.label("A journey beyond the stars…", 30, Color(0.88, 0.86, 0.92, 0.8), "italic")
+	_tag.position = Vector2(110, 960)
+	add_child(_tag)
+	# Bottom-right of the real screen (phones are wider than 16:9).
+	_version = UiKit.label("v0.4  ·  development build", 18, Color(1, 1, 1, 0.45))
+	_version.set_anchors_and_offsets_preset(Control.PRESET_BOTTOM_RIGHT)
+	_version.grow_horizontal = Control.GROW_DIRECTION_BEGIN
+	_version.grow_vertical = Control.GROW_DIRECTION_BEGIN
+	_version.position -= Vector2(40, 24)
+	add_child(_version)
 	_chip = PanelContainer.new()
 	var cs := StyleBoxFlat.new()
 	cs.bg_color = Color(0.03, 0.035, 0.06, 0.6)
@@ -83,6 +89,9 @@ void fragment() { COLOR = vec4(0.01, 0.01, 0.03, (1.0 - smoothstep(0.0, 0.5, UV.
 func _build() -> void:
 	for c in _menu.get_children():
 		c.queue_free()
+	# The sign-in panel reaches the bottom of the screen: the tagline makes
+	# way for it.
+	_tag.visible = Account.signed_in()
 	if not Account.signed_in():
 		_chip.visible = false
 		_menu.visible = false
@@ -102,7 +111,7 @@ func _build() -> void:
 	var p := Account.profile
 	var kind: String = {"guest": "Guest", "email": "Email · dev", "google": "Google", "apple": "Apple"}.get(String(p.provider), "")
 	_who.text = "✦  %s   ·   %s" % [String(p.display_name), kind]
-	_chip.position.x = 1880 - _who.get_minimum_size().x - 52
+	_chip.position.x = get_viewport_rect().size.x - 40 - _who.get_minimum_size().x - 52
 	var entries := []
 	if Save3D.exists():
 		entries.append(["Continue", _continue, "primary"])

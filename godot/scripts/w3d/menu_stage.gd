@@ -27,33 +27,52 @@ var _glow: TextureRect
 var _sit: SitPose
 var _skel: Skeleton3D
 var _shadow: TextureRect
+## The painting and everything placed on it, in the painting's own 1920x1080
+## pixels; scaled to cover any screen (a 20:9 phone crops a little of the
+## sky rather than showing a black strip).
+var _canvas: Control
+## How the crop sits on a screen wider than 16:9: 0 keeps the top, 1 the
+## bottom. The title keeps the World Tree and the isles (crops the terrace
+## floor); the hero screen keeps her feet on the terrace.
+const FOCUS_TITLE := 0.15
+const FOCUS_HERO := 0.85
+var _focus_y := FOCUS_TITLE
 
 
 func _ready() -> void:
 	set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	mouse_filter = Control.MOUSE_FILTER_IGNORE
+	clip_contents = true
+	_canvas = Control.new()
+	_canvas.size = Vector2(1920, 1080)
+	_canvas.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	add_child(_canvas)
 	var art := TextureRect.new()
 	art.texture = load(BG)
 	art.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
 	art.stretch_mode = TextureRect.STRETCH_SCALE
 	art.size = Vector2(1920, 1080)
 	art.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	add_child(art)
-	add_child(_sea_glints())
+	# The painting moves: isles bob, the tree stirs, falls run, mist drifts.
+	var vista := ShaderMaterial.new()
+	vista.shader = load("res://scripts/shaders/menu_vista.gdshader")
+	art.material = vista
+	_put(art)
+	_put(_sea_glints())
 	# Her contact shadow on the terrace (shown with her on the hero screen).
 	_shadow = _soft_glow(FEET_PX, 110.0, Color(0, 0, 0, 0.5))
 	_shadow.material = null
 	_shadow.scale = Vector2(1.0, 0.18)
 	_shadow.pivot_offset = Vector2(110, 110)
 	_shadow.visible = false
-	add_child(_shadow)
+	_put(_shadow)
 	_glow = _soft_glow(Vector2(1824, 512), 90.0, Color(1.0, 0.78, 0.45, 0.55))
-	add_child(_glow)
+	_put(_glow)
 	var view := SubViewportContainer.new()
 	view.stretch = true
 	view.size = Vector2(1920, 1080)
 	view.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	add_child(view)
+	_put(view)
 	_vp = SubViewport.new()
 	_vp.size = Vector2i(1920, 1080)
 	_vp.msaa_3d = Viewport.MSAA_4X
@@ -66,7 +85,25 @@ func _ready() -> void:
 	cam.look_at_from_position(Vector3(0, 0, 0), Vector3(0, 0, -1), Vector3.UP)
 	_seat = _project(SEAT_PX, DEPTH)
 	_build_vfx()
-	add_child(_fireflies())
+	_put(_fireflies())
+	_fit()
+	get_viewport().size_changed.connect(_fit)
+
+
+## Everything the stage builds goes onto the painting's canvas.
+func _put(node: Node) -> void:
+	_canvas.add_child(node)
+
+
+## Cover the screen with the painting, whatever its shape, plus a very slow
+## push-in and drift (a breath every minute) so the view itself is alive.
+func _fit() -> void:
+	var view := get_viewport_rect().size
+	var breath := 0.5 - 0.5 * cos(_t * TAU / 60.0)
+	var k := maxf(view.x / 1920.0, view.y / 1080.0) * (1.0 + 0.025 * breath)
+	_canvas.scale = Vector2(k, k)
+	var spare := view - Vector2(1920, 1080) * k
+	_canvas.position = Vector2(spare.x * (0.5 + 0.2 * (breath - 0.5)), spare.y * _focus_y)
 
 
 ## A point `depth` metres in front of the camera under pixel `px` (camera at
@@ -256,6 +293,9 @@ func show_hero(on: bool) -> void:
 
 func _process(delta: float) -> void:
 	_t += delta
+	var focus_want := FOCUS_HERO if model and model.visible else FOCUS_TITLE
+	_focus_y = lerpf(_focus_y, focus_want, 1.0 - exp(-3.0 * delta))
+	_fit()
 	if model:
 		var want := 0.35 + clampf(turn + orbit, -1.2, 1.2)
 		model.rotation.y = lerpf(model.rotation.y, want, 1.0 - exp(-6.0 * delta))

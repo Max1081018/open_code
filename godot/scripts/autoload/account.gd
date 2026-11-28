@@ -149,7 +149,7 @@ func provider_available(which: String) -> bool:
 func provider_sign_in(which: String) -> Dictionary:
 	var label := "Google" if which == "google" else "Apple"
 	if not provider_available(which):
-		return {"ok": false, "error": "%s sign-in is not configured in this build. It needs the %s sign-in plugin and app credentials. Play as a guest or use an email account for now." % [label, label]}
+		return {"ok": false, "error": "%s sign-in is not available in this build yet. Play as a guest: your journey is saved on this device." % label}
 	# A configured build hands the token to the plugin's verified flow; the
 	# account id is the provider's stable user id.
 	var plugin := Engine.get_singleton("GodotGoogleSignIn" if which == "google" else "GodotAppleSignIn")
