@@ -92,6 +92,7 @@ fixed where they looked wrong:
 | One bolt hit tinted the whole screen red-pink | The hurt vignette stays at the screen's rim |
 | The Thornmother and Tidewarden were the knight model flooded with one colour (a lime-green mannequin) | Costumed part by part: bark-bronze plate over moss cloth; steel-blue plate over sea teal |
 | The Stormwing's dive slid down in its idle pose | It turns to its mark, stoops nose-down with a wind streak and levels out after the strike |
+| Armed knights walked with a long blade stuck out ahead like a lance: the knight model's own built-in sword, held as well as the weapon they were given | The built-in sword is hidden when a foe has its own weapon; on the move the weapon is carried low by the leg (grip axis measured in the Walk and Jog clips) and returns to the ready grip to stand or strike |
 | Flat translucent root-line bars | Glowing danger lanes that fill as the blow winds up, chevrons, a flash when it lands |
 | Plain white damage numbers, torso-sized log drops | Title-font numbers (lilac, gold crits) that pop and drift; small hovering loot with a rarity glint |
 

@@ -232,10 +232,21 @@ func _ready() -> void:
 			anim.get_animation(clip).loop_mode = Animation.LOOP_LINEAR
 	var skeleton: Skeleton3D = model.find_children("*", "Skeleton3D", true, false)[0]
 	if spec.has("weapon"):
+		# The knight model has a sword built into its mesh: with a weapon of
+		# its own it held both (that blade stuck out ahead like a lance).
+		for m in model.find_children("*", "MeshInstance3D", true, false):
+			var mi := m as MeshInstance3D
+			if mi.mesh and mi.mesh.get_surface_count() == 1:
+				var mat := mi.mesh.surface_get_material(0)
+				if mat and String(mat.resource_name).to_lower().begins_with("sword"):
+					mi.visible = false
 		var hand := HumanoidGrip.grip(skeleton, model, "RightHand", "RightIndexProximal", "RightLittleProximal", "RightMiddleProximal")
 		var w := Body3D.item_model(spec.weapon)
 		if w:
-			hand.add_child(w)
+			# Through a pivot, so the weapon can be carried low on the move.
+			_carry_pivot = Node3D.new()
+			hand.add_child(_carry_pivot)
+			_carry_pivot.add_child(w)
 	if spec.has("shield"):
 		var off := HumanoidGrip.grip(skeleton, model, "LeftHand", "LeftIndexProximal", "LeftLittleProximal", "LeftMiddleProximal")
 		var sh := Body3D.item_model(spec.shield)
@@ -494,6 +505,24 @@ func _physics_process(delta: float) -> void:
 	if _attack_timer <= 0.0 and _stagger <= 0.0:
 		var v := horizontal.length()
 		_play(spec.idle if v < 0.3 else (spec.walk if v < 2.6 else spec.run), clampf(v / 3.0, 0.7, 1.5) if v > 0.3 else 1.0)
+	_carry_weapon(delta, horizontal.length())
+
+
+## The walk and run clips are unarmed: held at the ready grip, a weapon's
+## haft stuck straight out ahead like a lance. On the move it is carried low
+## along the leg, back at the ready to stand or strike.
+var _carry_pivot: Node3D
+var _carry := 0.0
+
+
+func _carry_weapon(delta: float, speed_now: float) -> void:
+	if _carry_pivot == null:
+		return
+	var moving := speed_now > 0.3 and _attack_timer <= 0.0 and _move_left <= 0.0 and _stagger <= 0.0
+	_carry = move_toward(_carry, 1.0 if moving else 0.0, delta * (3.0 if moving else 6.0))
+	# About the grip's finger axis (measured in the Walk and Jog clips: -70
+	# to -80 degrees turns the haft from forward-and-up to down).
+	_carry_pivot.rotation.x = -1.35 * (_carry * _carry * (3.0 - 2.0 * _carry))
 
 
 func _face(dir: Vector3, delta: float, rate: float) -> void:
