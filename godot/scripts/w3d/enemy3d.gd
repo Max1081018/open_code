@@ -835,11 +835,9 @@ func _line_mark(origin: Vector3, dir: Vector3, length: float, colour: Color, lif
 	var pm := PlaneMesh.new()
 	pm.size = Vector2(2.0, length)
 	mi.mesh = pm
-	var m := StandardMaterial3D.new()
-	m.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
-	m.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
-	m.albedo_color = Color(colour.r, colour.g, colour.b, 0.18)
-	m.no_depth_test = false
+	var m := ShaderMaterial.new()
+	m.shader = load("res://scripts/shaders/telegraph_line.gdshader")
+	m.set_shader_parameter("tint", colour.lerp(Color(1.0, 0.32, 0.18), 0.6) * 0.8)
 	mi.material_override = m
 	mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 	game.game.add_child(mi)
@@ -848,8 +846,9 @@ func _line_mark(origin: Vector3, dir: Vector3, length: float, colour: Color, lif
 	mi.global_position = mid
 	mi.global_basis = Basis(Vector3.UP, atan2(dir.x, dir.z))
 	var t := mi.create_tween()
-	t.tween_property(m, "albedo_color:a", 0.55, life)
-	t.tween_property(m, "albedo_color:a", 0.0, 0.25)
+	t.tween_method(func(v: float): m.set_shader_parameter("fill", v), 0.0, 1.0, life)
+	t.tween_method(func(v: float): m.set_shader_parameter("flash", v), 1.0, 0.0, 0.3)
+	t.tween_method(func(v: float): m.set_shader_parameter("fade", v), 1.0, 0.0, 0.2)
 	t.tween_callback(mi.queue_free)
 	return mi
 

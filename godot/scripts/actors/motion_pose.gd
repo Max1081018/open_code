@@ -10,10 +10,10 @@ extends SkeletonModifier3D
 
 const LEAN := {"Spine": Vector3(8, 0, 0), "Chest": Vector3(8, 0, 0), "Neck": Vector3(-4, 0, 0), "Head": Vector3(-9, 0, 0),
 	"LeftUpperArm": Vector3(-14, 0, 0), "RightUpperArm": Vector3(-14, 0, 0)}
-const FALL := {"LeftUpperLeg": Vector3(30, 0, 0), "LeftLowerLeg": Vector3(42, 0, 0),
-	"RightUpperLeg": Vector3(6, 0, 0), "RightLowerLeg": Vector3(22, 0, 0),
-	"LeftUpperArm": Vector3(-18, 0, -30), "RightUpperArm": Vector3(-18, 0, 30),
-	"Spine": Vector3(-4, 0, 0), "Head": Vector3(-6, 0, 0)}
+const FALL := {"LeftUpperLeg": Vector3(16, 0, 0), "LeftLowerLeg": Vector3(24, 0, 0),
+	"RightUpperLeg": Vector3(4, 0, 0), "RightLowerLeg": Vector3(12, 0, 0),
+	"LeftUpperArm": Vector3(-10, 0, -18), "RightUpperArm": Vector3(-10, 0, 18),
+	"Spine": Vector3(-3, 0, 0), "Head": Vector3(-4, 0, 0)}
 
 var lean := 0.0
 var fall := 0.0

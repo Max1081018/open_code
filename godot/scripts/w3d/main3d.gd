@@ -425,6 +425,7 @@ func _unhandled_input(event: InputEvent) -> void:
 ## (a sky isle's crown bulges above its nominal height, and spawning inside
 ## it dropped her through the island).
 var _snap_pending := true
+var _spawned: Array = []
 
 
 func _physics_process(_delta: float) -> void:
@@ -736,6 +737,18 @@ func _script_input() -> void:
 				if f == 28:
 					play.energy = Play3D.BURST_COST
 				input.burst = f == 30
+	if _args.has("move") and (f == 40 or f == 110) and not _spawned.is_empty():
+		# --move=lines|ring|rain|volley|dive: the first spawned guardian acts.
+		var g: Enemy3D = _spawned[0]
+		var c: Color = g.spec.get("element", Color.WHITE)
+		match String(_args.move):
+			"lines": g._move_lines(player, c)
+			"ring": g._move_ring(c)
+			"rain": g._move_rain(player, c)
+			"dive": g._move_dive(player, c)
+			"volley":
+				for k in 5:
+					g._cast_bolt(player, c, (k - 2) * 0.22)
 	if _args.has("spawn") and f == 2:
 		# --spawn=kind,kind,...: foes in a row ahead of the camera, idle.
 		var kinds: PackedStringArray = String(_args.spawn).split(",")
@@ -747,6 +760,7 @@ func _script_input() -> void:
 			var e: Enemy3D = play.spawn_enemy(kinds[i], at)
 			e.spec = e.spec.duplicate()
 			e.spec.sight = 0.5   # stand still for the picture
+			_spawned.append(e)
 	if _args.has("boss") and bosses:
 		# --boss=jungle|sky|coast: stand in the guardian's arena as it wakes.
 		var arena: Vector3 = bosses.arenas.get(_args.boss, player.global_position)
