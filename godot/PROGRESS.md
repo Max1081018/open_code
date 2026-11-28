@@ -1,5 +1,8 @@
 # Progress report — the anime fantasy overhaul
 
+> **Latest:** renamed to **Ethereal Tales**; performance engineering pass, benchmarks and the full report are in `ETHEREAL_TALES_REPORT.md` (Google sign-in requirements in `GOOGLE_SIGN_IN.md`).
+
+
 Branch `ccr-60ac94c6-dyqxhw`. Godot 4.4.1, GL Compatibility renderer, Android-first.
 Main scene: `scenes/main3d.tscn` (the 3D open world). The art direction is in
 **ART_BIBLE.md**; every third-party asset and its licence is in **ASSET_CATALOG.md**.
