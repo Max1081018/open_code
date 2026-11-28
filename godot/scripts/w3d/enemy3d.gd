@@ -316,6 +316,7 @@ func _physics_process(delta: float) -> void:
 			_bar_fill.position.x = 0.0
 	if not dead:
 		_flash.albedo_color.a = clampf(_flash_time * 6.0, 0.0, 0.6)
+	_occlusion_fade(delta)
 	if dead:
 		velocity.y -= 22.0 * delta
 		velocity.x *= 0.9
@@ -1126,3 +1127,39 @@ func _glowing_eyes() -> void:
 		att.add_child(eye)
 		var at_sk: Vector3 = hr.origin + up * h * 0.42 + fwd * h * 0.62 + right * side * h * 0.2
 		eye.transform = Transform3D(Basis(), hr.affine_inverse() * at_sk)
+
+
+# ----------------------------------------------------------- occlusion ---
+
+## Foes dither away when the camera comes within ~2.6 m of them (a dodge or
+## blink through a pack), so she is never hidden behind a wall of bone.
+## Per-instance transparency is not drawn by the Compatibility renderer;
+## a dithered distance fade on the materials is.
+func _occlusion_fade(_delta: float) -> void:
+	if _faded:
+		return
+	_faded = true
+	for m in model.find_children("*", "MeshInstance3D", true, false):
+		var mi := m as MeshInstance3D
+		if mi.mesh == null:
+			continue
+		for k in mi.mesh.get_surface_count():
+			var mat := mi.get_active_material(k)
+			if mat is ShaderMaterial and (mat as ShaderMaterial).shader and "toon" in (mat as ShaderMaterial).shader.resource_path:
+				# Its own copy, so the heroine (same shader) never fades.
+				var own := (mat as ShaderMaterial).duplicate() as ShaderMaterial
+				own.set_shader_parameter("near_fade", 2.6)
+				if own.next_pass is ShaderMaterial:
+					var line := (own.next_pass as ShaderMaterial).duplicate() as ShaderMaterial
+					line.set_shader_parameter("near_fade", 2.6)
+					own.next_pass = line
+				mi.set_surface_override_material(k, own)
+			elif mat is BaseMaterial3D and (mat as BaseMaterial3D).distance_fade_mode == BaseMaterial3D.DISTANCE_FADE_DISABLED:
+				var bm := (mat as BaseMaterial3D).duplicate() as BaseMaterial3D
+				bm.distance_fade_mode = BaseMaterial3D.DISTANCE_FADE_PIXEL_DITHER
+				bm.distance_fade_min_distance = 1.3
+				bm.distance_fade_max_distance = 2.6
+				mi.set_surface_override_material(k, bm)
+
+
+var _faded := false

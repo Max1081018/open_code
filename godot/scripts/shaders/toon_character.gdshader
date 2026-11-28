@@ -16,6 +16,9 @@ uniform float rim_width = 0.72;
 uniform float spec_strength = 0.18;
 uniform float alpha_cut = 0.0;   // > 0: alpha-tested (hair cards, lace)
 uniform float emission_boost = 0.0;
+// > 0: dither away within this many metres of the camera (foes, so a
+// pack the camera passes through never walls off the view).
+uniform float near_fade = 0.0;
 uniform float light_scale = 0.62;
 // Our own soft fill instead of the scene's sky ambient (which pushed pale
 // skin past white): a fixed share of the albedo, slightly cool.
@@ -33,6 +36,14 @@ void vertex() {
 }
 
 void fragment() {
+	if (near_fade > 0.0) {
+		float seen = smoothstep(near_fade * 0.5, near_fade, -VERTEX.z);
+		ivec2 px = ivec2(FRAGCOORD.xy) % 4;
+		float bayer = float((px.x * 3 + px.y * 2 + (px.x ^ px.y) * 5) % 16) / 16.0;
+		if (seen < bayer + 0.03) {
+			discard;
+		}
+	}
 	vec4 t = texture(albedo_tex, UV) * albedo;
 	if (alpha_cut > 0.0 && t.a < alpha_cut) {
 		discard;

@@ -61,6 +61,29 @@ Tests: **142 pass** (`godot/tests/run.sh`; it also fails on any SCRIPT ERROR).
 | Audio | done | The open world had **no music**: exploration and boss tracks now play, plus forest/cave ambience on a new Ambient bus. Master and Ambience volume sliders added | Manual code path; not listenable headless |
 | Settings | done | Scrolling page: presets Low/Medium/High/**Ultra**; shadows, bloom, ambient occlusion, sun shafts, anti-aliasing (off/FXAA/MSAA 2x/4x), view distance (near → farthest), render scale, frame rate, FPS, shake, sensitivity, button size/opacity, five volumes | `test_controls.gd`, `test_menus3d.gd` |
 
+## Skill, animation and VFX pass (filmed and fixed)
+
+Every art, the dash, jump, sprint, foes' attacks, deaths and guardian moves
+were filmed frame by frame (`--art=`, `--move=`, `--full` capture options) and
+fixed where they looked wrong:
+
+| Was | Now |
+|---|---|
+| Rune circles, pillars, slashes burned out to white | Saturated colour with soft halos; only line cores edge to white |
+| Arcane Comet crossed the screen in one frame | Forms at the blade tip for 0.3 s, then flies (14 m/s) with a large core and trail |
+| Phase Step left a capsule | Violet afterimages baked from her real pose along the blink |
+| Blade Orbit: a white laser line from palm to blade | Larger blade, thin violet light trail, no line |
+| Starfall lances barely visible; one crossing the lens became a purple slab | Crystal lances (glowing rim and core) fall straight down; each leaves a rune ring; the world dims while they fall; energy effects fade near the camera |
+| Thick white torus on area hits | Thin coloured ground shockwave |
+| Dodge: a roll ending in a kneeling slide | Upright sprint burst, leaning in, ghosts left behind her |
+| Near foes: a knight's sword guard / arms held out | Her easy stance, blade floating ready |
+| Sprint feet slid (rate cap) | Rate cap 1.75x matches 8.2 m/s |
+| Falling pose crumpled | Tuck ~40% gentler |
+| Pink skeletons, red hit tint, sinking corpses, squashed flat corpses | Ashen-violet Risen with glowing eyes (element colour on every skeleton foe), crisp white hit flash, the dead shrink into motes of light |
+| Foes the camera passes through walled off the view | They dither away within 2.6 m of the camera (toon and outline passes) |
+| Flat translucent root-line bars | Glowing danger lanes that fill as the blow winds up, chevrons, a flash when it lands |
+| Plain white damage numbers, torso-sized log drops | Title-font numbers (lilac, gold crits) that pop and drift; small hovering loot with a rarity glint |
+
 ### Honest notes
 - 2048 px terrain textures, mipmaps and VRAM compression are set in the import files; memory on a real phone is unmeasured.
 - The jungle is heavy for the software renderer used in captures; on-device frame rate is unmeasured.

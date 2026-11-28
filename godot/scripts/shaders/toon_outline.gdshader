@@ -21,7 +21,17 @@ void vertex() {
 	POSITION = PROJECTION_MATRIX * view_pos;
 }
 
+uniform float near_fade = 0.0;   // as the toon pass: dither away near the camera
+
 void fragment() {
+	if (near_fade > 0.0) {
+		float seen = smoothstep(near_fade * 0.5, near_fade, -VERTEX.z);
+		ivec2 px = ivec2(FRAGCOORD.xy) % 4;
+		float bayer = float((px.x * 3 + px.y * 2 + (px.x ^ px.y) * 5) % 16) / 16.0;
+		if (seen < bayer + 0.03) {
+			discard;
+		}
+	}
 	vec4 t = texture(albedo_tex, UV);
 	if (alpha_cut > 0.0 && t.a < alpha_cut) {
 		discard;
