@@ -461,7 +461,7 @@ func _process(delta: float) -> void:
 		if _frames >= first and (_frames - first) % every == 0 and _frames <= last:
 			await RenderingServer.frame_post_draw
 			var img := get_viewport().get_texture().get_image()
-			if count > 1:
+			if count > 1 and not _args.has("full"):
 				img.resize(img.get_width() / 2, img.get_height() / 2)
 			_strip.append(img)
 			if _frames == last and _args.has("stats"):
@@ -696,6 +696,40 @@ func _script_input() -> void:
 		hud.menu.open(_args.menu)
 	if _args.has("hold") and f == 2:
 		player.hold(_args.hold)
+	if _args.has("art"):
+		# --art=combo|crescent|comet|phase|orbit|starfall: three foes ahead,
+		# she faces them, and at frame 30 she uses the art.
+		if f == 2:
+			play.prog.level = 10
+			player.hold("moonblade")
+			var fwd := cam.forward_flat()
+			player.model.rotation.y = atan2(fwd.x, fwd.z)
+			for k in 3:
+				var at := player.global_position + fwd * (4.5 + k * 0.8) + cam.right_flat() * (k - 1) * 1.6
+				at.y = world.height_at(at.x, at.z)
+				var e: Enemy3D = play.spawn_enemy("zombie", at)
+				e.max_health = 9999.0
+				e.health = 9999.0
+		if f > 2 and f < 30:
+			var fwd2 := cam.forward_flat()
+			player.model.rotation.y = atan2(fwd2.x, fwd2.z)
+		match String(_args.art):
+			"combo":
+				input.attack = f in [30, 52, 74]
+			"crescent":
+				input.heavy = f == 30
+			"comet":
+				input.skill = f == 30
+			"phase":
+				if f == 30:
+					play.use_phase()
+			"orbit":
+				if f == 30:
+					play.use_orbit()
+			"starfall":
+				if f == 28:
+					play.energy = Play3D.BURST_COST
+				input.burst = f == 30
 	if _args.has("spawn") and f == 2:
 		# --spawn=kind,kind,...: foes in a row ahead of the camera, idle.
 		var kinds: PackedStringArray = String(_args.spawn).split(",")

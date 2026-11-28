@@ -65,7 +65,7 @@ const HEROES := {
 	"bram": ["bram", null],
 	"tobin": ["tobin", null],
 	"aldous": ["aldous", null],          # bearded knight in blue plate
-	"zombie": ["skeleton", null],
+	"zombie": ["skeleton", Color(0.6, 0.56, 0.7)],     # the Risen: ashen, violet-cold bone
 	"shade": ["skeleton", Color(0.62, 0.5, 0.85)],
 	"robot": ["knight", Color(0.8, 0.62, 0.5)],  # rust-eaten plate
 	"warden": ["warden", null],          # the cursed knight

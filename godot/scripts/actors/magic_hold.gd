@@ -40,6 +40,7 @@ var _strand: MeshInstance3D
 var _wisps: CPUParticles3D
 var _wisp_mat: StandardMaterial3D
 var _light: OmniLight3D
+var _orbit_trail: CPUParticles3D
 var _mats: Array[ShaderMaterial] = []
 
 
@@ -160,7 +161,7 @@ func _target() -> Transform3D:
 		var radial := Vector3(cos(a), 0.0, sin(a))
 		var tangent := Vector3(-sin(a), 0.0, cos(a))
 		var centre: Vector3 = player.global_position + Vector3.UP * 1.0
-		return Transform3D(Basis(radial, tangent, radial.cross(tangent)).scaled(s), centre + radial * _orbit_r - tangent * length * 0.4)
+		return Transform3D(Basis(radial, tangent, radial.cross(tangent)).scaled(s * 1.35), centre + radial * _orbit_r - tangent * length * 0.5)
 	if mode == Mode.CAST:
 		# Raised before her, spinning slowly, point up.
 		var up_c := Vector3.UP
@@ -255,6 +256,30 @@ func _build_fx() -> void:
 	_wisps.scale_amount_min = 0.5
 	_wisps.scale_amount_max = 1.3
 	hand.add_child(_wisps)
+	# Blade Orbit: a ring of violet light streaming behind the circling blade.
+	_orbit_trail = CPUParticles3D.new()
+	var oq := QuadMesh.new()
+	oq.size = Vector2(0.11, 0.11)
+	_orbit_trail.mesh = oq
+	var om := _wisp_mat.duplicate() as StandardMaterial3D
+	om.albedo_color = Color(1, 1, 1, 1)
+	_orbit_trail.material_override = om
+	var oramp := Gradient.new()
+	oramp.colors = PackedColorArray([Color(0.85, 0.65, 1.0, 0.9), Color(0.55, 0.28, 1.0, 0.55), Color(0.4, 0.15, 0.9, 0.0)])
+	oramp.offsets = PackedFloat32Array([0.0, 0.35, 1.0])
+	_orbit_trail.color_ramp = oramp
+	_orbit_trail.amount = 110
+	_orbit_trail.lifetime = 0.32
+	_orbit_trail.local_coords = false
+	_orbit_trail.emitting = false
+	_orbit_trail.gravity = Vector3.ZERO
+	_orbit_trail.spread = 180.0
+	_orbit_trail.initial_velocity_min = 0.0
+	_orbit_trail.initial_velocity_max = 0.15
+	_orbit_trail.emission_shape = CPUParticles3D.EMISSION_SHAPE_BOX
+	_orbit_trail.emission_box_extents = Vector3(0.04, 0.45, 0.04)
+	_orbit_trail.position = Vector3(0, 0.5, 0)
+	add_child(_orbit_trail)
 	if Settings.lighting >= 2:
 		_light = OmniLight3D.new()
 		_light.light_color = Color(0.7, 0.45, 1.0)
@@ -289,7 +314,9 @@ func _update_fx() -> void:
 	var b := global_position
 	var d := b - a
 	var len := d.length()
-	_strand.visible = len > 0.04
+	_strand.visible = len > 0.04 and mode != Mode.ORBIT and len < 1.2
+	if _orbit_trail:
+		_orbit_trail.emitting = mode == Mode.ORBIT
 	if not _strand.visible:
 		return
 	var cam := get_viewport().get_camera_3d()

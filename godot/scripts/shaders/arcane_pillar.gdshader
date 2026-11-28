@@ -22,5 +22,5 @@ void fragment() {
 	float facing = abs(dot(NORMAL, VIEW));
 	float body = pow(facing, 2.0);
 	float v = pow(1.0 - hy, 2.2) * streak * wisp * body * fade;
-	ALBEDO = mix(tint.rgb, vec3(1.0, 0.95, 1.0), pow(1.0 - hy, 6.0) * 0.6) * v * strength;
+	ALBEDO = mix(tint.rgb, vec3(1.0, 0.95, 1.0), pow(1.0 - hy, 8.0) * 0.25) * v * strength;
 }

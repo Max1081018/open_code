@@ -108,7 +108,7 @@ func _slash(heavy: bool) -> void:
 	mat.shader = load("res://scripts/shaders/slash.gdshader")
 	var core := Color(1.0, 0.8, 0.4) if heavy else Color(0.55, 0.85, 1.0)
 	if _arcane():
-		core = Color(0.95, 0.62, 1.0) if heavy else VIOLET
+		core = Color(0.82, 0.48, 1.0) if heavy else Color(0.58, 0.32, 1.0)
 	mat.set_shader_parameter("core", core)
 	mi.material_override = mat
 	mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
@@ -292,15 +292,22 @@ func use_skill() -> void:
 	var fwd: Vector3 = p.model.global_transform.basis.z
 	Arcana.circle(game, p.global_position, 1.3, VIOLET, 0.35, 1.2)
 	Sfx.play("magic_cast", -4.0)
-	get_tree().create_timer(0.22).timeout.connect(func():
-		var orb := Arcana.Orb.new()
-		orb.heading = (fwd + Vector3(0, 0.08, 0)).normalized()
-		orb.target = _nearest_enemy(p.global_position, fwd, 22.0)
-		orb.ground = game.world.height_at
-		orb.burst = _comet_burst
-		game.add_child(orb)
-		orb.global_position = p.global_position + Vector3(0, 1.3, 0) + fwd * 0.8
-		Arcana.flash(game, orb.global_position, VIOLET, 3.0, 5.0, 0.25))
+	# The comet gathers at the tip of her floating blade, then flies.
+	var orb := Arcana.Orb.new()
+	orb.heading = (fwd + Vector3(0, 0.08, 0)).normalized()
+	orb.target = _nearest_enemy(p.global_position, fwd, 22.0)
+	orb.ground = game.world.height_at
+	orb.burst = _comet_burst
+	orb.speed = 14.0
+	orb.charge = 0.3
+	game.add_child(orb)
+	var tip := p.global_position + Vector3(0, 1.35, 0) + fwd * 0.9
+	orb.global_position = tip
+	Arcana.sparks(game, tip, Arcana.LILAC, 18, 2.5, 0.08, 0.0)
+	get_tree().create_timer(0.3).timeout.connect(func():
+		if is_instance_valid(orb):
+			Arcana.flash(game, orb.global_position, VIOLET, 2.5, 5.0, 0.25)
+			Sfx.play("magic_slash", -8.0, 0.1, 0.8))
 
 
 func _comet_burst(at: Vector3) -> void:
@@ -342,9 +349,9 @@ func _crescent_wave() -> void:
 	mi.mesh = _arc
 	var mat := ShaderMaterial.new()
 	mat.shader = load("res://scripts/shaders/slash.gdshader")
-	mat.set_shader_parameter("core", Color(0.85, 0.55, 1.0))
+	mat.set_shader_parameter("core", Color(0.7, 0.4, 1.0))
 	mat.set_shader_parameter("progress", 0.78)
-	mat.set_shader_parameter("strength", 3.0)
+	mat.set_shader_parameter("strength", 2.0)
 	mi.material_override = mat
 	mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 	game.add_child(mi)
@@ -354,7 +361,7 @@ func _crescent_wave() -> void:
 	var reach := 11.0
 	var t := mi.create_tween()
 	t.tween_property(mi, "global_position", from + fwd * reach, 0.45)
-	t.parallel().tween_method(func(v: float): mat.set_shader_parameter("strength", v), 3.0, 0.0, 0.45).set_ease(Tween.EASE_IN)
+	t.parallel().tween_method(func(v: float): mat.set_shader_parameter("strength", v), 2.0, 0.0, 0.45).set_ease(Tween.EASE_IN)
 	t.tween_callback(mi.queue_free)
 	# Foes in the corridor are cut as the crescent reaches them.
 	var mult := prog.art_mult("crescent")
@@ -395,6 +402,14 @@ func use_burst() -> void:
 	Arcana.flash(game, centre + Vector3(0, 3, 0), VIOLET, 1.4, 12.0, 1.0)
 	Sfx.play("magic_burst", -2.0)
 	toast.emit("Violet Starfall!")
+	# The world dims and deepens while the stars fall.
+	var env: Environment = game.environment
+	var dim := create_tween()
+	dim.tween_property(env, "adjustment_brightness", 0.72, 0.35)
+	dim.parallel().tween_property(env, "adjustment_saturation", 1.2, 0.35)
+	dim.tween_interval(1.5)
+	dim.tween_property(env, "adjustment_brightness", 1.0, 0.8)
+	dim.parallel().tween_property(env, "adjustment_saturation", 1.0, 0.8)
 	_shake = maxf(_shake, 0.5)
 	# One lance on each foe in reach, the rest scattered round the circle.
 	var spots: Array = []
@@ -463,25 +478,21 @@ func _area_strike(at: Vector3, radius: float, mult: float, colour: Color) -> voi
 
 ## A flat ring of light expanding on the ground plus rising sparkles.
 func _star_ring(at: Vector3, radius: float, colour: Color) -> void:
+	# A thin coloured shockwave racing out over the ground.
 	var ring := MeshInstance3D.new()
-	var torus := TorusMesh.new()
-	torus.inner_radius = 0.9
-	torus.outer_radius = 1.0
-	torus.rings = 48
-	ring.mesh = torus
-	var mat := StandardMaterial3D.new()
-	mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
-	mat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
-	mat.blend_mode = BaseMaterial3D.BLEND_MODE_ADD
-	mat.albedo_color = Color(colour, 0.9)
+	var plane := PlaneMesh.new()
+	plane.size = Vector2(radius * 2.2, radius * 2.2)
+	ring.mesh = plane
+	var mat := ShaderMaterial.new()
+	mat.shader = load("res://scripts/shaders/shockwave.gdshader")
+	mat.set_shader_parameter("tint", colour)
 	ring.material_override = mat
+	ring.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 	game.add_child(ring)
-	ring.global_position = at + Vector3(0, 0.3, 0)
-	ring.scale = Vector3(0.3, 0.3, 0.3)
-	var t := ring.create_tween().set_parallel()
-	t.tween_property(ring, "scale", Vector3(radius, 1.0, radius), 0.45).set_ease(Tween.EASE_OUT).set_trans(Tween.TRANS_CUBIC)
-	t.tween_property(mat, "albedo_color:a", 0.0, 0.6)
-	t.chain().tween_callback(ring.queue_free)
+	ring.global_position = at + Vector3(0, 0.12, 0)
+	var t := ring.create_tween()
+	t.tween_method(func(v: float): mat.set_shader_parameter("progress", v), 0.02, 1.0, 0.55).set_ease(Tween.EASE_OUT).set_trans(Tween.TRANS_CUBIC)
+	t.tween_callback(ring.queue_free)
 	var p := CPUParticles3D.new()
 	var quad := QuadMesh.new()
 	quad.size = Vector2(0.07, 0.07)
@@ -618,17 +629,24 @@ func debris(at: Vector3, colour: Color, amount: int) -> void:
 func damage_number(at: Vector3, amount: float, crit: bool) -> void:
 	var label := Label3D.new()
 	label.text = ("%d!" if crit else "%d") % roundi(amount)
-	label.font_size = 96 if crit else 64
-	label.outline_size = 18
-	label.modulate = Color(1.0, 0.85, 0.3) if crit else Color(1, 1, 1)
+	label.font_size = 88 if crit else 60
+	label.outline_size = 16
+	label.font = UiKit.font("title")
+	# Arcane hits lilac, crits gold, each with a deep outline.
+	label.modulate = Color(1.0, 0.82, 0.32) if crit else Color(0.96, 0.9, 1.0)
+	label.outline_modulate = Color(0.32, 0.12, 0.02) if crit else Color(0.16, 0.06, 0.3)
 	label.billboard = BaseMaterial3D.BILLBOARD_ENABLED
 	label.no_depth_test = true
 	label.pixel_size = 0.004
 	game.add_child(label)
 	label.global_position = at
+	# Pops in large, settles, drifts up and fades.
+	label.scale = Vector3.ONE * (1.9 if crit else 1.5)
 	var t := label.create_tween().set_parallel()
-	t.tween_property(label, "global_position", at + Vector3(randf_range(-0.4, 0.4), 1.2, 0), 0.8)
-	t.tween_property(label, "modulate:a", 0.0, 0.8).set_delay(0.3)
+	t.tween_property(label, "scale", Vector3.ONE, 0.16).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
+	t.tween_property(label, "global_position", at + Vector3(randf_range(-0.5, 0.5), 1.1, 0), 0.9).set_ease(Tween.EASE_OUT)
+	t.tween_property(label, "modulate:a", 0.0, 0.5).set_delay(0.45)
+	t.tween_property(label, "outline_modulate:a", 0.0, 0.5).set_delay(0.45)
 	t.chain().tween_callback(label.queue_free)
 
 
@@ -863,7 +881,8 @@ func use_phase() -> void:
 	fwd = fwd.normalized()
 	var from := p.global_position
 	# Stop short of walls: probe along the ground.
-	var reach := 7.0
+	# Far enough to pass clean through a knot of foes and turn on them.
+	var reach := 8.5
 	var space := p.get_world_3d().direct_space_state
 	var q := PhysicsRayQueryParameters3D.create(from + Vector3(0, 0.9, 0), from + Vector3(0, 0.9, 0) + fwd * reach, 1)
 	var ray := space.intersect_ray(q)
@@ -871,7 +890,7 @@ func use_phase() -> void:
 		reach = maxf(0.0, from.distance_to(ray.position) - 0.6)
 	var to := from + fwd * reach
 	to.y = game.world.height_at(to.x, to.z) + 0.05
-	_afterimage(p, from)
+	_afterimages(p, from, to)
 	Arcana.sparks(game, from + Vector3(0, 1.0, 0), VIOLET, 26, 5.0, 0.1)
 	Sfx.play("magic_slash", -4.0, 0.1, 1.3)
 	p.blink_to(to, fwd)
@@ -894,7 +913,44 @@ func use_phase() -> void:
 					energy = minf(BURST_COST, energy + 5.0))
 
 
-## A violet ghost of her, fading where she stood.
+## Violet ghosts of her, posed as she was, strung along the blink and
+## fading one after another (the skinned meshes baked in their pose).
+func _afterimages(p: Player3D, from: Vector3, to: Vector3) -> void:
+	var meshes: Array = []
+	for m in p.model.find_children("*", "MeshInstance3D", true, false):
+		var mi := m as MeshInstance3D
+		if not mi.is_visible_in_tree() or mi.mesh == null:
+			continue
+		var baked: Mesh = mi.bake_mesh_from_current_skeleton_pose() if mi.skin != null else mi.mesh
+		if baked:
+			meshes.append([baked, p.model.global_transform.affine_inverse() * mi.global_transform])
+	if meshes.is_empty():
+		_afterimage(p, from)
+		return
+	var shader: Shader = load("res://scripts/shaders/magic_energy.gdshader")
+	for k in 3:
+		var t := (k + 1) / 4.0
+		var ghost := Node3D.new()
+		game.add_child(ghost)
+		ghost.global_transform = Transform3D(p.model.global_transform.basis, from.lerp(to, t) + (p.model.global_position - p.global_position))
+		var m := ShaderMaterial.new()
+		m.shader = shader
+		m.set_shader_parameter("energy", 0.0)
+		m.set_shader_parameter("seed", float(k))
+		for e in meshes:
+			var mi := MeshInstance3D.new()
+			mi.mesh = e[0]
+			mi.transform = e[1]
+			mi.material_override = m
+			mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+			ghost.add_child(mi)
+		var tw := ghost.create_tween()
+		tw.tween_interval(k * 0.05)
+		tw.tween_method(func(v: float): m.set_shader_parameter("energy", v), 1.4, 0.0, 0.55).set_ease(Tween.EASE_IN)
+		tw.tween_callback(ghost.queue_free)
+
+
+## A violet ghost of her, fading where she stood (fallback).
 func _afterimage(p: Player3D, at: Vector3) -> void:
 	var ghost := MeshInstance3D.new()
 	var cap := CapsuleMesh.new()

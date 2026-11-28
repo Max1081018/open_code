@@ -243,7 +243,7 @@ func _ready() -> void:
 			off.add_child(sh)
 	_flash = StandardMaterial3D.new()
 	_flash.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
-	_flash.albedo_color = Color(1.0, 0.25, 0.2, 0.0)
+	_flash.albedo_color = Color(1.0, 0.95, 0.92, 0.0)   # a crisp white hit flash
 	_flash.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
 	for m in model.find_children("*", "MeshInstance3D", true, false):
 		(m as MeshInstance3D).material_overlay = _flash
@@ -265,6 +265,7 @@ func _ready() -> void:
 		Arcana.circle(game, global_position, 1.2, Color(1.0, 0.82, 0.35), 2.0, 1.0)
 	if spec.has("ambush"):
 		_hide()
+	_glowing_eyes()
 	if spec.has("boss") and BOSS_SPECS.has(kind):
 		_dress_guardian()
 	if spec.has("element"):
@@ -313,7 +314,8 @@ func _physics_process(delta: float) -> void:
 			var f := clampf(health / max_health, 0.0, 1.0)
 			_bar_fill.scale.x = maxf(f, 0.001)
 			_bar_fill.position.x = 0.0
-	_flash.albedo_color.a = clampf(_flash_time * 4.0, 0.0, 0.55)
+	if not dead:
+		_flash.albedo_color.a = clampf(_flash_time * 6.0, 0.0, 0.6)
 	if dead:
 		velocity.y -= 22.0 * delta
 		velocity.x *= 0.9
@@ -638,7 +640,7 @@ func take_hit(amount: float, from: Vector3, heavy: bool) -> bool:
 	if spec.has("ambush") and not _emerged:
 		_emerge()   # struck while hidden: it springs out
 	health = maxf(0.0, health - amount)
-	_flash_time = 0.25
+	_flash_time = 0.14
 	_bar_time = 4.0
 	if spec.has("element") and not is_boss:
 		Arcana.sparks(game, global_position + Vector3(0, 1.1, 0), Color(0.85, 0.6, 1.0), 10, 4.0, 0.08)
@@ -669,9 +671,17 @@ func _die() -> void:
 	collision_layer = 0
 	_play("Death01", 1.0, true)
 	died.emit(self)
+	# It falls, lies a moment, then comes apart into motes of its light
+	# (no sinking through the ground).
+	var colour: Color = spec.get("element", Color(0.72, 0.5, 1.0))
 	var t := create_tween()
-	t.tween_interval(4.0)
-	t.tween_property(self, "position:y", position.y - 1.6, 1.5)
+	t.tween_interval(1.7 if not is_boss else 3.0)
+	t.tween_callback(func():
+		var at := global_position + Vector3(0, 0.8 * float(spec.get("scale", 1.0)), 0)
+		Arcana.sparks(game, at, colour, 40 if not is_boss else 120, 3.5, 0.12, 1.5)
+		Arcana.flash(game, at, colour, 1.5, 4.0, 0.4))
+	t.tween_method(func(v: float): _flash.albedo_color = Color(colour.lerp(Color.WHITE, 0.5), v), 0.0, 0.85, 0.25)
+	t.parallel().tween_property(model, "scale", model.scale * Vector3(1.05, 0.02, 1.05), 0.45).set_delay(0.1).set_ease(Tween.EASE_IN)
 	t.tween_callback(queue_free)
 
 
@@ -1077,3 +1087,43 @@ func _motes(parent: Node3D, colour: Color, amount: int, spread: float) -> void:
 	p.initial_velocity_min = 0.1
 	p.initial_velocity_max = 0.5
 	parent.add_child(p)
+
+
+## Two points of light in its eye sockets, in its element's colour (the
+## Risen a cold violet): a creature, not a prop. Placed from the rig's own
+## head and neck so it fits any size.
+func _glowing_eyes() -> void:
+	var sk: Skeleton3D = model.find_children("*", "Skeleton3D", true, false)[0]
+	var head := sk.find_bone("Head")
+	var neck := sk.find_bone("Neck")
+	if head < 0 or neck < 0:
+		return
+	var hr := sk.get_bone_global_rest(head)
+	var h := (hr.origin - sk.get_bone_global_rest(neck).origin).length()
+	if h <= 0.0:
+		return
+	var to_sk := sk.global_transform.basis.inverse()
+	var fwd := (to_sk * model.global_transform.basis.z).normalized()
+	var up := (to_sk * Vector3.UP).normalized()
+	var right := up.cross(fwd).normalized()
+	var att := BoneAttachment3D.new()
+	att.bone_name = "Head"
+	sk.add_child(att)
+	var colour: Color = spec.get("element", Color(0.7, 0.4, 1.0))
+	var m := StandardMaterial3D.new()
+	m.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	m.billboard_mode = BaseMaterial3D.BILLBOARD_ENABLED
+	m.blend_mode = BaseMaterial3D.BLEND_MODE_ADD
+	m.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+	m.albedo_texture = Play3D._spark_texture()
+	m.albedo_color = colour.lerp(Color.WHITE, 0.25)
+	for side in [-1.0, 1.0]:
+		var eye := MeshInstance3D.new()
+		var q := QuadMesh.new()
+		q.size = Vector2(h, h) * 0.32
+		eye.mesh = q
+		eye.material_override = m
+		eye.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+		att.add_child(eye)
+		var at_sk: Vector3 = hr.origin + up * h * 0.42 + fwd * h * 0.62 + right * side * h * 0.2
+		eye.transform = Transform3D(Basis(), hr.affine_inverse() * at_sk)

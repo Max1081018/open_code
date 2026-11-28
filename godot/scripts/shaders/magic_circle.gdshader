@@ -9,7 +9,7 @@ uniform vec4 tint : source_color = vec4(0.72, 0.45, 1.0, 1.0);
 uniform float grow = 1.0;
 uniform float fade = 1.0;
 uniform float spin = 0.25;
-uniform float strength = 1.3;
+uniform float strength = 0.8;
 
 float ring(float r, float at, float w) {
 	return 1.0 - smoothstep(0.0, w, abs(r - at));
@@ -55,12 +55,18 @@ void fragment() {
 	lines += ring(r, 0.42, 0.01) + ring(r, 0.36, 0.006) * 0.7;
 	float pa = mod(a - t * 1.6 + TAU / 16.0, TAU / 8.0) - TAU / 16.0;
 	lines += (1.0 - smoothstep(0.0, 0.03, length(vec2(r - 0.86, pa * 0.86)))) * 1.2;
+	// A soft coloured glow round every line (so it reads as light, not chalk).
+	float soft = ring(r, 0.97, 0.07) + ring(r, 0.9, 0.05) + ring(r, 0.42, 0.06)
+		+ star_line(sp, 8.0, 0.86, 0.38, 0.07) * 0.6;
 	// Core glow and a soft disc.
-	float core = exp(-r * 6.0) * 0.8 + (1.0 - smoothstep(0.0, 0.9, r)) * 0.08;
+	float core = exp(-r * 7.0) * 0.3 + (1.0 - smoothstep(0.0, 0.9, r)) * 0.06;
 	// Drawn in from the centre outward.
 	float drawn = 1.0 - smoothstep(grow * 1.05 - 0.05, grow * 1.05, r);
 	float pulse = 0.85 + 0.15 * sin(TIME * 4.0);
-	float v = (clamp(lines, 0.0, 1.5) + core) * drawn * fade * pulse;
-	vec3 c = mix(tint.rgb, vec3(1.0, 0.95, 1.0), clamp(lines - 0.6, 0.0, 1.0) * 0.6);
-	ALBEDO = c * v * strength;
+	float k = drawn * fade * pulse;
+	// Saturated colour carries the light; only the very cores of the lines
+	// edge toward white, so the circle keeps its hue over bright ground.
+	vec3 c = tint.rgb * (clamp(lines, 0.0, 1.5) * 0.85 + soft * 0.3 + core)
+		+ vec3(1.0, 0.95, 1.0) * clamp(lines - 0.9, 0.0, 1.0) * 0.18;
+	ALBEDO = c * k * strength;
 }

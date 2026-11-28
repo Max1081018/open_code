@@ -126,10 +126,10 @@ static func sparks(host: Node, at: Vector3, tint := VIOLET, amount := 40, speed 
 static func _glow_material(tint: Color, energy: float) -> StandardMaterial3D:
 	var m := StandardMaterial3D.new()
 	m.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
-	m.albedo_color = tint.lerp(Color.WHITE, 0.35)
+	m.albedo_color = tint
 	m.emission_enabled = true
 	m.emission = tint
-	m.emission_energy_multiplier = energy
+	m.emission_energy_multiplier = energy * 0.6
 	return m
 
 
@@ -139,12 +139,28 @@ static func lance(host: Node, at: Vector3, delay: float, landed: Callable, tint 
 	var shard := MeshInstance3D.new()
 	var prism := CylinderMesh.new()
 	prism.top_radius = 0.0
-	prism.bottom_radius = 0.16
-	prism.height = 2.6
+	prism.bottom_radius = 0.3
+	prism.height = 4.2
 	prism.radial_segments = 4
 	prism.rings = 1
 	shard.mesh = prism
-	shard.material_override = _glow_material(tint, 1.8)
+	# A crystal of light: a glowing rim (energy shader) round a bright core.
+	var rim := ShaderMaterial.new()
+	rim.shader = load("res://scripts/shaders/magic_energy.gdshader")
+	rim.set_shader_parameter("energy", 1.6)
+	rim.set_shader_parameter("edge", tint)
+	shard.material_override = rim
+	var core := MeshInstance3D.new()
+	var cp := CylinderMesh.new()
+	cp.top_radius = 0.0
+	cp.bottom_radius = 0.09
+	cp.height = 3.6
+	cp.radial_segments = 4
+	cp.rings = 1
+	core.mesh = cp
+	core.material_override = _glow_material(tint.lerp(Color.WHITE, 0.5), 2.0)
+	core.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	shard.add_child(core)
 	shard.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 	host.add_child(shard)
 	# Point first, tilted a little, from high above and to the side.
@@ -154,7 +170,7 @@ static func lance(host: Node, at: Vector3, delay: float, landed: Callable, tint 
 	shard.visible = false
 	var trail := CPUParticles3D.new()
 	var tq := QuadMesh.new()
-	tq.size = Vector2(0.18, 0.18)
+	tq.size = Vector2(0.4, 0.4)
 	trail.mesh = tq
 	var tm := StandardMaterial3D.new()
 	tm.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
@@ -164,8 +180,8 @@ static func lance(host: Node, at: Vector3, delay: float, landed: Callable, tint 
 	tm.albedo_texture = Play3D._spark_texture()
 	tm.albedo_color = tint
 	trail.material_override = tm
-	trail.amount = 24
-	trail.lifetime = 0.35
+	trail.amount = 40
+	trail.lifetime = 0.45
 	trail.local_coords = false
 	trail.gravity = Vector3.ZERO
 	trail.emitting = false
@@ -178,8 +194,10 @@ static func lance(host: Node, at: Vector3, delay: float, landed: Callable, tint 
 	t.tween_property(shard, "global_position", at + Vector3(0, 0.9, 0), 0.28).set_ease(Tween.EASE_IN).set_trans(Tween.TRANS_QUAD)
 	t.tween_callback(func():
 		landed.call(at)
-		sparks(host, at + Vector3(0, 0.4, 0), tint, 16, 6.0, 0.1)
+		sparks(host, at + Vector3(0, 0.4, 0), tint, 22, 7.0, 0.12)
 		flash(host, at + Vector3(0, 1.0, 0), tint, 1.5, 5.0, 0.25)
+		# Each lance leaves its own small ring where it struck.
+		circle(host, at, 1.3, tint, 0.15, 3.0)
 		trail.emitting = false
 		shard.material_override = _glow_material(tint, 3.0))
 	t.tween_property(shard, "scale", Vector3(1.6, 0.05, 1.6), 0.18)
@@ -193,6 +211,8 @@ class Orb:
 	extends Node3D
 	var heading := Vector3.FORWARD
 	var speed := 17.0
+	## Seconds it gathers before it flies (it grows in place).
+	var charge := 0.0
 	var target: Node3D
 	## Bursts on contact with this node without steering toward it (a foe's bolt).
 	var hit_target: Node3D
@@ -210,13 +230,13 @@ class Orb:
 		s.radial_segments = 16
 		s.rings = 8
 		core.mesh = s
-		core.material_override = Arcana._glow_material(tint, 5.0)
+		core.material_override = Arcana._glow_material(tint, 3.0)
 		core.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 		add_child(core)
 		var halo := MeshInstance3D.new()
 		var hs := SphereMesh.new()
-		hs.radius = 0.34
-		hs.height = 0.68
+		hs.radius = 0.5
+		hs.height = 1.0
 		hs.radial_segments = 16
 		hs.rings = 8
 		halo.mesh = hs
@@ -224,7 +244,7 @@ class Orb:
 		hm.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
 		hm.blend_mode = BaseMaterial3D.BLEND_MODE_ADD
 		hm.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
-		hm.albedo_color = Color(tint, 0.16)
+		hm.albedo_color = Color(tint, 0.3)
 		hm.cull_mode = BaseMaterial3D.CULL_FRONT
 		halo.material_override = hm
 		halo.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
@@ -237,7 +257,7 @@ class Orb:
 		add_child(light)
 		var trail := CPUParticles3D.new()
 		var q := QuadMesh.new()
-		q.size = Vector2(0.22, 0.22)
+		q.size = Vector2(0.38, 0.38)
 		trail.mesh = q
 		var tm := StandardMaterial3D.new()
 		tm.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
@@ -250,8 +270,8 @@ class Orb:
 		var ramp := Gradient.new()
 		ramp.colors = PackedColorArray([Color(Arcana.LILAC, 0.9), Color(tint, 0.0)])
 		trail.color_ramp = ramp
-		trail.amount = 48
-		trail.lifetime = 0.45
+		trail.amount = 72
+		trail.lifetime = 0.6
 		trail.local_coords = false
 		trail.gravity = Vector3(0, 0.5, 0)
 		trail.direction = Vector3.UP
@@ -265,6 +285,11 @@ class Orb:
 	func _physics_process(delta: float) -> void:
 		if _done:
 			return
+		if charge > 0.0:
+			charge -= delta
+			scale = Vector3.ONE * clampf(1.0 - charge * 4.0, 0.15, 1.0)
+			return
+		scale = Vector3.ONE
 		life -= delta
 		if target != null and is_instance_valid(target):
 			var want := (target.global_position + Vector3(0, 1.0, 0) - global_position).normalized()
