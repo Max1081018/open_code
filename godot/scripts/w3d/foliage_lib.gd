@@ -36,6 +36,11 @@ const EXT := {
 	"volcanic_28": [1.8, "rock"], "volcanic_29": [1.8, "rock"], "volcanic_25": [0.8, "small"],
 }
 
+## Measured mean brightness of each rock piece's texture at its own UVs
+## (tools: the uvcol probe in the QA notes), for toning them evenly.
+const ROCK_LUM := {"rocks_0": 0.56, "rocks_1": 0.60, "rocks_2": 0.59, "rocks_3": 0.60, "rocks_4": 0.64,
+	"rocks_5": 0.46, "rocks_6": 0.44, "rocks_7": 0.47, "rocks_8": 0.46, "rocks_9": 0.37, "rocks_10": 0.51}
+
 static var _cache := {}
 static var _wind: Shader
 
@@ -114,6 +119,14 @@ static func _ext_parts(kind: String) -> Array:
 	var spec: Array = spec_for(kind)
 	var k: float = float(spec[0]) / maxf(mesh.get_aabb().size.y, 0.01)
 	var m: Mesh = _windy(mesh, spec[1], piece) if spec[1] == "tree" else mesh
+	# The rock pack's stone is pale (0.56-0.64 where its UVs land, twice the
+	# ground's brightness): in full sun the exposure and grade clipped every
+	# boulder to a flat white blob. Toned down to weathered grey stone, a
+	# shade warmer on the lighter pieces.
+	if piece.begins_with("rocks_"):
+		var lum: float = ROCK_LUM.get(piece, 0.55)
+		var tone := clampf(0.33 / lum, 0.5, 0.95)
+		m = _tinted(m, Color(tone * 1.02, tone, tone * 0.96))
 	# Lava vents and veined rocks glow.
 	if piece in ["volcanic_18", "volcanic_19", "volcanic_24", "volcanic_26", "volcanic_27", "volcanic_28", "volcanic_29"]:
 		m = _glowing(m)
