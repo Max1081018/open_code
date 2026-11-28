@@ -141,6 +141,9 @@ func apply_display(vp: Viewport) -> void:
 	vp.scaling_3d_scale = clampf(render_scale, 0.5, 1.0)
 	vp.msaa_3d = [Viewport.MSAA_DISABLED, Viewport.MSAA_DISABLED, Viewport.MSAA_2X, Viewport.MSAA_4X][clampi(antialiasing, 0, 3)]
 	vp.screen_space_aa = Viewport.SCREEN_SPACE_AA_FXAA if antialiasing == 1 else Viewport.SCREEN_SPACE_AA_DISABLED
+	# A mesh steps down a level of detail when the change would move it by
+	# less than this many pixels: 2 is invisible on a phone's dense screen.
+	vp.mesh_lod_threshold = 2.0 if OS.has_feature("mobile") else 1.0
 
 
 func save_settings() -> void:
@@ -183,7 +186,9 @@ func _detect_quality() -> void:
 	# light settings until the player says otherwise.
 	var cores := OS.get_processor_count()
 	if OS.has_feature("mobile"):
-		apply_preset(Quality.MEDIUM if cores >= 8 else Quality.LOW)
+		# The full look on phones that can carry it (character and grass
+		# LODs, cheaper shafts and one bloom made High affordable).
+		apply_preset(Quality.HIGH if cores >= 8 else (Quality.MEDIUM if cores >= 6 else Quality.LOW))
 	else:
 		apply_preset(Quality.HIGH)
 

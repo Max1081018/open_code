@@ -21,6 +21,10 @@ var _tasks: Array[int] = []
 var _mutex := Mutex.new()
 var _material: ShaderMaterial
 var _clump: ArrayMesh
+## The same clump with fewer segments per blade, for the outer rings: at
+## 18 m and beyond a blade is a few pixels tall and its curve can't be seen,
+## but the triangles still cost (grass is most of the world's triangles).
+var _clump_lods: Array = []
 var _flower: ArrayMesh
 var _flower_mat: ShaderMaterial
 ## Wildflower colours: white, buttercup, rose, sky blue, lilac.
@@ -37,6 +41,9 @@ func setup(the_gen: TerrainGen, quality: int) -> void:
 	_material.set_shader_parameter("field_radius", TILE * (radius_tiles + 0.5))
 	_clump = _make_clump()
 	_clump.surface_set_material(0, _material)
+	_clump_lods = [_clump, _clump, _make_clump(2), _make_clump(1)]
+	for m in _clump_lods:
+		(m as ArrayMesh).surface_set_material(0, _material)
 	_flower_mat = _material.duplicate() as ShaderMaterial
 	_flower_mat.set_shader_parameter("flower_mode", true)
 	_flower = _make_flower()
@@ -45,7 +52,7 @@ func setup(the_gen: TerrainGen, quality: int) -> void:
 
 ## A soft clump: nine broad blades in three segments, curving outward,
 ## with rounded (flat-topped) tips; UV.y is 0 at the root, 1 at the tip.
-static func _make_clump() -> ArrayMesh:
+static func _make_clump(segments := 3) -> ArrayMesh:
 	var st := SurfaceTool.new()
 	st.begin(Mesh.PRIMITIVE_TRIANGLES)
 	var rng := RandomNumberGenerator.new()
@@ -59,6 +66,10 @@ static func _make_clump() -> ArrayMesh:
 		var h := rng.randf_range(0.2, 0.4)
 		# Three rings up the blade: width narrows, lean grows (a curve).
 		var rings := [[0.0, 1.0, 0.0], [0.45, 0.85, 0.25], [0.8, 0.6, 0.65], [1.0, 0.32, 1.0]]
+		if segments == 2:
+			rings = [[0.0, 1.0, 0.0], [0.6, 0.75, 0.4], [1.0, 0.32, 1.0]]
+		elif segments == 1:
+			rings = [[0.0, 1.0, 0.0], [1.0, 0.3, 1.0]]
 		var pts: Array = []
 		for r in rings:
 			var c: Vector3 = off + lean * float(r[2]) + Vector3(0, h * float(r[0]), 0)
@@ -258,7 +269,7 @@ func _apply(r: Dictionary) -> void:
 	var mm := MultiMesh.new()
 	mm.transform_format = MultiMesh.TRANSFORM_3D
 	mm.use_colors = true
-	mm.mesh = _clump
+	mm.mesh = _clump_lods[clampi(int(r.get("level", 0)), 0, _clump_lods.size() - 1)]
 	mm.instance_count = xforms.size()
 	for i in xforms.size():
 		mm.set_instance_transform(i, xforms[i])

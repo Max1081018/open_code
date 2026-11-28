@@ -3,9 +3,11 @@
 importer="texture"
 type="CompressedTexture2D"
 uid="uid://b5qi2se8a4lxx"
-path="res://.godot/imported/shrine_sky_14.png-a5541b14484930fccb65837a209957b2.ctex"
+path.s3tc="res://.godot/imported/shrine_sky_14.png-a5541b14484930fccb65837a209957b2.s3tc.ctex"
+path.etc2="res://.godot/imported/shrine_sky_14.png-a5541b14484930fccb65837a209957b2.etc2.ctex"
 metadata={
-"vram_texture": false
+"imported_formats": ["s3tc_bptc", "etc2_astc"],
+"vram_texture": true
 }
 generator_parameters={
 "md5": "c1ce01f9f541094281be33620e581e98"
@@ -14,11 +16,11 @@ generator_parameters={
 [deps]
 
 source_file="res://assets/models/world/shrine_sky_14.png"
-dest_files=["res://.godot/imported/shrine_sky_14.png-a5541b14484930fccb65837a209957b2.ctex"]
+dest_files=["res://.godot/imported/shrine_sky_14.png-a5541b14484930fccb65837a209957b2.s3tc.ctex", "res://.godot/imported/shrine_sky_14.png-a5541b14484930fccb65837a209957b2.etc2.ctex"]
 
 [params]
 
-compress/mode=0
+compress/mode=2
 compress/high_quality=false
 compress/lossy_quality=0.7
 compress/hdr_compression=1
@@ -34,4 +36,4 @@ process/normal_map_invert_y=false
 process/hdr_as_srgb=false
 process/hdr_clamp_exposure=false
 process/size_limit=0
-detect_3d/compress_to=1
+detect_3d/compress_to=0

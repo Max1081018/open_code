@@ -77,8 +77,137 @@ static func parts(kind: String) -> Array:
 		var mesh: Mesh = _windy(f[0], spec[1], kind)
 		if basalt:
 			mesh = _tinted(mesh, Color(0.36, 0.3, 0.3))
-		out.append([mesh, Transform3D(Basis.IDENTITY.scaled(Vector3.ONE * k), Vector3.ZERO) * f[1]])
+		out.append([with_cards(with_lods(mesh)), Transform3D(Basis.IDENTITY.scaled(Vector3.ONE * k), Vector3.ZERO) * f[1]])
 	_cache[kind] = out
+	return out
+
+
+## Leaf and petal surfaces get, per vertex, their card's centre and a random
+## number (CUSTOM0), so foliage3d.gdshader can thin far canopies smoothly:
+## with distance a growing share of cards shrinks to nothing while the rest
+## grow to keep the crown's silhouette. Leaf cards are separate quads the
+## mesh simplifier cannot reduce, and alpha-tested overdraw is the costliest
+## thing a phone GPU draws in a forest.
+static func with_cards(mesh: Mesh) -> Mesh:
+	var am := mesh as ArrayMesh
+	if am == null or am.get_blend_shape_count() > 0:
+		return mesh
+	var leafy := []
+	for k in am.get_surface_count():
+		var m := am.surface_get_material(k) as ShaderMaterial
+		# Unset alpha_cut means the shader's default (0.45): a cut-out leaf.
+		var cut = m.get_shader_parameter("alpha_cut") if m != null else null
+		leafy.append(m != null and m.shader == _wind and (cut == null or float(cut) > 0.0))
+	if not leafy.has(true):
+		return mesh
+	var out := ArrayMesh.new()
+	out.resource_name = am.resource_name
+	var surfs = am.get("_surfaces")
+	for k in am.get_surface_count():
+		var arrays := am.surface_get_arrays(k)
+		var flags := am.surface_get_format(k) & ~0x1FFF
+		var lods := {}
+		if surfs is Array and k < (surfs as Array).size():
+			var sd := surfs[k] as Dictionary
+			var l: Array = sd.get("lods", [])
+			var wide := int(sd.get("vertex_count", 0)) > 65535
+			for i in range(0, l.size() - 1, 2):
+				lods[float(l[i])] = _indices(l[i + 1], wide)
+		var mat := am.surface_get_material(k)
+		if leafy[k] and arrays[Mesh.ARRAY_INDEX] != null:
+			arrays[Mesh.ARRAY_CUSTOM0] = _card_channel(arrays[Mesh.ARRAY_VERTEX], arrays[Mesh.ARRAY_INDEX])
+			flags |= Mesh.ARRAY_CUSTOM_RGBA_FLOAT << Mesh.ARRAY_FORMAT_CUSTOM0_SHIFT
+			mat = (mat as ShaderMaterial).duplicate()
+			(mat as ShaderMaterial).set_shader_parameter("card_thin", 1.0)
+		# LOD index lists are keyed by vertex index, which this keeps.
+		out.add_surface_from_arrays(am.surface_get_primitive_type(k), arrays, [], lods, flags)
+		out.surface_set_material(k, mat)
+		out.surface_set_name(k, am.surface_get_name(k))
+	return out
+
+
+## Per vertex: the centre of the card (connected triangles) it belongs to,
+## and a random 0..1 for the card (stable: hashed from the centre).
+static func _card_channel(verts: PackedVector3Array, idx: PackedInt32Array) -> PackedFloat32Array:
+	# An Array, not a PackedInt32Array: packed arrays are passed by value, so
+	# path compression in _find would be lost (and lookups go quadratic).
+	var parent: Array = range(verts.size())
+	for t in range(0, idx.size() - 2, 3):
+		var a := _find(parent, idx[t])
+		for j in [1, 2]:
+			var b := _find(parent, idx[t + j])
+			if a != b:
+				parent[b] = a
+	var sum := {}
+	var count := {}
+	for i in verts.size():
+		var r := _find(parent, i)
+		sum[r] = sum.get(r, Vector3.ZERO) + verts[i]
+		count[r] = int(count.get(r, 0)) + 1
+	var out := PackedFloat32Array()
+	out.resize(verts.size() * 4)
+	for i in verts.size():
+		var r := _find(parent, i)
+		var c: Vector3 = sum[r] / float(count[r])
+		var h := fposmod(sin(c.x * 127.1 + c.y * 311.7 + c.z * 74.7) * 43758.5453, 1.0)
+		out[i * 4] = c.x
+		out[i * 4 + 1] = c.y
+		out[i * 4 + 2] = c.z
+		out[i * 4 + 3] = h
+	return out
+
+
+## A stored LOD index list (raw bytes: 16-bit indices, or 32-bit for
+## meshes over 65,535 vertices) as the int array add_surface wants.
+static func _indices(raw, wide: bool) -> PackedInt32Array:
+	if raw is PackedInt32Array:
+		return raw
+	var bytes := raw as PackedByteArray
+	if wide:
+		return bytes.to_int32_array()
+	var out := PackedInt32Array()
+	out.resize(bytes.size() / 2)
+	for i in out.size():
+		out[i] = bytes.decode_u16(i * 2)
+	return out
+
+
+static func _find(parent: Array, i: int) -> int:
+	while parent[i] != i:
+		parent[i] = parent[parent[i]]
+		i = parent[i]
+	return i
+
+
+## The mesh with levels of detail on every surface. The pack ships LODs for
+## most solid parts but none for many leaf and petal surfaces (a flowering
+## bush: 1,400 triangles, every one drawn at any distance). Godot picks the
+## level by screen size, so close up nothing changes. Meshes that already
+## have LODs on every surface, and small ones, are returned as they are.
+static func with_lods(mesh: Mesh) -> Mesh:
+	var am := mesh as ArrayMesh
+	if am == null or am.get_blend_shape_count() > 0:
+		return mesh
+	var surfs = am.get("_surfaces")
+	var needs := false
+	var tris := 0
+	if surfs is Array:
+		for sd in surfs:
+			var d := sd as Dictionary
+			if (d.get("lods", []) as Array).is_empty():
+				needs = true
+	for k in am.get_surface_count():
+		var idx = am.surface_get_arrays(k)[Mesh.ARRAY_INDEX]
+		tris += (idx as PackedInt32Array).size() / 3 if idx != null else 0
+	if not needs or tris < 400:
+		return mesh
+	var im := ImporterMesh.new()
+	for k in am.get_surface_count():
+		im.add_surface(am.surface_get_primitive_type(k), am.surface_get_arrays(k), [], {},
+			am.surface_get_material(k), am.surface_get_name(k), am.surface_get_format(k) & ~0x1FFF)
+	im.generate_lods(25.0, 60.0, [])
+	var out := im.get_mesh()
+	out.resource_name = am.resource_name
 	return out
 
 
@@ -130,7 +259,7 @@ static func _ext_parts(kind: String) -> Array:
 	# Lava vents and veined rocks glow.
 	if piece in ["volcanic_18", "volcanic_19", "volcanic_24", "volcanic_26", "volcanic_27", "volcanic_28", "volcanic_29"]:
 		m = _glowing(m)
-	var out := [[m, Transform3D(Basis.IDENTITY.scaled(Vector3.ONE * k), Vector3.ZERO)]]
+	var out := [[with_cards(with_lods(m)), Transform3D(Basis.IDENTITY.scaled(Vector3.ONE * k), Vector3.ZERO)]]
 	_cache[kind] = out
 	return out
 

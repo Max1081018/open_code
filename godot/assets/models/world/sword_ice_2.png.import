@@ -3,9 +3,11 @@
 importer="texture"
 type="CompressedTexture2D"
 uid="uid://cocfb0plqjhx7"
-path="res://.godot/imported/sword_ice_2.png-ca17dc5d8bad0ead2dee3d3595a6ee73.ctex"
+path.s3tc="res://.godot/imported/sword_ice_2.png-ca17dc5d8bad0ead2dee3d3595a6ee73.s3tc.ctex"
+path.etc2="res://.godot/imported/sword_ice_2.png-ca17dc5d8bad0ead2dee3d3595a6ee73.etc2.ctex"
 metadata={
-"vram_texture": false
+"imported_formats": ["s3tc_bptc", "etc2_astc"],
+"vram_texture": true
 }
 generator_parameters={
 "md5": "a35496d46f6860f6886314c7580e59d7"
@@ -14,11 +16,11 @@ generator_parameters={
 [deps]
 
 source_file="res://assets/models/world/sword_ice_2.png"
-dest_files=["res://.godot/imported/sword_ice_2.png-ca17dc5d8bad0ead2dee3d3595a6ee73.ctex"]
+dest_files=["res://.godot/imported/sword_ice_2.png-ca17dc5d8bad0ead2dee3d3595a6ee73.s3tc.ctex", "res://.godot/imported/sword_ice_2.png-ca17dc5d8bad0ead2dee3d3595a6ee73.etc2.ctex"]
 
 [params]
 
-compress/mode=0
+compress/mode=2
 compress/high_quality=false
 compress/lossy_quality=0.7
 compress/hdr_compression=1
@@ -34,4 +36,4 @@ process/normal_map_invert_y=false
 process/hdr_as_srgb=false
 process/hdr_clamp_exposure=false
 process/size_limit=0
-detect_3d/compress_to=1
+detect_3d/compress_to=0

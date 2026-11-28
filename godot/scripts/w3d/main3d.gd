@@ -680,8 +680,6 @@ func _update_sun(_delta: float) -> void:
 	_sky_mat.set_shader_parameter("night", night)
 	if town:
 		town.set_night(night)
-	if water:
-		(water.material_override as ShaderMaterial).set_shader_parameter("night", night)
 	if islands:
 		islands.set_night(night)
 	_sky_mat.set_shader_parameter("dusk", low)
@@ -694,13 +692,21 @@ func _update_sun(_delta: float) -> void:
 		hor = hor.lerp(wc, weather.fog_tint.a * 0.75)
 	_sky_mat.set_shader_parameter("top_color", top)
 	var bounce := Color(0.56, 0.6, 0.44).lerp(Color(0.1, 0.12, 0.2), 1.0 - day)
-	environment.ambient_light_color = top * 0.3 + hor * 0.45 + bounce * 0.25
+	environment.ambient_light_color = top * 0.22 + hor * 0.4 + bounce * 0.38
 	_sky_mat.set_shader_parameter("horizon_color", hor)
 	var shade := Color(0.7, 0.74, 0.92).lerp(Color(0.75, 0.55, 0.7), low)
 	if weather:
 		# Rain clouds hang grey and heavy.
 		shade = shade.lerp(Color(0.42, 0.45, 0.52), clampf(weather.cloud_cover - 0.42, 0.0, 0.55) * 1.6)
 	_sky_mat.set_shader_parameter("cloud_shade", shade)
+	if water:
+		var wm := water.material_override as ShaderMaterial
+		wm.set_shader_parameter("night", night)
+		# The reflected sky follows the real one, and the sun's glow its place.
+		wm.set_shader_parameter("sky", Color(hor.r, hor.g, hor.b))
+		wm.set_shader_parameter("sky_top", Color(top.r, top.g, top.b))
+		wm.set_shader_parameter("sun_dir", sun.global_transform.basis.z)
+		wm.set_shader_parameter("sun_tint", sun.light_color)
 
 
 ## --pick=x,y: what is drawn at that pixel. A ray through it, the collider

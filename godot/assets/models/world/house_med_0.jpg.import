@@ -3,9 +3,11 @@
 importer="texture"
 type="CompressedTexture2D"
 uid="uid://dvb45kmjybs2y"
-path="res://.godot/imported/house_med_0.jpg-f74f7c18b3c6072895617503770dd29f.ctex"
+path.s3tc="res://.godot/imported/house_med_0.jpg-f74f7c18b3c6072895617503770dd29f.s3tc.ctex"
+path.etc2="res://.godot/imported/house_med_0.jpg-f74f7c18b3c6072895617503770dd29f.etc2.ctex"
 metadata={
-"vram_texture": false
+"imported_formats": ["s3tc_bptc", "etc2_astc"],
+"vram_texture": true
 }
 generator_parameters={
 "md5": "9aeb9e75b316c56c11dc638cbbd7680a"
@@ -14,11 +16,11 @@ generator_parameters={
 [deps]
 
 source_file="res://assets/models/world/house_med_0.jpg"
-dest_files=["res://.godot/imported/house_med_0.jpg-f74f7c18b3c6072895617503770dd29f.ctex"]
+dest_files=["res://.godot/imported/house_med_0.jpg-f74f7c18b3c6072895617503770dd29f.s3tc.ctex", "res://.godot/imported/house_med_0.jpg-f74f7c18b3c6072895617503770dd29f.etc2.ctex"]
 
 [params]
 
-compress/mode=0
+compress/mode=2
 compress/high_quality=false
 compress/lossy_quality=0.7
 compress/hdr_compression=1
@@ -34,4 +36,4 @@ process/normal_map_invert_y=false
 process/hdr_as_srgb=false
 process/hdr_clamp_exposure=false
 process/size_limit=0
-detect_3d/compress_to=1
+detect_3d/compress_to=0

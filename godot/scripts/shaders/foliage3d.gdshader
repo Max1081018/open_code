@@ -19,11 +19,25 @@ global uniform float occlude_depth;
 uniform vec3 canopy_center = vec3(0.0);
 uniform float canopy_radius = 0.0;
 uniform float translucency = 0.0;
+// Far canopies thin smoothly (FoliageLib.with_cards): CUSTOM0 holds each
+// leaf card's centre and a random number. With distance a growing share of
+// cards shrinks to nothing and the rest grow to keep the crown full, so a
+// forest draws far fewer alpha-tested leaves with no pop. Shadows keep all.
+uniform float card_thin = 0.0;
+uniform float thin_near = 22.0;
+uniform float thin_far = 55.0;
 varying float v_ao;
 varying float v_tint;
 
 void vertex() {
 	vec3 world = (MODEL_MATRIX * vec4(0.0, 0.0, 0.0, 1.0)).xyz;
+	if (card_thin > 0.0 && PROJECTION_MATRIX[3][3] < 0.5) {
+		vec3 cen = CUSTOM0.xyz;
+		float d = distance((MODEL_MATRIX * vec4(cen, 1.0)).xyz, CAMERA_POSITION_WORLD);
+		float far_k = smoothstep(thin_near, thin_far, d);
+		float keep = clamp((CUSTOM0.w - 0.5 * far_k) / 0.08, 0.0, 1.0);
+		VERTEX = cen + (VERTEX - cen) * keep * (1.0 + 0.4 * far_k);
+	}
 	float phase = world.x * 0.21 + world.z * 0.17;
 	float h = max(VERTEX.y, 0.0);
 	float bend = sway * h * h * 0.08;

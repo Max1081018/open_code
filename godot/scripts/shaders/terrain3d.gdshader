@@ -101,6 +101,12 @@ void fragment() {
 	float steep = (1.0 - smoothstep(0.62 + streak * 0.12, 0.86, up)) * high;
 	vec3 cliff = rock * vec3(0.56, 0.58, 0.68) * (0.78 + streak * 0.35);
 	c = mix(c, cliff, clamp(steep * 1.2, 0.0, 1.0));
+	// Low banks (river cuts, coast drops, hill flanks): the ground layer is
+	// projected from above and smears down a near-vertical face, and shaded by
+	// the sky it read as blue streaks. Show earthy rock seen from the side.
+	float bank = (1.0 - smoothstep(0.42, 0.72, up)) * (1.0 - high);
+	vec3 bank_col = rock * vec3(1.0, 0.84, 0.64) * (0.85 + streak * 0.25);
+	c = mix(c, bank_col, bank);
 	c = mix(c, c * vec3(0.86, 0.9, 0.98), w.b * 0.6);
 	// Biome tint: brightness in UV2.x, hue in UV (red and blue shares; green
 	// takes the rest), ash in UV2.y.

@@ -22,22 +22,24 @@ void fragment() {
 		ALBEDO = vec3(0.0);
 	} else {
 		vec2 uv = SCREEN_UV;
-		vec2 delta = (sun_uv - uv) * length_ / 20.0;
+		// 12 steps, each jittered per pixel (4x4): the same streaks as 20
+		// for 60% of the texture reads (a full-screen pass on a phone).
+		vec2 delta = (sun_uv - uv) * length_ / 12.0;
 		ivec2 ip = ivec2(FRAGCOORD.xy) % 4;
 		float jitter = float((ip.x * 4 + ip.y) * 7 % 16) / 16.0;
 		vec2 s = uv + delta * jitter;
 		float w = 1.0;
 		float sum = 0.0;
-		for (int i = 0; i < 20; i++) {
+		for (int i = 0; i < 12; i++) {
 			// Open sky (nothing drawn there) that is bright: the sun's light.
 			vec2 q = clamp(s, vec2(0.001), vec2(0.999));
 			float open = step(0.99999, textureLod(depth_tex, q, 0.0).r);
 			float lum = dot(textureLod(screen_tex, q, 1.5).rgb, vec3(0.3, 0.55, 0.15));
 			sum += open * smoothstep(0.45, 1.0, lum) * w;
-			w *= decay;
+			w *= decay * decay * 0.985;
 			s += delta;
 		}
-		sum /= 9.0;
+		sum /= 4.8;   // the same total weight as the 20-step version
 		// Strongest close to the sun, fading over the screen.
 		vec2 d = uv - sun_uv;
 		d.x *= VIEWPORT_SIZE.x / VIEWPORT_SIZE.y;

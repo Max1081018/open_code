@@ -3,9 +3,11 @@
 importer="texture"
 type="CompressedTexture2D"
 uid="uid://cf681x4r48k3p"
-path="res://.godot/imported/statue_2.png-3092c4f9be4fc5eeefaffb354f2f94ed.ctex"
+path.s3tc="res://.godot/imported/statue_2.png-3092c4f9be4fc5eeefaffb354f2f94ed.s3tc.ctex"
+path.etc2="res://.godot/imported/statue_2.png-3092c4f9be4fc5eeefaffb354f2f94ed.etc2.ctex"
 metadata={
-"vram_texture": false
+"imported_formats": ["s3tc_bptc", "etc2_astc"],
+"vram_texture": true
 }
 generator_parameters={
 "md5": "5ee7ae248a8c930ac4d806ac430fcf33"
@@ -14,11 +16,11 @@ generator_parameters={
 [deps]
 
 source_file="res://assets/models/world/statue_2.png"
-dest_files=["res://.godot/imported/statue_2.png-3092c4f9be4fc5eeefaffb354f2f94ed.ctex"]
+dest_files=["res://.godot/imported/statue_2.png-3092c4f9be4fc5eeefaffb354f2f94ed.s3tc.ctex", "res://.godot/imported/statue_2.png-3092c4f9be4fc5eeefaffb354f2f94ed.etc2.ctex"]
 
 [params]
 
-compress/mode=0
+compress/mode=2
 compress/high_quality=false
 compress/lossy_quality=0.7
 compress/hdr_compression=1
@@ -34,4 +36,4 @@ process/normal_map_invert_y=false
 process/hdr_as_srgb=false
 process/hdr_clamp_exposure=false
 process/size_limit=0
-detect_3d/compress_to=1
+detect_3d/compress_to=0

@@ -3,9 +3,11 @@
 importer="texture"
 type="CompressedTexture2D"
 uid="uid://c8tg4osakpu2j"
-path="res://.godot/imported/magic_tower_3.png-d036da003fa83d19a633c1ddb840892b.ctex"
+path.s3tc="res://.godot/imported/magic_tower_3.png-d036da003fa83d19a633c1ddb840892b.s3tc.ctex"
+path.etc2="res://.godot/imported/magic_tower_3.png-d036da003fa83d19a633c1ddb840892b.etc2.ctex"
 metadata={
-"vram_texture": false
+"imported_formats": ["s3tc_bptc", "etc2_astc"],
+"vram_texture": true
 }
 generator_parameters={
 "md5": "4497e1285a60d99fbe7607333c9f1844"
@@ -14,11 +16,11 @@ generator_parameters={
 [deps]
 
 source_file="res://assets/models/world/magic_tower_3.png"
-dest_files=["res://.godot/imported/magic_tower_3.png-d036da003fa83d19a633c1ddb840892b.ctex"]
+dest_files=["res://.godot/imported/magic_tower_3.png-d036da003fa83d19a633c1ddb840892b.s3tc.ctex", "res://.godot/imported/magic_tower_3.png-d036da003fa83d19a633c1ddb840892b.etc2.ctex"]
 
 [params]
 
-compress/mode=0
+compress/mode=2
 compress/high_quality=false
 compress/lossy_quality=0.7
 compress/hdr_compression=1
@@ -34,4 +36,4 @@ process/normal_map_invert_y=false
 process/hdr_as_srgb=false
 process/hdr_clamp_exposure=false
 process/size_limit=0
-detect_3d/compress_to=1
+detect_3d/compress_to=0

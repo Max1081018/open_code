@@ -3,9 +3,11 @@
 importer="texture"
 type="CompressedTexture2D"
 uid="uid://b7qqe7ba6t3o3"
-path="res://.godot/imported/chest_magic_2.png-c8b89e1c256c1ad4510eaa90170a02d4.ctex"
+path.s3tc="res://.godot/imported/chest_magic_2.png-c8b89e1c256c1ad4510eaa90170a02d4.s3tc.ctex"
+path.etc2="res://.godot/imported/chest_magic_2.png-c8b89e1c256c1ad4510eaa90170a02d4.etc2.ctex"
 metadata={
-"vram_texture": false
+"imported_formats": ["s3tc_bptc", "etc2_astc"],
+"vram_texture": true
 }
 generator_parameters={
 "md5": "f212a3e8208c4288d295100e686273b4"
@@ -14,11 +16,11 @@ generator_parameters={
 [deps]
 
 source_file="res://assets/models/world/chest_magic_2.png"
-dest_files=["res://.godot/imported/chest_magic_2.png-c8b89e1c256c1ad4510eaa90170a02d4.ctex"]
+dest_files=["res://.godot/imported/chest_magic_2.png-c8b89e1c256c1ad4510eaa90170a02d4.s3tc.ctex", "res://.godot/imported/chest_magic_2.png-c8b89e1c256c1ad4510eaa90170a02d4.etc2.ctex"]
 
 [params]
 
-compress/mode=0
+compress/mode=2
 compress/high_quality=false
 compress/lossy_quality=0.7
 compress/hdr_compression=1
@@ -34,4 +36,4 @@ process/normal_map_invert_y=false
 process/hdr_as_srgb=false
 process/hdr_clamp_exposure=false
 process/size_limit=0
-detect_3d/compress_to=1
+detect_3d/compress_to=0

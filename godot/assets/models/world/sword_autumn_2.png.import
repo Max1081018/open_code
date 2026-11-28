@@ -3,9 +3,11 @@
 importer="texture"
 type="CompressedTexture2D"
 uid="uid://vp73fgr1yetr"
-path="res://.godot/imported/sword_autumn_2.png-9950a35f6d4c1e3e5a63dc6eae35015c.ctex"
+path.s3tc="res://.godot/imported/sword_autumn_2.png-9950a35f6d4c1e3e5a63dc6eae35015c.s3tc.ctex"
+path.etc2="res://.godot/imported/sword_autumn_2.png-9950a35f6d4c1e3e5a63dc6eae35015c.etc2.ctex"
 metadata={
-"vram_texture": false
+"imported_formats": ["s3tc_bptc", "etc2_astc"],
+"vram_texture": true
 }
 generator_parameters={
 "md5": "3cb552fc769df47a0348ed1b273b602e"
@@ -14,11 +16,11 @@ generator_parameters={
 [deps]
 
 source_file="res://assets/models/world/sword_autumn_2.png"
-dest_files=["res://.godot/imported/sword_autumn_2.png-9950a35f6d4c1e3e5a63dc6eae35015c.ctex"]
+dest_files=["res://.godot/imported/sword_autumn_2.png-9950a35f6d4c1e3e5a63dc6eae35015c.s3tc.ctex", "res://.godot/imported/sword_autumn_2.png-9950a35f6d4c1e3e5a63dc6eae35015c.etc2.ctex"]
 
 [params]
 
-compress/mode=0
+compress/mode=2
 compress/high_quality=false
 compress/lossy_quality=0.7
 compress/hdr_compression=1
@@ -34,4 +36,4 @@ process/normal_map_invert_y=false
 process/hdr_as_srgb=false
 process/hdr_clamp_exposure=false
 process/size_limit=0
-detect_3d/compress_to=1
+detect_3d/compress_to=0
